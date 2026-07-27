@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Central -> daemon self-update request (P4, ADR 0017). Carries a version and nothing else: no URL, filename, path, checksum or binary. The daemon derives the download location and expected digest from its own config plus GET /api/releases/manifest, so this frame cannot be used to make a node fetch or execute an operator-chosen artifact (SEC-002 extended to the release path).",
+  "type": "object", "additionalProperties": false,
+  "required": ["target_version"],
+  "properties": {
+    "target_version": {
+      "type": "string",
+      "minLength": 5,
+      "maxLength": 64,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.]+)?$"
+    },
+    "allow_downgrade": {"type": "boolean"}
+  }
+}

@@ -1,0 +1,1 @@
+{"version":1,"type":"filesystem.search","request_id":"01K0ABCDEFGHJKMNPQRSTVWX11","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-25T09:00:00Z","payload":{"session_id":"00000000-0000-4000-8000-000000000002","keyword":"x","rg_args":"--type=py -e secret"}}

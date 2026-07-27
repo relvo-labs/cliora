@@ -1,0 +1,1 @@
+{"version":1,"type":"daemon.update","request_id":"01K0ABCDEFGHJKMNPQRSTVWX21","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-25T09:00:00Z","payload":{"target_version":"1.1.0-rc.1","allow_downgrade":false}}

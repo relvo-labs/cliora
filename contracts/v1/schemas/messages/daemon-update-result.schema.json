@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "daemon -> Central self-update outcome (P4, ADR 0017). `stage` names the step reached so a runbook can act without reading daemon logs; `error_code` is one of the stable UPDATE_* codes. Carries no path, no URL and no log text.",
+  "type": "object", "additionalProperties": false,
+  "required": ["from_version", "to_version", "status", "stage"],
+  "properties": {
+    "from_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "to_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "status": {"enum": ["succeeded", "failed", "rolled_back"]},
+    "stage": {"enum": ["manifest", "download", "checksum", "swap", "restart", "healthcheck"]},
+    "error_code": {
+      "enum": [
+        "UPDATE_NOT_ALLOWED",
+        "UPDATE_DOWNLOAD_FAILED",
+        "UPDATE_CHECKSUM_MISMATCH",
+        "UPDATE_HEALTHCHECK_FAILED",
+        "UPDATE_ROLLED_BACK",
+        "UPDATE_IN_PROGRESS"
+      ]
+    }
+  }
+}

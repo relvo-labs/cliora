@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["name", "hostname", "os", "os_version", "architecture", "daemon_version", "run_user", "runtimes", "workspace_roots"],
+  "properties": {
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
+    "os": {"type": "string", "minLength": 1, "maxLength": 64},
+    "os_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "architecture": {"enum": ["amd64", "arm64"]},
+    "daemon_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "run_user": {"type": "string", "minLength": 1, "maxLength": 64},
+    "runtimes": {
+      "type": "array", "maxItems": 16,
+      "items": {"$ref": "runtime-item.schema.json"}
+    },
+    "workspace_roots": {
+      "type": "array", "maxItems": 64,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "is_enabled"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1, "maxLength": 4096},
+          "display_name": {"type": "string", "maxLength": 128},
+          "is_enabled": {"type": "boolean"}
+        }
+      }
+    }
+  }
+}

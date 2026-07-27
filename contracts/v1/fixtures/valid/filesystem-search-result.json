@@ -1,0 +1,1 @@
+{"version":1,"type":"filesystem.search_result","request_id":"01K0ABCDEFGHJKMNPQRSTVWX07","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-25T09:00:00Z","payload":{"partial":true,"stopped_reason":"results","scanned_count":1200,"results":[{"name":"main.py","rel_path":"backend/app/main.py","type":"file","modified_at":"2026-07-25T08:00:00Z"}]}}

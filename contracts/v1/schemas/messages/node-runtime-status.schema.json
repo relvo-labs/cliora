@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["runtimes"],
+  "properties": {
+    "runtimes": {
+      "type": "array", "maxItems": 16,
+      "items": {"$ref": "runtime-item.schema.json"}
+    }
+  }
+}

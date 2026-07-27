@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "rows", "columns"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "rows": {"type": "integer", "minimum": 2, "maximum": 300},
+    "columns": {"type": "integer", "minimum": 2, "maximum": 500}
+  }
+}

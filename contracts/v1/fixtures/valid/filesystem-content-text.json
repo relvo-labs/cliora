@@ -1,0 +1,1 @@
+{"version":1,"type":"filesystem.content","request_id":"01K0ABCDEFGHJKMNPQRSTVWX05","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-25T09:00:00Z","payload":{"success":true,"rel_path":"backend/app/main.py","size":1024,"modified_at":"2026-07-25T08:00:00Z","encoding":"utf-8","language_hint":"python","content":"print('hi')\n"}}

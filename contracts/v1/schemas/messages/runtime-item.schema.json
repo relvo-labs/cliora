@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["runtime", "available"],
+  "properties": {
+    "runtime": {"enum": ["claude", "codex"]},
+    "available": {"type": "boolean"},
+    "version": {"type": "string", "maxLength": 128},
+    "binary_path": {"type": "string", "maxLength": 4096},
+    "checked_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"}
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["daemon_version", "active_sessions"],
+  "properties": {
+    "daemon_version": {"type": "string", "minLength": 1, "maxLength": 64},
+    "active_sessions": {"type": "integer", "minimum": 0, "maximum": 100000},
+    "resources": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "cpu_usage": {"type": "number", "minimum": 0},
+        "memory_usage": {"type": "number", "minimum": 0},
+        "load_average": {"type": "number", "minimum": 0},
+        "disk_usage": {"type": "number", "minimum": 0},
+        "daemon_uptime": {"type": "number", "minimum": 0}
+      }
+    }
+  }
+}

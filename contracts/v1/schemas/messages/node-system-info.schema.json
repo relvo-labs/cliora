@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object", "additionalProperties": false,
+  "required": ["os", "os_version", "architecture", "run_user"],
+  "properties": {
+    "os": {"type": "string", "minLength": 1, "maxLength": 64},
+    "os_version": {"type": "string", "minLength": 1, "maxLength": 128},
+    "architecture": {"enum": ["amd64", "arm64"]},
+    "kernel": {"type": "string", "maxLength": 128},
+    "run_user": {"type": "string", "minLength": 1, "maxLength": 64}
+  }
+}
