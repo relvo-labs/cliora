@@ -5,15 +5,17 @@ Decision basis: ADR 0019 and `plan/06`
 
 ## 1. Verdict
 
-**Go for changed-scope blocking. No-Go for full release blocking**, which stays gated on three
-named items in `traceability/baseline-debt.json` — all of them requirement text that needs a
-product decision, not code.
+**Go. Full release blocking is on** (ADR 0019 rollout stage 3): `traceability/baseline-debt.json`
+is empty, no criterion is missing a required link, and none is awaiting a requirement rewrite.
 
-The registry, validators, generated views, evidence resolver, Make targets and CI workflow are
-implemented and locally verified. The imported baseline is closed: every criterion that carries a
-claim of its own now names the exact assertion that proves it, and every bullet that was never a
-claim says so and names the criterion that absorbs it. What remains open is small, listed, and
-attributed.
+The imported baseline is closed. Every criterion that carries a claim of its own names the exact
+assertion that proves it; every bullet that was never a claim says so and names the criterion that
+absorbs it; and the three requirements that disagreed with the code have been decided in the PRD
+rather than tested around.
+
+A release still has to earn its verdict from a same-commit snapshot. The one produced here is
+`blocked`, because eight of the fifteen gates cannot run on this machine — that is the system
+working, not a caveat on the above.
 
 ## 2. Baseline
 
@@ -24,11 +26,12 @@ attributed.
 | Tech security controls | 15 |
 | PRD scope guards | 12 |
 | Total registered requirements/controls | 106 |
-| Atomic criteria | 369 |
-| — carrying their own claim (`criterion`) | 235 |
+| Atomic criteria (active) | 372 |
+| — carrying their own claim (`criterion`) | 241 |
 | — absorbed into another criterion | 131 |
-| — awaiting a PRD rewrite | 3 |
-| Statically verifiable | 235 |
+| — awaiting a PRD rewrite | 0 |
+| Withdrawn, superseded by a replacement | 2 |
+| Statically verifiable | 241 |
 | Blocking gaps | 0 |
 | Active waivers | 0 |
 
@@ -63,13 +66,9 @@ Four assertions did not exist and were written rather than claimed:
 - `backend/tests/test_relay_timeouts.py` — the relay budgets FR-CONN-006 and FR-SESSION-005 put a
   number on.
 
-## 4. What is still open
+## 4. How the last six closed
 
-Three items, each named in `traceability/baseline-debt.json`. These are **not waivers**: nobody has
-accepted them and no expiry has been agreed.
-
-The three missing behaviours that were on this list have since been built, which is what took
-blocking gaps to zero:
+Three were missing behaviour and were built:
 
 | Criterion | What was missing | What it does now |
 |---|---|---|
@@ -77,17 +76,24 @@ blocking gaps to zero:
 | `FR-NODE-005.AC-04` | `set_enabled` accepted `terminate_sessions` and audited it while nothing acted on it. | Terminates each running session on the node, best effort, and records how many. A session that will not stop no longer strands the rest. |
 | `FR-FILE-006.AC-04` | The file tree had no auto-refresh; the only `autoRefresh` belonged to the dashboard. | An opt-in toolbar toggle re-reads the expanded levels on a 10 s interval, one pass at a time, and stops with the session or the scope. |
 
-What remains is PRD text that cannot be decided as written, found while looking for the assertion:
+Three were PRD text that could not be decided as written, found while looking for the assertion.
+Product decided to change the requirements:
 
-| Criterion | The disagreement |
-|---|---|
-| `FR-CONN-006.AC-02` | No single "general control command" budget exists; the relay has per-operation budgets and none is 10 s. |
-| `FR-CONN-006.AC-04` | PRD says a 30 s file read; `file_read_timeout_seconds` is 15. |
-| `FR-TERM-004.AC-03` | PRD states a 2–10 MB ring buffer; the daemon configures 5000 lines of tmux scrollback. Lines are not bytes. |
+| Criterion | The disagreement | Resolution |
+|---|---|---|
+| `FR-CONN-006.AC-02` | No single "general control command" budget existed; the relay has one per operation and none was 10 s. | Withdrawn. FR-CONN-006 now names the eight budgets Central enforces, including the 180 s daemon update, which on a shared budget would time out on a healthy node. `AC-06`/`AC-07` supersede it. |
+| `FR-CONN-006.AC-04` | PRD said a 30 s file read; `file_read_timeout_seconds` is 15. | Kept its ID — same claim, corrected number. The PRD now says 15 s. |
+| `FR-TERM-004.AC-03` | PRD stated a 2–10 MB ring buffer as an alternative to tmux scrollback; MVP took the tmux route and the alternative was never built. | Withdrawn. `AC-04`/`AC-05` supersede it with the guarantees that can be held to: at least 5000 scrollback lines, and a 2 MB cap on the reattach snapshot, reported as truncated. |
 
-Each needs a product decision — change the number in the PRD, or change the code to match it.
+The two withdrawals keep their IDs as `deprecated`, with a recorded rationale and a `supersedes`
+link from the replacement. Static validation now refuses a deprecated criterion that has neither:
+without that rule the cheapest way to clear a coverage gap is to withdraw the requirement, which is
+a worse failure than the gap.
+
 Writing a test around either side of a disagreement would have recorded the implementation as the
-requirement, which is the failure this whole exercise exists to prevent.
+requirement. That is the failure this whole system exists to catch, so
+`backend/tests/test_relay_timeouts.py` now transcribes the published table — and one of its tests
+asserts the transcription is complete, so adding a relay timeout without publishing it fails.
 
 ## 5. Verification
 
@@ -116,32 +122,32 @@ make traceability
 make traceability-coverage-strict
 ```
 
-At report creation: Ruff passes, 30 traceability tests pass, schema/static/selector/render checks
-pass, `make traceability` exits 0 under changed-scope blocking. `make traceability-coverage-strict`
-exits 4 by design while the three baseline-debt items remain — that is the readiness probe for
-full blocking, not a failure to ignore.
+At report creation: Ruff passes, 32 traceability tests pass, schema/static/selector/render checks
+pass, and `make traceability` exits 0 under full release blocking —
+`coverage --scope all --strict` is now the gate rather than a readiness probe.
 
 ## 6. Dogfood snapshot
 
 `scripts/traceability/dogfood.sh` runs the gates the runner can satisfy, records the rest as
 skipped with the prerequisite that is missing, merges the shards and resolves them. First run on
-a clean tree at `5f3133d`, run id `dogfood-5f3133d`:
+a clean tree at `48f1bd4`, run id `dogfood-48f1bd4`:
 
 | | |
 |---|---:|
 | Validity errors | 0 |
-| `verified` | 183 |
+| `verified` | 189 |
 | `covered-by-parent` | 131 |
 | `skipped` (gate not run on this runner) | 52 |
-| `needs-rewrite` | 3 |
+| `needs-rewrite` | 0 |
 | `blocked-static` | 0 |
 | **Verdict** | **blocked** |
 
-Blocked is the correct answer, and it is what the design is for. Eight gates could run here —
-static, backend unit, security, contract, backend DB against a real PostgreSQL 16, daemon race,
-daemon integration under tmux, frontend unit — and 183 criteria are verified against results from
-this commit. The other 52 depend on gates this runner does not have: the deployed edge
-(`GATE-OPERATIONS`, 21), the browser matrix (`GATE-BROWSER-E2E`, 17), the capacity rig, the
+Blocked is the correct answer, and it is what the design is for. Nothing is unresolved on paper any
+more: every criterion either has current evidence, is absorbed into one that does, or names a gate
+this machine cannot run. Seven gates ran here — static, backend unit, security, contract, backend
+DB against a real PostgreSQL 16, daemon race, daemon integration under tmux, frontend unit — and
+189 criteria are verified against results from this commit. The remaining 52 wait on the deployed
+edge (`GATE-OPERATIONS`, 21), the browser matrix (`GATE-BROWSER-E2E`, 17), the capacity rig, the
 measurement run, and the two manual procedures. Not one of them is reported as passing.
 
 Two things were found by running it rather than by reading it. Reporting `GATE-BACKEND-DB` without
@@ -164,9 +170,9 @@ same-commit observed evidence.
 
 ## 8. Remaining adoption work
 
-1. Decide the three requirement disagreements, then turn on full release blocking.
-2. Obtain product and test-owner sign-off on the 134 classifications; they carry
-   `review.approved: false` until then.
+1. Obtain product and test-owner sign-off on the 131 absorbed-bullet classifications; they carry
+   `review.approved: false` until then. The two withdrawals and the corrected file-read budget are
+   marked approved, because changing the PRD was the decision.
 3. Add machine reporter selector sets to every product gate shard, so `selectors` in a result is
    the list of assertions that actually executed rather than the list the registry expects.
    Today a gate reports the selectors the registry associates with it, which is why the snapshot

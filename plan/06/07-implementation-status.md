@@ -1,10 +1,10 @@
 # 07 — Requirement Traceability 實作狀態
 
 > 本文件只記錄實際完成與可定位證據。**目前狀態：traceability infrastructure 完成，imported
-> baseline 已關閉，rollout 進入 changed-scope blocking，blocking gaps 為 0。** 原本 308 個只有
-> supporting suite link 的 criteria 已逐條處理完畢；三個未實作行為已補上實作與測試。剩下 3 項
-> 是 PRD 文字本身無法判定，列於 `traceability/baseline-debt.json`，需產品決策而非寫程式，是
-> full blocking 的唯一阻擋。
+> baseline 已關閉，rollout 已進入 full release blocking（stage 3）。** 原本 308 個只有 supporting
+> suite link 的 criteria 已逐條處理完畢；三個未實作行為已補上實作與測試；三個 PRD 與實作矛盾
+> 已由產品決定改 PRD，撤回的 criterion 保留 ID 為 deprecated 並由 replacement `supersedes`。
+> `traceability/baseline-debt.json` 為空，`coverage --strict` 回 0。
 
 ## Ticket 狀態
 
@@ -20,20 +20,21 @@
 | RT-08 | Makefile/CI/impact/generated drift gates | 3 | ✅ 完成 | Make targets、`traceability.yml`（blocking）、P4 docs job |
 | RT-09 | P0–P4 historical reconciliation | 4 | ✅ 完成 | generated `historical-gaps.md`、traceability §10–11 |
 | RT-10 | PR/CODEOWNERS/waiver/release operating model | 4 | ◐ 完成有外部映射缺口 | PR template、runbook、`@Lei-k` fallback；organization team handles 需 repository 外部作業 |
-| RT-11 | staged blocking rollout 與 baseline debt closure | 5 | ✅ 完成（stage 2） | `coverage --baseline` 雙向檢查、CI blocking；stage 3 待 debt 清零 |
-| RT-12 | dogfood、failure injection、exit report | 5 | ✅ 完成 | 30 tests（含 §2 第 7、9 項注入）、`dogfood.sh` 於 `5f3133d` 實跑（0 validity error、183 verified、0 blocked-static、52 skipped、verdict blocked）、`docs/traceability-report.md` |
+| RT-11 | staged blocking rollout 與 baseline debt closure | 5 | ✅ 完成（stage 3） | `coverage --strict` 為 gate、`--baseline` 雙向檢查作為 ratchet；debt 已清零 |
+| RT-12 | dogfood、failure injection、exit report | 5 | ✅ 完成 | 30 tests（含 §2 第 7、9 項注入）、`dogfood.sh` 於 `48f1bd4` 實跑（0 validity error、189 verified、0 blocked-static、0 needs-rewrite、52 skipped、verdict blocked）、`docs/traceability-report.md` |
 
 ## Current machine baseline
 
 | 指標 | 值 |
 |---|---:|
 | Registered requirements/controls | 106 |
-| Atomic criteria | 369 |
-| — 自帶 claim（`criterion`） | 235 |
+| Atomic criteria（active） | 372 |
+| — 自帶 claim（`criterion`） | 241 |
 | — 被其他 criterion 吸收 | 131 |
-| — 待 PRD 改寫（`needs_rewrite`） | 3 |
-| Typed links | 1,420 |
-| Primary statically verifiable | 235 |
+| — 待 PRD 改寫（`needs_rewrite`） | 0 |
+| 已撤回並由 replacement supersede | 2 |
+| Typed links | 1,446 |
+| Primary statically verifiable | 241 |
 | Blocking gaps | 0 |
 | Active waivers | 0 |
 
@@ -41,17 +42,16 @@
 
 ## 已知首要缺口
 
-3 項具名於 `traceability/baseline-debt.json`，並在 `docs/traceability-report.md` §4 說明：
+`traceability/baseline-debt.json` 已空，static coverage 無缺口。剩下的不是 coverage gap：
 
-1. `FR-CONN-006.AC-02`、`FR-CONN-006.AC-04`、`FR-TERM-004.AC-03`：PRD 文字與實作不一致或不可判定。
-   需產品決策（改 PRD 或改實作），不能靠寫測試解決——對任一邊寫測試都等於把實作登記成需求。
-2. 134 條 Pass B 分類 `review.approved` 仍為 `false`，待 product／test owner 簽核。
-3. CODEOWNERS 目前只能使用 repository owner fallback，尚無 organization team handles。
+1. 131 條 Pass B 吸收分類 `review.approved` 仍為 `false`，待 product／test owner 簽核。
+2. CODEOWNERS 目前只能使用 repository owner fallback，尚無 organization team handles（repository 外部作業）。
+3. Release verdict 仍需在有 deployed edge、browser matrix、capacity rig 與兩項 manual procedure
+   的環境跑一次完整 snapshot；本機能跑的 7 個 gate 已產生 189 條 verified。
 
-這些不是 waiver：沒有人核准過，也沒有議定到期日。
-
-原本列在此處的三個未實作行為（`FR-FILE-006.AC-04` 檔案樹自動刷新、`FR-NODE-005.AC-04`
-停用 Node 時終止 Session 的選擇、`FR-SESSION-005.AC-06` 強制終止升級）已完成實作與測試。
+原本列在此處的六項已全部關閉：三個未實作行為（`FR-FILE-006.AC-04`、`FR-NODE-005.AC-04`、
+`FR-SESSION-005.AC-06`）補上實作與測試；三個 PRD 矛盾（`FR-CONN-006.AC-02`、
+`FR-CONN-006.AC-04`、`FR-TERM-004.AC-03`）由產品決定改 PRD。
 
 ## 更新規則
 
