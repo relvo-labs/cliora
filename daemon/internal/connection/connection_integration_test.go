@@ -114,7 +114,7 @@ func TestSessionStartStopRoundTripOverConnection(t *testing.T) {
 	manager.sessions = session.New(ctmux.Client{Socket: socket}, "", "")
 	manager.guard = workspace.New([]string{workspaceDir})
 	manager.resolveBinary = func(string) (string, error) { return bin, nil }
-	defer func() { _ = manager.sessions.Stop(context.Background(), sessionID) }()
+	defer func() { _, _ = manager.sessions.Stop(context.Background(), sessionID) }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -212,7 +212,7 @@ func TestSessionAttachStreamsOutput(t *testing.T) {
 	manager.sessions = session.New(ctmux.Client{Socket: socket}, "", "")
 	manager.guard = workspace.New([]string{workspaceDir})
 	manager.resolveBinary = func(string) (string, error) { return bin, nil }
-	defer func() { _ = manager.sessions.Stop(context.Background(), sessionID) }()
+	defer func() { _, _ = manager.sessions.Stop(context.Background(), sessionID) }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

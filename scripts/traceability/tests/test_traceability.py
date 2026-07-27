@@ -80,14 +80,14 @@ def test_committed_registry_is_valid_and_covered() -> None:
     assert validate_selectors(data) == []
     result = coverage(data)
     # Pinned on purpose: every one of these numbers moving is a reviewable event.
-    # The three still blocking and the three awaiting rewrite are named in
-    # traceability/baseline-debt.json.
+    # Nothing is missing a link any more; the three left are PRD text that cannot
+    # be decided as written, named in traceability/baseline-debt.json.
     assert result["summary"] == {
         "total": 369,
-        "verifiable": 232,
+        "verifiable": 235,
         "covered_by_parent": 131,
         "needs_rewrite": 3,
-        "blocking": 3,
+        "blocking": 0,
     }
 
 
@@ -242,7 +242,7 @@ def test_coverage_detects_removed_primary_link() -> None:
         if item["criterion_id"] == "FR-AUTH-001.AC-01"
     )
     assert row["missing"] == ["implemented_by"]
-    assert result["summary"]["blocking"] == 4
+    assert result["summary"]["blocking"] == 1
 
 
 def test_critical_criterion_cannot_be_waived() -> None:
@@ -399,6 +399,16 @@ def test_an_expired_waiver_stops_excusing_its_criterion() -> None:
     criterion_id = "FR-FILE-006.AC-04"
     now = datetime.now(UTC)
 
+    # Manufacture the gap rather than borrowing one from the committed registry:
+    # real gaps are meant to reach zero, and this test must keep working when
+    # they do.
+    links = copy.deepcopy(original.links_doc)
+    links["links"] = [
+        link
+        for link in links["links"]
+        if not (link["from"] == criterion_id and link["type"] == "verified_by")
+    ]
+
     def waivers(created: datetime, expires: datetime) -> dict:
         return {
             "schema_version": 1,
@@ -421,9 +431,7 @@ def test_an_expired_waiver_stops_excusing_its_criterion() -> None:
         }
 
     def row_for(doc: dict) -> dict:
-        data = TraceData(
-            original.requirements_doc, original.links_doc, original.gates_doc, doc
-        )
+        data = TraceData(original.requirements_doc, links, original.gates_doc, doc)
         return next(
             item
             for item in coverage(data)["criteria"]

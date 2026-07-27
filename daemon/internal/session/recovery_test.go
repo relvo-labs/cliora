@@ -78,7 +78,7 @@ func TestRecoveredReattachEvictsLiveOrphan(t *testing.T) {
 	if err := mgrA.Start(ctx, id, 24, 80); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	defer func() { _ = New(ctmux.Client{Socket: socket}, t.TempDir(), bin).Stop(ctx, id) }()
+	defer func() { _, _ = New(ctmux.Client{Socket: socket}, t.TempDir(), bin).Stop(ctx, id) }()
 
 	name, _ := ctmux.Name(id)
 	stopOrphan := liveOrphan(t, socket, name)
@@ -98,7 +98,10 @@ func TestRecoveredReattachEvictsLiveOrphan(t *testing.T) {
 
 	// After recovery, stop must also complete (the p0-report's "subsequent stop").
 	done := make(chan error, 1)
-	go func() { done <- mgrB.Stop(ctx, id) }()
+	go func() {
+		_, err := mgrB.Stop(ctx, id)
+		done <- err
+	}()
 	select {
 	case err := <-done:
 		if err != nil {
@@ -122,7 +125,7 @@ func TestRapidReattachChurn(t *testing.T) {
 	if err := mgr.Start(ctx, id, 24, 80); err != nil {
 		t.Fatalf("start: %v", err)
 	}
-	defer func() { _ = mgr.Stop(ctx, id) }()
+	defer func() { _, _ = mgr.Stop(ctx, id) }()
 
 	for i := 0; i < 20; i++ {
 		out := &sink{}

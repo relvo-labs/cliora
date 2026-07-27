@@ -332,20 +332,62 @@ class NodeManagementService:
         actor_id: uuid.UUID,
         terminate_sessions: bool = False,
     ) -> Node:
-        """Toggle a node's enabled flag. Disabling keeps the connection alive but
-        blocks new establishing operations (ensure_node_enabled). `terminate_sessions`
-        is a reserved hook for P2 session teardown; recorded in audit today."""
+        """Toggle a node's enabled flag.
+
+        Disabling keeps the connection alive but blocks new establishing operations
+        (ensure_node_enabled). Whether the sessions already running are torn down is
+        the administrator's choice (FR-NODE-005): `terminate_sessions` stops each of
+        them, and leaving it false lets existing work finish while nothing new starts.
+        """
         node = await self._require(node_id)
         node.is_enabled = enabled
+        terminated = (
+            await self._terminate_running_sessions(node.id, actor_id=actor_id)
+            if terminate_sessions and not enabled
+            else []
+        )
         # The action names the direction: filtering for "who disabled this node"
         # must not also return the re-enables (P4-04).
         await self._audit.record(
             audit.NODE_ENABLE if enabled else audit.NODE_DISABLE,
             user_id=actor_id,
             node_id=node.id,
-            metadata={"terminate_sessions": terminate_sessions},
+            metadata={
+                "terminate_sessions": terminate_sessions,
+                # The count, not the ids: the per-session terminations write their
+                # own rows, and this row should not duplicate them.
+                "sessions_terminated": len(terminated),
+            },
         )
         return node
+
+    async def _terminate_running_sessions(
+        self, node_id: uuid.UUID, *, actor_id: uuid.UUID
+    ) -> list[uuid.UUID]:
+        """Stop every session still running on a node, best effort.
+
+        Imported here rather than at module scope: SessionService already imports
+        `ensure_node_enabled` from this module.
+
+        One session that will not stop must not leave the rest running, so each
+        failure is recorded and the loop continues. The node is disabled either way
+        — that part has already been applied and does not depend on the daemon
+        answering.
+        """
+        from app.repositories.sessions import SessionRepository
+        from app.services.sessions import SessionService
+
+        sessions = SessionService(self._session, self._registry)
+        terminated: list[uuid.UUID] = []
+        for row in await SessionRepository(self._session).list_active_for_node(node_id):
+            try:
+                await sessions.terminate(actor_id=actor_id, session_id=row.id)
+            except ApiError:
+                # Already ended, or the daemon did not answer within the relay
+                # budget. Audited by `terminate` itself where it got that far.
+                continue
+            terminated.append(row.id)
+        return terminated
 
     async def revoke_credential(self, node_id: uuid.UUID, *, actor_id: uuid.UUID) -> None:
         """Revoke all active credentials and drop the live connection immediately

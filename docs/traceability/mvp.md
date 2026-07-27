@@ -71,7 +71,7 @@
 | FR-FILE-006.AC-01 | functional | verifiable | — |
 | FR-FILE-006.AC-02 | functional | verifiable | — |
 | FR-FILE-006.AC-03 | functional | verifiable | — |
-| FR-FILE-006.AC-04 | functional | specified | verified_by |
+| FR-FILE-006.AC-04 | functional | verifiable | — |
 | FR-FILE-007.AC-01 | functional | verifiable | — |
 | FR-FILE-007.AC-02 | functional | covered-by-parent | — |
 | FR-FILE-007.AC-03 | functional | covered-by-parent | — |
@@ -156,7 +156,7 @@
 | FR-NODE-005.AC-01 | functional | verifiable | — |
 | FR-NODE-005.AC-02 | functional | verifiable | — |
 | FR-NODE-005.AC-03 | functional | verifiable | — |
-| FR-NODE-005.AC-04 | functional | specified | verified_by |
+| FR-NODE-005.AC-04 | functional | verifiable | — |
 | FR-NODE-005.AC-05 | functional | verifiable | — |
 | FR-RUNTIME-001.AC-01 | functional | verifiable | — |
 | FR-RUNTIME-001.AC-02 | functional | covered-by-parent | — |
@@ -209,7 +209,7 @@
 | FR-SESSION-005.AC-03 | functional | verifiable | — |
 | FR-SESSION-005.AC-04 | functional | verifiable | — |
 | FR-SESSION-005.AC-05 | functional | verifiable | — |
-| FR-SESSION-005.AC-06 | functional | specified | verified_by |
+| FR-SESSION-005.AC-06 | functional | verifiable | — |
 | FR-SESSION-005.AC-07 | functional | verifiable | — |
 | FR-SESSION-006.AC-01 | functional | verifiable | — |
 | FR-SESSION-007.AC-01 | functional | verifiable | — |

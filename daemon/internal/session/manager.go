@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/cliora/cliora/daemon/internal/terminal"
 	ctmux "github.com/cliora/cliora/daemon/internal/tmux"
@@ -31,11 +32,27 @@ type Manager struct {
 	mu                sync.Mutex
 	tmux              ctmux.Client
 	workspace, binary string
+	stopGrace         time.Duration
 	sessions          map[uuid.UUID]*entry
 }
 
 func New(client ctmux.Client, workspace, binary string) *Manager {
-	return &Manager{tmux: client, workspace: workspace, binary: binary, sessions: make(map[uuid.UUID]*entry)}
+	return &Manager{
+		tmux:      client,
+		workspace: workspace,
+		binary:    binary,
+		stopGrace: ctmux.DefaultStopGrace,
+		sessions:  make(map[uuid.UUID]*entry),
+	}
+}
+
+// WithStopGrace overrides how long a CLI gets to exit on its own before the
+// session is killed. Zero or negative restores the default.
+func (m *Manager) WithStopGrace(grace time.Duration) *Manager {
+	if grace > 0 {
+		m.stopGrace = grace
+	}
+	return m
 }
 
 // Start launches a session on the manager's own workspace/binary with the "fake"
@@ -193,7 +210,13 @@ func (m *Manager) Detach(id uuid.UUID) {
 		process.Close()
 	}
 }
-func (m *Manager) Stop(ctx context.Context, id uuid.UUID) error {
+
+// Stop ends a session and reports which half of the FR-SESSION-005 sequence did
+// it: the CLI exited on its own after the termination signal, or the grace period
+// ran out and it was killed. An operator watching a runtime that never exits
+// cleanly needs to see the difference, so the outcome is returned and logged
+// rather than collapsed into "stopped".
+func (m *Manager) Stop(ctx context.Context, id uuid.UUID) (ctmux.StopOutcome, error) {
 	m.mu.Lock()
 	current := m.sessions[id]
 	if current != nil {
@@ -203,11 +226,15 @@ func (m *Manager) Stop(ctx context.Context, id uuid.UUID) error {
 	if current != nil && current.process != nil {
 		current.process.Close()
 	}
-	if err := m.tmux.Stop(ctx, id); err != nil {
-		return err
+	outcome, err := m.tmux.Stop(ctx, id, m.stopGrace)
+	if err != nil {
+		return outcome, err
+	}
+	if outcome == ctmux.StopForced {
+		slog.Warn("session_stop_forced", "session_id", id, "grace", m.stopGrace)
 	}
 	m.mu.Lock()
 	delete(m.sessions, id)
 	m.mu.Unlock()
-	return nil
+	return outcome, nil
 }

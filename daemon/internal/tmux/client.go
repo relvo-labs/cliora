@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -85,19 +87,91 @@ func (c Client) Exists(ctx context.Context, id uuid.UUID) (bool, error) {
 	}
 	return false, errors.New("tmux unavailable")
 }
-func (c Client) Stop(ctx context.Context, id uuid.UUID) error {
+
+// StopOutcome records which half of the FR-SESSION-005 sequence ended the
+// session. A caller that cannot tell them apart cannot report an unresponsive CLI.
+type StopOutcome string
+
+const (
+	// StopNotRunning: nothing to stop.
+	StopNotRunning StopOutcome = "not-running"
+	// StopGraceful: the pane process exited after SIGTERM, within the grace period.
+	StopGraceful StopOutcome = "graceful"
+	// StopForced: the grace period elapsed and the session was killed.
+	StopForced StopOutcome = "forced"
+)
+
+// DefaultStopGrace is how long a CLI gets to exit on its own. It has to stay well
+// inside Central's stop relay budget, or the relay gives up first and the caller
+// never learns which outcome it got.
+const DefaultStopGrace = 5 * time.Second
+
+// stopPoll is how often the session is re-checked while waiting. Short enough that
+// a fast exit is not billed the whole grace period.
+const stopPoll = 100 * time.Millisecond
+
+// Stop ends a session in the two stages FR-SESSION-005 describes: a normal
+// termination signal to the pane process, a bounded wait, and a forced kill only
+// if the process is still there.
+//
+// The signal goes to the pane process rather than straight to `kill-session`,
+// because a CLI that is asked to exit can flush its state; one that has its
+// session torn out from under it cannot. `grace` <= 0 uses DefaultStopGrace.
+func (c Client) Stop(ctx context.Context, id uuid.UUID, grace time.Duration) (StopOutcome, error) {
 	name, err := Name(id)
 	if err != nil {
-		return err
+		return StopNotRunning, err
 	}
 	exists, err := c.Exists(ctx, id)
 	if err != nil || !exists {
-		return err
+		return StopNotRunning, err
 	}
+	if grace <= 0 {
+		grace = DefaultStopGrace
+	}
+
+	// A pane PID we cannot read means we cannot signal politely; fall through to
+	// the forced kill rather than leaving the session running.
+	if pid, err := c.panePID(ctx, name); err == nil && pid > 0 {
+		if syscall.Kill(pid, syscall.SIGTERM) == nil {
+			deadline := time.Now().Add(grace)
+			for time.Now().Before(deadline) {
+				select {
+				case <-ctx.Done():
+					return StopForced, c.kill(ctx, name)
+				case <-time.After(stopPoll):
+				}
+				still, err := c.Exists(ctx, id)
+				if err != nil {
+					return StopForced, c.kill(ctx, name)
+				}
+				if !still {
+					return StopGraceful, nil
+				}
+			}
+		}
+	}
+	return StopForced, c.kill(ctx, name)
+}
+
+func (c Client) kill(ctx context.Context, name string) error {
+	// The session may have exited between the last check and here, which is a
+	// success, not a failure — so re-check rather than trusting the exit code.
 	if exec.CommandContext(ctx, "tmux", c.args("kill-session", "-t", name)...).Run() != nil {
-		return errors.New("tmux stop failed")
+		if exec.CommandContext(ctx, "tmux", c.args("has-session", "-t", name)...).Run() == nil {
+			return errors.New("tmux stop failed")
+		}
 	}
 	return nil
+}
+
+func (c Client) panePID(ctx context.Context, name string) (int, error) {
+	out, err := exec.CommandContext(ctx, "tmux",
+		c.args("display-message", "-p", "-t", name, "-F", "#{pane_pid}")...).Output()
+	if err != nil {
+		return 0, errors.New("tmux pane pid unavailable")
+	}
+	return strconv.Atoi(strings.TrimSpace(string(out)))
 }
 func (c Client) Capture(ctx context.Context, id uuid.UUID, max int) (Snapshot, error) {
 	name, err := Name(id)

@@ -3,27 +3,6 @@
   "note": "Named, finite baseline debt for the changed-scope blocking stage of the ADR 0019 rollout. Anything not listed here blocks. An entry that is no longer a gap also fails validation, so this file cannot rot. Full release blocking turns on when `entries` is empty. These are not waivers: nobody has accepted them, and no expiry has been agreed.",
   "entries": [
     {
-      "criterion_id": "FR-FILE-006.AC-04",
-      "kind": "missing-implementation",
-      "owner": "frontend",
-      "detail": "The file tree has no auto-refresh option while a session runs. `useFileTree` refreshes only on demand; the only autoRefresh in the front end belongs to the dashboard.",
-      "resolution": "Implement the option and link its test, or take the option out of the PRD."
-    },
-    {
-      "criterion_id": "FR-NODE-005.AC-04",
-      "kind": "missing-implementation",
-      "owner": "central",
-      "detail": "`NodeService.set_enabled` accepts `terminate_sessions` and audits it, but nothing acts on it — its own docstring calls it a reserved hook. The administrator's choice currently has no effect.",
-      "resolution": "Act on the flag and link a test, or drop the choice from the API and the PRD."
-    },
-    {
-      "criterion_id": "FR-SESSION-005.AC-06",
-      "kind": "missing-implementation",
-      "owner": "daemon",
-      "detail": "There is no force step. `tmux.Client.Stop` runs a single `kill-session`; nothing waits and then escalates, so the 'if it has not exited, force it' half of the sequence does not exist.",
-      "resolution": "Implement the escalation, or rewrite FR-SESSION-005 around the single-signal stop that is actually shipped."
-    },
-    {
       "criterion_id": "FR-CONN-006.AC-02",
       "kind": "needs-rewrite",
       "owner": "product",

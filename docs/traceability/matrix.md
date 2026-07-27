@@ -69,7 +69,7 @@
 | FR-FILE-006 | [FR-FILE-006.AC-01](../../research/prd.md#fr-file-006-ac-01) | 檔案樹應提供： | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it |
 | FR-FILE-006 | [FR-FILE-006.AC-02](../../research/prd.md#fr-file-006-ac-02) | 重新整理目前目錄。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it |
 | FR-FILE-006 | [FR-FILE-006.AC-03](../../research/prd.md#fr-file-006-ac-03) | 重新整理檔案內容。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>vitest:frontend/src/composables/useMonacoModel.test.ts#refresh refetches the same path and replaces the content |
-| FR-FILE-006 | [FR-FILE-006.AC-04](../../research/prd.md#fr-file-006-ac-04) | Session 執行時可選擇自動刷新。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts |
+| FR-FILE-006 | [FR-FILE-006.AC-04](../../research/prd.md#fr-file-006-ac-04) | Session 執行時可選擇自動刷新。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | vitest:frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on<br>vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked |
 | FR-FILE-007 | [FR-FILE-007.AC-01](../../research/prd.md#fr-file-007-ac-01) | MVP 可提供檔名搜尋。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>gotest:daemon/internal/files#TestSearchFilenameOnlyWithBounds |
 | FR-FILE-007 | [FR-FILE-007.AC-02](../../research/prd.md#fr-file-007-ac-02) | Keyword | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
 | FR-FILE-007 | [FR-FILE-007.AC-03](../../research/prd.md#fr-file-007-ac-03) | Workspace | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
@@ -154,7 +154,7 @@
 | FR-NODE-005 | [FR-NODE-005.AC-01](../../research/prd.md#fr-node-005-ac-01) | 管理員可停用 Node。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/db/test_node_api.py::test_disable_sets_status_disabled |
 | FR-NODE-005 | [FR-NODE-005.AC-02](../../research/prd.md#fr-node-005-ac-02) | Daemon 可保持連線。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/db/test_node_credentials.py::test_revoke_credential_severs_live_connection |
 | FR-NODE-005 | [FR-NODE-005.AC-03](../../research/prd.md#fr-node-005-ac-03) | 不可建立新 Session。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/test_node_guard.py::test_disabled_node_is_refused_with_node_disabled<br>pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected |
-| FR-NODE-005 | [FR-NODE-005.AC-04](../../research/prd.md#fr-node-005-ac-04) | 既有 Session 是否中止由管理員選擇。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py |
+| FR-NODE-005 | [FR-NODE-005.AC-04](../../research/prd.md#fr-node-005-ac-04) | 既有 Session 是否中止由管理員選擇。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_with_the_flag_actually_terminates_its_sessions<br>pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_leaves_running_sessions_alone_by_default |
 | FR-NODE-005 | [FR-NODE-005.AC-05](../../research/prd.md#fr-node-005-ac-05) | 前端顯示 Disabled。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/db/test_favorites_api.py::test_disabling_the_node_makes_a_stored_favourite_unusable |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-01](../../research/prd.md#fr-runtime-001-ac-01) | Daemon 啟動時應偵測： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>gotest:daemon/internal/runtime#TestDetectAvailable<br>gotest:daemon/internal/runtime#TestDetectNotFound<br>gotest:daemon/internal/runtime#TestDetectNotExecutableOnError<br>gotest:daemon/internal/runtime#TestDetectTimeoutDoesNotHang |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-02](../../research/prd.md#fr-runtime-001-ac-02) | claude | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | — |
@@ -207,7 +207,7 @@
 | FR-SESSION-005 | [FR-SESSION-005.AC-03](../../research/prd.md#fr-session-005-ac-03) | 中央平台轉送至 Daemon。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>gotest:daemon/internal/connection#TestSessionStartStopRoundTripOverConnection |
 | FR-SESSION-005 | [FR-SESSION-005.AC-04](../../research/prd.md#fr-session-005-ac-04) | Daemon先送出正常終止信號。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>gotest:daemon/internal/connection#TestSessionStartStopRoundTripOverConnection |
 | FR-SESSION-005 | [FR-SESSION-005.AC-05](../../research/prd.md#fr-session-005-ac-05) | 等待指定秒數。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds |
-| FR-SESSION-005 | [FR-SESSION-005.AC-06](../../research/prd.md#fr-session-005-ac-06) | 若未結束，送出強制終止。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py |
+| FR-SESSION-005 | [FR-SESSION-005.AC-06](../../research/prd.md#fr-session-005-ac-06) | 若未結束，送出強制終止。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | gotest:daemon/internal/session#TestStopSignalsFirstAndOnlyForcesWhenIgnored |
 | FR-SESSION-005 | [FR-SESSION-005.AC-07](../../research/prd.md#fr-session-005-ac-07) | 更新 Session 狀態。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/db/test_sessions_service.py::test_terminate_transitions_to_terminated<br>pytest:backend/tests/db/test_sessions_service.py::test_terminate_already_ended_rejected |
 | FR-SESSION-006 | [FR-SESSION-006.AC-01](../../research/prd.md#fr-session-006-ac-01) | Session 在瀏覽器斷線後不得自動終止。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:daemon/internal/session | gotest:daemon/internal/session<br>gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive |
 | FR-SESSION-007 | [FR-SESSION-007.AC-01](../../research/prd.md#fr-session-007-ac-01) | MVP 建議採用： | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/test_terminal_relay.py::test_first_write_capable_subscriber_is_writer_rest_viewers |
@@ -656,7 +656,6 @@
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-005.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-005.AC-05` (verified_by)
-- `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-005.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-005.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-02` (verified_by)
@@ -676,6 +675,8 @@
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected` ← `FR-NODE-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-06` (verified_by)
+- `pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_leaves_running_sessions_alone_by_default` ← `FR-NODE-005.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_with_the_flag_actually_terminates_its_sessions` ← `FR-NODE-005.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_session_limit_reached` ← `TECH-SEC-14.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_terminate_already_ended_rejected` ← `FR-SESSION-005.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_terminate_transitions_to_terminated` ← `FR-SESSION-005.AC-07` (verified_by)
@@ -687,7 +688,6 @@
 - `pytest:backend/tests/test_node_guard.py` ← `FR-NODE-005.AC-01` (verified_by)
 - `pytest:backend/tests/test_node_guard.py` ← `FR-NODE-005.AC-02` (verified_by)
 - `pytest:backend/tests/test_node_guard.py` ← `FR-NODE-005.AC-03` (verified_by)
-- `pytest:backend/tests/test_node_guard.py` ← `FR-NODE-005.AC-04` (verified_by)
 - `pytest:backend/tests/test_node_guard.py` ← `FR-NODE-005.AC-05` (verified_by)
 - `pytest:backend/tests/test_node_guard.py::test_disabled_node_is_refused_with_node_disabled` ← `FR-NODE-005.AC-03` (verified_by)
 - `pytest:backend/tests/test_registry.py` ← `FR-NODE-002.AC-01` (verified_by)
@@ -970,6 +970,7 @@
 - `scenario:daemon/internal/session` ← `NFR-002.AC-04` (measured_by)
 - `gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive` ← `FR-SESSION-006.AC-01` (verified_by)
 - `gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive` ← `FR-TERM-004.AC-01` (verified_by)
+- `gotest:daemon/internal/session#TestStopSignalsFirstAndOnlyForcesWhenIgnored` ← `FR-SESSION-005.AC-06` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-002.AC-01` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-003.AC-01` (verified_by)
 - `gotest:daemon/internal/update#TestAChecksumMismatchAbortsBeforeAnythingIsExtracted` ← `FR-INSTALL-005.AC-04` (verified_by)
@@ -1068,7 +1069,9 @@
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
+- `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#loads only the root level on bind (lazy)` ← `FR-FILE-001.AC-01` (verified_by)
+- `vitest:frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on` ← `FR-FILE-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-02` (verified_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#copies only a previewable file` ← `FR-FILE-002.AC-05` (verified_by)
@@ -1140,7 +1143,6 @@
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-006.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-006.AC-02` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-006.AC-03` (verified_by)
-- `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-006.AC-04` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-007.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-007.AC-04` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `MVP-AC-08.AC-01` (validated_by)

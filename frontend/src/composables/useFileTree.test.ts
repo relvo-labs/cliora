@@ -63,7 +63,7 @@ function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
-import { useFileTree, ancestorsOf } from "./useFileTree";
+import { AUTO_REFRESH_MS, useFileTree, ancestorsOf } from "./useFileTree";
 import { ROOT_PATH, inflightCount, useFilesStore } from "../stores/files";
 
 function entry(
@@ -443,6 +443,109 @@ describe("useFileTree", () => {
     tree.focusedKey.value = "src/main.py";
     await tree.onKeydown(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
     expect(tree.focusedKey.value).toBe("src");
+  });
+
+  // --- auto-refresh (FR-FILE-006) ---------------------------------------
+
+  it("does not refetch anything on its own until asked", async () => {
+    const { tree } = mountTree();
+    await settle();
+    calls.length = 0;
+
+    vi.useFakeTimers();
+    try {
+      await vi.advanceTimersByTimeAsync(AUTO_REFRESH_MS * 3);
+      expect(tree.autoRefresh.value).toBe(false);
+      expect(calls).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("re-reads every expanded level once auto-refresh is on", async () => {
+    const { tree } = mountTree();
+    await settle();
+    await tree.expand("src");
+    await settle();
+    calls.length = 0;
+
+    tree.setAutoRefresh(true);
+    // Turning it on schedules the first pass; it does not fire immediately.
+    expect(calls).toEqual([]);
+
+    await tree.refreshExpanded();
+    expect(calls.map((c) => c.path)).toEqual([".", "src"]);
+  });
+
+  it("stops re-reading when it is switched back off", async () => {
+    const { tree } = mountTree();
+    await settle();
+    tree.setAutoRefresh(true);
+    tree.setAutoRefresh(false);
+    calls.length = 0;
+
+    await tree.refreshExpanded();
+    // The guard is the flag, not only the timer: a pass already queued when the
+    // user unticks the box must not go on to fetch.
+    expect(tree.autoRefresh.value).toBe(false);
+    expect(calls.map((c) => c.path)).toEqual([]);
+  });
+
+  it("does not stack passes when a node answers slowly", async () => {
+    const { tree } = mountTree();
+    await settle();
+    calls.length = 0;
+
+    let release!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    listImpl.fn = async (path) => {
+      await blocked;
+      return page(path, []);
+    };
+
+    tree.setAutoRefresh(true);
+    const first = tree.refreshExpanded();
+    const second = tree.refreshExpanded();
+    await second; // returns straight away: a pass is already running
+    expect(calls).toHaveLength(1);
+
+    release();
+    await first;
+    expect(calls).toHaveLength(1);
+  });
+
+  it("leaves no timer behind when the scope is disposed", async () => {
+    const { tree } = mountTree();
+    await settle();
+    tree.setAutoRefresh(true);
+
+    vi.useFakeTimers();
+    try {
+      scope.stop();
+      calls.length = 0;
+      await vi.advanceTimersByTimeAsync(AUTO_REFRESH_MS * 3);
+      expect(calls).toEqual([]);
+      expect(inflightCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps the preference across a session change but never refreshes without one", async () => {
+    const { tree, id } = mountTree();
+    await settle();
+    tree.setAutoRefresh(true);
+
+    id.value = null;
+    await settle();
+    calls.length = 0;
+    await tree.refreshExpanded();
+    expect(calls).toEqual([]);
+    // The box stays ticked, so the next session resumes rather than silently
+    // dropping a preference the user set.
+    expect(tree.autoRefresh.value).toBe(true);
   });
 
   it("derives ancestors segment by segment", () => {

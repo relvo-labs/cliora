@@ -114,7 +114,9 @@ const currentDirLabel = computed(() => {
       <FileTreeToolbar
         :dir-label="currentDirLabel"
         :busy="busy"
+        :auto-refresh="tree.autoRefresh.value"
         @refresh="tree.refresh()"
+        @update:auto-refresh="tree.setAutoRefresh"
       />
 
       <AsyncState v-if="rootState === 'forbidden'" state="forbidden">

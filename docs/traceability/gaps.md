@@ -4,9 +4,7 @@
 
 ## Missing links
 
-- **FR-FILE-006.AC-04** (must): missing verified_by
-- **FR-NODE-005.AC-04** (must): missing verified_by
-- **FR-SESSION-005.AC-06** (must): missing verified_by
+No static coverage gaps.
 
 ## Awaiting requirement rewrite
 

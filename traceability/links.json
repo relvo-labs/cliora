@@ -3740,22 +3740,6 @@
       ]
     },
     {
-      "id": "LNK-FR-FILE-006-AC-04-VERIFIED-BY",
-      "from": "FR-FILE-006.AC-04",
-      "type": "verified_by",
-      "target": {
-        "kind": "playwright",
-        "locator": "frontend/tests/e2e/files.spec.ts"
-      },
-      "role": "supporting",
-      "assertion": "Existing automated suite supporting this requirement family; exact assertion mapping remains baseline debt.",
-      "owner": "daemon",
-      "applicability": [
-        "mvp"
-      ],
-      "gate_id": "GATE-BROWSER-E2E"
-    },
-    {
       "id": "LNK-FR-FILE-007-AC-01-IMPLEMENTED-BY",
       "from": "FR-FILE-007.AC-01",
       "type": "implemented_by",
@@ -8173,22 +8157,6 @@
       ]
     },
     {
-      "id": "LNK-FR-NODE-005-AC-04-VERIFIED-BY",
-      "from": "FR-NODE-005.AC-04",
-      "type": "verified_by",
-      "target": {
-        "kind": "pytest",
-        "locator": "backend/tests/test_node_guard.py"
-      },
-      "role": "supporting",
-      "assertion": "Existing automated suite supporting this requirement family; exact assertion mapping remains baseline debt.",
-      "owner": "central",
-      "applicability": [
-        "mvp"
-      ],
-      "gate_id": "GATE-BACKEND-UNIT"
-    },
-    {
       "id": "LNK-FR-NODE-005-AC-05-IMPLEMENTED-BY",
       "from": "FR-NODE-005.AC-05",
       "type": "implemented_by",
@@ -10844,22 +10812,6 @@
       "applicability": [
         "mvp"
       ]
-    },
-    {
-      "id": "LNK-FR-SESSION-005-AC-06-VERIFIED-BY",
-      "from": "FR-SESSION-005.AC-06",
-      "type": "verified_by",
-      "target": {
-        "kind": "pytest",
-        "locator": "backend/tests/db/test_sessions_api.py"
-      },
-      "role": "supporting",
-      "assertion": "Existing automated suite supporting this requirement family; exact assertion mapping remains baseline debt.",
-      "owner": "central",
-      "applicability": [
-        "mvp"
-      ],
-      "gate_id": "GATE-BACKEND-DB"
     },
     {
       "id": "LNK-FR-SESSION-005-AC-07-IMPLEMENTED-BY",
@@ -21747,6 +21699,86 @@
         "mvp"
       ],
       "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-006-AC-04-VERIFIED-01",
+      "from": "FR-FILE-006.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on"
+      },
+      "role": "primary",
+      "assertion": "With the option on, every expanded level is re-read while the session runs.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-006-AC-04-VERIFIED-02",
+      "from": "FR-FILE-006.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked"
+      },
+      "role": "primary",
+      "assertion": "It is a choice: nothing refetches until the user turns it on.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-NODE-005-AC-04-VERIFIED-01",
+      "from": "FR-NODE-005.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_service.py::test_disabling_a_node_with_the_flag_actually_terminates_its_sessions"
+      },
+      "role": "primary",
+      "assertion": "Disabling with terminate_sessions stops each running session on that node.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-NODE-005-AC-04-VERIFIED-02",
+      "from": "FR-NODE-005.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_service.py::test_disabling_a_node_leaves_running_sessions_alone_by_default"
+      },
+      "role": "primary",
+      "assertion": "Without the flag the running sessions are left to finish; the choice is the administrator's.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-SESSION-005-AC-06-VERIFIED-01",
+      "from": "FR-SESSION-005.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/session#TestStopSignalsFirstAndOnlyForcesWhenIgnored"
+      },
+      "role": "primary",
+      "assertion": "A CLI that ignores the termination signal is killed once the grace period elapses, and one that honours it never is.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-INTEGRATION"
     }
   ]
 }

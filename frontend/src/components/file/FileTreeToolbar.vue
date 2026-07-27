@@ -1,17 +1,31 @@
 <script setup lang="ts">
-// Tree toolbar: manual refresh of the current directory level (FR-FILE-006).
-// MVP has no filesystem watching, so refresh is the only invalidation path and
-// it must be discoverable.
+// Tree toolbar: manual refresh of the current directory level, plus the opt-in
+// auto-refresh for a running session (FR-FILE-006). MVP has no filesystem
+// watching, so these are the only invalidation paths and both must be
+// discoverable.
 
 import { RefreshCw } from "lucide-vue-next";
 
-defineProps<{ dirLabel: string; busy?: boolean }>();
-const emit = defineEmits<{ refresh: [] }>();
+defineProps<{ dirLabel: string; busy?: boolean; autoRefresh?: boolean }>();
+const emit = defineEmits<{ refresh: []; "update:autoRefresh": [boolean] }>();
 </script>
 
 <template>
   <div class="toolbar">
     <span class="scope" :title="dirLabel">{{ dirLabel }}</span>
+    <label class="auto">
+      <input
+        type="checkbox"
+        :checked="autoRefresh"
+        @change="
+          emit(
+            'update:autoRefresh',
+            ($event.target as HTMLInputElement).checked,
+          )
+        "
+      />
+      自動重新整理
+    </label>
     <button
       type="button"
       class="action"
@@ -31,6 +45,14 @@ const emit = defineEmits<{ refresh: [] }>();
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+.auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 .scope {
   font-size: 11px;

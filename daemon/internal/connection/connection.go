@@ -551,13 +551,20 @@ func (m *Manager) handleStop(ctx context.Context, env protocol.Envelope, send fu
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
 	}
-	if err := m.sessions.Stop(ctx, p.SessionID); err != nil {
+	outcome, err := m.sessions.Stop(ctx, p.SessionID)
+	if err != nil {
 		m.replyError(send, env.RequestID, "SESSION_NOT_RUNNING")
 		return
 	}
+	// `forced` was hardcoded false while the stop path had only one stage. It now
+	// reports whether the CLI exited on the termination signal or had to be killed,
+	// which is the difference an operator needs to see (FR-SESSION-005).
 	frame, _ := protocol.BuildResponse(
 		"session.stopped", m.creds.NodeID, env.RequestID, true,
-		map[string]any{"session_id": p.SessionID.String(), "forced": false}, m.now(),
+		map[string]any{
+			"session_id": p.SessionID.String(),
+			"forced":     outcome == ctmux.StopForced,
+		}, m.now(),
 	)
 	_ = send(frame)
 }

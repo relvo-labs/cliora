@@ -56,6 +56,11 @@ export function ancestorsOf(relPath: string): string[] {
   return out;
 }
 
+// How often an auto-refreshing tree re-reads its expanded levels. Slow enough
+// that an idle session costs a node almost nothing, quick enough that a file a
+// CLI just wrote shows up without the user reaching for refresh.
+export const AUTO_REFRESH_MS = 10_000;
+
 export function useFileTree(options: FileTreeOptions) {
   const store = useFilesStore();
   const expanded = ref(new Set<string>([ROOT_PATH]));
@@ -328,6 +333,65 @@ export function useFileTree(options: FileTreeOptions) {
     await store.refreshDir(target);
   }
 
+  // --- Auto-refresh while a session runs (FR-FILE-006) -------------------
+  //
+  // Opt-in, like the dashboard's. A running CLI writes files, and re-expanding
+  // every level by hand to notice is the tedium this removes; but a tree that
+  // refetches on its own by default would put steady load on every node for the
+  // majority of sessions where nothing changes.
+
+  const autoRefresh = ref(false);
+  let timer: ReturnType<typeof setInterval> | null = null;
+  // One pass at a time: on a slow node the interval would otherwise stack passes
+  // until the tree is refetching continuously.
+  let passInFlight = false;
+
+  async function refreshExpanded(): Promise<void> {
+    if (passInFlight || revealing.value || !options.sessionId.value) {
+      return;
+    }
+    passInFlight = true;
+    try {
+      // Snapshot first: expanding or collapsing mid-pass must not change what
+      // this pass walks.
+      for (const dirPath of [...expanded.value]) {
+        if (!autoRefresh.value || !options.sessionId.value) {
+          return;
+        }
+        await store.refreshDir(dirPath);
+      }
+    } finally {
+      passInFlight = false;
+    }
+  }
+
+  function stopAutoRefresh(): void {
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+
+  function setAutoRefresh(enabled: boolean): void {
+    autoRefresh.value = enabled;
+    stopAutoRefresh();
+    if (!enabled || !options.sessionId.value) {
+      return;
+    }
+    timer = setInterval(() => void refreshExpanded(), AUTO_REFRESH_MS);
+  }
+
+  // Losing the session stops the timer but keeps the preference, so it resumes
+  // on the next session rather than silently staying off.
+  watch(options.sessionId, (next) => {
+    stopAutoRefresh();
+    if (autoRefresh.value && next) {
+      timer = setInterval(() => void refreshExpanded(), AUTO_REFRESH_MS);
+    }
+  });
+
+  onScopeDispose(stopAutoRefresh);
+
   // The directory the focused row lives in — the target of "refresh this level".
   function currentDir(): string {
     const row = focusableRows.value.find(
@@ -365,6 +429,9 @@ export function useFileTree(options: FileTreeOptions) {
     onKeydown,
     reveal,
     refresh,
+    autoRefresh,
+    setAutoRefresh,
+    refreshExpanded,
     currentDir,
     search: (keyword: string) => store.runSearch(keyword),
     clearSearch: () => store.clearSearch(),

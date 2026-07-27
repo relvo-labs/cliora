@@ -1,9 +1,10 @@
 # 07 — Requirement Traceability 實作狀態
 
 > 本文件只記錄實際完成與可定位證據。**目前狀態：traceability infrastructure 完成，imported
-> baseline 已關閉，rollout 進入 changed-scope blocking。** 原本 308 個只有 supporting suite link
-> 的 criteria 已逐條處理完畢；剩下 6 項具名 baseline debt，列於
-> `traceability/baseline-debt.json`，是 full blocking 的唯一阻擋。
+> baseline 已關閉，rollout 進入 changed-scope blocking，blocking gaps 為 0。** 原本 308 個只有
+> supporting suite link 的 criteria 已逐條處理完畢；三個未實作行為已補上實作與測試。剩下 3 項
+> 是 PRD 文字本身無法判定，列於 `traceability/baseline-debt.json`，需產品決策而非寫程式，是
+> full blocking 的唯一阻擋。
 
 ## Ticket 狀態
 
@@ -31,23 +32,26 @@
 | — 自帶 claim（`criterion`） | 235 |
 | — 被其他 criterion 吸收 | 131 |
 | — 待 PRD 改寫（`needs_rewrite`） | 3 |
-| Typed links | 1,418 |
-| Primary statically verifiable | 232 |
-| Blocking gaps | 3 |
+| Typed links | 1,420 |
+| Primary statically verifiable | 235 |
+| Blocking gaps | 0 |
 | Active waivers | 0 |
 
 （2026-07-27 規劃時的人工 baseline 表已由上表取代；規模數字見 `docs/traceability-report.md` §2。）
 
 ## 已知首要缺口
 
-全部 6 項具名於 `traceability/baseline-debt.json`，並在 `docs/traceability-report.md` §4 說明：
+3 項具名於 `traceability/baseline-debt.json`，並在 `docs/traceability-report.md` §4 說明：
 
-1. `FR-FILE-006.AC-04`、`FR-NODE-005.AC-04`、`FR-SESSION-005.AC-06`：行為未實作。
-2. `FR-CONN-006.AC-02`、`FR-CONN-006.AC-04`、`FR-TERM-004.AC-03`：PRD 文字與實作不一致或不可判定，需求需改寫。
-3. 134 條 Pass B 分類 `review.approved` 仍為 `false`，待 product／test owner 簽核。
-4. CODEOWNERS 目前只能使用 repository owner fallback，尚無 organization team handles。
+1. `FR-CONN-006.AC-02`、`FR-CONN-006.AC-04`、`FR-TERM-004.AC-03`：PRD 文字與實作不一致或不可判定。
+   需產品決策（改 PRD 或改實作），不能靠寫測試解決——對任一邊寫測試都等於把實作登記成需求。
+2. 134 條 Pass B 分類 `review.approved` 仍為 `false`，待 product／test owner 簽核。
+3. CODEOWNERS 目前只能使用 repository owner fallback，尚無 organization team handles。
 
 這些不是 waiver：沒有人核准過，也沒有議定到期日。
+
+原本列在此處的三個未實作行為（`FR-FILE-006.AC-04` 檔案樹自動刷新、`FR-NODE-005.AC-04`
+停用 Node 時終止 Session 的選擇、`FR-SESSION-005.AC-06` 強制終止升級）已完成實作與測試。
 
 ## 更新規則
 

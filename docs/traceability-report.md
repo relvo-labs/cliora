@@ -5,8 +5,9 @@ Decision basis: ADR 0019 and `plan/06`
 
 ## 1. Verdict
 
-**Go for changed-scope blocking. No-Go for full release blocking**, which stays gated on six
-named items in `traceability/baseline-debt.json`.
+**Go for changed-scope blocking. No-Go for full release blocking**, which stays gated on three
+named items in `traceability/baseline-debt.json` — all of them requirement text that needs a
+product decision, not code.
 
 The registry, validators, generated views, evidence resolver, Make targets and CI workflow are
 implemented and locally verified. The imported baseline is closed: every criterion that carries a
@@ -27,8 +28,8 @@ attributed.
 | — carrying their own claim (`criterion`) | 235 |
 | — absorbed into another criterion | 131 |
 | — awaiting a PRD rewrite | 3 |
-| Statically verifiable | 232 |
-| Blocking gaps | 3 |
+| Statically verifiable | 235 |
+| Blocking gaps | 0 |
 | Active waivers | 0 |
 
 Stable anchors were added to `research/prd.md` and tech §23. Requirement text remains canonical
@@ -64,16 +65,19 @@ Four assertions did not exist and were written rather than claimed:
 
 ## 4. What is still open
 
-Six items, each named in `traceability/baseline-debt.json`. These are **not waivers**: nobody has
-accepted them and no expiry has been agreed. Three are missing implementation:
+Three items, each named in `traceability/baseline-debt.json`. These are **not waivers**: nobody has
+accepted them and no expiry has been agreed.
 
-| Criterion | What is actually there |
-|---|---|
-| `FR-FILE-006.AC-04` | The file tree has no auto-refresh option. The only `autoRefresh` in the front end belongs to the dashboard. |
-| `FR-NODE-005.AC-04` | `set_enabled` accepts `terminate_sessions` and audits it, but nothing acts on it — its own docstring calls it a reserved hook. |
-| `FR-SESSION-005.AC-06` | There is no force step. `tmux.Client.Stop` runs one `kill-session`; nothing waits and escalates. |
+The three missing behaviours that were on this list have since been built, which is what took
+blocking gaps to zero:
 
-Three are PRD text that cannot be decided as written, found while looking for the assertion:
+| Criterion | What was missing | What it does now |
+|---|---|---|
+| `FR-SESSION-005.AC-06` | `tmux.Client.Stop` ran one `kill-session`; nothing waited and escalated. | Sends SIGTERM to the pane process, waits the configured grace, and kills only if it is still there. The outcome is returned, logged, and carried in the `forced` field of `session.stopped` — which had been hardcoded `false`. |
+| `FR-NODE-005.AC-04` | `set_enabled` accepted `terminate_sessions` and audited it while nothing acted on it. | Terminates each running session on the node, best effort, and records how many. A session that will not stop no longer strands the rest. |
+| `FR-FILE-006.AC-04` | The file tree had no auto-refresh; the only `autoRefresh` belonged to the dashboard. | An opt-in toolbar toggle re-reads the expanded levels on a 10 s interval, one pass at a time, and stops with the session or the scope. |
+
+What remains is PRD text that cannot be decided as written, found while looking for the assertion:
 
 | Criterion | The disagreement |
 |---|---|
@@ -81,8 +85,9 @@ Three are PRD text that cannot be decided as written, found while looking for th
 | `FR-CONN-006.AC-04` | PRD says a 30 s file read; `file_read_timeout_seconds` is 15. |
 | `FR-TERM-004.AC-03` | PRD states a 2–10 MB ring buffer; the daemon configures 5000 lines of tmux scrollback. Lines are not bytes. |
 
-Each needs an owner decision — implement it, or change the requirement. Writing a test around
-either side of a disagreement would have recorded the implementation as the requirement.
+Each needs a product decision — change the number in the PRD, or change the code to match it.
+Writing a test around either side of a disagreement would have recorded the implementation as the
+requirement, which is the failure this whole exercise exists to prevent.
 
 ## 5. Verification
 
@@ -113,8 +118,8 @@ make traceability-coverage-strict
 
 At report creation: Ruff passes, 30 traceability tests pass, schema/static/selector/render checks
 pass, `make traceability` exits 0 under changed-scope blocking. `make traceability-coverage-strict`
-exits 4 by design while the six baseline-debt items remain — that is the readiness probe for full
-blocking, not a failure to ignore.
+exits 4 by design while the three baseline-debt items remain — that is the readiness probe for
+full blocking, not a failure to ignore.
 
 ## 6. Dogfood snapshot
 
@@ -159,7 +164,7 @@ same-commit observed evidence.
 
 ## 8. Remaining adoption work
 
-1. Close or rewrite the six baseline-debt items, then turn on full release blocking.
+1. Decide the three requirement disagreements, then turn on full release blocking.
 2. Obtain product and test-owner sign-off on the 134 classifications; they carry
    `review.approved: false` until then.
 3. Add machine reporter selector sets to every product gate shard, so `selectors` in a result is
