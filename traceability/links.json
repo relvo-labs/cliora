@@ -21555,6 +21555,198 @@
         "mvp"
       ],
       "gate_id": "GATE-CONTRACT-CROSS-LANGUAGE"
+    },
+    {
+      "id": "LNK-SCOPE-001-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-001.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events"
+      },
+      "role": "primary",
+      "assertion": "No message type carries parsed runtime events; terminal output stays opaque bytes.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-002-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-002.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism"
+      },
+      "role": "primary",
+      "assertion": "No route, action or message models a central approval.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-003-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-003.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt"
+      },
+      "role": "primary",
+      "assertion": "No interception point exists in either direction; session start carries five fields and none of them is a prompt.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-004-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-004.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow"
+      },
+      "role": "primary",
+      "assertion": "No workflow, orchestration or handoff surface exists.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-005-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-005.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch"
+      },
+      "role": "primary",
+      "assertion": "No dispatch, schedule or assignment surface exists.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-006-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-006.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide"
+      },
+      "role": "primary",
+      "assertion": "The filesystem protocol is exactly list, read and search — there is nowhere to save.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-007-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-007.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface"
+      },
+      "role": "primary",
+      "assertion": "Every mounted file route is a GET and no write action exists.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-008-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-008.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_008_no_git_surface"
+      },
+      "role": "primary",
+      "assertion": "No git, commit, push or merge-request surface exists.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-009-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-009.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation"
+      },
+      "role": "primary",
+      "assertion": "No analysis surface exists, and the audit sanitizer forbids the keys that could carry the content it would need.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-010-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-010.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model"
+      },
+      "role": "primary",
+      "assertion": "The wire shares one closed enum of runtime ids and no behavioural field.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-011-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-011.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command"
+      },
+      "role": "primary",
+      "assertion": "Session start is closed over five fields; none of command, args, argv, shell, env or entrypoint exists.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-012-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-012.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central"
+      },
+      "role": "primary",
+      "assertion": "Central imports no filesystem-mount client and shells out to no mount; files arrive over the relay.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
     }
   ]
 }

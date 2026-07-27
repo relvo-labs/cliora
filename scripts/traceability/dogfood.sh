@@ -70,7 +70,7 @@ run GATE-SECURITY ""
 run GATE-CONTRACT-CROSS-LANGUAGE ""
 
 if postgres_up; then
-  run GATE-BACKEND-DB ""
+  run GATE-BACKEND-DB "" --environment postgresql-16
 else
   run GATE-BACKEND-DB "no PostgreSQL 16 reachable on this runner"
 fi

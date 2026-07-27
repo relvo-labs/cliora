@@ -317,18 +317,18 @@
 | NFR-005 | [NFR-005.AC-08](../../research/prd.md#nfr-005-ac-08) | Edge | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
 | NFR-005 | [NFR-005.AC-09](../../research/prd.md#nfr-005-ac-09) | Safari | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
 | NFR-005 | [NFR-005.AC-10](../../research/prd.md#nfr-005-ac-10) | Firefox | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
-| SCOPE-001 | [SCOPE-001.AC-01](../../research/prd.md#scope-001-ac-01) | 不解析 Claude 或 Codex 的內部事件。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-002 | [SCOPE-002.AC-01](../../research/prd.md#scope-002-ac-01) | 不建立中央審批機制。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-003 | [SCOPE-003.AC-01](../../research/prd.md#scope-003-ac-01) | 不攔截或替代 CLI 原生權限確認。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-004 | [SCOPE-004.AC-01](../../research/prd.md#scope-004-ac-01) | 不建立多 Agent 自動協作流程。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-005 | [SCOPE-005.AC-01](../../research/prd.md#scope-005-ac-01) | 不進行任務自動分派。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-006 | [SCOPE-006.AC-01](../../research/prd.md#scope-006-ac-01) | 不提供 Web 端完整 IDE。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-008 | [SCOPE-008.AC-01](../../research/prd.md#scope-008-ac-01) | 不提供自動 Git Commit、Push 或 Merge Request。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-009 | [SCOPE-009.AC-01](../../research/prd.md#scope-009-ac-01) | 不提供 CLI 對話內容的語意分析。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-010 | [SCOPE-010.AC-01](../../research/prd.md#scope-010-ac-01) | 不建立跨 Runtime 的統一 Agent 行為模型。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-011 | [SCOPE-011.AC-01](../../research/prd.md#scope-011-ac-01) | 不允許使用者從前端執行任意 Shell Command。 | — | — | plan:plan/05/00-execution-plan.md |
-| SCOPE-012 | [SCOPE-012.AC-01](../../research/prd.md#scope-012-ac-01) | 不將 VM 檔案系統直接掛載至中央伺服器。 | — | — | plan:plan/05/00-execution-plan.md |
+| SCOPE-001 | [SCOPE-001.AC-01](../../research/prd.md#scope-001-ac-01) | 不解析 Claude 或 Codex 的內部事件。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events |
+| SCOPE-002 | [SCOPE-002.AC-01](../../research/prd.md#scope-002-ac-01) | 不建立中央審批機制。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism |
+| SCOPE-003 | [SCOPE-003.AC-01](../../research/prd.md#scope-003-ac-01) | 不攔截或替代 CLI 原生權限確認。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt |
+| SCOPE-004 | [SCOPE-004.AC-01](../../research/prd.md#scope-004-ac-01) | 不建立多 Agent 自動協作流程。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow |
+| SCOPE-005 | [SCOPE-005.AC-01](../../research/prd.md#scope-005-ac-01) | 不進行任務自動分派。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch |
+| SCOPE-006 | [SCOPE-006.AC-01](../../research/prd.md#scope-006-ac-01) | 不提供 Web 端完整 IDE。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide |
+| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface |
+| SCOPE-008 | [SCOPE-008.AC-01](../../research/prd.md#scope-008-ac-01) | 不提供自動 Git Commit、Push 或 Merge Request。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface |
+| SCOPE-009 | [SCOPE-009.AC-01](../../research/prd.md#scope-009-ac-01) | 不提供 CLI 對話內容的語意分析。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation |
+| SCOPE-010 | [SCOPE-010.AC-01](../../research/prd.md#scope-010-ac-01) | 不建立跨 Runtime 的統一 Agent 行為模型。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model |
+| SCOPE-011 | [SCOPE-011.AC-01](../../research/prd.md#scope-011-ac-01) | 不允許使用者從前端執行任意 Shell Command。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command |
+| SCOPE-012 | [SCOPE-012.AC-01](../../research/prd.md#scope-012-ac-01) | 不將 VM 檔案系統直接掛載至中央伺服器。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central |
 | SEC-001 | [SEC-001.AC-01](../../research/prd.md#sec-001-ac-01) | 所有 Workspace 與檔案路徑必須： | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveContainmentMatrix |
 | SEC-001 | [SEC-001.AC-02](../../research/prd.md#sec-001-ac-02) | 使用 Absolute Path。 | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveReturnsCanonicalPath |
 | SEC-001 | [SEC-001.AC-03](../../research/prd.md#sec-001-ac-03) | 解析 Symlink。 | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestSymlinkSwapTOCTOU |
@@ -701,6 +701,18 @@
 - `pytest:backend/tests/test_relay_timeouts.py::test_directory_listing_budget_is_the_prd_fifteen_seconds` ← `FR-CONN-006.AC-03` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_start_budget_is_the_prd_thirty_seconds` ← `FR-CONN-006.AC-05` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-SESSION-005.AC-05` (verified_by)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events` ← `SCOPE-001.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism` ← `SCOPE-002.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt` ← `SCOPE-003.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow` ← `SCOPE-004.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch` ← `SCOPE-005.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide` ← `SCOPE-006.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface` ← `SCOPE-007.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface` ← `SCOPE-008.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation` ← `SCOPE-009.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model` ← `SCOPE-010.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command` ← `SCOPE-011.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central` ← `SCOPE-012.AC-01` (guards_scope)
 - `pytest:backend/tests/test_security.py` ← `SEC-003.AC-01` (verified_by)
 - `pytest:backend/tests/test_security.py` ← `SEC-003.AC-02` (verified_by)
 - `pytest:backend/tests/test_security.py` ← `SEC-003.AC-03` (verified_by)
