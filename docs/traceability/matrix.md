@@ -37,10 +37,13 @@
 | FR-CONN-004 | [FR-CONN-004.AC-06](../../research/prd.md#fr-conn-004-ac-06) | Payload | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | — |
 | FR-CONN-005 | [FR-CONN-005.AC-01](../../research/prd.md#fr-conn-005-ac-01) | Terminal 輸出建議使用 Binary WebSocket Frame。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/protocol#TestContractBinaryRoundTrip<br>pytest:backend/tests/contract/test_contract.py::test_binary_manifest |
 | FR-CONN-006 | [FR-CONN-006.AC-01](../../research/prd.md#fr-conn-006-ac-01) | Workspace 與 Session 控制請求需設定 Timeout。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>pytest:backend/tests/test_correlation.py::test_request_times_out_and_cleans_up |
-| FR-CONN-006 | [FR-CONN-006.AC-02](../../research/prd.md#fr-conn-006-ac-02) | 一般控制命令：10 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | — |
+| FR-CONN-006 | [FR-CONN-006.AC-02](../../research/prd.md#fr-conn-006-ac-02) | ~~一般控制命令：10 秒。~~（已作廢：不存在單一「一般控制命令」預算，改由上列逐項規範。） | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | — |
 | FR-CONN-006 | [FR-CONN-006.AC-03](../../research/prd.md#fr-conn-006-ac-03) | 目錄列出：15 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>pytest:backend/tests/test_relay_timeouts.py::test_directory_listing_budget_is_the_prd_fifteen_seconds |
-| FR-CONN-006 | [FR-CONN-006.AC-04](../../research/prd.md#fr-conn-006-ac-04) | 檔案讀取：30 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | — |
+| FR-CONN-006 | [FR-CONN-006.AC-04](../../research/prd.md#fr-conn-006-ac-04) | 檔案讀取：15 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names |
 | FR-CONN-006 | [FR-CONN-006.AC-05](../../research/prd.md#fr-conn-006-ac-05) | Session 啟動：30 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>pytest:backend/tests/test_relay_timeouts.py::test_session_start_budget_is_the_prd_thirty_seconds |
+| FR-CONN-006 | [FR-CONN-006.AC-06](../../research/prd.md#fr-conn-006-ac-06) | Session 接管與列出：15 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names |
+| FR-CONN-006 | [FR-CONN-006.AC-07](../../research/prd.md#fr-conn-006-ac-07) | Session 終止：20 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds |
+| FR-CONN-006 | [FR-CONN-006.AC-08](../../research/prd.md#fr-conn-006-ac-08) | Daemon 更新：180 秒（下載、替換與重啟遠長於其他操作，共用一般預算會在正常情況下逾時）。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others |
 | FR-FILE-001 | [FR-FILE-001.AC-01](../../research/prd.md#fr-file-001-ac-01) | 前端需以 Tree 呈現 Workspace。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>vitest:frontend/src/composables/useFileTree.test.ts#loads only the root level on bind (lazy)<br>playwright:frontend/tests/e2e/files.spec.ts#lazy tree, excluded dir, search back into the tree |
 | FR-FILE-001 | [FR-FILE-001.AC-02](../../research/prd.md#fr-file-001-ac-02) | 檔案或資料夾名稱 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
 | FR-FILE-001 | [FR-FILE-001.AC-03](../../research/prd.md#fr-file-001-ac-03) | 圖示 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
@@ -231,8 +234,10 @@
 | FR-TERM-003 | [FR-TERM-003.AC-02](../../research/prd.md#fr-term-003-ac-02) | Rows | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-003 | [FR-TERM-003.AC-03](../../research/prd.md#fr-term-003-ac-03) | Columns | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-004 | [FR-TERM-004.AC-01](../../research/prd.md#fr-term-004-ac-01) | 重新連線時應提供最近的終端輸出。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive |
-| FR-TERM-004 | [FR-TERM-004.AC-02](../../research/prd.md#fr-term-004-ac-02) | 使用 tmux Scrollback，或 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>gotest:daemon/internal/install#TestBuildConfigValidAndSelective |
-| FR-TERM-004 | [FR-TERM-004.AC-03](../../research/prd.md#fr-term-004-ac-03) | Daemon 保存 2 MB 至 10 MB Ring Buffer。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
+| FR-TERM-004 | [FR-TERM-004.AC-02](../../research/prd.md#fr-term-004-ac-02) | 使用 tmux Scrollback。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>gotest:daemon/internal/install#TestBuildConfigValidAndSelective |
+| FR-TERM-004 | [FR-TERM-004.AC-03](../../research/prd.md#fr-term-004-ac-03) | ~~Daemon 保存 2 MB 至 10 MB Ring Buffer。~~（已作廢：未採用的替代方案。實際保證見上列以行數與快照上限表述的條件。） | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
+| FR-TERM-004 | [FR-TERM-004.AC-04](../../research/prd.md#fr-term-004-ac-04) | Daemon 的 tmux Scrollback 至少保存 5000 行。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | gotest:daemon/internal/install#TestGeneratedConfigCarriesThePublishedScrollback |
+| FR-TERM-004 | [FR-TERM-004.AC-05](../../research/prd.md#fr-term-004-ac-05) | 重新連線送出的 Scrollback 快照上限為 2 MB；超出時保留最新的部分並標示為截斷。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | gotest:daemon/internal/session#TestSnapshotLimitIsThePublishedTwoMegabytes<br>gotest:daemon/internal/files#TestReadOversize |
 | FR-TERM-005 | [FR-TERM-005.AC-01](../../research/prd.md#fr-term-005-ac-01) | 前端需顯示： | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone |
 | FR-TERM-005 | [FR-TERM-005.AC-02](../../research/prd.md#fr-term-005-ac-02) | Connected | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-005 | [FR-TERM-005.AC-03](../../research/prd.md#fr-term-005-ac-03) | Reconnecting | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -386,6 +391,8 @@
 - `scenario:.github/workflows/p4.yml` ← `NFR-005.AC-08` (measured_by)
 - `scenario:.github/workflows/p4.yml` ← `NFR-005.AC-09` (measured_by)
 - `scenario:.github/workflows/p4.yml` ← `NFR-005.AC-10` (measured_by)
+- `requirement:FR-CONN-006.AC-02` ← `FR-CONN-006.AC-06` (supersedes)
+- `requirement:FR-CONN-006.AC-02` ← `FR-CONN-006.AC-07` (supersedes)
 - `requirement:FR-FILE-001` ← `MVP-AC-15.AC-01` (refined_by)
 - `requirement:FR-FILE-002` ← `MVP-AC-16.AC-01` (refined_by)
 - `requirement:FR-FILE-005` ← `MVP-AC-17.AC-01` (refined_by)
@@ -403,6 +410,8 @@
 - `requirement:FR-SESSION-006` ← `MVP-AC-14.AC-01` (refined_by)
 - `requirement:FR-TERM-001` ← `MVP-AC-11.AC-01` (refined_by)
 - `requirement:FR-TERM-001` ← `MVP-AC-12.AC-01` (refined_by)
+- `requirement:FR-TERM-004.AC-03` ← `FR-TERM-004.AC-04` (supersedes)
+- `requirement:FR-TERM-004.AC-03` ← `FR-TERM-004.AC-05` (supersedes)
 - `requirement:FR-WORKSPACE-002` ← `MVP-AC-08.AC-01` (refined_by)
 - `requirement:FR-WORKSPACE-003` ← `MVP-AC-09.AC-01` (refined_by)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
@@ -698,9 +707,13 @@
 - `pytest:backend/tests/test_registry.py::test_compute_status_transitions` ← `FR-NODE-002.AC-08` (verified_by)
 - `pytest:backend/tests/test_registry.py::test_compute_status_transitions` ← `FR-NODE-002.AC-09` (verified_by)
 - `pytest:backend/tests/test_registry.py::test_registry_tracks_heartbeat_with_monotonic_clock` ← `FR-NODE-002.AC-01` (verified_by)
+- `pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names` ← `FR-CONN-006.AC-04` (verified_by)
+- `pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names` ← `FR-CONN-006.AC-06` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_directory_listing_budget_is_the_prd_fifteen_seconds` ← `FR-CONN-006.AC-03` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_start_budget_is_the_prd_thirty_seconds` ← `FR-CONN-006.AC-05` (verified_by)
+- `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-CONN-006.AC-07` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-SESSION-005.AC-05` (verified_by)
+- `pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others` ← `FR-CONN-006.AC-08` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events` ← `SCOPE-001.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism` ← `SCOPE-002.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt` ← `SCOPE-003.AC-01` (guards_scope)
@@ -792,6 +805,9 @@
 - `code:daemon/internal/connection` ← `FR-CONN-006.AC-04` (implemented_by)
 - `code:daemon/internal/connection` ← `FR-CONN-006.AC-05` (implemented_by)
 - `gotest:daemon/internal/connection` ← `FR-CONN-006.AC-05` (verified_by)
+- `code:daemon/internal/connection` ← `FR-CONN-006.AC-06` (implemented_by)
+- `code:daemon/internal/connection` ← `FR-CONN-006.AC-07` (implemented_by)
+- `code:daemon/internal/connection` ← `FR-CONN-006.AC-08` (implemented_by)
 - `gotest:daemon/internal/connection#TestReconnectBackoffScheduleMatchesThePRD` ← `FR-CONN-003.AC-02` (verified_by)
 - `gotest:daemon/internal/connection#TestReconnectBackoffScheduleMatchesThePRD` ← `FR-CONN-003.AC-03` (verified_by)
 - `gotest:daemon/internal/connection#TestReconnectBackoffScheduleMatchesThePRD` ← `FR-CONN-003.AC-04` (verified_by)
@@ -845,6 +861,7 @@
 - `gotest:daemon/internal/files#TestListPagination` ← `FR-WORKSPACE-002.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestReadOversize` ← `FR-FILE-003.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestReadOversize` ← `FR-FILE-003.AC-02` (verified_by)
+- `gotest:daemon/internal/files#TestReadOversize` ← `FR-TERM-004.AC-05` (verified_by)
 - `gotest:daemon/internal/files#TestReadPolicyMatrix` ← `FR-FILE-004.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestReadPolicyMatrix` ← `FR-FILE-005.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestReadPolicyMatrix` ← `SEC-004.AC-01` (verified_by)
@@ -909,6 +926,7 @@
 - `gotest:daemon/internal/install#TestBuildConfigValidAndSelective` ← `FR-INSTALL-003.AC-01` (verified_by)
 - `gotest:daemon/internal/install#TestBuildConfigValidAndSelective` ← `FR-TERM-004.AC-02` (verified_by)
 - `gotest:daemon/internal/install#TestGeneratedConfigCarriesFilesystemPolicy` ← `FR-INSTALL-003.AC-07` (verified_by)
+- `gotest:daemon/internal/install#TestGeneratedConfigCarriesThePublishedScrollback` ← `FR-TERM-004.AC-04` (verified_by)
 - `gotest:daemon/internal/install#TestRegisterRejectedIsSafe` ← `FR-INSTALL-003.AC-14` (verified_by)
 - `gotest:daemon/internal/install#TestRegisterSuccess` ← `FR-INSTALL-003.AC-14` (verified_by)
 - `gotest:daemon/internal/install#TestUnitFile` ← `FR-INSTALL-003.AC-09` (verified_by)
@@ -970,6 +988,7 @@
 - `scenario:daemon/internal/session` ← `NFR-002.AC-04` (measured_by)
 - `gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive` ← `FR-SESSION-006.AC-01` (verified_by)
 - `gotest:daemon/internal/session#TestReattachAfterDetachKeepsSessionAlive` ← `FR-TERM-004.AC-01` (verified_by)
+- `gotest:daemon/internal/session#TestSnapshotLimitIsThePublishedTwoMegabytes` ← `FR-TERM-004.AC-05` (verified_by)
 - `gotest:daemon/internal/session#TestStopSignalsFirstAndOnlyForcesWhenIgnored` ← `FR-SESSION-005.AC-06` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-002.AC-01` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-003.AC-01` (verified_by)
@@ -1109,6 +1128,8 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-004.AC-01` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-004.AC-02` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-004.AC-03` (implemented_by)
+- `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-004.AC-04` (implemented_by)
+- `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-004.AC-05` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-005.AC-01` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-005.AC-02` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-005.AC-03` (implemented_by)
@@ -1214,6 +1235,9 @@
 - `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-03` (planned_by)
 - `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-04` (planned_by)
 - `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-05` (planned_by)
+- `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-06` (planned_by)
+- `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-07` (planned_by)
+- `plan:plan/02/04-daemon-connection.md` ← `FR-CONN-006.AC-08` (planned_by)
 - `plan:plan/02/04-daemon-connection.md` ← `FR-RUNTIME-001.AC-01` (planned_by)
 - `plan:plan/02/04-daemon-connection.md` ← `FR-RUNTIME-001.AC-02` (planned_by)
 - `plan:plan/02/04-daemon-connection.md` ← `FR-RUNTIME-001.AC-03` (planned_by)
@@ -1369,6 +1393,8 @@
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-004.AC-01` (planned_by)
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-004.AC-02` (planned_by)
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-004.AC-03` (planned_by)
+- `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-004.AC-04` (planned_by)
+- `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-004.AC-05` (planned_by)
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-005.AC-01` (planned_by)
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-005.AC-02` (planned_by)
 - `plan:plan/03/06-xterm-integration.md` ← `FR-TERM-005.AC-03` (planned_by)
@@ -1490,6 +1516,9 @@
 - `source:research/tech.md` ← `FR-CONN-006.AC-03` (specified_by)
 - `source:research/tech.md` ← `FR-CONN-006.AC-04` (specified_by)
 - `source:research/tech.md` ← `FR-CONN-006.AC-05` (specified_by)
+- `source:research/tech.md` ← `FR-CONN-006.AC-06` (specified_by)
+- `source:research/tech.md` ← `FR-CONN-006.AC-07` (specified_by)
+- `source:research/tech.md` ← `FR-CONN-006.AC-08` (specified_by)
 - `source:research/tech.md` ← `FR-FILE-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-FILE-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-FILE-001.AC-03` (specified_by)
@@ -1682,6 +1711,8 @@
 - `source:research/tech.md` ← `FR-TERM-004.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-004.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-004.AC-03` (specified_by)
+- `source:research/tech.md` ← `FR-TERM-004.AC-04` (specified_by)
+- `source:research/tech.md` ← `FR-TERM-004.AC-05` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-005.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-005.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-005.AC-03` (specified_by)

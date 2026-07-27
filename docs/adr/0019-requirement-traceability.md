@@ -113,11 +113,17 @@ Rollout has three explicit modes:
 Schema errors, duplicate IDs, broken anchors/links, generated-document drift, and newly introduced
 changed-scope gaps block from the first mode.
 
-Mode 2 is in force as of 2026-07-27. The tolerated set is `traceability/baseline-debt.json`: a
-finite, named list checked in both directions, so an unlisted gap fails and a listed entry that is
-no longer a gap also fails. It is not a waiver — no one has accepted these items and no expiry has
-been agreed; each names an owner and what would close it. Mode 3 turns on when the list is empty,
-which `make traceability-coverage-strict` reports on every run.
+Mode 3 is in force as of 2026-07-27: every active criterion must carry its required links and
+none may be awaiting a requirement rewrite. `traceability/baseline-debt.json` is empty and is still
+checked in both directions, so an item cannot be added back without stepping the rollout down
+deliberately and saying so.
+
+Getting there required deciding three requirements rather than testing around them. FR-CONN-006
+named a "general control command: 10 s" budget the relay never had and a 30 s file read where the
+code says 15; FR-TERM-004 named a ring buffer in megabytes against a tmux scrollback measured in
+lines. In each case the PRD was changed and the withdrawn criterion kept its ID as `deprecated`
+with a `supersedes` link from its replacement — a deprecated criterion with no replacement is
+refused, because otherwise the cheapest way to clear a gap is to withdraw the requirement.
 
 ### Repository format and retention
 

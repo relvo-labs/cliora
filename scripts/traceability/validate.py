@@ -310,6 +310,35 @@ def validate_static(data: TraceData) -> list[Finding]:
                     )
                 )
 
+    # A deprecated criterion needs a named replacement (`plan/06/01` §3). Without
+    # this the cheapest way to clear a gap is to deprecate the criterion, and the
+    # requirement quietly disappears instead of being answered.
+    superseded = {
+        link["target"]["locator"]
+        for link in data.links
+        if link["type"] == "supersedes" and link["target"]["kind"] == "requirement"
+    }
+    for requirement in data.requirements:
+        for criterion in requirement["criteria"]:
+            if criterion.get("lifecycle") != "deprecated":
+                continue
+            if criterion["id"] not in superseded:
+                findings.append(
+                    Finding(
+                        "criterion.unreplaced",
+                        "deprecated criterion has no criterion superseding it",
+                        criterion["id"],
+                    )
+                )
+            if "review" not in criterion:
+                findings.append(
+                    Finding(
+                        "criterion.undocumented_deprecation",
+                        "deprecating a criterion must record who withdrew it and why",
+                        criterion["id"],
+                    )
+                )
+
     for waiver in data.waivers:
         created = datetime.fromisoformat(waiver["created_at"].replace("Z", "+00:00"))
         expires = datetime.fromisoformat(waiver["expires_at"].replace("Z", "+00:00"))

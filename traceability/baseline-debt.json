@@ -1,27 +1,5 @@
 {
   "schema_version": 1,
-  "note": "Named, finite baseline debt for the changed-scope blocking stage of the ADR 0019 rollout. Anything not listed here blocks. An entry that is no longer a gap also fails validation, so this file cannot rot. Full release blocking turns on when `entries` is empty. These are not waivers: nobody has accepted them, and no expiry has been agreed.",
-  "entries": [
-    {
-      "criterion_id": "FR-CONN-006.AC-02",
-      "kind": "needs-rewrite",
-      "owner": "product",
-      "detail": "There is no single 'general control command' budget to measure. The relay has per-operation budgets (attach 15 s, list 15 s, stop 20 s) and none of them is the 10 s the PRD names.",
-      "resolution": "Restate the criterion per operation, or introduce the single budget it assumes."
-    },
-    {
-      "criterion_id": "FR-CONN-006.AC-04",
-      "kind": "needs-rewrite",
-      "owner": "product",
-      "detail": "PRD says a 30 s file-read budget; `file_read_timeout_seconds` is 15. A test either way would record one of the two as the requirement.",
-      "resolution": "Decide which number is right and change the other to match."
-    },
-    {
-      "criterion_id": "FR-TERM-004.AC-03",
-      "kind": "needs-rewrite",
-      "owner": "product",
-      "detail": "PRD states a 2-10 MB ring buffer. The daemon configures a 5000-line tmux scrollback and the browser a 10000-line one; lines are not bytes, so the criterion has no measurable form today.",
-      "resolution": "Restate the scrollback guarantee in the units the implementation can hold to."
-    }
-  ]
+  "note": "Named, finite baseline debt for the ADR 0019 rollout. Anything not listed here blocks. An entry that is no longer a gap also fails validation, so this file cannot rot. Empty means full release blocking is on: `make traceability-coverage-strict` is the gate, not a report.",
+  "entries": []
 }

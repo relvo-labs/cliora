@@ -13,6 +13,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// SnapshotLimitBytes caps the scrollback replayed on reattach (FR-TERM-004).
+// Named rather than inline because it is a published guarantee: the browser is
+// told the snapshot was truncated, and a silent change here changes what
+// "recent output" means to every reconnecting user.
+const SnapshotLimitBytes = 2 * 1024 * 1024
+
 type State string
 
 const (
@@ -101,7 +107,7 @@ func (m *Manager) Attach(ctx context.Context, id uuid.UUID, rows, columns uint16
 		return ctmux.Snapshot{}, errors.New("SESSION_NOT_FOUND")
 	}
 	slog.Info("attach session exists", "session_id", id)
-	snapshot, err := m.tmux.Capture(ctx, id, 2*1024*1024)
+	snapshot, err := m.tmux.Capture(ctx, id, SnapshotLimitBytes)
 	slog.Info("attach snapshot captured", "session_id", id, "snapshot_bytes", len(snapshot.Bytes))
 	if err != nil {
 		return ctmux.Snapshot{}, err

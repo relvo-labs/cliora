@@ -8,8 +8,4 @@ No static coverage gaps.
 
 ## Awaiting requirement rewrite
 
-These are not link gaps. The PRD text itself cannot be decided as written, so no test may claim them.
-
-- **FR-CONN-006.AC-02** (must)
-- **FR-CONN-006.AC-04** (must)
-- **FR-TERM-004.AC-03** (must)
+No criterion is queued for rewrite.

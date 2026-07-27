@@ -402,13 +402,13 @@
           "source_anchor": "fr-conn-006-ac-02",
           "verification_profile": "automated",
           "risk": "medium",
-          "classification": "needs_rewrite",
           "review": {
             "classified_by": "daemon",
             "classified_at": "2026-07-27",
-            "rationale": "No single 'general control command' budget exists: the relay has per-operation budgets (attach 15 s, list 15 s, stop 20 s). The 10 s figure matches none of them.",
-            "approved": false
-          }
+            "rationale": "Withdrawn 2026-07-27: there is no single 'general control command' budget. Superseded by AC-06 and AC-07, which name the operations that have one.",
+            "approved": true
+          },
+          "lifecycle": "deprecated"
         },
         {
           "id": "FR-CONN-006.AC-03",
@@ -421,17 +421,34 @@
           "source_anchor": "fr-conn-006-ac-04",
           "verification_profile": "automated",
           "risk": "medium",
-          "classification": "needs_rewrite",
           "review": {
-            "classified_by": "daemon",
+            "classified_by": "product",
             "classified_at": "2026-07-27",
-            "rationale": "PRD says 30 s for file read; the implemented budget is file_read_timeout_seconds = 15. Needs a product decision, not a test.",
-            "approved": false
+            "rationale": "Reopened 2026-07-27: the PRD said 30 s where the relay budget is 15. The requirement now names 15 s, so the criterion is decidable and verified against the setting.",
+            "approved": true
           }
         },
         {
           "id": "FR-CONN-006.AC-05",
           "source_anchor": "fr-conn-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-006.AC-06",
+          "source_anchor": "fr-conn-006-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-006.AC-07",
+          "source_anchor": "fr-conn-006-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-006.AC-08",
+          "source_anchor": "fr-conn-006-ac-08",
           "verification_profile": "automated",
           "risk": "medium"
         }
@@ -2938,13 +2955,25 @@
           "source_anchor": "fr-term-004-ac-03",
           "verification_profile": "automated",
           "risk": "medium",
-          "classification": "needs_rewrite",
           "review": {
             "classified_by": "frontend",
             "classified_at": "2026-07-27",
-            "rationale": "PRD states a 2-10 MB ring buffer; the daemon configures a 5000-line tmux scrollback and the browser a 10000-line one. Lines and bytes are not the same claim, so no test can honestly assert this one.",
-            "approved": false
-          }
+            "rationale": "Withdrawn 2026-07-27: the ring-buffer alternative was never taken. Superseded by AC-04 and AC-05, which state the tmux scrollback guarantee in the units it is actually held to.",
+            "approved": true
+          },
+          "lifecycle": "deprecated"
+        },
+        {
+          "id": "FR-TERM-004.AC-04",
+          "source_anchor": "fr-term-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-004.AC-05",
+          "source_anchor": "fr-term-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
         }
       ]
     },

@@ -945,12 +945,17 @@ Daemon 應調整 PTY Size。
 <a id="fr-term-004-ac-01"></a>
 重新連線時應提供最近的終端輸出。
 
-MVP 建議：
+MVP 採用 tmux Scrollback：
 
 <a id="fr-term-004-ac-02"></a>
-* 使用 tmux Scrollback，或
+* 使用 tmux Scrollback。
+<a id="fr-term-004-ac-04"></a>
+* Daemon 的 tmux Scrollback 至少保存 5000 行。
+<a id="fr-term-004-ac-05"></a>
+* 重新連線送出的 Scrollback 快照上限為 2 MB；超出時保留最新的部分並標示為截斷。
+
 <a id="fr-term-004-ac-03"></a>
-* Daemon 保存 2 MB 至 10 MB Ring Buffer。
+* ~~Daemon 保存 2 MB 至 10 MB Ring Buffer。~~（已作廢：未採用的替代方案。實際保證見上列以行數與快照上限表述的條件。）
 
 <a id="fr-term-005"></a>
 ## FR-TERM-005 Terminal 連線狀態
@@ -1209,16 +1214,23 @@ Terminal 輸出建議使用 Binary WebSocket Frame。
 <a id="fr-conn-006-ac-01"></a>
 Workspace 與 Session 控制請求需設定 Timeout。
 
-建議：
+每一類操作各有自己的預算，逾時即放棄並回報，不無限等待 Daemon：
 
-<a id="fr-conn-006-ac-02"></a>
-* 一般控制命令：10 秒。
 <a id="fr-conn-006-ac-03"></a>
 * 目錄列出：15 秒。
 <a id="fr-conn-006-ac-04"></a>
-* 檔案讀取：30 秒。
+* 檔案讀取：15 秒。
 <a id="fr-conn-006-ac-05"></a>
 * Session 啟動：30 秒。
+<a id="fr-conn-006-ac-06"></a>
+* Session 接管與列出：15 秒。
+<a id="fr-conn-006-ac-07"></a>
+* Session 終止：20 秒。
+<a id="fr-conn-006-ac-08"></a>
+* Daemon 更新：180 秒（下載、替換與重啟遠長於其他操作，共用一般預算會在正常情況下逾時）。
+
+<a id="fr-conn-006-ac-02"></a>
+* ~~一般控制命令：10 秒。~~（已作廢：不存在單一「一般控制命令」預算，改由上列逐項規範。）
 
 ---
 

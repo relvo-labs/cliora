@@ -80,20 +80,21 @@ def test_committed_registry_is_valid_and_covered() -> None:
     assert validate_selectors(data) == []
     result = coverage(data)
     # Pinned on purpose: every one of these numbers moving is a reviewable event.
-    # Nothing is missing a link any more; the three left are PRD text that cannot
-    # be decided as written, named in traceability/baseline-debt.json.
+    # Nothing is blocking and nothing is awaiting a rewrite, which is what lets
+    # full release blocking stay on.
     assert result["summary"] == {
-        "total": 369,
-        "verifiable": 235,
+        "total": 372,
+        "verifiable": 241,
         "covered_by_parent": 131,
-        "needs_rewrite": 3,
+        "needs_rewrite": 0,
         "blocking": 0,
     }
 
 
 def test_baseline_debt_is_exactly_what_is_still_open() -> None:
-    """The debt list is the changed-scope gate's allowlist. If it drifts from the
-    real gap set in either direction the gate stops meaning anything."""
+    """The debt list is the gate's allowlist. If it drifts from the real gap set in
+    either direction the gate stops meaning anything. It is empty now, so this also
+    asserts that nothing has been quietly added back."""
     result = coverage(load_trace_data())
     open_now = {
         row["criterion_id"]
@@ -536,3 +537,38 @@ def test_the_same_gate_may_not_be_reported_twice_in_one_run(tmp_path: Path) -> N
     _write_results(second, commit=commit, gate_id="GATE-BACKEND-UNIT")
     out = tmp_path / "merged.json"
     assert main(["merge", str(first), str(second), "--out", str(out)]) == 4
+
+
+def test_a_deprecated_criterion_must_name_its_replacement() -> None:
+    """Otherwise the cheapest way to clear a coverage gap is to deprecate the
+    criterion, and the requirement disappears instead of being answered."""
+    original = load_trace_data()
+    requirements = copy.deepcopy(original.requirements_doc)
+    criterion = requirements["requirements"][0]["criteria"][0]
+    criterion["lifecycle"] = "deprecated"
+    criterion["review"] = {
+        "classified_by": "product",
+        "classified_at": "2026-07-27",
+        "rationale": "injection fixture",
+    }
+    data = TraceData(
+        requirements, original.links_doc, original.gates_doc, original.waivers_doc
+    )
+    findings = validate_static(data)
+    assert any(item.code == "criterion.unreplaced" for item in findings)
+
+
+def test_every_deprecated_criterion_in_the_registry_is_replaced_and_explained() -> None:
+    data = load_trace_data()
+    deprecated = [
+        criterion
+        for _, criterion in data.criterion_index().values()
+        if criterion.get("lifecycle") == "deprecated"
+    ]
+    assert deprecated, "the PRD withdrawals are missing from the registry"
+    superseded = {
+        link["target"]["locator"] for link in data.links if link["type"] == "supersedes"
+    }
+    for criterion in deprecated:
+        assert criterion["id"] in superseded
+        assert criterion["review"]["rationale"]

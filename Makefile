@@ -1,4 +1,4 @@
-.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-strict traceability-test traceability
+.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability
 
 # Postgres URL for the P1 data layer (override to point at your instance).
 DB_URL ?= postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -56,19 +56,20 @@ traceability-selectors:
 traceability-render:
 	scripts/trace render --write
 
-# Changed-scope blocking (ADR 0019 rollout stage 4): any gap outside the named
-# baseline debt fails, and so does a debt entry that has since been closed.
+# Full release blocking (ADR 0019 rollout stage 7). Any criterion missing a
+# required link, and any criterion whose PRD text cannot be decided, fails here.
 traceability-coverage:
-	scripts/trace coverage --scope all --baseline traceability/baseline-debt.json
-
-# Stage 7 readiness: exits 0 only once the debt list is empty.
-traceability-coverage-strict:
 	scripts/trace coverage --scope all --strict
+
+# The baseline-debt allowlist is empty, so this now only guards against one being
+# added back without the rollout being stepped down deliberately.
+traceability-coverage-baseline:
+	scripts/trace coverage --scope all --baseline traceability/baseline-debt.json
 
 traceability-test:
 	uv run --project backend python -m pytest scripts/traceability/tests -q
 
-traceability: traceability-validate traceability-selectors traceability-coverage traceability-test
+traceability: traceability-validate traceability-selectors traceability-coverage traceability-coverage-baseline traceability-test
 
 # Central alone, for API work. There is no dev relay any more (P4-07 retired the P0
 # one), so a node reaches this through real enrollment — use `dev-stack` for that.

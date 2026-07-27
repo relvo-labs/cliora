@@ -11,14 +11,13 @@ product request path.
 ```bash
 scripts/trace validate --level static
 scripts/trace validate --level selectors
-scripts/trace coverage --scope all --baseline traceability/baseline-debt.json
+scripts/trace coverage --scope all --strict
 scripts/trace render --check
 uv run --project backend python -m pytest scripts/traceability/tests -q
 ```
 
-`make traceability` runs the same set. `make traceability-coverage-strict` is the
-separate readiness probe for full release blocking; it is advisory until the debt
-list empties.
+`make traceability` runs the same set, at full release blocking: a criterion
+missing a required link, or awaiting a requirement rewrite, fails it.
 
 ## Criterion classification
 
@@ -41,12 +40,19 @@ ADR 0019 §6, and `review.approved` stays `false` until they have signed off.
 
 ## Baseline debt
 
-`traceability/baseline-debt.json` is the finite, named list of criteria the
-changed-scope gate tolerates. It is checked in both directions: a gap that is not
-listed fails, and a listed entry that is no longer a gap also fails, so the file
-cannot quietly grow back into a backlog. It is **not** a waiver — nobody has
-accepted these, and no expiry has been agreed. Full release blocking turns on
-when `entries` is empty.
+`traceability/baseline-debt.json` is **empty**, which is what full release
+blocking means here. It stays in the build as a one-way ratchet: the list is
+checked in both directions, so adding an entry back is possible but has to be a
+deliberate, reviewable step down from stage 3 — not a quiet way to land a gap. It
+was never a waiver; nothing on it was ever accepted.
+
+A criterion whose PRD text cannot be decided is `needs_rewrite` and blocks. The
+resolution is a product decision — change the requirement or change the code —
+and a test written around either side of a disagreement records the
+implementation as the requirement, which is the failure this system exists to
+catch. Withdrawing a criterion instead needs `lifecycle: deprecated`, a recorded
+rationale, and a `supersedes` link from whatever replaces it; an unreplaced
+deprecation is refused.
 
 ## Producing a release snapshot
 

@@ -46,11 +46,11 @@ Two rules for using it:
 
 - [ ] `make traceability` exits 0 (schema, anchors, links, selectors, generated views,
       changed-scope coverage and the traceability tool tests).
-- [ ] `traceability/baseline-debt.json` has not grown. Every entry names an owner and what would
-      close it; an entry that is no longer a gap fails the run, so remove it in the same PR.
-- [ ] `make traceability-coverage-strict` exits 0. While the debt list is non-empty this is
-      expected to fail: full release blocking is **not yet enabled**, which is not permission to
-      ignore the gap. Record the six open items in the release decision.
+- [ ] `traceability/baseline-debt.json` is still empty. It is checked in both directions, so an
+      entry is a deliberate, reviewable step down from full release blocking — never a quiet way
+      to land a gap.
+- [ ] No criterion is `needs_rewrite`. That state means the requirement text cannot be decided,
+      and the fix is a product decision, not a test.
 - [ ] Required gate shards produced `gate-results.json` for the release commit and the resolved
       `trace-snapshot.json` has no stale/dirty/hash/digest/skip/manual-pending error.
       `scripts/traceability/dogfood.sh artifacts/traceability/<run-id>` does the whole sequence.

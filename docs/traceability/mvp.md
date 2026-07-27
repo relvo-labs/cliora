@@ -39,10 +39,12 @@
 | FR-CONN-004.AC-06 | functional | covered-by-parent | — |
 | FR-CONN-005.AC-01 | functional | verifiable | — |
 | FR-CONN-006.AC-01 | functional | verifiable | — |
-| FR-CONN-006.AC-02 | functional | needs-rewrite | — |
 | FR-CONN-006.AC-03 | functional | verifiable | — |
-| FR-CONN-006.AC-04 | functional | needs-rewrite | — |
+| FR-CONN-006.AC-04 | functional | verifiable | — |
 | FR-CONN-006.AC-05 | functional | verifiable | — |
+| FR-CONN-006.AC-06 | functional | verifiable | — |
+| FR-CONN-006.AC-07 | functional | verifiable | — |
+| FR-CONN-006.AC-08 | functional | verifiable | — |
 | FR-FILE-001.AC-01 | functional | verifiable | — |
 | FR-FILE-001.AC-02 | functional | covered-by-parent | — |
 | FR-FILE-001.AC-03 | functional | covered-by-parent | — |
@@ -234,7 +236,8 @@
 | FR-TERM-003.AC-03 | functional | covered-by-parent | — |
 | FR-TERM-004.AC-01 | functional | verifiable | — |
 | FR-TERM-004.AC-02 | functional | verifiable | — |
-| FR-TERM-004.AC-03 | functional | needs-rewrite | — |
+| FR-TERM-004.AC-04 | functional | verifiable | — |
+| FR-TERM-004.AC-05 | functional | verifiable | — |
 | FR-TERM-005.AC-01 | functional | verifiable | — |
 | FR-TERM-005.AC-02 | functional | covered-by-parent | — |
 | FR-TERM-005.AC-03 | functional | covered-by-parent | — |
