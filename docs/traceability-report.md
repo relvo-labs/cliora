@@ -125,21 +125,21 @@ full blocking, not a failure to ignore.
 
 `scripts/traceability/dogfood.sh` runs the gates the runner can satisfy, records the rest as
 skipped with the prerequisite that is missing, merges the shards and resolves them. First run on
-a clean tree at `0536107`, run id `dogfood-0536107`:
+a clean tree at `5f3133d`, run id `dogfood-5f3133d`:
 
 | | |
 |---|---:|
 | Validity errors | 0 |
-| `verified` | 180 |
+| `verified` | 183 |
 | `covered-by-parent` | 131 |
 | `skipped` (gate not run on this runner) | 52 |
 | `needs-rewrite` | 3 |
-| `blocked-static` | 3 |
+| `blocked-static` | 0 |
 | **Verdict** | **blocked** |
 
 Blocked is the correct answer, and it is what the design is for. Eight gates could run here —
 static, backend unit, security, contract, backend DB against a real PostgreSQL 16, daemon race,
-daemon integration under tmux, frontend unit — and 180 criteria are verified against results from
+daemon integration under tmux, frontend unit — and 183 criteria are verified against results from
 this commit. The other 52 depend on gates this runner does not have: the deployed edge
 (`GATE-OPERATIONS`, 21), the browser matrix (`GATE-BROWSER-E2E`, 17), the capacity rig, the
 measurement run, and the two manual procedures. Not one of them is reported as passing.

@@ -21,7 +21,7 @@
 | RT-09 | P0–P4 historical reconciliation | 4 | ✅ 完成 | generated `historical-gaps.md`、traceability §10–11 |
 | RT-10 | PR/CODEOWNERS/waiver/release operating model | 4 | ◐ 完成有外部映射缺口 | PR template、runbook、`@Lei-k` fallback；organization team handles 需 repository 外部作業 |
 | RT-11 | staged blocking rollout 與 baseline debt closure | 5 | ✅ 完成（stage 2） | `coverage --baseline` 雙向檢查、CI blocking；stage 3 待 debt 清零 |
-| RT-12 | dogfood、failure injection、exit report | 5 | ✅ 完成 | 30 tests（含 §2 第 7、9 項注入）、`dogfood.sh` 於 `0536107` 實跑（0 validity error、180 verified、52 skipped、verdict blocked）、`docs/traceability-report.md` |
+| RT-12 | dogfood、failure injection、exit report | 5 | ✅ 完成 | 30 tests（含 §2 第 7、9 項注入）、`dogfood.sh` 於 `5f3133d` 實跑（0 validity error、183 verified、0 blocked-static、52 skipped、verdict blocked）、`docs/traceability-report.md` |
 
 ## Current machine baseline
 
