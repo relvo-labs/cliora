@@ -1,0 +1,4 @@
+interface:
+  display_name: "Webapp Testing"
+  short_description: "Test Cliora browser flows with Playwright"
+  default_prompt: "Use $webapp-testing to handle this task with the relevant project constraints and verification."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Seed Migration"
+  short_description: "Version Cliora roles and permission seed data"
+  default_prompt: "Use $seed-migration to handle this task with the relevant project constraints and verification."

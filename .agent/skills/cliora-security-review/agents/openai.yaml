@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cliora Security Review"
+  short_description: "Audit Cliora-specific trust boundaries"
+  default_prompt: "Use $cliora-security-review to handle this task with the relevant project constraints and verification."

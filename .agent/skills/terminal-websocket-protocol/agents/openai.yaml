@@ -1,0 +1,4 @@
+interface:
+  display_name: "Terminal Websocket Protocol"
+  short_description: "Evolve the cross-runtime terminal protocol"
+  default_prompt: "Use $terminal-websocket-protocol to handle this task with the relevant project constraints and verification."

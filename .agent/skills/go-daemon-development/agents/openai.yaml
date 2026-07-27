@@ -1,0 +1,4 @@
+interface:
+  display_name: "Go Daemon Development"
+  short_description: "Build the secure Cliora Go VM daemon"
+  default_prompt: "Use $go-daemon-development to handle this task with the relevant project constraints and verification."

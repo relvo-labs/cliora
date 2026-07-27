@@ -1,0 +1,4 @@
+interface:
+  display_name: "Fastapi"
+  short_description: "Implement Cliora FastAPI and Pydantic code"
+  default_prompt: "Use $fastapi to handle this task with the relevant project constraints and verification."

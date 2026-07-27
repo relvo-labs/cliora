@@ -1,0 +1,4 @@
+interface:
+  display_name: "Backend Developer"
+  short_description: "Build the Cliora Central backend architecture"
+  default_prompt: "Use $backend-developer to handle this task with the relevant project constraints and verification."

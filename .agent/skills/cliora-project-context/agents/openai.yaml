@@ -1,0 +1,4 @@
+interface:
+  display_name: "Cliora Project Context"
+  short_description: "Route work through canonical Cliora research"
+  default_prompt: "Use $cliora-project-context to handle this task with the relevant project constraints and verification."

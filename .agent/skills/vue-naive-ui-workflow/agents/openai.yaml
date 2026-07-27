@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vue Naive UI Workflow"
+  short_description: "Build the Cliora Vue and Naive UI frontend"
+  default_prompt: "Use $vue-naive-ui-workflow to handle this task with the relevant project constraints and verification."
