@@ -74,17 +74,41 @@
 
 第一階段不包含以下功能：
 
+<a id="scope-001"></a>
+<a id="scope-001-ac-01"></a>
 1. 不解析 Claude 或 Codex 的內部事件。
+<a id="scope-002"></a>
+<a id="scope-002-ac-01"></a>
 2. 不建立中央審批機制。
+<a id="scope-003"></a>
+<a id="scope-003-ac-01"></a>
 3. 不攔截或替代 CLI 原生權限確認。
+<a id="scope-004"></a>
+<a id="scope-004-ac-01"></a>
 4. 不建立多 Agent 自動協作流程。
+<a id="scope-005"></a>
+<a id="scope-005-ac-01"></a>
 5. 不進行任務自動分派。
+<a id="scope-006"></a>
+<a id="scope-006-ac-01"></a>
 6. 不提供 Web 端完整 IDE。
+<a id="scope-007"></a>
+<a id="scope-007-ac-01"></a>
 7. 不提供第一階段的檔案寫入與編輯功能。
+<a id="scope-008"></a>
+<a id="scope-008-ac-01"></a>
 8. 不提供自動 Git Commit、Push 或 Merge Request。
+<a id="scope-009"></a>
+<a id="scope-009-ac-01"></a>
 9. 不提供 CLI 對話內容的語意分析。
+<a id="scope-010"></a>
+<a id="scope-010-ac-01"></a>
 10. 不建立跨 Runtime 的統一 Agent 行為模型。
+<a id="scope-011"></a>
+<a id="scope-011-ac-01"></a>
 11. 不允許使用者從前端執行任意 Shell Command。
+<a id="scope-012"></a>
+<a id="scope-012-ac-01"></a>
 12. 不將 VM 檔案系統直接掛載至中央伺服器。
 
 ---
@@ -241,140 +265,220 @@
 
 # 8.1 使用者登入與權限
 
+<a id="fr-auth-001"></a>
 ## FR-AUTH-001 使用者登入
 
 系統應提供帳號密碼登入。
 
 驗收條件：
 
+<a id="fr-auth-001-ac-01"></a>
 * 使用者可使用有效帳號登入。
+<a id="fr-auth-001-ac-02"></a>
 * 無效帳號或密碼不可登入。
+<a id="fr-auth-001-ac-03"></a>
 * 登入成功後取得有效 Session 或 JWT。
+<a id="fr-auth-001-ac-04"></a>
 * Token 過期後需重新登入或刷新。
 
+<a id="fr-auth-002"></a>
 ## FR-AUTH-002 角色權限
 
+<a id="fr-auth-002-ac-01"></a>
 系統至少提供：
 
+<a id="fr-auth-002-ac-02"></a>
 * Admin
+<a id="fr-auth-002-ac-03"></a>
 * Developer
+<a id="fr-auth-002-ac-04"></a>
 * Viewer
 
 權限範圍：
 
 | 功能           | Admin | Developer | Viewer |
 | ------------ | ----: | --------: | -----: |
+<a id="fr-auth-002-ac-05"></a>
 | 查看 Node      |     ✓ |         ✓ |      ✓ |
+<a id="fr-auth-002-ac-06"></a>
 | 建立安裝 Token   |     ✓ |           |        |
+<a id="fr-auth-002-ac-07"></a>
 | 移除 Node      |     ✓ |           |        |
+<a id="fr-auth-002-ac-08"></a>
 | 建立 Session   |     ✓ |         ✓ |        |
+<a id="fr-auth-002-ac-09"></a>
 | 操作 Terminal  |     ✓ |         ✓ |        |
+<a id="fr-auth-002-ac-10"></a>
 | 終止 Session   |     ✓ |         ✓ |        |
+<a id="fr-auth-002-ac-11"></a>
 | 瀏覽檔案         |     ✓ |         ✓ |      ✓ |
+<a id="fr-auth-002-ac-12"></a>
 | 查看 Audit Log |     ✓ |           |        |
 
 ---
 
 # 8.2 Node 管理
 
+<a id="fr-node-001"></a>
 ## FR-NODE-001 Node 註冊
 
+<a id="fr-node-001-ac-01"></a>
 Daemon 應可使用 Enrollment Token 向中央平台註冊。
 
 註冊資訊至少包含：
 
+<a id="fr-node-001-ac-02"></a>
 * Node ID
+<a id="fr-node-001-ac-03"></a>
 * Node 名稱
+<a id="fr-node-001-ac-04"></a>
 * Hostname
+<a id="fr-node-001-ac-05"></a>
 * OS
+<a id="fr-node-001-ac-06"></a>
 * OS 版本
+<a id="fr-node-001-ac-07"></a>
 * CPU 架構
+<a id="fr-node-001-ac-08"></a>
 * Daemon 版本
+<a id="fr-node-001-ac-09"></a>
 * 執行使用者
+<a id="fr-node-001-ac-10"></a>
 * Claude 是否存在
+<a id="fr-node-001-ac-11"></a>
 * Claude 版本
+<a id="fr-node-001-ac-12"></a>
 * Codex 是否存在
+<a id="fr-node-001-ac-13"></a>
 * Codex 版本
+<a id="fr-node-001-ac-14"></a>
 * Workspace Root
+<a id="fr-node-001-ac-15"></a>
 * 註冊時間
 
+<a id="fr-node-002"></a>
 ## FR-NODE-002 Node 在線狀態
 
+<a id="fr-node-002-ac-01"></a>
 Daemon 應定期送出 Heartbeat。
 
 建議頻率：
 
+<a id="fr-node-002-ac-02"></a>
 * 每 10 秒一次。
 
 Node 狀態：
 
+<a id="fr-node-002-ac-03"></a>
 * Online
+<a id="fr-node-002-ac-04"></a>
 * Degraded
+<a id="fr-node-002-ac-05"></a>
 * Offline
+<a id="fr-node-002-ac-06"></a>
 * Disabled
 
 判斷建議：
 
+<a id="fr-node-002-ac-07"></a>
 * 30 秒內收到 Heartbeat：Online。
+<a id="fr-node-002-ac-08"></a>
 * 30 至 90 秒未收到：Degraded。
+<a id="fr-node-002-ac-09"></a>
 * 超過 90 秒未收到：Offline。
 
+<a id="fr-node-003"></a>
 ## FR-NODE-003 Node 列表
 
+<a id="fr-node-003-ac-01"></a>
 Node 列表需顯示：
 
+<a id="fr-node-003-ac-02"></a>
 * Node 名稱
+<a id="fr-node-003-ac-03"></a>
 * Hostname
+<a id="fr-node-003-ac-04"></a>
 * 在線狀態
+<a id="fr-node-003-ac-05"></a>
 * OS
+<a id="fr-node-003-ac-06"></a>
 * Claude 可用狀態
+<a id="fr-node-003-ac-07"></a>
 * Codex 可用狀態
+<a id="fr-node-003-ac-08"></a>
 * 執行中 Session 數量
+<a id="fr-node-003-ac-09"></a>
 * 最後在線時間
 
+<a id="fr-node-004"></a>
 ## FR-NODE-004 Node 詳情
 
+<a id="fr-node-004-ac-01"></a>
 Node 詳情需顯示：
 
+<a id="fr-node-004-ac-02"></a>
 * 系統資訊
+<a id="fr-node-004-ac-03"></a>
 * Runtime 狀態
+<a id="fr-node-004-ac-04"></a>
 * Workspace Root
+<a id="fr-node-004-ac-05"></a>
 * Daemon 版本
+<a id="fr-node-004-ac-06"></a>
 * Session 列表
+<a id="fr-node-004-ac-07"></a>
 * 最後 Heartbeat
+<a id="fr-node-004-ac-08"></a>
 * 安裝與更新狀態
 
+<a id="fr-node-005"></a>
 ## FR-NODE-005 Node 停用
 
+<a id="fr-node-005-ac-01"></a>
 管理員可停用 Node。
 
 停用後：
 
+<a id="fr-node-005-ac-02"></a>
 * Daemon 可保持連線。
+<a id="fr-node-005-ac-03"></a>
 * 不可建立新 Session。
+<a id="fr-node-005-ac-04"></a>
 * 既有 Session 是否中止由管理員選擇。
+<a id="fr-node-005-ac-05"></a>
 * 前端顯示 Disabled。
 
 ---
 
 # 8.3 Daemon 安裝
 
+<a id="fr-install-001"></a>
 ## FR-INSTALL-001 建立 Enrollment Token
 
+<a id="fr-install-001-ac-01"></a>
 管理員可建立一次性或限時 Token。
 
 Token 屬性：
 
+<a id="fr-install-001-ac-02"></a>
 * Token 值
+<a id="fr-install-001-ac-03"></a>
 * 建立者
+<a id="fr-install-001-ac-04"></a>
 * 建立時間
+<a id="fr-install-001-ac-05"></a>
 * 過期時間
+<a id="fr-install-001-ac-06"></a>
 * 最大使用次數
+<a id="fr-install-001-ac-07"></a>
 * 已使用次數
+<a id="fr-install-001-ac-08"></a>
 * 是否停用
 
+<a id="fr-install-002"></a>
 ## FR-INSTALL-002 一行安裝指令
 
+<a id="fr-install-002-ac-01"></a>
 平台應產生類似以下指令：
 
 ```bash
@@ -386,26 +490,43 @@ sudo bash -s -- \
   --user neil
 ```
 
+<a id="fr-install-003"></a>
 ## FR-INSTALL-003 自動安裝流程
 
+<a id="fr-install-003-ac-01"></a>
 安裝腳本應：
 
+<a id="fr-install-003-ac-02"></a>
 1. 檢查 Linux 發行版。
+<a id="fr-install-003-ac-03"></a>
 2. 檢查 CPU 架構。
+<a id="fr-install-003-ac-04"></a>
 3. 下載正確的 Go Binary。
+<a id="fr-install-003-ac-05"></a>
 4. 驗證 Binary Checksum。
+<a id="fr-install-003-ac-06"></a>
 5. 安裝至 `/usr/local/bin/agentd`。
+<a id="fr-install-003-ac-07"></a>
 6. 建立 `/etc/agentd/config.yaml`。
+<a id="fr-install-003-ac-08"></a>
 7. 建立 `/var/lib/agentd`。
+<a id="fr-install-003-ac-09"></a>
 8. 建立 systemd Service。
+<a id="fr-install-003-ac-10"></a>
 9. 設定執行使用者。
+<a id="fr-install-003-ac-11"></a>
 10. 啟用開機啟動。
+<a id="fr-install-003-ac-12"></a>
 11. 啟動 Daemon。
+<a id="fr-install-003-ac-13"></a>
 12. 驗證中央連線。
+<a id="fr-install-003-ac-14"></a>
 13. 回傳安裝結果。
 
+<a id="fr-install-004"></a>
 ## FR-INSTALL-004 Daemon CLI
 
+<a id="fr-install-004-ac-01"></a>
 Daemon 應至少提供：
 
 ```text
@@ -422,8 +543,10 @@ agentd workspace list
 agentd version
 ```
 
+<a id="fr-install-005"></a>
 ## FR-INSTALL-005 Daemon 更新
 
+<a id="fr-install-005-ac-01"></a>
 第一階段可使用手動更新：
 
 ```bash
@@ -432,48 +555,73 @@ sudo agentd update
 
 更新流程：
 
+<a id="fr-install-005-ac-02"></a>
 1. 向中央取得最新版本資訊。
+<a id="fr-install-005-ac-03"></a>
 2. 下載新 Binary。
+<a id="fr-install-005-ac-04"></a>
 3. 驗證 Checksum。
+<a id="fr-install-005-ac-05"></a>
 4. 備份舊版本。
+<a id="fr-install-005-ac-06"></a>
 5. 替換 Binary。
+<a id="fr-install-005-ac-07"></a>
 6. 重新啟動 Daemon。
+<a id="fr-install-005-ac-08"></a>
 7. 若啟動失敗則回復舊版本。
 
 ---
 
 # 8.4 Runtime 管理
 
+<a id="fr-runtime-001"></a>
 ## FR-RUNTIME-001 Runtime 偵測
 
+<a id="fr-runtime-001-ac-01"></a>
 Daemon 啟動時應偵測：
 
+<a id="fr-runtime-001-ac-02"></a>
 * `claude`
+<a id="fr-runtime-001-ac-03"></a>
 * `codex`
 
 偵測項目：
 
+<a id="fr-runtime-001-ac-04"></a>
 * Binary 路徑
+<a id="fr-runtime-001-ac-05"></a>
 * 是否可執行
+<a id="fr-runtime-001-ac-06"></a>
 * 版本資訊
+<a id="fr-runtime-001-ac-07"></a>
 * 執行使用者是否可使用
+<a id="fr-runtime-001-ac-08"></a>
 * 最後檢查時間
 
+<a id="fr-runtime-002"></a>
 ## FR-RUNTIME-002 Runtime 選擇
 
+<a id="fr-runtime-002-ac-01"></a>
 建立 Session 時使用者必須選擇：
 
+<a id="fr-runtime-002-ac-02"></a>
 * Claude
+<a id="fr-runtime-002-ac-03"></a>
 * Codex
 
 若 Runtime 不可用：
 
+<a id="fr-runtime-002-ac-04"></a>
 * 選項應顯示 Disabled。
+<a id="fr-runtime-002-ac-05"></a>
 * 顯示不可用原因。
+<a id="fr-runtime-002-ac-06"></a>
 * 不可送出建立 Session 請求。
 
+<a id="fr-runtime-003"></a>
 ## FR-RUNTIME-003 Runtime 白名單
 
+<a id="fr-runtime-003-ac-01"></a>
 前端不得直接傳入任意 Command。
 
 Daemon 僅接受預先設定的 Runtime ID：
@@ -485,8 +633,10 @@ codex
 
 Daemon 根據 Runtime ID 產生實際執行命令。
 
+<a id="fr-runtime-004"></a>
 ## FR-RUNTIME-004 Runtime 設定
 
+<a id="fr-runtime-004-ac-01"></a>
 Daemon 設定檔可指定：
 
 ```yaml
@@ -504,8 +654,10 @@ runtime:
 
 # 8.5 Workspace 管理
 
+<a id="fr-workspace-001"></a>
 ## FR-WORKSPACE-001 Workspace Root
 
+<a id="fr-workspace-001-ac-01"></a>
 Daemon 應設定一個或多個允許的 Workspace Root。
 
 例如：
@@ -517,77 +669,116 @@ workspace:
     - /srv/projects
 ```
 
+<a id="fr-workspace-002"></a>
 ## FR-WORKSPACE-002 Workspace 瀏覽
 
+<a id="fr-workspace-002-ac-01"></a>
 使用者可在前端逐層展開 Workspace Root。
 
 每筆目錄資料包含：
 
+<a id="fr-workspace-002-ac-02"></a>
 * 名稱
+<a id="fr-workspace-002-ac-03"></a>
 * 完整路徑
+<a id="fr-workspace-002-ac-04"></a>
 * 類型
+<a id="fr-workspace-002-ac-05"></a>
 * 修改時間
+<a id="fr-workspace-002-ac-06"></a>
 * 是否隱藏
+<a id="fr-workspace-002-ac-07"></a>
 * 是否可讀
 
+<a id="fr-workspace-003"></a>
 ## FR-WORKSPACE-003 指定工作目錄
 
+<a id="fr-workspace-003-ac-01"></a>
 建立 Session 時，使用者可選擇 Allowed Root 下的任意合法目錄。
 
 Daemon 必須驗證：
 
+<a id="fr-workspace-003-ac-02"></a>
 * 目錄存在。
+<a id="fr-workspace-003-ac-03"></a>
 * 目錄可讀。
+<a id="fr-workspace-003-ac-04"></a>
 * 執行使用者具備必要權限。
+<a id="fr-workspace-003-ac-05"></a>
 * 目錄位於 Allowed Root。
+<a id="fr-workspace-003-ac-06"></a>
 * Symlink 解析後仍位於 Allowed Root。
 
+<a id="fr-workspace-004"></a>
 ## FR-WORKSPACE-004 最近使用 Workspace
 
+<a id="fr-workspace-004-ac-01"></a>
 系統應記錄使用者最近使用的 Workspace。
 
 建立 Session 時可快速選擇：
 
+<a id="fr-workspace-004-ac-02"></a>
 * 最近使用
+<a id="fr-workspace-004-ac-03"></a>
 * 收藏 Workspace
+<a id="fr-workspace-004-ac-04"></a>
 * 目錄瀏覽
 
+<a id="fr-workspace-005"></a>
 ## FR-WORKSPACE-005 Workspace 收藏
 
+<a id="fr-workspace-005-ac-01"></a>
 使用者可收藏常用 Workspace。
 
 收藏資料：
 
+<a id="fr-workspace-005-ac-02"></a>
 * User ID
+<a id="fr-workspace-005-ac-03"></a>
 * Node ID
+<a id="fr-workspace-005-ac-04"></a>
 * Workspace Path
+<a id="fr-workspace-005-ac-05"></a>
 * Display Name
+<a id="fr-workspace-005-ac-06"></a>
 * 建立時間
 
 ---
 
 # 8.6 Session 管理
 
+<a id="fr-session-001"></a>
 ## FR-SESSION-001 建立 Session
 
+<a id="fr-session-001-ac-01"></a>
 建立 Session 必填欄位：
 
+<a id="fr-session-001-ac-02"></a>
 * Node
+<a id="fr-session-001-ac-03"></a>
 * Runtime
+<a id="fr-session-001-ac-04"></a>
 * Workspace
+<a id="fr-session-001-ac-05"></a>
 * Session 名稱
 
 選填欄位：
 
+<a id="fr-session-001-ac-06"></a>
 * Terminal Rows
+<a id="fr-session-001-ac-07"></a>
 * Terminal Columns
+<a id="fr-session-001-ac-08"></a>
 * 啟動參數
+<a id="fr-session-001-ac-09"></a>
 * 環境變數 Profile
 
 第一階段不允許任意自訂 CLI 啟動參數。
 
+<a id="fr-session-002"></a>
 ## FR-SESSION-002 Session 狀態
 
+<a id="fr-session-002-ac-01"></a>
 Session 狀態至少包含：
 
 ```text
@@ -600,59 +791,96 @@ TERMINATING
 TERMINATED
 ```
 
+<a id="fr-session-003"></a>
 ## FR-SESSION-003 Session 列表
 
+<a id="fr-session-003-ac-01"></a>
 列表顯示：
 
+<a id="fr-session-003-ac-02"></a>
 * Session 名稱
+<a id="fr-session-003-ac-03"></a>
 * Node
+<a id="fr-session-003-ac-04"></a>
 * Runtime
+<a id="fr-session-003-ac-05"></a>
 * Workspace
+<a id="fr-session-003-ac-06"></a>
 * 建立者
+<a id="fr-session-003-ac-07"></a>
 * 狀態
+<a id="fr-session-003-ac-08"></a>
 * PID
+<a id="fr-session-003-ac-09"></a>
 * 開始時間
+<a id="fr-session-003-ac-10"></a>
 * 最後活動時間
 
+<a id="fr-session-004"></a>
 ## FR-SESSION-004 Session 詳情
 
+<a id="fr-session-004-ac-01"></a>
 Session 詳情顯示：
 
+<a id="fr-session-004-ac-02"></a>
 * Session metadata
+<a id="fr-session-004-ac-03"></a>
 * Web Terminal
+<a id="fr-session-004-ac-04"></a>
 * Workspace 檔案樹
+<a id="fr-session-004-ac-05"></a>
 * Runtime
+<a id="fr-session-004-ac-06"></a>
 * Node
+<a id="fr-session-004-ac-07"></a>
 * Workspace
+<a id="fr-session-004-ac-08"></a>
 * 開始時間
+<a id="fr-session-004-ac-09"></a>
 * 最後活動時間
+<a id="fr-session-004-ac-10"></a>
 * 結束原因
 
+<a id="fr-session-005"></a>
 ## FR-SESSION-005 終止 Session
 
+<a id="fr-session-005-ac-01"></a>
 有權限的使用者可終止 Session。
 
 流程：
 
+<a id="fr-session-005-ac-02"></a>
 1. 前端送出終止請求。
+<a id="fr-session-005-ac-03"></a>
 2. 中央平台轉送至 Daemon。
+<a id="fr-session-005-ac-04"></a>
 3. Daemon先送出正常終止信號。
+<a id="fr-session-005-ac-05"></a>
 4. 等待指定秒數。
+<a id="fr-session-005-ac-06"></a>
 5. 若未結束，送出強制終止。
+<a id="fr-session-005-ac-07"></a>
 6. 更新 Session 狀態。
 
+<a id="fr-session-006"></a>
 ## FR-SESSION-006 Session 重新連線
 
+<a id="fr-session-006-ac-01"></a>
 Session 在瀏覽器斷線後不得自動終止。
 
 使用者應可重新附加至執行中的 Session。
 
+<a id="fr-session-007"></a>
 ## FR-SESSION-007 多人連線限制
 
+<a id="fr-session-007-ac-01"></a>
 MVP 建議採用：
 
+<a id="fr-session-007-ac-02"></a>
 * 同一 Session 僅允許一個可寫入連線。
+<a id="fr-session-007-ac-03"></a>
 * 其他使用者可唯讀觀看。
+<a id="fr-session-007-ac-04"></a>
 * 新使用者要求控制權時，需明確接管。
 
 避免多人同時輸入造成 CLI 狀態混亂。
@@ -661,102 +889,157 @@ MVP 建議採用：
 
 # 8.7 Terminal 功能
 
+<a id="fr-term-001"></a>
 ## FR-TERM-001 Terminal 顯示
 
+<a id="fr-term-001-ac-01"></a>
 前端使用 xterm.js 顯示完整 ANSI Terminal。
 
 必須支援：
 
+<a id="fr-term-001-ac-02"></a>
 * ANSI 色彩
+<a id="fr-term-001-ac-03"></a>
 * Cursor
+<a id="fr-term-001-ac-04"></a>
 * Interactive Prompt
+<a id="fr-term-001-ac-05"></a>
 * 中文輸入
+<a id="fr-term-001-ac-06"></a>
 * UTF-8
+<a id="fr-term-001-ac-07"></a>
 * Ctrl+C
+<a id="fr-term-001-ac-08"></a>
 * Ctrl+D
+<a id="fr-term-001-ac-09"></a>
 * Tab
+<a id="fr-term-001-ac-10"></a>
 * 方向鍵
+<a id="fr-term-001-ac-11"></a>
 * Page Up／Page Down
+<a id="fr-term-001-ac-12"></a>
 * CLI 原生審批選單
 
+<a id="fr-term-002"></a>
 ## FR-TERM-002 Terminal 輸入
 
+<a id="fr-term-002-ac-01"></a>
 前端輸入應以低延遲 WebSocket 傳送至中央平台，再轉送至 Daemon PTY。
 
+<a id="fr-term-003"></a>
 ## FR-TERM-003 Terminal Resize
 
+<a id="fr-term-003-ac-01"></a>
 瀏覽器尺寸變更時，前端需通知 Daemon：
 
+<a id="fr-term-003-ac-02"></a>
 * Rows
+<a id="fr-term-003-ac-03"></a>
 * Columns
 
 Daemon 應調整 PTY Size。
 
+<a id="fr-term-004"></a>
 ## FR-TERM-004 Terminal Scrollback
 
+<a id="fr-term-004-ac-01"></a>
 重新連線時應提供最近的終端輸出。
 
 MVP 建議：
 
+<a id="fr-term-004-ac-02"></a>
 * 使用 tmux Scrollback，或
+<a id="fr-term-004-ac-03"></a>
 * Daemon 保存 2 MB 至 10 MB Ring Buffer。
 
+<a id="fr-term-005"></a>
 ## FR-TERM-005 Terminal 連線狀態
 
+<a id="fr-term-005-ac-01"></a>
 前端需顯示：
 
+<a id="fr-term-005-ac-02"></a>
 * Connected
+<a id="fr-term-005-ac-03"></a>
 * Reconnecting
+<a id="fr-term-005-ac-04"></a>
 * Disconnected
+<a id="fr-term-005-ac-05"></a>
 * Session Exited
 
+<a id="fr-term-006"></a>
 ## FR-TERM-006 自動重連
 
+<a id="fr-term-006-ac-01"></a>
 WebSocket 中斷時，前端應自動重連。
 
 建議重試：
 
+<a id="fr-term-006-ac-02"></a>
 * 1 秒
+<a id="fr-term-006-ac-03"></a>
 * 2 秒
+<a id="fr-term-006-ac-04"></a>
 * 5 秒
+<a id="fr-term-006-ac-05"></a>
 * 10 秒
+<a id="fr-term-006-ac-06"></a>
 * 最大 30 秒間隔
 
 ---
 
 # 8.8 檔案總覽
 
+<a id="fr-file-001"></a>
 ## FR-FILE-001 檔案樹
 
+<a id="fr-file-001-ac-01"></a>
 前端需以 Tree 呈現 Workspace。
 
 每個節點顯示：
 
+<a id="fr-file-001-ac-02"></a>
 * 檔案或資料夾名稱
+<a id="fr-file-001-ac-03"></a>
 * 圖示
+<a id="fr-file-001-ac-04"></a>
 * 是否可展開
+<a id="fr-file-001-ac-05"></a>
 * 修改狀態
+<a id="fr-file-001-ac-06"></a>
 * 大小
+<a id="fr-file-001-ac-07"></a>
 * 修改時間
 
 目錄採延遲載入，不一次掃描完整 Workspace。
 
+<a id="fr-file-002"></a>
 ## FR-FILE-002 檔案預覽
 
+<a id="fr-file-002-ac-01"></a>
 使用者點擊檔案後，系統應以 Monaco Editor 唯讀顯示。
 
 支援：
 
+<a id="fr-file-002-ac-02"></a>
 * 語法高亮
+<a id="fr-file-002-ac-03"></a>
 * 行號
+<a id="fr-file-002-ac-04"></a>
 * 自動換行
+<a id="fr-file-002-ac-05"></a>
 * 複製
+<a id="fr-file-002-ac-06"></a>
 * 搜尋
+<a id="fr-file-002-ac-07"></a>
 * 重新整理
+<a id="fr-file-002-ac-08"></a>
 * 跳至指定行
 
+<a id="fr-file-003"></a>
 ## FR-FILE-003 檔案大小限制
 
+<a id="fr-file-003-ac-01"></a>
 預設最大預覽大小：
 
 ```text
@@ -765,21 +1048,32 @@ WebSocket 中斷時，前端應自動重連。
 
 超過限制時：
 
+<a id="fr-file-003-ac-02"></a>
 * 不直接讀取。
+<a id="fr-file-003-ac-03"></a>
 * 顯示檔案過大。
+<a id="fr-file-003-ac-04"></a>
 * 顯示檔案大小。
+<a id="fr-file-003-ac-05"></a>
 * 第一階段不提供完整載入。
 
+<a id="fr-file-004"></a>
 ## FR-FILE-004 Binary 判斷
 
+<a id="fr-file-004-ac-01"></a>
 若檔案被判斷為 Binary：
 
+<a id="fr-file-004-ac-02"></a>
 * 不顯示原始內容。
+<a id="fr-file-004-ac-03"></a>
 * 顯示「不支援預覽」。
+<a id="fr-file-004-ac-04"></a>
 * 顯示 MIME Type、大小與修改時間。
 
+<a id="fr-file-005"></a>
 ## FR-FILE-005 敏感檔案保護
 
+<a id="fr-file-005-ac-01"></a>
 預設禁止預覽：
 
 ```text
@@ -797,31 +1091,45 @@ secrets*
 
 系統應允許管理員調整規則。
 
+<a id="fr-file-006"></a>
 ## FR-FILE-006 檔案重新整理
 
+<a id="fr-file-006-ac-01"></a>
 檔案樹應提供：
 
+<a id="fr-file-006-ac-02"></a>
 * 重新整理目前目錄。
+<a id="fr-file-006-ac-03"></a>
 * 重新整理檔案內容。
+<a id="fr-file-006-ac-04"></a>
 * Session 執行時可選擇自動刷新。
 
 MVP 不要求即時監控所有檔案異動。
 
+<a id="fr-file-007"></a>
 ## FR-FILE-007 檔案搜尋
 
+<a id="fr-file-007-ac-01"></a>
 MVP 可提供檔名搜尋。
 
 輸入：
 
+<a id="fr-file-007-ac-02"></a>
 * Keyword
+<a id="fr-file-007-ac-03"></a>
 * Workspace
+<a id="fr-file-007-ac-04"></a>
 * 最大結果數
 
 回傳：
 
+<a id="fr-file-007-ac-05"></a>
 * 完整路徑
+<a id="fr-file-007-ac-06"></a>
 * 名稱
+<a id="fr-file-007-ac-07"></a>
 * 類型
+<a id="fr-file-007-ac-08"></a>
 * 修改時間
 
 全文內容搜尋可列入後續版本。
@@ -830,14 +1138,18 @@ MVP 可提供檔名搜尋。
 
 # 8.9 Daemon 與中央通訊
 
+<a id="fr-conn-001"></a>
 ## FR-CONN-001 主動連線
 
+<a id="fr-conn-001-ac-01"></a>
 Daemon 必須主動建立至中央平台的 WebSocket 連線。
 
 中央平台不得依賴 SSH 主動連入 VM。
 
+<a id="fr-conn-002"></a>
 ## FR-CONN-002 TLS
 
+<a id="fr-conn-002-ac-01"></a>
 正式環境所有通訊必須使用：
 
 ```text
@@ -845,44 +1157,67 @@ HTTPS
 WSS
 ```
 
+<a id="fr-conn-003"></a>
 ## FR-CONN-003 自動重連
 
+<a id="fr-conn-003-ac-01"></a>
 Daemon 與中央斷線後，應持續重連。
 
 建議 Backoff：
 
+<a id="fr-conn-003-ac-02"></a>
 * 1 秒
+<a id="fr-conn-003-ac-03"></a>
 * 2 秒
+<a id="fr-conn-003-ac-04"></a>
 * 5 秒
+<a id="fr-conn-003-ac-05"></a>
 * 10 秒
+<a id="fr-conn-003-ac-06"></a>
 * 30 秒
+<a id="fr-conn-003-ac-07"></a>
 * 最大 60 秒
 
+<a id="fr-conn-004"></a>
 ## FR-CONN-004 訊息請求識別
 
+<a id="fr-conn-004-ac-01"></a>
 所有請求與回應需包含：
 
+<a id="fr-conn-004-ac-02"></a>
 * Message Type
+<a id="fr-conn-004-ac-03"></a>
 * Request ID
+<a id="fr-conn-004-ac-04"></a>
 * Node ID
+<a id="fr-conn-004-ac-05"></a>
 * Timestamp
+<a id="fr-conn-004-ac-06"></a>
 * Payload
 
+<a id="fr-conn-005"></a>
 ## FR-CONN-005 Terminal Binary Frame
 
+<a id="fr-conn-005-ac-01"></a>
 Terminal 輸出建議使用 Binary WebSocket Frame。
 
 控制訊息使用 JSON。
 
+<a id="fr-conn-006"></a>
 ## FR-CONN-006 命令逾時
 
+<a id="fr-conn-006-ac-01"></a>
 Workspace 與 Session 控制請求需設定 Timeout。
 
 建議：
 
+<a id="fr-conn-006-ac-02"></a>
 * 一般控制命令：10 秒。
+<a id="fr-conn-006-ac-03"></a>
 * 目錄列出：15 秒。
+<a id="fr-conn-006-ac-04"></a>
 * 檔案讀取：30 秒。
+<a id="fr-conn-006-ac-05"></a>
 * Session 啟動：30 秒。
 
 ---
@@ -1409,60 +1744,96 @@ agent-daemon/
 
 # 15. 安全需求
 
+<a id="sec-001"></a>
 ## SEC-001 路徑隔離
 
+<a id="sec-001-ac-01"></a>
 所有 Workspace 與檔案路徑必須：
 
+<a id="sec-001-ac-02"></a>
 * 使用 Absolute Path。
+<a id="sec-001-ac-03"></a>
 * 解析 Symlink。
+<a id="sec-001-ac-04"></a>
 * 確認位於 Allowed Root。
+<a id="sec-001-ac-05"></a>
 * 拒絕 Path Traversal。
+<a id="sec-001-ac-06"></a>
 * 拒絕 Null Byte。
+<a id="sec-001-ac-07"></a>
 * 拒絕未授權 Root。
 
+<a id="sec-002"></a>
 ## SEC-002 任意命令限制
 
+<a id="sec-002-ac-01"></a>
 前端不得直接指定 Command、Binary 或完整 Shell 指令。
 
 僅可指定：
 
+<a id="sec-002-ac-02"></a>
 * Runtime ID
+<a id="sec-002-ac-03"></a>
 * Workspace
+<a id="sec-002-ac-04"></a>
 * Session Name
+<a id="sec-002-ac-05"></a>
 * Terminal Size
 
+<a id="sec-003"></a>
 ## SEC-003 Token 保護
 
+<a id="sec-003-ac-01"></a>
 Enrollment Token：
 
+<a id="sec-003-ac-02"></a>
 * 不以明文保存於資料庫。
+<a id="sec-003-ac-03"></a>
 * 使用後可失效。
+<a id="sec-003-ac-04"></a>
 * 可設定過期時間。
+<a id="sec-003-ac-05"></a>
 * 可設定使用次數。
 
+<a id="sec-004"></a>
 ## SEC-004 敏感檔案
 
+<a id="sec-004-ac-01"></a>
 敏感檔案預設不可透過 Web 預覽。
 
+<a id="sec-005"></a>
 ## SEC-005 Transport Security
 
+<a id="sec-005-ac-01"></a>
 正式環境必須使用 TLS。
 
+<a id="sec-006"></a>
 ## SEC-006 Audit
 
+<a id="sec-006-ac-01"></a>
 以下動作需記錄：
 
+<a id="sec-006-ac-02"></a>
 * Node 註冊。
+<a id="sec-006-ac-03"></a>
 * 建立 Session。
+<a id="sec-006-ac-04"></a>
 * 連線 Session。
+<a id="sec-006-ac-05"></a>
 * 終止 Session。
+<a id="sec-006-ac-06"></a>
 * 讀取敏感路徑失敗。
+<a id="sec-006-ac-07"></a>
 * 建立 Enrollment Token。
+<a id="sec-006-ac-08"></a>
 * 停用 Node。
+<a id="sec-006-ac-09"></a>
 * Daemon 更新。
 
+<a id="sec-007"></a>
 ## SEC-007 執行使用者
 
+<a id="sec-007-ac-01"></a>
 Daemon 不應預設以 root 長期執行。
 
 MVP 可指定既有開發使用者，例如：
@@ -1478,54 +1849,88 @@ Group=neil
 
 # 16. 非功能需求
 
+<a id="nfr-001"></a>
 ## NFR-001 效能
 
+<a id="nfr-001-ac-01"></a>
 * Terminal 輸入至顯示的額外延遲目標小於 200 ms。
+<a id="nfr-001-ac-02"></a>
 * Node 列表載入時間小於 2 秒。
+<a id="nfr-001-ac-03"></a>
 * 目錄列表回應小於 2 秒。
+<a id="nfr-001-ac-04"></a>
 * 2 MB 以下檔案預覽小於 3 秒。
 
+<a id="nfr-002"></a>
 ## NFR-002 可用性
 
+<a id="nfr-002-ac-01"></a>
 * Daemon 應自動重連。
+<a id="nfr-002-ac-02"></a>
 * 中央平台重啟後，Daemon 應重新註冊。
+<a id="nfr-002-ac-03"></a>
 * 瀏覽器中斷不得直接終止 CLI Session。
+<a id="nfr-002-ac-04"></a>
 * Session 狀態應可恢復。
 
+<a id="nfr-003"></a>
 ## NFR-003 擴充性
 
+<a id="nfr-003-ac-01"></a>
 MVP 目標：
 
+<a id="nfr-003-ac-02"></a>
 * 100 個 Node。
+<a id="nfr-003-ac-03"></a>
 * 每個 Node 10 個同時 Session。
+<a id="nfr-003-ac-04"></a>
 * 全平台 500 個同時 Terminal WebSocket。
 
+<a id="nfr-004"></a>
 ## NFR-004 可維運性
 
+<a id="nfr-004-ac-01"></a>
 Daemon 應：
 
+<a id="nfr-004-ac-02"></a>
 * 使用結構化 Log。
+<a id="nfr-004-ac-03"></a>
 * 支援 Log Level。
+<a id="nfr-004-ac-04"></a>
 * 提供 `agentd doctor`。
+<a id="nfr-004-ac-05"></a>
 * 提供版本資訊。
+<a id="nfr-004-ac-06"></a>
 * 提供連線測試。
+<a id="nfr-004-ac-07"></a>
 * 提供 Runtime 偵測結果。
 
+<a id="nfr-005"></a>
 ## NFR-005 相容性
 
+<a id="nfr-005-ac-01"></a>
 第一階段支援：
 
+<a id="nfr-005-ac-02"></a>
 * Ubuntu 22.04
+<a id="nfr-005-ac-03"></a>
 * Ubuntu 24.04
+<a id="nfr-005-ac-04"></a>
 * Debian 12
+<a id="nfr-005-ac-05"></a>
 * Linux amd64
+<a id="nfr-005-ac-06"></a>
 * Linux arm64
 
 前端支援最新版：
 
+<a id="nfr-005-ac-07"></a>
 * Chrome
+<a id="nfr-005-ac-08"></a>
 * Edge
+<a id="nfr-005-ac-09"></a>
 * Safari
+<a id="nfr-005-ac-10"></a>
 * Firefox
 
 ---
@@ -1643,25 +2048,65 @@ Node 目前離線，無法建立新 Session。
 
 MVP 完成時，必須符合以下條件：
 
+<a id="mvp-ac-01"></a>
+<a id="mvp-ac-01-ac-01"></a>
 1. 管理員可於中央平台產生安裝 Token。
+<a id="mvp-ac-02"></a>
+<a id="mvp-ac-02-ac-01"></a>
 2. 使用者可使用一行指令安裝 Go Daemon。
+<a id="mvp-ac-03"></a>
+<a id="mvp-ac-03-ac-01"></a>
 3. Daemon 安裝後可自動啟動並註冊。
+<a id="mvp-ac-04"></a>
+<a id="mvp-ac-04-ac-01"></a>
 4. 平台可顯示 Node Online／Offline。
+<a id="mvp-ac-05"></a>
+<a id="mvp-ac-05-ac-01"></a>
 5. 平台可顯示 Claude 與 Codex 是否可用。
+<a id="mvp-ac-06"></a>
+<a id="mvp-ac-06-ac-01"></a>
 6. 使用者可選擇 Node。
+<a id="mvp-ac-07"></a>
+<a id="mvp-ac-07-ac-01"></a>
 7. 使用者可切換 Claude 或 Codex。
+<a id="mvp-ac-08"></a>
+<a id="mvp-ac-08-ac-01"></a>
 8. 使用者可瀏覽 Workspace Root。
+<a id="mvp-ac-09"></a>
+<a id="mvp-ac-09-ac-01"></a>
 9. 使用者可指定合法工作目錄。
+<a id="mvp-ac-10"></a>
+<a id="mvp-ac-10-ac-01"></a>
 10. Daemon 可在指定目錄啟動 CLI。
+<a id="mvp-ac-11"></a>
+<a id="mvp-ac-11-ac-01"></a>
 11. Web Terminal 可完整操作 CLI。
+<a id="mvp-ac-12"></a>
+<a id="mvp-ac-12-ac-01"></a>
 12. CLI 原生審批畫面可正常顯示與操作。
+<a id="mvp-ac-13"></a>
+<a id="mvp-ac-13-ac-01"></a>
 13. 瀏覽器關閉後，CLI Session 不會立即結束。
+<a id="mvp-ac-14"></a>
+<a id="mvp-ac-14-ac-01"></a>
 14. 使用者可重新連線執行中的 Session。
+<a id="mvp-ac-15"></a>
+<a id="mvp-ac-15-ac-01"></a>
 15. 使用者可查看 Workspace 目錄樹。
+<a id="mvp-ac-16"></a>
+<a id="mvp-ac-16-ac-01"></a>
 16. 使用者可唯讀預覽程式碼檔案。
+<a id="mvp-ac-17"></a>
+<a id="mvp-ac-17-ac-01"></a>
 17. 敏感檔案不可預覽。
+<a id="mvp-ac-18"></a>
+<a id="mvp-ac-18-ac-01"></a>
 18. Node 離線時不可建立新 Session。
+<a id="mvp-ac-19"></a>
+<a id="mvp-ac-19-ac-01"></a>
 19. 使用者可正常終止 Session。
+<a id="mvp-ac-20"></a>
+<a id="mvp-ac-20-ac-01"></a>
 20. 所有重要操作均有 Audit Log。
 
 ---
@@ -1744,17 +2189,29 @@ CLI 大量輸出可能使中央平台記憶體增加。
 6. Runtime 使用統計。
 7. Token 或使用成本統計。
 8. Agent 任務排程。
+<a id="nfr-005-ac-100"></a>
 9. Claude、Codex 以外的 Runtime。
+<a id="nfr-005-ac-101"></a>
 10. 多 Agent 協作。
+<a id="nfr-005-ac-102"></a>
 11. 自動建立 Git Worktree。
+<a id="nfr-005-ac-103"></a>
 12. 自動建立 Commit 與 Merge Request。
+<a id="nfr-005-ac-104"></a>
 13. Node 群組與標籤。
+<a id="nfr-005-ac-105"></a>
 14. Session 權限共享。
+<a id="nfr-005-ac-106"></a>
 15. 容器化 Workspace。
+<a id="nfr-005-ac-107"></a>
 16. 每個 Session 獨立 Linux User。
+<a id="nfr-005-ac-108"></a>
 17. SSH 或 Kubernetes Node Agent。
+<a id="nfr-005-ac-109"></a>
 18. Web 端上傳與下載檔案。
+<a id="nfr-005-ac-110"></a>
 19. 中央 Prompt Template。
+<a id="nfr-005-ac-111"></a>
 20. 企業 SSO。
 
 ---
@@ -1763,52 +2220,86 @@ CLI 大量輸出可能使中央平台記憶體增加。
 
 ## Central Backend
 
+<a id="nfr-005-ac-112"></a>
 * Python
+<a id="nfr-005-ac-113"></a>
 * FastAPI
+<a id="nfr-005-ac-114"></a>
 * PostgreSQL
+<a id="nfr-005-ac-115"></a>
 * SQLAlchemy
+<a id="nfr-005-ac-116"></a>
 * Alembic
+<a id="nfr-005-ac-117"></a>
 * WebSocket
+<a id="nfr-005-ac-118"></a>
 * JWT
+<a id="nfr-005-ac-119"></a>
 * Pydantic
 
 ## Frontend
 
+<a id="nfr-005-ac-120"></a>
 * Vue 3
+<a id="nfr-005-ac-121"></a>
 * TypeScript
+<a id="nfr-005-ac-122"></a>
 * Naive UI
+<a id="nfr-005-ac-123"></a>
 * Pinia
+<a id="nfr-005-ac-124"></a>
 * Vue Router
+<a id="nfr-005-ac-125"></a>
 * xterm.js
+<a id="nfr-005-ac-126"></a>
 * Monaco Editor
 
 ## VM Daemon
 
+<a id="nfr-005-ac-127"></a>
 * Go
+<a id="nfr-005-ac-128"></a>
 * `github.com/gorilla/websocket`
+<a id="nfr-005-ac-129"></a>
 * `github.com/creack/pty`
+<a id="nfr-005-ac-130"></a>
 * tmux
+<a id="nfr-005-ac-131"></a>
 * systemd
 
 ## 部署
 
+<a id="nfr-005-ac-132"></a>
 * 中央平台：Docker Compose 或 Kubernetes。
+<a id="nfr-005-ac-133"></a>
 * Daemon：Go Static Binary＋systemd。
+<a id="nfr-005-ac-134"></a>
 * 通訊：HTTPS／WSS。
+<a id="nfr-005-ac-135"></a>
 * Database：PostgreSQL。
 
 ---
 
 # 23. 產品核心原則
 
+<a id="nfr-005-ac-136"></a>
 1. 中央平台只負責管理，不重新實作 CLI Agent。
+<a id="nfr-005-ac-137"></a>
 2. 保留 Claude 與 Codex 的原生使用體驗。
+<a id="nfr-005-ac-138"></a>
 3. Daemon 主動連線中央，不由中央 SSH 至 VM。
+<a id="nfr-005-ac-139"></a>
 4. 前端不得執行任意 Command。
+<a id="nfr-005-ac-140"></a>
 5. 所有工作目錄必須限制於 Allowed Root。
+<a id="nfr-005-ac-141"></a>
 6. Session 與瀏覽器生命週期分離。
+<a id="nfr-005-ac-142"></a>
 7. 檔案總覽第一階段採唯讀模式。
+<a id="nfr-005-ac-143"></a>
 8. Daemon 必須可快速安裝、更新與診斷。
+<a id="nfr-005-ac-144"></a>
 9. Go Daemon 保持單一 Binary 與低依賴。
+<a id="nfr-005-ac-145"></a>
 10. MVP 優先完成穩定 Terminal 與 Workspace 瀏覽。
 

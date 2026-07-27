@@ -232,8 +232,8 @@ together with the §4 items that must be explicitly accepted rather than fixed.
 
 ## 6. Traceability
 
-`research/01/06-requirement-traceability.md` §10 records per-requirement status. P4 changed
-these rows:
+`research/01/06-requirement-traceability.md` §10 now routes per-requirement status to the
+generated `docs/traceability/` views. P4 changed these requirement outcomes:
 
 | Requirement | Change |
 |---|---|

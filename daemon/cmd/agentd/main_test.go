@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cliora/cliora/daemon/internal/config"
 )
 
 func runCommand(t *testing.T, args ...string) (string, error) {
@@ -51,5 +53,21 @@ func TestConfigValidateRejectsBadConfig(t *testing.T) {
 	}
 	if _, err := runCommand(t, "config", "validate", "--config", path); err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+// TestInstallLayoutMatchesTheDocumentedPaths pins the filesystem layout that
+// PRD FR-INSTALL-003 promises. Moving any of these is a user-visible change to
+// the install contract, not an implementation detail.
+func TestInstallLayoutMatchesTheDocumentedPaths(t *testing.T) {
+	for _, tc := range []struct{ name, got, want string }{
+		{"binary", binaryInstallPath, "/usr/local/bin/agentd"},
+		{"state", stateDir, "/var/lib/agentd"},
+		{"unit", systemdUnitPath, "/etc/systemd/system/agentd.service"},
+		{"config", config.DefaultConfigPath, "/etc/agentd/config.yaml"},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s path = %q, the documented install layout is %q", tc.name, tc.got, tc.want)
+		}
 	}
 }

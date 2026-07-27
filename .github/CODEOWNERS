@@ -1,0 +1,13 @@
+# GitHub ownership fallback. ADR 0019 keeps durable logical owners in the traceability
+# registry; this repository currently exposes no organization team handles, so the
+# repository owner is the enforceable review fallback.
+
+* @Lei-k
+
+/research/prd.md @Lei-k
+/research/tech.md @Lei-k
+/traceability/ @Lei-k
+/scripts/trace @Lei-k
+/scripts/traceability/ @Lei-k
+/docs/adr/ @Lei-k
+/.github/workflows/ @Lei-k

@@ -209,7 +209,10 @@ docs/deployment.md          部署、升級、rollback、還原程序
 - [ ] NFR-005：Chrome/Edge/Safari/Firefox 最新版 smoke 通過；Ubuntu 22.04／24.04／Debian 12 × amd64／arm64 install-update matrix 通過。
 - [ ] 乾淨 checkout 依 README 可 bootstrap、migrate、build、test、run；依 `docs/deployment.md` 可從零部署一套可用環境。
 - [ ] CI gates 全綠且 artifact 可追溯到 commit；**`p3.yml` 已在真實 runner 綠燈**（P3 遺留項關閉，`docs/p3-report.md` 改為 Go）。
-- [ ] `research/01/06-requirement-traceability.md` §10 以實際證據更新 FR-AUTH/NODE/INSTALL/SESSION/WORKSPACE、SEC-001…007 與 NFR-001…005；`docs/permission-matrix.md`／`docs/error-catalog.md`／`docs/runbooks/*` 與程式碼一致（自動化斷言）。
+- [ ] `research/01/06-requirement-traceability.md` §10 指向由 ADR 0019 registry 產生的
+  `docs/traceability/` views；FR-AUTH/NODE/INSTALL/SESSION/WORKSPACE、SEC-001…007 與
+  NFR-001…005 的動態結果由同 commit `trace-snapshot.json` 提供；`docs/permission-matrix.md`／
+  `docs/error-catalog.md`／`docs/runbooks/*` 與程式碼一致（自動化斷言）。
 
 任一項未過即維持 P4 open。不可因「Dashboard 看起來正常」或「update 在本機成功」即豁免授權矩陣、洩漏掃描、install-update matrix、容量有界性證明或安全簽核。
 

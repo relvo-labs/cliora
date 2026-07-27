@@ -1,0 +1,63 @@
+name: Requirement Traceability
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      # Blocking. Any coverage gap outside traceability/baseline-debt.json fails
+      # here, and so does a debt entry that is no longer a gap.
+      - name: Schema, anchors, links, selectors, generated views and changed-scope coverage
+        run: make traceability
+      - name: Coverage report
+        if: always()
+        run: scripts/trace coverage --scope all --format json > traceability-coverage-report.json
+      # Not blocking yet: this is the readiness probe for full release blocking,
+      # which turns on when the debt list empties. Reported, never silent.
+      - name: Full-blocking readiness (advisory)
+        if: always()
+        continue-on-error: true
+        run: make traceability-coverage-strict
+      - name: Machine-readable static report
+        if: always()
+        run: scripts/trace validate --level static --format json > traceability-static.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traceability-static
+          path: |
+            traceability-static.json
+            traceability-coverage-report.json
+
+  impact:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: Changed-scope impact
+        run: |
+          scripts/trace impact \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.sha }}" \
+            --format json | tee traceability-impact.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: traceability-impact
+          path: traceability-impact.json

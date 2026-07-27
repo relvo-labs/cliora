@@ -1,0 +1,5090 @@
+{
+  "schema_version": 1,
+  "requirements": [
+    {
+      "id": "FR-AUTH-001",
+      "kind": "functional",
+      "title": "使用者登入",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-auth-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AUTH-001.AC-01",
+          "source_anchor": "fr-auth-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-001.AC-02",
+          "source_anchor": "fr-auth-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-001.AC-03",
+          "source_anchor": "fr-auth-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-001.AC-04",
+          "source_anchor": "fr-auth-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AUTH-002",
+      "kind": "functional",
+      "title": "角色權限",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-auth-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AUTH-002.AC-01",
+          "source_anchor": "fr-auth-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-02",
+          "source_anchor": "fr-auth-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-AUTH-002.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Role name in the list introduced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-AUTH-002.AC-03",
+          "source_anchor": "fr-auth-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-AUTH-002.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Role name in the list introduced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-AUTH-002.AC-04",
+          "source_anchor": "fr-auth-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-AUTH-002.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Role name in the list introduced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-AUTH-002.AC-05",
+          "source_anchor": "fr-auth-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-06",
+          "source_anchor": "fr-auth-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-07",
+          "source_anchor": "fr-auth-002-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-08",
+          "source_anchor": "fr-auth-002-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-09",
+          "source_anchor": "fr-auth-002-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-10",
+          "source_anchor": "fr-auth-002-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-11",
+          "source_anchor": "fr-auth-002-ac-11",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AUTH-002.AC-12",
+          "source_anchor": "fr-auth-002-ac-12",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-001",
+      "kind": "functional",
+      "title": "主動連線",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-001.AC-01",
+          "source_anchor": "fr-conn-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-002",
+      "kind": "functional",
+      "title": "TLS",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-002.AC-01",
+          "source_anchor": "fr-conn-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-003",
+      "kind": "functional",
+      "title": "自動重連",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-003.AC-01",
+          "source_anchor": "fr-conn-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-02",
+          "source_anchor": "fr-conn-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-03",
+          "source_anchor": "fr-conn-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-04",
+          "source_anchor": "fr-conn-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-05",
+          "source_anchor": "fr-conn-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-06",
+          "source_anchor": "fr-conn-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-003.AC-07",
+          "source_anchor": "fr-conn-003-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-004",
+      "kind": "functional",
+      "title": "訊息請求識別",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-004.AC-01",
+          "source_anchor": "fr-conn-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-004.AC-02",
+          "source_anchor": "fr-conn-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-CONN-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Envelope field of the frame shape asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-004.AC-03",
+          "source_anchor": "fr-conn-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-CONN-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Envelope field of the frame shape asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-004.AC-04",
+          "source_anchor": "fr-conn-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-CONN-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Envelope field of the frame shape asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-004.AC-05",
+          "source_anchor": "fr-conn-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-CONN-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Envelope field of the frame shape asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-004.AC-06",
+          "source_anchor": "fr-conn-004-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-CONN-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Envelope field of the frame shape asserted by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-005",
+      "kind": "functional",
+      "title": "Terminal Binary Frame",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-005.AC-01",
+          "source_anchor": "fr-conn-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONN-006",
+      "kind": "functional",
+      "title": "命令逾時",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conn-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONN-006.AC-01",
+          "source_anchor": "fr-conn-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-006.AC-02",
+          "source_anchor": "fr-conn-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "needs_rewrite",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "No single 'general control command' budget exists: the relay has per-operation budgets (attach 15 s, list 15 s, stop 20 s). The 10 s figure matches none of them.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-006.AC-03",
+          "source_anchor": "fr-conn-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONN-006.AC-04",
+          "source_anchor": "fr-conn-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "needs_rewrite",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "PRD says 30 s for file read; the implemented budget is file_read_timeout_seconds = 15. Needs a product decision, not a test.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-CONN-006.AC-05",
+          "source_anchor": "fr-conn-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-001",
+      "kind": "functional",
+      "title": "檔案樹",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-001.AC-01",
+          "source_anchor": "fr-file-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-001.AC-02",
+          "source_anchor": "fr-file-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-001.AC-03",
+          "source_anchor": "fr-file-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-001.AC-04",
+          "source_anchor": "fr-file-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-001.AC-05",
+          "source_anchor": "fr-file-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-001.AC-06",
+          "source_anchor": "fr-file-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-001.AC-07",
+          "source_anchor": "fr-file-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the tree row rendered by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-002",
+      "kind": "functional",
+      "title": "檔案預覽",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-002.AC-01",
+          "source_anchor": "fr-file-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-02",
+          "source_anchor": "fr-file-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-03",
+          "source_anchor": "fr-file-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Monaco gutter setting of the read-only editor created in AC-01; no separate assertion.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-002.AC-04",
+          "source_anchor": "fr-file-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-05",
+          "source_anchor": "fr-file-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-06",
+          "source_anchor": "fr-file-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-07",
+          "source_anchor": "fr-file-002-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-002.AC-08",
+          "source_anchor": "fr-file-002-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-003",
+      "kind": "functional",
+      "title": "檔案大小限制",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-003.AC-01",
+          "source_anchor": "fr-file-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-003.AC-02",
+          "source_anchor": "fr-file-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-003.AC-03",
+          "source_anchor": "fr-file-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-003.AC-04",
+          "source_anchor": "fr-file-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-003.AC-05",
+          "source_anchor": "fr-file-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-004",
+      "kind": "functional",
+      "title": "Binary 判斷",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-004.AC-01",
+          "source_anchor": "fr-file-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-004.AC-02",
+          "source_anchor": "fr-file-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-004.AC-03",
+          "source_anchor": "fr-file-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-004.AC-04",
+          "source_anchor": "fr-file-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-005",
+      "kind": "functional",
+      "title": "敏感檔案保護",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-005.AC-01",
+          "source_anchor": "fr-file-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-006",
+      "kind": "functional",
+      "title": "檔案重新整理",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-006.AC-01",
+          "source_anchor": "fr-file-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-006.AC-02",
+          "source_anchor": "fr-file-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-006.AC-03",
+          "source_anchor": "fr-file-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-006.AC-04",
+          "source_anchor": "fr-file-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-007",
+      "kind": "functional",
+      "title": "檔案搜尋",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-FILE-007.AC-01",
+          "source_anchor": "fr-file-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-007.AC-02",
+          "source_anchor": "fr-file-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Search request parameter of the search in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-007.AC-03",
+          "source_anchor": "fr-file-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Search request parameter of the search in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-007.AC-04",
+          "source_anchor": "fr-file-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-007.AC-05",
+          "source_anchor": "fr-file-007-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of a search result row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-007.AC-06",
+          "source_anchor": "fr-file-007-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of a search result row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-007.AC-07",
+          "source_anchor": "fr-file-007-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of a search result row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-FILE-007.AC-08",
+          "source_anchor": "fr-file-007-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-FILE-007.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of a search result row returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-INSTALL-001",
+      "kind": "functional",
+      "title": "建立 Enrollment Token",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-install-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-INSTALL-001.AC-01",
+          "source_anchor": "fr-install-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-001.AC-02",
+          "source_anchor": "fr-install-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-03",
+          "source_anchor": "fr-install-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-04",
+          "source_anchor": "fr-install-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-05",
+          "source_anchor": "fr-install-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-06",
+          "source_anchor": "fr-install-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-07",
+          "source_anchor": "fr-install-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-INSTALL-001.AC-08",
+          "source_anchor": "fr-install-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-INSTALL-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the enrollment token record created in AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-INSTALL-002",
+      "kind": "functional",
+      "title": "一行安裝指令",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-install-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-INSTALL-002.AC-01",
+          "source_anchor": "fr-install-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-INSTALL-003",
+      "kind": "functional",
+      "title": "自動安裝流程",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-install-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-INSTALL-003.AC-01",
+          "source_anchor": "fr-install-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-02",
+          "source_anchor": "fr-install-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-03",
+          "source_anchor": "fr-install-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-04",
+          "source_anchor": "fr-install-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-05",
+          "source_anchor": "fr-install-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-06",
+          "source_anchor": "fr-install-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-07",
+          "source_anchor": "fr-install-003-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-08",
+          "source_anchor": "fr-install-003-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-09",
+          "source_anchor": "fr-install-003-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-10",
+          "source_anchor": "fr-install-003-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-11",
+          "source_anchor": "fr-install-003-ac-11",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-12",
+          "source_anchor": "fr-install-003-ac-12",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-13",
+          "source_anchor": "fr-install-003-ac-13",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-003.AC-14",
+          "source_anchor": "fr-install-003-ac-14",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-INSTALL-004",
+      "kind": "functional",
+      "title": "Daemon CLI",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-install-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-INSTALL-004.AC-01",
+          "source_anchor": "fr-install-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-INSTALL-005",
+      "kind": "functional",
+      "title": "Daemon 更新",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-install-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-INSTALL-005.AC-01",
+          "source_anchor": "fr-install-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-02",
+          "source_anchor": "fr-install-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-03",
+          "source_anchor": "fr-install-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-04",
+          "source_anchor": "fr-install-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-05",
+          "source_anchor": "fr-install-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-06",
+          "source_anchor": "fr-install-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-07",
+          "source_anchor": "fr-install-005-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-INSTALL-005.AC-08",
+          "source_anchor": "fr-install-005-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-NODE-001",
+      "kind": "functional",
+      "title": "Node 註冊",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-node-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-NODE-001.AC-01",
+          "source_anchor": "fr-node-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-001.AC-02",
+          "source_anchor": "fr-node-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-03",
+          "source_anchor": "fr-node-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-04",
+          "source_anchor": "fr-node-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-05",
+          "source_anchor": "fr-node-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-06",
+          "source_anchor": "fr-node-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-07",
+          "source_anchor": "fr-node-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-08",
+          "source_anchor": "fr-node-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-09",
+          "source_anchor": "fr-node-001-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-10",
+          "source_anchor": "fr-node-001-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-11",
+          "source_anchor": "fr-node-001-ac-11",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-12",
+          "source_anchor": "fr-node-001-ac-12",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-13",
+          "source_anchor": "fr-node-001-ac-13",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-14",
+          "source_anchor": "fr-node-001-ac-14",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-001.AC-15",
+          "source_anchor": "fr-node-001-ac-15",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the registration record persisted by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-NODE-002",
+      "kind": "functional",
+      "title": "Node 在線狀態",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-node-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-NODE-002.AC-01",
+          "source_anchor": "fr-node-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-002.AC-02",
+          "source_anchor": "fr-node-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "constraint",
+          "covered_by": "FR-NODE-002.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Heartbeat interval of the heartbeat in AC-01; the thresholds it feeds are AC-07..09.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-002.AC-03",
+          "source_anchor": "fr-node-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-002.AC-07",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum whose thresholds AC-07..09 assert.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-002.AC-04",
+          "source_anchor": "fr-node-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-002.AC-07",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum whose thresholds AC-07..09 assert.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-002.AC-05",
+          "source_anchor": "fr-node-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-002.AC-07",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum whose thresholds AC-07..09 assert.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-002.AC-06",
+          "source_anchor": "fr-node-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-002.AC-07",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum whose thresholds AC-07..09 assert.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-002.AC-07",
+          "source_anchor": "fr-node-002-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-002.AC-08",
+          "source_anchor": "fr-node-002-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-002.AC-09",
+          "source_anchor": "fr-node-002-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-NODE-003",
+      "kind": "functional",
+      "title": "Node 列表",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-node-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-NODE-003.AC-01",
+          "source_anchor": "fr-node-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-003.AC-02",
+          "source_anchor": "fr-node-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-03",
+          "source_anchor": "fr-node-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-04",
+          "source_anchor": "fr-node-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-05",
+          "source_anchor": "fr-node-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-06",
+          "source_anchor": "fr-node-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-07",
+          "source_anchor": "fr-node-003-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-08",
+          "source_anchor": "fr-node-003-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-003.AC-09",
+          "source_anchor": "fr-node-003-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the node list row returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-NODE-004",
+      "kind": "functional",
+      "title": "Node 詳情",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-node-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-NODE-004.AC-01",
+          "source_anchor": "fr-node-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-004.AC-02",
+          "source_anchor": "fr-node-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-03",
+          "source_anchor": "fr-node-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-04",
+          "source_anchor": "fr-node-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-05",
+          "source_anchor": "fr-node-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-06",
+          "source_anchor": "fr-node-004-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-07",
+          "source_anchor": "fr-node-004-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-NODE-004.AC-08",
+          "source_anchor": "fr-node-004-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-NODE-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the node detail payload returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-NODE-005",
+      "kind": "functional",
+      "title": "Node 停用",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-node-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-NODE-005.AC-01",
+          "source_anchor": "fr-node-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-005.AC-02",
+          "source_anchor": "fr-node-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-005.AC-03",
+          "source_anchor": "fr-node-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-005.AC-04",
+          "source_anchor": "fr-node-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-NODE-005.AC-05",
+          "source_anchor": "fr-node-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNTIME-001",
+      "kind": "functional",
+      "title": "Runtime 偵測",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runtime-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNTIME-001.AC-01",
+          "source_anchor": "fr-runtime-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-02",
+          "source_anchor": "fr-runtime-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Runtime id in the detection set of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-03",
+          "source_anchor": "fr-runtime-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Runtime id in the detection set of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-04",
+          "source_anchor": "fr-runtime-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the detection result produced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-05",
+          "source_anchor": "fr-runtime-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the detection result produced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-06",
+          "source_anchor": "fr-runtime-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the detection result produced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-07",
+          "source_anchor": "fr-runtime-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the detection result produced by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-001.AC-08",
+          "source_anchor": "fr-runtime-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-001.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the detection result produced by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNTIME-002",
+      "kind": "functional",
+      "title": "Runtime 選擇",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runtime-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNTIME-002.AC-01",
+          "source_anchor": "fr-runtime-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-002.AC-02",
+          "source_anchor": "fr-runtime-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Runtime choice offered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-002.AC-03",
+          "source_anchor": "fr-runtime-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-RUNTIME-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Runtime choice offered by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-RUNTIME-002.AC-04",
+          "source_anchor": "fr-runtime-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-002.AC-05",
+          "source_anchor": "fr-runtime-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-002.AC-06",
+          "source_anchor": "fr-runtime-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNTIME-003",
+      "kind": "functional",
+      "title": "Runtime 白名單",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runtime-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNTIME-003.AC-01",
+          "source_anchor": "fr-runtime-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNTIME-004",
+      "kind": "functional",
+      "title": "Runtime 設定",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runtime-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNTIME-004.AC-01",
+          "source_anchor": "fr-runtime-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-001",
+      "kind": "functional",
+      "title": "建立 Session",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-001.AC-01",
+          "source_anchor": "fr-session-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-001.AC-02",
+          "source_anchor": "fr-session-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-03",
+          "source_anchor": "fr-session-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-04",
+          "source_anchor": "fr-session-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-05",
+          "source_anchor": "fr-session-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-06",
+          "source_anchor": "fr-session-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-07",
+          "source_anchor": "fr-session-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-08",
+          "source_anchor": "fr-session-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-001.AC-09",
+          "source_anchor": "fr-session-001-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-001.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the create-session request validated by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-002",
+      "kind": "functional",
+      "title": "Session 狀態",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-002.AC-01",
+          "source_anchor": "fr-session-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-003",
+      "kind": "functional",
+      "title": "Session 列表",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-003.AC-01",
+          "source_anchor": "fr-session-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-003.AC-02",
+          "source_anchor": "fr-session-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-03",
+          "source_anchor": "fr-session-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-04",
+          "source_anchor": "fr-session-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-05",
+          "source_anchor": "fr-session-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-06",
+          "source_anchor": "fr-session-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-07",
+          "source_anchor": "fr-session-003-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-08",
+          "source_anchor": "fr-session-003-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-09",
+          "source_anchor": "fr-session-003-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-003.AC-10",
+          "source_anchor": "fr-session-003-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-003.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the session list row returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-004",
+      "kind": "functional",
+      "title": "Session 詳情",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-004.AC-01",
+          "source_anchor": "fr-session-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-004.AC-02",
+          "source_anchor": "fr-session-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-03",
+          "source_anchor": "fr-session-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-04",
+          "source_anchor": "fr-session-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-05",
+          "source_anchor": "fr-session-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-06",
+          "source_anchor": "fr-session-004-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-07",
+          "source_anchor": "fr-session-004-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-08",
+          "source_anchor": "fr-session-004-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-09",
+          "source_anchor": "fr-session-004-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-SESSION-004.AC-10",
+          "source_anchor": "fr-session-004-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-SESSION-004.AC-01",
+          "review": {
+            "classified_by": "central",
+            "classified_at": "2026-07-27",
+            "rationale": "Section of the session detail payload returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-005",
+      "kind": "functional",
+      "title": "終止 Session",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-005.AC-01",
+          "source_anchor": "fr-session-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-02",
+          "source_anchor": "fr-session-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-03",
+          "source_anchor": "fr-session-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-04",
+          "source_anchor": "fr-session-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-05",
+          "source_anchor": "fr-session-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-06",
+          "source_anchor": "fr-session-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-005.AC-07",
+          "source_anchor": "fr-session-005-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-006",
+      "kind": "functional",
+      "title": "Session 重新連線",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-006.AC-01",
+          "source_anchor": "fr-session-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SESSION-007",
+      "kind": "functional",
+      "title": "多人連線限制",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-session-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SESSION-007.AC-01",
+          "source_anchor": "fr-session-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-007.AC-02",
+          "source_anchor": "fr-session-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-007.AC-03",
+          "source_anchor": "fr-session-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SESSION-007.AC-04",
+          "source_anchor": "fr-session-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-001",
+      "kind": "functional",
+      "title": "Terminal 顯示",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-001.AC-01",
+          "source_anchor": "fr-term-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-001.AC-02",
+          "source_anchor": "fr-term-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Rendering capability of the xterm.js terminal in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-03",
+          "source_anchor": "fr-term-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Rendering capability of the xterm.js terminal in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-04",
+          "source_anchor": "fr-term-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Rendering capability of the xterm.js terminal in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-05",
+          "source_anchor": "fr-term-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Rendering capability of the xterm.js terminal in AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-06",
+          "source_anchor": "fr-term-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-001.AC-07",
+          "source_anchor": "fr-term-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-08",
+          "source_anchor": "fr-term-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-09",
+          "source_anchor": "fr-term-001-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-10",
+          "source_anchor": "fr-term-001-ac-10",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-11",
+          "source_anchor": "fr-term-001-ac-11",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-001.AC-12",
+          "source_anchor": "fr-term-001-ac-12",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-001.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Key sequence carried by the raw byte channel of AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-002",
+      "kind": "functional",
+      "title": "Terminal 輸入",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-002.AC-01",
+          "source_anchor": "fr-term-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-003",
+      "kind": "functional",
+      "title": "Terminal Resize",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-003.AC-01",
+          "source_anchor": "fr-term-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-003.AC-02",
+          "source_anchor": "fr-term-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-003.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the resize frame sent by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-003.AC-03",
+          "source_anchor": "fr-term-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-003.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the resize frame sent by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-004",
+      "kind": "functional",
+      "title": "Terminal Scrollback",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-004.AC-01",
+          "source_anchor": "fr-term-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-004.AC-02",
+          "source_anchor": "fr-term-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-004.AC-03",
+          "source_anchor": "fr-term-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "needs_rewrite",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "PRD states a 2-10 MB ring buffer; the daemon configures a 5000-line tmux scrollback and the browser a 10000-line one. Lines and bytes are not the same claim, so no test can honestly assert this one.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-005",
+      "kind": "functional",
+      "title": "Terminal 連線狀態",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-005.AC-01",
+          "source_anchor": "fr-term-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-005.AC-02",
+          "source_anchor": "fr-term-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-005.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum displayed by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-005.AC-03",
+          "source_anchor": "fr-term-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-005.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum displayed by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-005.AC-04",
+          "source_anchor": "fr-term-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-005.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum displayed by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-TERM-005.AC-05",
+          "source_anchor": "fr-term-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-TERM-005.AC-01",
+          "review": {
+            "classified_by": "frontend",
+            "classified_at": "2026-07-27",
+            "rationale": "Member of the status enum displayed by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-TERM-006",
+      "kind": "functional",
+      "title": "自動重連",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-term-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-TERM-006.AC-01",
+          "source_anchor": "fr-term-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-006.AC-02",
+          "source_anchor": "fr-term-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-006.AC-03",
+          "source_anchor": "fr-term-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-006.AC-04",
+          "source_anchor": "fr-term-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-006.AC-05",
+          "source_anchor": "fr-term-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-006.AC-06",
+          "source_anchor": "fr-term-006-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-WORKSPACE-001",
+      "kind": "functional",
+      "title": "Workspace Root",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-workspace-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-WORKSPACE-001.AC-01",
+          "source_anchor": "fr-workspace-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-WORKSPACE-002",
+      "kind": "functional",
+      "title": "Workspace 瀏覽",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-workspace-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-WORKSPACE-002.AC-01",
+          "source_anchor": "fr-workspace-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-02",
+          "source_anchor": "fr-workspace-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-03",
+          "source_anchor": "fr-workspace-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-04",
+          "source_anchor": "fr-workspace-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-05",
+          "source_anchor": "fr-workspace-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-06",
+          "source_anchor": "fr-workspace-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-002.AC-07",
+          "source_anchor": "fr-workspace-002-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-002.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Field of the directory entry returned by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-WORKSPACE-003",
+      "kind": "functional",
+      "title": "指定工作目錄",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-workspace-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-WORKSPACE-003.AC-01",
+          "source_anchor": "fr-workspace-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-003.AC-02",
+          "source_anchor": "fr-workspace-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-003.AC-03",
+          "source_anchor": "fr-workspace-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-003.AC-04",
+          "source_anchor": "fr-workspace-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-003.AC-05",
+          "source_anchor": "fr-workspace-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-003.AC-06",
+          "source_anchor": "fr-workspace-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-WORKSPACE-004",
+      "kind": "functional",
+      "title": "最近使用 Workspace",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-workspace-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-WORKSPACE-004.AC-01",
+          "source_anchor": "fr-workspace-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-004.AC-02",
+          "source_anchor": "fr-workspace-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Entry-point list of the shortcut region recorded by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-004.AC-03",
+          "source_anchor": "fr-workspace-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Entry-point list of the shortcut region recorded by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-004.AC-04",
+          "source_anchor": "fr-workspace-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-004.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Entry-point list of the shortcut region recorded by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "FR-WORKSPACE-005",
+      "kind": "functional",
+      "title": "Workspace 收藏",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-workspace-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-WORKSPACE-005.AC-01",
+          "source_anchor": "fr-workspace-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-WORKSPACE-005.AC-02",
+          "source_anchor": "fr-workspace-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-005.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the favourite record stored by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-005.AC-03",
+          "source_anchor": "fr-workspace-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-005.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the favourite record stored by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-005.AC-04",
+          "source_anchor": "fr-workspace-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-005.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the favourite record stored by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-005.AC-05",
+          "source_anchor": "fr-workspace-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-005.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the favourite record stored by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "FR-WORKSPACE-005.AC-06",
+          "source_anchor": "fr-workspace-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium",
+          "classification": "data_shape",
+          "covered_by": "FR-WORKSPACE-005.AC-01",
+          "review": {
+            "classified_by": "daemon",
+            "classified_at": "2026-07-27",
+            "rationale": "Column of the favourite record stored by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-01",
+      "kind": "mvp",
+      "title": "管理員可於中央平台產生安裝 Token。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-01"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-01.AC-01",
+          "source_anchor": "mvp-ac-01-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-02",
+      "kind": "mvp",
+      "title": "使用者可使用一行指令安裝 Go Daemon。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-02"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-02.AC-01",
+          "source_anchor": "mvp-ac-02-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-03",
+      "kind": "mvp",
+      "title": "Daemon 安裝後可自動啟動並註冊。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-03"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-03.AC-01",
+          "source_anchor": "mvp-ac-03-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-04",
+      "kind": "mvp",
+      "title": "平台可顯示 Node Online／Offline。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-04"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-04.AC-01",
+          "source_anchor": "mvp-ac-04-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-05",
+      "kind": "mvp",
+      "title": "平台可顯示 Claude 與 Codex 是否可用。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-05"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-05.AC-01",
+          "source_anchor": "mvp-ac-05-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-06",
+      "kind": "mvp",
+      "title": "使用者可選擇 Node。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-06"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-06.AC-01",
+          "source_anchor": "mvp-ac-06-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-07",
+      "kind": "mvp",
+      "title": "使用者可切換 Claude 或 Codex。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-07"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-07.AC-01",
+          "source_anchor": "mvp-ac-07-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-08",
+      "kind": "mvp",
+      "title": "使用者可瀏覽 Workspace Root。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-08"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-08.AC-01",
+          "source_anchor": "mvp-ac-08-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-09",
+      "kind": "mvp",
+      "title": "使用者可指定合法工作目錄。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-09"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-09.AC-01",
+          "source_anchor": "mvp-ac-09-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-10",
+      "kind": "mvp",
+      "title": "Daemon 可在指定目錄啟動 CLI。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-10"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-10.AC-01",
+          "source_anchor": "mvp-ac-10-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-11",
+      "kind": "mvp",
+      "title": "Web Terminal 可完整操作 CLI。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-11"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-11.AC-01",
+          "source_anchor": "mvp-ac-11-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-12",
+      "kind": "mvp",
+      "title": "CLI 原生審批畫面可正常顯示與操作。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-12"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-12.AC-01",
+          "source_anchor": "mvp-ac-12-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-13",
+      "kind": "mvp",
+      "title": "瀏覽器關閉後，CLI Session 不會立即結束。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-13"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-13.AC-01",
+          "source_anchor": "mvp-ac-13-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-14",
+      "kind": "mvp",
+      "title": "使用者可重新連線執行中的 Session。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-14"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-14.AC-01",
+          "source_anchor": "mvp-ac-14-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-15",
+      "kind": "mvp",
+      "title": "使用者可查看 Workspace 目錄樹。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-15"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-15.AC-01",
+          "source_anchor": "mvp-ac-15-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-16",
+      "kind": "mvp",
+      "title": "使用者可唯讀預覽程式碼檔案。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-16"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-16.AC-01",
+          "source_anchor": "mvp-ac-16-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-17",
+      "kind": "mvp",
+      "title": "敏感檔案不可預覽。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-17"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-17.AC-01",
+          "source_anchor": "mvp-ac-17-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-18",
+      "kind": "mvp",
+      "title": "Node 離線時不可建立新 Session。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-18"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-18.AC-01",
+          "source_anchor": "mvp-ac-18-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-19",
+      "kind": "mvp",
+      "title": "使用者可正常終止 Session。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-19"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-19.AC-01",
+          "source_anchor": "mvp-ac-19-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "MVP-AC-20",
+      "kind": "mvp",
+      "title": "所有重要操作均有 Audit Log。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "mvp-ac-20"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "release",
+      "criteria": [
+        {
+          "id": "MVP-AC-20.AC-01",
+          "source_anchor": "mvp-ac-20-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-001",
+      "kind": "non_functional",
+      "title": "效能",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "NFR-001.AC-01",
+          "source_anchor": "nfr-001-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-001.AC-02",
+          "source_anchor": "nfr-001-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-001.AC-03",
+          "source_anchor": "nfr-001-ac-03",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-001.AC-04",
+          "source_anchor": "nfr-001-ac-04",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-002",
+      "kind": "non_functional",
+      "title": "可用性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "NFR-002.AC-01",
+          "source_anchor": "nfr-002-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-002.AC-02",
+          "source_anchor": "nfr-002-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-002.AC-03",
+          "source_anchor": "nfr-002-ac-03",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-002.AC-04",
+          "source_anchor": "nfr-002-ac-04",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-003",
+      "kind": "non_functional",
+      "title": "擴充性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "NFR-003.AC-01",
+          "source_anchor": "nfr-003-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-003.AC-02",
+          "source_anchor": "nfr-003-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-003.AC-03",
+          "source_anchor": "nfr-003-ac-03",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-003.AC-04",
+          "source_anchor": "nfr-003-ac-04",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-004",
+      "kind": "non_functional",
+      "title": "可維運性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "NFR-004.AC-01",
+          "source_anchor": "nfr-004-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-02",
+          "source_anchor": "nfr-004-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-03",
+          "source_anchor": "nfr-004-ac-03",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-04",
+          "source_anchor": "nfr-004-ac-04",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-05",
+          "source_anchor": "nfr-004-ac-05",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-06",
+          "source_anchor": "nfr-004-ac-06",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-004.AC-07",
+          "source_anchor": "nfr-004-ac-07",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-005",
+      "kind": "non_functional",
+      "title": "相容性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "NFR-005.AC-01",
+          "source_anchor": "nfr-005-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-02",
+          "source_anchor": "nfr-005-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-03",
+          "source_anchor": "nfr-005-ac-03",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-04",
+          "source_anchor": "nfr-005-ac-04",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-05",
+          "source_anchor": "nfr-005-ac-05",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-06",
+          "source_anchor": "nfr-005-ac-06",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-07",
+          "source_anchor": "nfr-005-ac-07",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-08",
+          "source_anchor": "nfr-005-ac-08",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-09",
+          "source_anchor": "nfr-005-ac-09",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-005.AC-10",
+          "source_anchor": "nfr-005-ac-10",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-001",
+      "kind": "scope",
+      "title": "不解析 Claude 或 Codex 的內部事件。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-001.AC-01",
+          "source_anchor": "scope-001-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-002",
+      "kind": "scope",
+      "title": "不建立中央審批機制。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-002.AC-01",
+          "source_anchor": "scope-002-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-003",
+      "kind": "scope",
+      "title": "不攔截或替代 CLI 原生權限確認。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-003.AC-01",
+          "source_anchor": "scope-003-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-004",
+      "kind": "scope",
+      "title": "不建立多 Agent 自動協作流程。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-004.AC-01",
+          "source_anchor": "scope-004-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-005",
+      "kind": "scope",
+      "title": "不進行任務自動分派。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-005.AC-01",
+          "source_anchor": "scope-005-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-006",
+      "kind": "scope",
+      "title": "不提供 Web 端完整 IDE。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-006.AC-01",
+          "source_anchor": "scope-006-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-007",
+      "kind": "scope",
+      "title": "不提供第一階段的檔案寫入與編輯功能。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-007.AC-01",
+          "source_anchor": "scope-007-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-008",
+      "kind": "scope",
+      "title": "不提供自動 Git Commit、Push 或 Merge Request。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-008"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-008.AC-01",
+          "source_anchor": "scope-008-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-009",
+      "kind": "scope",
+      "title": "不提供 CLI 對話內容的語意分析。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-009"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-009.AC-01",
+          "source_anchor": "scope-009-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-010",
+      "kind": "scope",
+      "title": "不建立跨 Runtime 的統一 Agent 行為模型。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-010"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-010.AC-01",
+          "source_anchor": "scope-010-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-011",
+      "kind": "scope",
+      "title": "不允許使用者從前端執行任意 Shell Command。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-011"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-011.AC-01",
+          "source_anchor": "scope-011-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-012",
+      "kind": "scope",
+      "title": "不將 VM 檔案系統直接掛載至中央伺服器。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-012"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-012.AC-01",
+          "source_anchor": "scope-012-ac-01",
+          "verification_profile": "inspection",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-001",
+      "kind": "security",
+      "title": "路徑隔離",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-001.AC-01",
+          "source_anchor": "sec-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-02",
+          "source_anchor": "sec-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-03",
+          "source_anchor": "sec-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-04",
+          "source_anchor": "sec-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-05",
+          "source_anchor": "sec-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-06",
+          "source_anchor": "sec-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-001.AC-07",
+          "source_anchor": "sec-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-002",
+      "kind": "security",
+      "title": "任意命令限制",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-002.AC-01",
+          "source_anchor": "sec-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-002.AC-02",
+          "source_anchor": "sec-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high",
+          "classification": "data_shape",
+          "covered_by": "SEC-002.AC-01",
+          "review": {
+            "classified_by": "security",
+            "classified_at": "2026-07-27",
+            "rationale": "Field the front end may send, as opposed to a command; asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "SEC-002.AC-03",
+          "source_anchor": "sec-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high",
+          "classification": "data_shape",
+          "covered_by": "SEC-002.AC-01",
+          "review": {
+            "classified_by": "security",
+            "classified_at": "2026-07-27",
+            "rationale": "Field the front end may send, as opposed to a command; asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "SEC-002.AC-04",
+          "source_anchor": "sec-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "high",
+          "classification": "data_shape",
+          "covered_by": "SEC-002.AC-01",
+          "review": {
+            "classified_by": "security",
+            "classified_at": "2026-07-27",
+            "rationale": "Field the front end may send, as opposed to a command; asserted by AC-01.",
+            "approved": false
+          }
+        },
+        {
+          "id": "SEC-002.AC-05",
+          "source_anchor": "sec-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "high",
+          "classification": "data_shape",
+          "covered_by": "SEC-002.AC-01",
+          "review": {
+            "classified_by": "security",
+            "classified_at": "2026-07-27",
+            "rationale": "Field the front end may send, as opposed to a command; asserted by AC-01.",
+            "approved": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "SEC-003",
+      "kind": "security",
+      "title": "Token 保護",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-003.AC-01",
+          "source_anchor": "sec-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-003.AC-02",
+          "source_anchor": "sec-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-003.AC-03",
+          "source_anchor": "sec-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-003.AC-04",
+          "source_anchor": "sec-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-003.AC-05",
+          "source_anchor": "sec-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-004",
+      "kind": "security",
+      "title": "敏感檔案",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-004.AC-01",
+          "source_anchor": "sec-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-005",
+      "kind": "security",
+      "title": "Transport Security",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-005.AC-01",
+          "source_anchor": "sec-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-006",
+      "kind": "security",
+      "title": "Audit",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-006.AC-01",
+          "source_anchor": "sec-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-02",
+          "source_anchor": "sec-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-03",
+          "source_anchor": "sec-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-04",
+          "source_anchor": "sec-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-05",
+          "source_anchor": "sec-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-06",
+          "source_anchor": "sec-006-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-07",
+          "source_anchor": "sec-006-ac-07",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-08",
+          "source_anchor": "sec-006-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-006.AC-09",
+          "source_anchor": "sec-006-ac-09",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SEC-007",
+      "kind": "security",
+      "title": "執行使用者",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "sec-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "SEC-007.AC-01",
+          "source_anchor": "sec-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-01",
+      "kind": "tech_security",
+      "title": "中央平台只允許 HTTPS／WSS。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-01"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-01.AC-01",
+          "source_anchor": "tech-sec-01-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-02",
+      "kind": "tech_security",
+      "title": "Daemon 不使用 root 長期執行。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-02"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-02.AC-01",
+          "source_anchor": "tech-sec-02-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-03",
+      "kind": "tech_security",
+      "title": "Enrollment Token 一次性或限時。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-03"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-03.AC-01",
+          "source_anchor": "tech-sec-03-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-04",
+      "kind": "tech_security",
+      "title": "Node Secret 不明文保存於中央。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-04"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-04.AC-01",
+          "source_anchor": "tech-sec-04-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-05",
+      "kind": "tech_security",
+      "title": "Workspace 每次操作都驗證 Root。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-05"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-05.AC-01",
+          "source_anchor": "tech-sec-05-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-06",
+      "kind": "tech_security",
+      "title": "Symlink 必須解析。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-06"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-06.AC-01",
+          "source_anchor": "tech-sec-06-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-07",
+      "kind": "tech_security",
+      "title": "前端不可傳任意 Command。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-07"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-07.AC-01",
+          "source_anchor": "tech-sec-07-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-08",
+      "kind": "tech_security",
+      "title": "Terminal 原始內容不寫入 Log。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-08"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-08.AC-01",
+          "source_anchor": "tech-sec-08-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-09",
+      "kind": "tech_security",
+      "title": "敏感檔案預設禁止預覽。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-09"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-09.AC-01",
+          "source_anchor": "tech-sec-09-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-10",
+      "kind": "tech_security",
+      "title": "Session 建立、接管、終止需 Audit。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-10"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-10.AC-01",
+          "source_anchor": "tech-sec-10-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-11",
+      "kind": "tech_security",
+      "title": "WebSocket 必須做身分與權限檢查。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-11"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-11.AC-01",
+          "source_anchor": "tech-sec-11-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-12",
+      "kind": "tech_security",
+      "title": "Binary Download 必須驗證 Checksum。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-12"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-12.AC-01",
+          "source_anchor": "tech-sec-12-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-13",
+      "kind": "tech_security",
+      "title": "Daemon Config 與 Credential 權限為 `0600`。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-13"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-13.AC-01",
+          "source_anchor": "tech-sec-13-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-14",
+      "kind": "tech_security",
+      "title": "限制單一使用者與 Node 的 Session 數量。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-14"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-14.AC-01",
+          "source_anchor": "tech-sec-14-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "TECH-SEC-15",
+      "kind": "tech_security",
+      "title": "限制 Terminal Queue 與 Frame 大小。",
+      "source": {
+        "path": "research/tech.md",
+        "anchor": "tech-sec-15"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "TECH-SEC-15.AC-01",
+          "source_anchor": "tech-sec-15-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    }
+  ]
+}

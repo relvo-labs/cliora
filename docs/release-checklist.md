@@ -44,6 +44,18 @@ Two rules for using it:
 
 ## 3. The evidence pack
 
+- [ ] `make traceability` exits 0 (schema, anchors, links, selectors, generated views,
+      changed-scope coverage and the traceability tool tests).
+- [ ] `traceability/baseline-debt.json` has not grown. Every entry names an owner and what would
+      close it; an entry that is no longer a gap fails the run, so remove it in the same PR.
+- [ ] `make traceability-coverage-strict` exits 0. While the debt list is non-empty this is
+      expected to fail: full release blocking is **not yet enabled**, which is not permission to
+      ignore the gap. Record the six open items in the release decision.
+- [ ] Required gate shards produced `gate-results.json` for the release commit and the resolved
+      `trace-snapshot.json` has no stale/dirty/hash/digest/skip/manual-pending error.
+      `scripts/traceability/dogfood.sh artifacts/traceability/<run-id>` does the whole sequence.
+- [ ] No criterion resolved to `environment-incomplete`. A gate that declares a browser or
+      platform matrix must report every leg as executed; a partial matrix is not a pass.
 - [ ] `scripts/p4/evidence.sh artifacts/p4/<run-id>` exits 0.
 - [ ] **Read `skipped.txt`.** A green pack with three skipped legs is not a green release;
       the pack lists skips precisely so they cannot pass silently.

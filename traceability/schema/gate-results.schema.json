@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cliora.local/traceability/gate-results.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "run_id",
+    "commit",
+    "tree_state",
+    "generated_at",
+    "runner",
+    "gate_definition_sha256",
+    "gates"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "tree_state": {"enum": ["clean", "dirty"]},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "gate_definition_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "os", "arch", "profile"],
+      "properties": {
+        "provider": {"type": "string", "minLength": 1},
+        "os": {"type": "string", "minLength": 1},
+        "arch": {"type": "string", "minLength": 1},
+        "profile": {"type": "string", "minLength": 1}
+      }
+    },
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "started_at",
+          "finished_at",
+          "duration_ms",
+          "status",
+          "command",
+          "exit_code",
+          "selectors",
+          "environment",
+          "artifacts"
+        ],
+        "properties": {
+          "id": {"type": "string", "pattern": "^GATE-[A-Z0-9._-]+$"},
+          "started_at": {"type": "string", "format": "date-time"},
+          "finished_at": {"type": "string", "format": "date-time"},
+          "duration_ms": {"type": "integer", "minimum": 0},
+          "status": {"enum": ["passed", "failed", "skipped", "cancelled"]},
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"type": "string"}
+          },
+          "exit_code": {"type": ["integer", "null"]},
+          "selectors": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {"type": "string"}
+          },
+          "environment": {
+            "type": "object",
+            "additionalProperties": {"type": "string"}
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path", "size", "sha256"],
+              "properties": {
+                "path": {"type": "string", "minLength": 1},
+                "size": {"type": "integer", "minimum": 0},
+                "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+              }
+            }
+          },
+          "skip_reason": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  }
+}

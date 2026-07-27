@@ -1,0 +1,136 @@
+# Requirement traceability implementation report
+
+Date: 2026-07-27
+Decision basis: ADR 0019 and `plan/06`
+
+## 1. Verdict
+
+**Go for changed-scope blocking. No-Go for full release blocking**, which stays gated on six
+named items in `traceability/baseline-debt.json`.
+
+The registry, validators, generated views, evidence resolver, Make targets and CI workflow are
+implemented and locally verified. The imported baseline is closed: every criterion that carries a
+claim of its own now names the exact assertion that proves it, and every bullet that was never a
+claim says so and names the criterion that absorbs it. What remains open is small, listed, and
+attributed.
+
+## 2. Baseline
+
+| Object | Count |
+|---|---:|
+| PRD FR/SEC/NFR requirements | 59 |
+| MVP acceptance conditions | 20 |
+| Tech security controls | 15 |
+| PRD scope guards | 12 |
+| Total registered requirements/controls | 106 |
+| Atomic criteria | 369 |
+| — carrying their own claim (`criterion`) | 235 |
+| — absorbed into another criterion | 131 |
+| — awaiting a PRD rewrite | 3 |
+| Statically verifiable | 232 |
+| Blocking gaps | 3 |
+| Active waivers | 0 |
+
+Stable anchors were added to `research/prd.md` and tech §23. Requirement text remains canonical
+there; the JSON registry stores metadata and anchors, not a second copy of normative prose.
+
+## 3. What closed the 308
+
+The first cut of this report recorded 308 criteria whose only verification was a file-level
+"supporting" link to a whole test suite. Two different problems were hiding under one number.
+
+**131 of them were never acceptance criteria.** Mechanical atomization turned the field lists,
+enum members and single figures inside PRD bullets into criteria of their own — `Hostname`,
+`Codex`, `Timestamp`, `2 秒`. `plan/06/02` §3 Pass B always called for classifying these; the
+classification had not been done. Each now carries `classification` plus the `covered_by`
+criterion that actually holds the claim, with the classifier and rationale recorded. The
+validator refuses an absorbed bullet that names no parent, names a parent outside its own
+requirement, names a parent that is itself absorbed, or keeps a `verified_by` of its own.
+
+**171 were real claims with no exact assertion behind them.** Each now has one or more primary
+`verified_by` links naming a specific test — `test_login_unknown_user_is_401_same_code`, not
+`test_auth_api.py`. 242 such links were added. The broad suite links remain, as `supporting`.
+
+Four assertions did not exist and were written rather than claimed:
+
+- `TestReconnectBackoffScheduleMatchesThePRD` — the daemon reconnect schedule was implemented but
+  never asserted, so it could drift to a flat 1 s retry with every test green.
+- `retries on the full 1/2/5/10/30 second schedule` — the same gap in the browser client. Writing
+  it exposed a fault in the WebSocket test double: it raised a second `close` event for an
+  already-closed socket, which silently consumed a step of the retry schedule.
+- `TestInstallLayoutMatchesTheDocumentedPaths` — the install layout FR-INSTALL-003 promises.
+- `backend/tests/test_relay_timeouts.py` — the relay budgets FR-CONN-006 and FR-SESSION-005 put a
+  number on.
+
+## 4. What is still open
+
+Six items, each named in `traceability/baseline-debt.json`. These are **not waivers**: nobody has
+accepted them and no expiry has been agreed. Three are missing implementation:
+
+| Criterion | What is actually there |
+|---|---|
+| `FR-FILE-006.AC-04` | The file tree has no auto-refresh option. The only `autoRefresh` in the front end belongs to the dashboard. |
+| `FR-NODE-005.AC-04` | `set_enabled` accepts `terminate_sessions` and audits it, but nothing acts on it — its own docstring calls it a reserved hook. |
+| `FR-SESSION-005.AC-06` | There is no force step. `tmux.Client.Stop` runs one `kill-session`; nothing waits and escalates. |
+
+Three are PRD text that cannot be decided as written, found while looking for the assertion:
+
+| Criterion | The disagreement |
+|---|---|
+| `FR-CONN-006.AC-02` | No single "general control command" budget exists; the relay has per-operation budgets and none is 10 s. |
+| `FR-CONN-006.AC-04` | PRD says a 30 s file read; `file_read_timeout_seconds` is 15. |
+| `FR-TERM-004.AC-03` | PRD states a 2–10 MB ring buffer; the daemon configures 5000 lines of tmux scrollback. Lines are not bytes. |
+
+Each needs an owner decision — implement it, or change the requirement. Writing a test around
+either side of a disagreement would have recorded the implementation as the requirement.
+
+## 5. Verification
+
+The traceability suite covers unknown schema fields, duplicate IDs, missing anchors, target path
+escape, missing selectors, missing primary links, non-waivable critical criteria, deterministic
+rendering, stale commits, dirty trees, gate-definition mismatch, missing artifacts, artifact path
+escape, required skips, and passing gates without an executed selector.
+
+Three checks that `plan/06` §2 called for and nothing exercised were added:
+
+- **Injection 7, browser matrix.** A gate that declares an environment matrix must account for
+  every leg as `executed`, `skipped` or `not-applicable`; a leg it does not declare is refused. A
+  passing gate with an unexecuted leg resolves to `environment-incomplete`, never `verified`, so a
+  Chromium-only run cannot satisfy a WebKit criterion.
+- **Injection 9, expired waiver.** A waiver past its window stops suppressing its gap on its own,
+  without anyone remembering to revoke it.
+- **Shard merge.** `trace merge` refuses shards that disagree on commit, tree state,
+  gate-definition hash or runner profile, and refuses the same gate twice.
+
+Local commands:
+
+```text
+uv run --project backend ruff check scripts/traceability
+uv run --project backend python -m pytest scripts/traceability/tests -q
+make traceability
+make traceability-coverage-strict
+```
+
+At report creation: Ruff passes, 30 traceability tests pass, schema/static/selector/render checks
+pass, `make traceability` exits 0 under changed-scope blocking. `make traceability-coverage-strict`
+exits 4 by design while the six baseline-debt items remain — that is the readiness probe for full
+blocking, not a failure to ignore.
+
+## 6. Historical reconciliation
+
+`research/01/06-requirement-traceability.md` now has sections 10–11 and routes current state to
+generated views. P0 remains a historical No-Go, P1–P3 retain their conditional verdicts, and P4
+remains Go subject to its recorded release conditions. No prose result was converted into
+same-commit observed evidence.
+
+## 7. Remaining adoption work
+
+1. Close or rewrite the six baseline-debt items, then turn on full release blocking.
+2. Obtain product and test-owner sign-off on the 134 classifications; they carry
+   `review.approved: false` until then.
+3. Add machine reporter selector sets to every product gate shard, so `selectors` in a result is
+   the list of assertions that actually executed rather than the list the registry expects.
+4. Replace the repository-owner CODEOWNERS fallback with organization team handles when those
+   teams exist. This is blocked outside the repository.
+
+These are visible gaps, not accepted passes and not waivers.

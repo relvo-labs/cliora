@@ -1,4 +1,4 @@
-.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot
+.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-strict traceability-test traceability
 
 # Postgres URL for the P1 data layer (override to point at your instance).
 DB_URL ?= postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -43,7 +43,32 @@ build:
 	cd daemon && mkdir -p bin && go build -o bin/agentd ./cmd/agentd && go build -o bin/fakecli ./cmd/fakecli
 	cd frontend && npm run build
 
-check: format-check lint typecheck unit contract build
+check: format-check lint typecheck unit contract build traceability-validate
+
+# --- Requirement traceability (ADR 0019 / plan/06) ---
+traceability-validate:
+	scripts/trace validate --level static
+	scripts/trace render --check
+
+traceability-selectors:
+	scripts/trace validate --level selectors
+
+traceability-render:
+	scripts/trace render --write
+
+# Changed-scope blocking (ADR 0019 rollout stage 4): any gap outside the named
+# baseline debt fails, and so does a debt entry that has since been closed.
+traceability-coverage:
+	scripts/trace coverage --scope all --baseline traceability/baseline-debt.json
+
+# Stage 7 readiness: exits 0 only once the debt list is empty.
+traceability-coverage-strict:
+	scripts/trace coverage --scope all --strict
+
+traceability-test:
+	uv run --project backend python -m pytest scripts/traceability/tests -q
+
+traceability: traceability-validate traceability-selectors traceability-coverage traceability-test
 
 # Central alone, for API work. There is no dev relay any more (P4-07 retired the P0
 # one), so a node reaches this through real enrollment — use `dev-stack` for that.
