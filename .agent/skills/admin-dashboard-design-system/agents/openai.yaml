@@ -1,0 +1,4 @@
+interface:
+  display_name: "Admin Dashboard Design System"
+  short_description: "Design Cliora operational dashboard patterns"
+  default_prompt: "Use $admin-dashboard-design-system to handle this task with the relevant project constraints and verification."

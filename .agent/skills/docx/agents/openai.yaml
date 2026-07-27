@@ -1,0 +1,4 @@
+interface:
+  display_name: "Docx"
+  short_description: "Create and edit Microsoft Word documents"
+  default_prompt: "Use $docx to handle this task with the relevant project constraints and verification."

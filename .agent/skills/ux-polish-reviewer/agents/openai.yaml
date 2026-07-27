@@ -1,0 +1,4 @@
+interface:
+  display_name: "UX Polish Reviewer"
+  short_description: "Review Cliora usability and operational states"
+  default_prompt: "Use $ux-polish-reviewer to handle this task with the relevant project constraints and verification."

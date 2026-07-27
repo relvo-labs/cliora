@@ -1,0 +1,4 @@
+interface:
+  display_name: "Electron Desktop App Guidelines"
+  short_description: "Build secure explicit Electron desktop apps"
+  default_prompt: "Use $electron-desktop-app-guidelines to handle this task with the relevant project constraints and verification."

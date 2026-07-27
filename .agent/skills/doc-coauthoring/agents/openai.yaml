@@ -1,0 +1,4 @@
+interface:
+  display_name: "Doc Coauthoring"
+  short_description: "Co-author consistent Cliora project documents"
+  default_prompt: "Use $doc-coauthoring to handle this task with the relevant project constraints and verification."

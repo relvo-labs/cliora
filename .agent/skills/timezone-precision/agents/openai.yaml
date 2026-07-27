@@ -1,0 +1,4 @@
+interface:
+  display_name: "Timezone Precision"
+  short_description: "Enforce exact cross-stack timestamp semantics"
+  default_prompt: "Use $timezone-precision to handle this task with the relevant project constraints and verification."

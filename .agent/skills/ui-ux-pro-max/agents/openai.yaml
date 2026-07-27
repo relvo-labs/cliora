@@ -1,0 +1,4 @@
+interface:
+  display_name: "UI UX Pro Max"
+  short_description: "Query supplemental UI and UX design evidence"
+  default_prompt: "Use $ui-ux-pro-max to handle this task with the relevant project constraints and verification."

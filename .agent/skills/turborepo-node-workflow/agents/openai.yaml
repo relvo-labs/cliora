@@ -1,0 +1,4 @@
+interface:
+  display_name: "Turborepo Node Workflow"
+  short_description: "Follow the detected Node workspace workflow"
+  default_prompt: "Use $turborepo-node-workflow to handle this task with the relevant project constraints and verification."

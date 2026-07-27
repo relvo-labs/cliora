@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design System Starter"
+  short_description: "Maintain Cliora tokens and component foundations"
+  default_prompt: "Use $design-system-starter to handle this task with the relevant project constraints and verification."

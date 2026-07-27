@@ -1,0 +1,4 @@
+interface:
+  display_name: "Web Design Guidelines"
+  short_description: "Audit Cliora interface rule compliance"
+  default_prompt: "Use $web-design-guidelines to handle this task with the relevant project constraints and verification."

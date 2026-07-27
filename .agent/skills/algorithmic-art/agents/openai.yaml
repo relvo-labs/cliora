@@ -1,0 +1,4 @@
+interface:
+  display_name: "Algorithmic Art"
+  short_description: "Create original interactive generative artwork"
+  default_prompt: "Use $algorithmic-art to handle this task with the relevant project constraints and verification."

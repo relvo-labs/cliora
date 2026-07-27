@@ -1,0 +1,4 @@
+interface:
+  display_name: "Goal Mode"
+  short_description: "Drive scoped Cliora tasks through verification"
+  default_prompt: "Use $goal-mode to handle this task with the relevant project constraints and verification."

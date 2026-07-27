@@ -1,0 +1,4 @@
+interface:
+  display_name: "Frontend Design"
+  short_description: "Polish Cliora UI within its established VDS"
+  default_prompt: "Use $frontend-design to handle this task with the relevant project constraints and verification."
