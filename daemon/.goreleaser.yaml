@@ -1,0 +1,51 @@
+# GoReleaser config for the agentd daemon (ADR 0011, tech §15.3/§20.3).
+# Produces agentd_<ver>_linux_{amd64,arm64}.tar.gz + checksums.txt, which the
+# platform serves from /api/downloads and the installer verifies before use.
+version: 2
+
+project_name: agentd
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: agentd
+    main: ./cmd/agentd
+    binary: agentd
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    # -trimpath removes the build machine's absolute module paths from the binary.
+    # Two reasons, both P4-10: it is required for the "same commit, two builds, same
+    # checksum" reproducibility check (ADR 0017), because without it the paths of the
+    # build directory end up in the binary and every builder produces a different
+    # digest; and those paths are an unnecessary disclosure in a shipped artifact.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: agentd
+    ids:
+      - agentd
+    formats:
+      - tar.gz
+    # Yields agentd_<version>_linux_amd64 / _arm64, matching the download
+    # endpoint's allowlist regex.
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Version }}-snapshot"
+
+release:
+  disable: true
