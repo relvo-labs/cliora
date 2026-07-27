@@ -1,0 +1,152 @@
+# Cliora single-host deployment (P4-12).
+#
+# Reference topology, not a turnkey production stack: one host, one Central, one
+# PostgreSQL, nginx terminating TLS. It is honest about that in docs/deployment.md
+# rather than implying a multi-replica setup would work — Central's connection registry
+# and terminal relay are process-local (see the module docstrings), so a second backend
+# replica would hold half the daemon sockets and neither would know about the other's.
+#
+# Deployment order is enforced by dependencies rather than documented and hoped for:
+#   postgres healthy -> migrate runs to completion -> backend starts -> nginx serves.
+# Migrations are a one-shot job precisely so that no long-running container ever
+# migrates on boot.
+
+name: cliora
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Not published to the host. Only the backend and the migrate job need it, and both
+    # are on this network; a published port is the difference between "reachable by
+    # Central" and "reachable by anything that can route to this host".
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [internal]
+
+  # One-shot. `docker compose up` waits for it to exit 0 before starting the backend
+  # (service_completed_successfully), so a schema change can never race a rollout.
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/backend.Dockerfile
+    restart: "no"
+    entrypoint: ["alembic", "upgrade", "head"]
+    environment:
+      CLIORA_DATABASE_URL: ${CLIORA_DATABASE_URL:?set CLIORA_DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  backend:
+    build:
+      context: ../..
+      dockerfile: deploy/backend.Dockerfile
+    restart: unless-stopped
+    environment:
+      CLIORA_ENVIRONMENT: production
+      # Every secret arrives from the environment; none is baked into the image
+      # (tech §23 #4). `:?` fails the deploy loudly rather than falling back to the dev
+      # defaults — which `Settings.reject_dev_secrets_in_production` would refuse anyway,
+      # but failing here names the missing variable instead of raising on startup.
+      CLIORA_DATABASE_URL: ${CLIORA_DATABASE_URL:?set CLIORA_DATABASE_URL}
+      CLIORA_JWT_SECRET: ${CLIORA_JWT_SECRET:?set CLIORA_JWT_SECRET}
+      CLIORA_TOKEN_PEPPER: ${CLIORA_TOKEN_PEPPER:?set CLIORA_TOKEN_PEPPER}
+      CLIORA_PUBLIC_BASE_URL: ${CLIORA_PUBLIC_BASE_URL:?set CLIORA_PUBLIC_BASE_URL}
+      CLIORA_ARTIFACTS_DIR: ${CLIORA_ARTIFACTS_DIR:-/srv/artifacts}
+      CLIORA_METRICS_ENABLED: ${CLIORA_METRICS_ENABLED:-false}
+      CLIORA_METRICS_SCRAPE_TOKEN: ${CLIORA_METRICS_SCRAPE_TOKEN:-}
+      CLIORA_SHUTDOWN_DRAIN_SECONDS: ${CLIORA_SHUTDOWN_DRAIN_SECONDS:-15}
+    volumes:
+      # Release tarballs served by /api/downloads, read-only: Central publishes them and
+      # has no reason to be able to alter them (SEC-002).
+      - ${CLIORA_ARTIFACTS_HOST_DIR:-./artifacts}:/srv/artifacts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    expose:
+      - "8000"
+    healthcheck:
+      # /readyz, not /healthz: it also compares the applied migration against the
+      # expected head, so a container that started against a database the migrate job
+      # did not reach is reported unready instead of taking traffic.
+      test: ["CMD-SHELL", "python -c \"import urllib.request,json,sys; b=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readyz')); sys.exit(0 if b['status']=='ready' else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    # Longer than shutdown_drain_seconds (15). If Docker's default 10 s applied, SIGKILL
+    # would arrive mid-drain and browsers would get the unexplained disconnect the drain
+    # exists to prevent.
+    stop_grace_period: 30s
+    networks: [internal]
+
+  nginx:
+    build:
+      context: ../..
+      dockerfile: deploy/frontend.Dockerfile
+      args:
+        VITE_PRODUCT_NAME: ${VITE_PRODUCT_NAME:-Cliora}
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ${CLIORA_TLS_DIR:?set CLIORA_TLS_DIR}:/etc/nginx/tls:ro
+      - certbot-webroot:/var/www/certbot
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [internal]
+
+  # --- profile: observability ---
+  # Off unless explicitly requested. Prometheus reaches Central on the internal network
+  # only, and /api/metrics is not exposed at the edge (see nginx.conf).
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    profiles: [observability]
+    restart: unless-stopped
+    volumes:
+      - ../prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ../prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - promdata:/prometheus
+    expose:
+      - "9090"
+    networks: [internal]
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    profiles: [observability]
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"  # loopback only; reach it over an SSH tunnel
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  pgdata:
+  promdata:
+  grafanadata:
+  certbot-webroot:

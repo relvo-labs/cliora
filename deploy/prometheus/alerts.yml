@@ -1,0 +1,191 @@
+# Prometheus alerting rules for Cliora Central (P4-09, ADR 0018).
+#
+# Every rule here names a runbook in docs/runbooks/, and every rule can be triggered on
+# purpose by a script in scripts/p4/drills/. Both are acceptance criteria rather than
+# nice-to-haves: an alert nobody has seen fire is an alert nobody knows how to handle,
+# and one with no runbook hands someone a pager with no next step.
+#
+# Thresholds and for-durations come from plan/05/00-execution-plan.md §6. They are
+# starting values to be revised from real data, not permanent product limits — ADR 0018
+# records that explicitly, so adjusting one later is a decision and not a violation.
+#
+# Validate with:  promtool check rules deploy/prometheus/alerts.yml
+
+groups:
+  - name: cliora-liveness
+    rules:
+      # A node holding an open socket whose heartbeat has gone stale is the case that
+      # neither "connected" nor "offline" describes: the daemon process is reachable but
+      # not doing its job, and it is exactly what the freshness contract exists to
+      # surface rather than paper over.
+      - alert: ClioraNodeHeartbeatLoss
+        expr: cliora_online_nodes < cliora_active_daemon_connections
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "A connected node has stopped heartbeating"
+          description: >-
+            One or more daemons hold an open socket but their last heartbeat is older
+            than the online window, so Central no longer counts them as online.
+          runbook: docs/runbooks/heartbeat-loss.md
+
+      - alert: ClioraFleetOffline
+        expr: cliora_active_daemon_connections == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No daemon is connected to Central"
+          description: >-
+            Central is being scraped, so it is up — yet no node holds a connection.
+            That distinguishes "Central is down" (no metrics at all) from "every node
+            is gone", which need different first steps.
+          runbook: docs/runbooks/heartbeat-loss.md
+
+  - name: cliora-backpressure
+    rules:
+      # An overflow is not a threshold to tune: it means a browser was too slow, its
+      # bounded queue filled, and the connection was closed with an explicit gap marker.
+      # Rare is normal; a sustained rate means something systemic changed.
+      - alert: ClioraTerminalQueueOverflow
+        expr: increase(cliora_terminal_queue_overflow_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Terminal output is outpacing browsers"
+          description: >-
+            A bounded per-browser queue overflowed. The connection is closed with
+            terminal.gap rather than growing without limit, so this is contained — but a
+            sustained rate means output volume or client latency has changed.
+          runbook: docs/runbooks/queue-saturation.md
+
+      # The early warning the overflow counter cannot give: by the time that fires, the
+      # connection has already been dropped. 3355443 bytes is 80% of the 4 MiB default.
+      - alert: ClioraTerminalQueueNearLimit
+        expr: >-
+          histogram_quantile(0.95,
+            sum(rate(cliora_terminal_client_queue_bytes_bucket[5m])) by (le)) > 3355443
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Terminal queues are running above 80% of their byte bound"
+          description: >-
+            p95 queue depth is within 20% of terminal_queue_max_bytes; overflow and the
+            connection drops that follow are imminent.
+          runbook: docs/runbooks/queue-saturation.md
+
+  - name: cliora-relay
+    rules:
+      - alert: ClioraDaemonRequestTimeoutSurge
+        expr: sum(increase(cliora_daemon_request_timeout_total[5m])) > 10
+        labels:
+          severity: warning
+        annotations:
+          summary: "Relayed requests to daemons are timing out"
+          description: >-
+            More than 10 relayed requests went unanswered in 5 minutes. Check the `type`
+            label first: a daemon.update timeout is expected, because the daemon
+            restarts mid-update and answers afterwards.
+          runbook: docs/runbooks/timeout-surge.md
+
+      - alert: ClioraDaemonRequestTimeoutCritical
+        expr: sum(increase(cliora_daemon_request_timeout_total[5m])) > 50
+        labels:
+          severity: critical
+        annotations:
+          summary: "Relayed requests to daemons are timing out at a high rate"
+          runbook: docs/runbooks/timeout-surge.md
+
+  - name: cliora-database
+    rules:
+      # 80% of the configured pool (db_pool_size + db_max_overflow, 20 by default).
+      # Ratio rather than an absolute count so retuning the pool does not silently
+      # invalidate the alert.
+      - alert: ClioraDatabasePoolPressure
+        expr: >-
+          cliora_database_pool_usage{state="checked_out"}
+          / clamp_min(cliora_database_pool_usage{state="size"}, 1) > 0.8
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The database pool is over 80% checked out"
+          description: >-
+            Sustained pressure precedes checkout timeouts, which surface to users as
+            503s. Look for a slow query or a leaked session before raising the bound.
+          runbook: docs/runbooks/db-exhaustion.md
+
+      - alert: ClioraDatabasePoolExhausted
+        expr: increase(cliora_database_pool_timeout_total[5m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "A database connection checkout timed out"
+          description: >-
+            Requests are being refused with 503 because no connection became available
+            within db_pool_timeout_seconds.
+          runbook: docs/runbooks/db-exhaustion.md
+
+  - name: cliora-update
+    rules:
+      # Any failed update is critical, not a rate: a fleet upgrade that half-worked
+      # leaves nodes on mixed versions, and the rollback outcome decides whether anyone
+      # has to touch the box.
+      - alert: ClioraDaemonUpdateFailed
+        expr: increase(cliora_node_update_total{status!="succeeded"}[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "A daemon update did not succeed"
+          description: >-
+            Check the status label: `rolled_back` means the previous binary is back and
+            running (contained), `failed` may mean the rollback did not restore it.
+          runbook: docs/runbooks/update-failure.md
+
+  - name: cliora-security
+    rules:
+      # A rise is either an attack or a misconfigured role. Both need looking at, and
+      # neither is visible anywhere else — a 403 is not an error anyone logs loudly.
+      - alert: ClioraAuthorizationDenialSpike
+        expr: sum(increase(cliora_authz_denied_total[5m])) > 20
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Authorization denials have risen sharply"
+          description: >-
+            Check the `reason` label: `action` means a role lacks the permission
+            (likely a misconfiguration or a UI regression), `scope` means cross-owner
+            access attempts (likely probing).
+          runbook: docs/runbooks/heartbeat-loss.md
+
+      # Any value is critical. A failing audit write silently breaks accountability:
+      # the operation still happens, and nothing records that it did.
+      - alert: ClioraAuditWriteFailing
+        expr: increase(cliora_audit_error_total[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit rows are failing to write"
+          description: >-
+            Operations are proceeding without being recorded. Treat as a security
+            incident until the cause is known — the trail cannot be reconstructed after
+            the fact.
+          runbook: docs/runbooks/db-exhaustion.md
+
+      # The resource history has gaps. Not user-visible, so this counter is the only
+      # signal (the write is swallowed on purpose so it cannot break heartbeats).
+      - alert: ClioraMetricPersistFailing
+        expr: increase(cliora_metric_persist_error_total[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node resource samples are failing to persist"
+          description: >-
+            Heartbeat processing is unaffected by design, so the only symptom is a
+            Dashboard resources block and a diagnostic history with holes in them.
+          runbook: docs/runbooks/db-exhaustion.md

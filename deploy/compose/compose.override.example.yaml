@@ -1,0 +1,27 @@
+# Local overrides. Copy to `compose.override.yaml` (git-ignored) — compose merges it
+# automatically. Everything here is for development or evaluation; none of it belongs on
+# a host that is actually serving.
+
+services:
+  # Reach PostgreSQL from the host for psql or a backup. Publishing this port is exactly
+  # what the base file avoids, so it is opt-in and loopback-only even here.
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  backend:
+    environment:
+      # `production` refuses the dev secrets, which is unhelpful when you are trying to
+      # get something running once. Do not carry this into a real deployment: it is the
+      # single switch that turns "fails loudly on a placeholder secret" into "runs on one".
+      CLIORA_ENVIRONMENT: development
+      CLIORA_METRICS_ENABLED: "true"
+      CLIORA_METRICS_SCRAPE_TOKEN: "dev-only-scrape-token-min16"
+    ports:
+      - "127.0.0.1:8000:8000"   # bypass nginx while debugging the API
+
+  # Serve plain HTTP so you do not need a certificate to click around. This disables TLS
+  # termination, HSTS and the HTTP->HTTPS redirect — i.e. tech §23 #1 in full.
+  nginx:
+    volumes:
+      - ./dev-nginx.conf:/etc/nginx/nginx.conf:ro
