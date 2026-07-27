@@ -1,0 +1,18 @@
+.venv/
+node_modules/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+daemon/bin/
+frontend/dist/
+backend/dist/
+frontend/coverage/
+frontend/playwright-report/
+frontend/test-results/
+frontend/tsconfig.tsbuildinfo
+# Merge/patch leftovers.
+*.orig
+# Locally generated evidence packs / perf runs (CI uploads its own per-run dirs).
+artifacts/*/local/
