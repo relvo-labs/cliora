@@ -1,0 +1,402 @@
+name: P4
+on: [push, pull_request]
+
+# The MVP release gate. All 12 jobs are required: nothing carries
+# `continue-on-error`, because a gate that can be green while a check failed is not a gate.
+#
+# Two jobs are scoped deliberately rather than by omission, and both are recorded in
+# docs/p4-report.md as verification gaps rather than left to be discovered:
+#
+#   * `capacity` runs the **smoke** profile on every push and the **full** NFR-003 profile
+#     only on main and release branches. A 100-node / 500-socket run on a shared hosted
+#     runner measures the runner, not Cliora — the numbers would be noise and the gate
+#     would flap. The smoke profile exercises every assertion at smaller magnitude, so it
+#     still catches a harness or a bound regression.
+#   * the `edge` job runs nginx for real but takes ~3 minutes, 70 s of which is one idle
+#     WebSocket. That 70 s is the threshold being measured and cannot be shortened.
+
+jobs:
+  # 1. Central: static checks, reversible migrations, the whole suite including the
+  #    exhaustive permission matrix and the P4 additions (audit query, dashboard blocks,
+  #    metrics export, favourites, shutdown drain, per-user session cap).
+  backend-db:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: format / lint / typecheck
+        run: |
+          uv run --project backend ruff format --check backend
+          uv run --project backend ruff check backend
+          uv run --project backend mypy backend/app
+      - name: migrations up / down / up (0008-0011)
+        working-directory: backend
+        env: { CLIORA_ADMIN_PASSWORD: ci-admin-pw }
+        run: |
+          uv run --project . alembic upgrade head
+          uv run --project . python -m app.bootstrap create-admin --username migration-rollback
+          # Down to 0007 and back up: the P4 revisions specifically, so a
+          # non-reversible one fails here rather than during an incident rollback.
+          uv run --project . alembic downgrade 0007_seed_file_browse
+          uv run --project . alembic upgrade head
+          uv run --project . alembic downgrade base
+          uv run --project . alembic upgrade head
+      - name: unit + DB tests (incl. permission matrix)
+        run: uv run --project backend pytest backend/tests -q
+
+  # 2. Daemon: statics, race suite, the tmux-backed integration suites, cross-builds, and
+  #    the reproducible-build check (same commit twice -> identical checksum).
+  daemon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "daemon/go.mod" }
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: vet / test -race
+        working-directory: daemon
+        run: |
+          go vet ./...
+          go test -race ./...
+      - name: integration suites
+        working-directory: daemon
+        run: go test -tags integration -race ./internal/session/... ./internal/connection/... ./internal/files/... ./internal/workspace/... ./internal/update/...
+      - name: cross-build amd64 / arm64
+        working-directory: daemon
+        run: |
+          GOOS=linux GOARCH=amd64 go build -o /tmp/agentd-amd64 ./cmd/agentd
+          GOOS=linux GOARCH=arm64 go build -o /tmp/agentd-arm64 ./cmd/agentd
+      - name: reproducible build
+        working-directory: daemon
+        run: |
+          # An update that verifies checksums is only meaningful if the checksum for a
+          # given commit is deterministic. -trimpath removes the build path, which is
+          # otherwise the usual source of divergence.
+          GOFLAGS=-trimpath go build -o /tmp/repro-1 ./cmd/agentd
+          GOFLAGS=-trimpath go build -o /tmp/repro-2 ./cmd/agentd
+          a=$(sha256sum /tmp/repro-1 | cut -d' ' -f1)
+          b=$(sha256sum /tmp/repro-2 | cut -d' ' -f1)
+          echo "build 1: $a"; echo "build 2: $b"
+          [ "$a" = "$b" ] || { echo "build is not reproducible"; exit 1; }
+
+  # 3. Contract: one manifest, three languages, same accept/reject verdicts.
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "daemon/go.mod" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: uv sync --project backend --locked
+      - run: npm ci --prefix frontend
+      - name: python fixtures
+        run: uv run --project backend pytest backend/tests/contract -q
+      - name: go fixtures
+        working-directory: daemon
+        run: go test ./internal/protocol/...
+      - name: typescript fixtures
+        working-directory: frontend
+        run: npx vitest run src/api --reporter=dot
+
+  # 4. Frontend: lint, typecheck, unit, build.
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci --prefix frontend
+      - name: format / lint / typecheck
+        working-directory: frontend
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+      - name: unit tests
+        working-directory: frontend
+        run: npx vitest run --exclude 'tests/e2e/**'
+      - name: build
+        working-directory: frontend
+        run: npm run build
+
+  # 5. Browser E2E across all three engines. WebKit is included because it is the one
+  #    that historically differs on WebSocket and clipboard behaviour, and "works in
+  #    Chromium" is not the claim the PRD makes.
+  #
+  #    Its own database, dropped afterwards: run-stack.sh writes real data, and P3 taught
+  #    us that pointing it at cliora_test breaks the suites with counting assertions.
+  browser:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_e2e }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_e2e
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "daemon/go.mod" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - run: npm ci --prefix frontend
+      - run: npx --prefix frontend playwright install --with-deps ${{ matrix.browser }}
+      - name: e2e
+        env:
+          CLIORA_ADMIN_PASSWORD: e2e-admin-pw
+          P4_SCREENSHOT_DIR: artifacts/p4/ci/screenshots-${{ matrix.browser }}
+        run: scripts/e2e/run-stack.sh --project ${{ matrix.browser }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.browser }}
+          path: artifacts/p4/ci/
+
+  # 6. Capacity and boundedness. Smoke on every push; full NFR-003 scale on main and
+  #    release branches only — see the note at the top of this file.
+  capacity:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: postgres }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: raise the file-descriptor limit
+        # 500 terminal sockets plus 100 daemon sockets plus the harness's own; the default
+        # soft limit would fail the run for a reason that has nothing to do with Cliora.
+        run: ulimit -n 65535 || true
+      - name: capacity (smoke)
+        run: |
+          mkdir -p /tmp/cliora-load
+          uv run --project backend python scripts/p4/load/capacity.py \
+            --profile smoke --out artifacts/p4/ci/capacity-smoke.json
+      - name: capacity (full NFR-003 scale)
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')
+        run: |
+          uv run --project backend python scripts/p4/load/capacity.py \
+            --profile full --out artifacts/p4/ci/capacity-full.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: capacity, path: artifacts/p4/ci/ }
+
+  # 7. Security: the attack suite, the leakage scans, and dependency advisories.
+  security:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "daemon/go.mod" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: uv sync --project backend --locked
+      - run: npm ci --prefix frontend
+      - name: attack suite and leakage assertions
+        run: |
+          uv run --project backend pytest backend/tests -q \
+            -k "security or authz or leakage or redaction or audit or catalog or correlation or overflow"
+      - name: path-security fuzz gate
+        working-directory: daemon
+        run: go test -run 'Fuzz' -fuzz 'FuzzOpenFile' -fuzztime 60s ./internal/workspace/...
+      - name: python advisories
+        run: |
+          uv run --project backend --with pip-audit pip-audit --strict \
+            --requirement <(uv export --project backend --no-dev --no-hashes)
+      - name: node advisories (production only)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+      - name: go advisories
+        working-directory: daemon
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+  # 8. Backup / restore drill against a real dump, including the "no terminal output, no
+  #    file content, no credential" scan. This is where the ADR 0004 data-model promise is
+  #    checked against the artifact that leaves the building.
+  backup-restore:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: start PostgreSQL as a named container
+        # The drill drives `docker exec`, so it needs a container it can name rather than
+        # a services: entry it cannot reach that way.
+        run: |
+          docker run -d --name cliora-pg \
+            -e POSTGRES_USER=cliora -e POSTGRES_PASSWORD=cliora -e POSTGRES_DB=postgres \
+            -p 127.0.0.1:5432:5432 postgres:16-alpine
+          for _ in $(seq 1 30); do
+            docker exec cliora-pg pg_isready -U cliora && break || sleep 2
+          done
+      - name: drill
+        run: scripts/p4/backup-restore-drill.sh artifacts/p4/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: backup-restore, path: artifacts/p4/ci/ }
+
+  # 9. The edge, executed rather than reviewed. Brings up the real nginx image with the
+  #    shipped config in front of a throwaway Central and asserts over the wire. This job
+  #    exists because reviewing the config missed three real defects: security headers
+  #    absent on the HTML page (nginx `add_header` does not inherit into a location that
+  #    declares its own), a multi-line CSP that produced an invalid HTTP/2 header (nginx has
+  #    no line continuation in quoted strings), and `/api/metrics` proxied through while a
+  #    comment claimed otherwise.
+  edge:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: uv sync --project backend --locked
+      - run: npm ci --prefix frontend && npm run build --prefix frontend
+      - name: start PostgreSQL as a named container
+        run: |
+          docker run -d --name cliora-pg \
+            -e POSTGRES_USER=cliora -e POSTGRES_PASSWORD=cliora -e POSTGRES_DB=postgres \
+            -p 127.0.0.1:5432:5432 postgres:16-alpine
+          for _ in $(seq 1 30); do
+            docker exec cliora-pg pg_isready -U cliora && break || sleep 2
+          done
+      - name: verify the edge
+        run: scripts/p4/verify-edge.sh artifacts/p4/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: edge, path: artifacts/p4/ci/ }
+
+  # 10. Docs and traceability consistency: the generated artifacts must match their
+  #    sources, and every runbook an alert names must exist.
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: generated docs are current
+        run: |
+          # Regenerate and diff. A hand-edited error catalog or permission matrix is a
+          # document that has quietly stopped describing the code.
+          uv run --project backend python scripts/p4/render_error_catalog.py
+          uv run --project backend python scripts/p4/render_permission_matrix.py
+          git diff --exit-code docs/error-catalog.md docs/permission-matrix.md
+      - name: alert rules and runbooks agree
+        run: uv run --project backend pytest backend/tests/test_alerts_and_runbooks.py -q
+      - name: prometheus rules are valid
+        run: |
+          docker run --rm -v "$PWD/deploy/prometheus:/rules" \
+            --entrypoint promtool prom/prometheus:v3.1.0 check rules /rules/alerts.yml
+
+  # 11. Ops drills: every alert can actually be triggered, and the runbook steps run.
+  drills:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: run every drill
+        run: scripts/p4/drills/run-all.sh artifacts/p4/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: drills, path: artifacts/p4/ci/ }
+
+  # 12. Evidence pack. Depends on everything, so it cannot be produced for a run whose
+  #     gates did not pass — an evidence pack from a red run is worse than none.
+  evidence:
+    runs-on: ubuntu-24.04
+    needs: [backend-db, daemon, contract, frontend, browser, capacity, security, backup-restore, edge, docs, drills]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: artifacts/p4/ci-download }
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: assemble
+        run: scripts/p4/evidence.sh artifacts/p4/ci
+      - uses: actions/upload-artifact@v4
+        with: { name: p4-evidence, path: artifacts/p4/ci/ }

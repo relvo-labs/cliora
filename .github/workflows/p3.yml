@@ -1,0 +1,288 @@
+name: P3
+on: [push, pull_request]
+jobs:
+  # Backend against a real PostgreSQL: migrations up/down/up (now including the
+  # P3 file.browse RBAC seed, 0007) then the full suite — filesystem relay
+  # boundary validation, RBAC, safe error mapping, sensitive-read audit with no
+  # path/content, filesystem metrics and the redacted correlation log.
+  backend-db:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: format / lint / typecheck
+        run: |
+          uv run --project backend ruff format --check backend
+          uv run --project backend ruff check backend
+          uv run --project backend mypy backend/app
+      - name: migrations up / down / up (incl. 0007 file.browse seed)
+        working-directory: backend
+        env: { CLIORA_ADMIN_PASSWORD: ci-admin-pw }
+        run: |
+          uv run --project . alembic upgrade head
+          uv run --project . python -m app.bootstrap create-admin --username migration-rollback
+          uv run --project . alembic downgrade base
+          uv run --project . alembic upgrade head
+      - name: unit + DB-backed tests
+        run: uv run --project backend pytest backend/tests -q
+
+  # Daemon: static checks, the race suite, the path-security fuzz gate (P3-03),
+  # the tmux-backed integration suites (session lifecycle + filesystem dispatch),
+  # the filesystem latency budget, and cross-arch build.
+  daemon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - name: tmux (integration needs a real tmux)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - working-directory: daemon
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+      - name: path-security fuzz gate (P3-03)
+        working-directory: daemon
+        run: go test ./internal/workspace -run TestNothing -fuzz=FuzzOpenFile -fuzztime=60s
+      - name: filesystem + session integration
+        working-directory: daemon
+        run: go test -tags integration -race ./internal/session ./internal/connection ./internal/files ./internal/workspace
+      # CLIORA_PERF_OUT must be absolute: `go test` runs each test in its own
+      # package directory, so a relative path would land under internal/files.
+      - name: filesystem latency budget (daemon leg)
+        working-directory: daemon
+        run: >-
+          CLIORA_PERF_OUT=$GITHUB_WORKSPACE/artifacts/p3/${{ github.run_id }}/fs-latency.json
+          go test ./internal/files -run TestFilesystemLatencyBudget -v
+      - working-directory: daemon
+        run: |
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH=$arch go build -o "dist/agentd_linux_$arch" ./cmd/agentd
+          done
+      - uses: actions/upload-artifact@v4
+        with: { name: fs-latency, path: artifacts/p3/ }
+
+  # Three-language protocol v1.3 consistency (filesystem.* request schemas +
+  # FILE_*/WORKSPACE_* codes) and the 1.3.1 split frame bound: the same
+  # manifest.json fixtures must accept/reject identically in Python, Go and TS.
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - name: python / go / ts contract
+        run: |
+          uv run --project backend pytest backend/tests/contract -q
+          (cd daemon && go test ./internal/protocol)
+          (cd frontend && npm run test:unit -- --run src/protocol)
+
+  # Security-focused paths: path escape / symlink swap / TOCTOU, the sensitive /
+  # binary / oversize denial matrix, Central refusing absolute-`..`-control-char
+  # input at the boundary, relay bounds, and log/audit redaction (no file
+  # content, no keyword in the clear, no absolute path).
+  security:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - run: uv sync --project backend --locked
+      - working-directory: backend
+        run: uv run --project . alembic upgrade head
+      - name: daemon path security + read policy
+        working-directory: daemon
+        run: go test -race ./internal/workspace ./internal/files
+      - name: central boundary / RBAC / audit redaction
+        run: |
+          uv run --project backend pytest \
+            backend/tests/test_security.py \
+            backend/tests/db/test_files_api.py \
+            backend/tests/contract/test_contract.py \
+            -q
+
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci
+      # The build proves the Monaco workers bundle locally: no CDN, no network
+      # at runtime. The grep is the gate — a remote worker URL must never ship.
+      - working-directory: frontend
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm run test:unit -- --run
+          npm run build
+      - name: monaco worker is self-bundled (no CDN)
+        working-directory: frontend
+        run: |
+          ls dist/assets | grep -q 'editor.worker' || { echo "monaco worker not bundled"; exit 1; }
+          if grep -rlE 'https?://(cdn|unpkg|jsdelivr)' dist/assets; then
+            echo "a CDN reference shipped in the bundle"; exit 1
+          fi
+
+  # Full-stack browser E2E: login → session workspace → lazy file tree → search
+  # back into the tree → Monaco read-only preview → sensitive/binary/oversize
+  # denials → terminated session cannot browse. scripts/e2e/run-stack.sh seeds
+  # the workspace fixtures and stands up Central + a real daemon node.
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      E2E_FULL_STACK: "1"
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+      CLIORA_ADMIN_PASSWORD: e2e-admin-pw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: tmux (the daemon launches real tmux sessions)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: full stack + playwright (+ evidence screenshots)
+        env:
+          P3_SCREENSHOT_DIR: ${{ github.workspace }}/artifacts/p3/${{ github.run_id }}/screenshots
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: ${{ github.workspace }}/artifacts/p3/${{ github.run_id }}/e2e.xml
+        run: |
+          mkdir -p "$P3_SCREENSHOT_DIR"
+          ./scripts/e2e/run-stack.sh bash -c 'cd frontend && npx playwright test --reporter=junit'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: p3-e2e-evidence, path: artifacts/p3/ }
+
+  # Central-leg filesystem latency + relay bounds (timeout / cancel / NODE_BUSY /
+  # disconnect cleanup). Fails on a budget or bounds regression.
+  performance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: filesystem relay latency / bounds
+        working-directory: backend
+        run: >-
+          uv run --project . python perf/files_bench.py
+          --out ../artifacts/p3/${{ github.run_id }}/relay-latency.json
+      - uses: actions/upload-artifact@v4
+        with: { name: relay-latency, path: artifacts/p3/ }
+
+  # Exit-gate evidence pack (plan/04/07 §3): versions, per-gate exit status,
+  # JUnit reports, race/fuzz output, the path-security gate summary, both latency
+  # legs, and the denial-matrix / relay-bounds / security-report summaries. The
+  # script fails if any recorded gate fails, so the pack cannot describe a green
+  # run that did not happen. Browser screenshots come from the browser-e2e job.
+  evidence:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      FUZZ_TIME: 60s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: tmux (integration leg)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: backend
+        run: uv run --project . alembic upgrade head
+      - name: generate the evidence pack
+        run: ./scripts/p3/evidence.sh "$GITHUB_WORKSPACE/artifacts/p3/${{ github.run_id }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: p3-evidence, path: artifacts/p3/ }

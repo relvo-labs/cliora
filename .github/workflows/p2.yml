@@ -1,0 +1,198 @@
+name: P2
+on: [push, pull_request]
+jobs:
+  # Backend against a real PostgreSQL: migrations up/down/up (now including the
+  # P2 terminal_sessions/session_connections tables, 0005/0006) then the full
+  # suite — session state machine, domain service guards, HTTP RBAC, relay
+  # queue/backpressure, writer/viewer/takeover and audit redaction.
+  backend-db:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: migrations up / down / up (incl. 0005/0006)
+        working-directory: backend
+        env: { CLIORA_ADMIN_PASSWORD: ci-admin-pw }
+        run: |
+          uv run --project . alembic upgrade head
+          uv run --project . python -m app.bootstrap create-admin --username migration-rollback
+          uv run --project . alembic downgrade base
+          uv run --project . alembic upgrade head
+      - name: unit + DB-backed tests
+        run: uv run --project backend pytest backend/tests -q
+
+  # Daemon: static checks, the race suite, the tmux-backed integration suite
+  # (recovery gate + session lifecycle + terminal attach), and cross-arch build.
+  daemon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - name: tmux (integration + recovery gate need a real tmux)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - working-directory: daemon
+        run: |
+          go vet ./...
+          go test -race ./...
+          go test -tags integration -race ./internal/session ./internal/connection
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH=$arch go build -o "dist/agentd_linux_$arch" ./cmd/agentd
+          done
+
+  # Three-language protocol v1.2 consistency (session/terminal types + WORKSPACE_*
+  # / SESSION_* codes): the same manifest.json fixtures must accept/reject
+  # identically in Python, Go and TypeScript.
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - name: python / go / ts contract
+        run: |
+          uv run --project backend pytest backend/tests/contract -q
+          (cd daemon && go test ./internal/protocol -run Contract)
+          (cd frontend && npm run test:unit -- --run src/protocol)
+
+  # Security-focused paths: ws-ticket auth, viewer/forged-input rejection,
+  # takeover RBAC, command-injection/path-escape guards, and log/DB redaction
+  # (no terminal content). Runs the auth/security + relay + session DB suites.
+  security:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - working-directory: backend
+        run: uv run --project . alembic upgrade head
+      - name: auth / ws-ticket / relay / session security paths
+        run: |
+          uv run --project backend pytest \
+            backend/tests/test_security.py \
+            backend/tests/test_terminal_relay.py \
+            backend/tests/test_relay.py \
+            backend/tests/db/test_sessions_api.py \
+            -q
+
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm run test:unit -- --run
+          npm run build
+
+  # Full-stack browser E2E: login → New Session → live terminal (Fake CLI) →
+  # reconnect → terminate. scripts/e2e/run-stack.sh brings up Central + a real
+  # daemon node (rootless enroll-dev, runtime claude → fakecli) and awaits the
+  # node online; Playwright's webServer starts the frontend. WebKit is included
+  # in the matrix as in P1.
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      E2E_FULL_STACK: "1"
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+      CLIORA_ADMIN_PASSWORD: e2e-admin-pw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: tmux (the daemon launches real tmux sessions)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: full stack + playwright
+        run: ./scripts/e2e/run-stack.sh bash -c 'cd frontend && npm run test:e2e'
+
+  # Terminal-relay latency / backpressure / scale harness (plan/03/08 §3).
+  # Emits artifacts/p2/<run>/relay-bench.json and fails on a bounded-queue,
+  # single-gap or <200ms fan-out regression.
+  performance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: relay latency / backpressure / scale
+        working-directory: backend
+        run: uv run --project . python perf/relay_bench.py --out ../artifacts/p2/${{ github.run_id }}/relay-bench.json
+      - uses: actions/upload-artifact@v4
+        with: { name: relay-bench, path: artifacts/p2/ }
