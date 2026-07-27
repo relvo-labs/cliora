@@ -116,20 +116,56 @@ pass, `make traceability` exits 0 under changed-scope blocking. `make traceabili
 exits 4 by design while the six baseline-debt items remain — that is the readiness probe for full
 blocking, not a failure to ignore.
 
-## 6. Historical reconciliation
+## 6. Dogfood snapshot
+
+`scripts/traceability/dogfood.sh` runs the gates the runner can satisfy, records the rest as
+skipped with the prerequisite that is missing, merges the shards and resolves them. First run on
+a clean tree at `0536107`, run id `dogfood-0536107`:
+
+| | |
+|---|---:|
+| Validity errors | 0 |
+| `verified` | 180 |
+| `covered-by-parent` | 131 |
+| `skipped` (gate not run on this runner) | 52 |
+| `needs-rewrite` | 3 |
+| `blocked-static` | 3 |
+| **Verdict** | **blocked** |
+
+Blocked is the correct answer, and it is what the design is for. Eight gates could run here —
+static, backend unit, security, contract, backend DB against a real PostgreSQL 16, daemon race,
+daemon integration under tmux, frontend unit — and 180 criteria are verified against results from
+this commit. The other 52 depend on gates this runner does not have: the deployed edge
+(`GATE-OPERATIONS`, 21), the browser matrix (`GATE-BROWSER-E2E`, 17), the capacity rig, the
+measurement run, and the two manual procedures. Not one of them is reported as passing.
+
+Two things were found by running it rather than by reading it. Reporting `GATE-BACKEND-DB` without
+naming its `postgresql-16` leg resolved 46 DB-backed criteria to `environment-incomplete` — the
+matrix check working as intended, on its own author. And the first run failed `GATE-BACKEND-UNIT`
+and `GATE-SECURITY` because `CLIORA_TEST_DATABASE_URL` was set while `CLIORA_DATABASE_URL` was
+not: the DB tests ran, but the application under test could not write its audit rows. That is an
+environment fault, not a product one, and the snapshot surfaced it as a failing gate rather than
+letting it pass quietly.
+
+The pack lands in `artifacts/traceability/<run-id>/`, which is git-ignored in line with the other
+evidence packs; the identity above is what a release decision cites.
+
+## 7. Historical reconciliation
 
 `research/01/06-requirement-traceability.md` now has sections 10–11 and routes current state to
 generated views. P0 remains a historical No-Go, P1–P3 retain their conditional verdicts, and P4
 remains Go subject to its recorded release conditions. No prose result was converted into
 same-commit observed evidence.
 
-## 7. Remaining adoption work
+## 8. Remaining adoption work
 
 1. Close or rewrite the six baseline-debt items, then turn on full release blocking.
 2. Obtain product and test-owner sign-off on the 134 classifications; they carry
    `review.approved: false` until then.
 3. Add machine reporter selector sets to every product gate shard, so `selectors` in a result is
    the list of assertions that actually executed rather than the list the registry expects.
+   Today a gate reports the selectors the registry associates with it, which is why the snapshot
+   has no `selector-unproven` rows: that check cannot bite until the reporters are wired.
 4. Replace the repository-owner CODEOWNERS fallback with organization team handles when those
    teams exist. This is blocked outside the repository.
 
