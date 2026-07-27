@@ -1,0 +1,36 @@
+/* Semantic design tokens (style.md §3). The single source of every colour, radius
+ * and layout dimension in the app; components reference these and never a literal.
+ *
+ * Custom properties only — the element reset and form defaults live in base.css
+ * (split in P4-07), so "what a colour is" and "how an element behaves" are separate
+ * files. */
+
+:root {
+  --surface-canvas: #f4f6f8;
+  --surface-default: #fafbfc;
+  --surface-elevated: #fff;
+  --text-primary: #1a1f24;
+  --text-secondary: #48505a;
+  --text-muted: #66707d;
+  --text-inverse: #fff;
+  --border-default: #d7dde4;
+  --border-focus: #67a2ae;
+  --border-danger: #c45c5c;
+  --action-primary: #35575d;
+  --action-primary-hover: #2c464b;
+  --action-disabled: #b5bdc8;
+  --status-online: #2f9b63;
+  --status-offline: #727b87;
+  --status-busy: #c68c37;
+  --status-error: #d25454;
+  --terminal-background: #0f1115;
+  --terminal-foreground: #d7dde4;
+  --terminal-selection: #78aaff40;
+  --terminal-cursor: #fff;
+  --layout-header: 56px;
+  --layout-sidebar: 280px;
+  --layout-status: 28px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}

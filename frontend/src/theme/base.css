@@ -1,0 +1,66 @@
+/* Element base: the reset and form-element defaults every view relies on.
+ *
+ * Split from tokens.css in P4-07 so that file holds only design tokens (custom
+ * properties) and this one holds behaviour applied to elements. Everything visual
+ * beyond this lives in a component's own scoped style — there is deliberately no
+ * global class layer any more, because the prototype's one (src/styles.css, 1326
+ * lines) had become entirely shadowed by scoped styles while still shipping in the
+ * bundle.
+ *
+ * Fonts are a system stack, not a webfont. The prototype pulled Inter and JetBrains
+ * Mono from fonts.googleapis.com, which put a third-party request in the production
+ * bundle: it breaks on an offline or air-gapped install, contradicts the P3 rule that
+ * `dist` carries no CDN reference, and would be blocked by the CSP added in P4-12.
+ * MVP therefore ships no font files at all (ADR 0016). */
+
+:root {
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    "Noto Sans TC",
+    "PingFang TC",
+    "Microsoft JhengHei",
+    sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  /* No min-width. The prototype pinned it to 1180px, which forced a page-level
+   * horizontal scrollbar on any narrower window. style §24 makes the desktop
+   * baseline 1440×900 and leaves each view to handle a narrower viewport itself —
+   * tables scroll inside their own container and AppLayout collapses the sidebar at
+   * 900px, so overflow is handled where it occurs rather than pushed to the page. */
+  margin: 0;
+  color: var(--text-primary);
+  background: var(--surface-canvas);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Keyboard focus must always be visible: several flows (the file tree, the audit
+ * filter, dialogs) are specified as completable by keyboard alone. */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  button {
+    transition: background-color 0.18s ease;
+  }
+}

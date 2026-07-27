@@ -1,0 +1,513 @@
+// TypeScript mirrors of the backend response models (backend/app/api/http/schemas.py).
+// These names and value spaces are the wire contract; keep them in lockstep with
+// the Pydantic models. Timestamps are RFC 3339 UTC strings.
+
+export type NodeStatus = "online" | "degraded" | "offline" | "disabled";
+export type RuntimeId = "claude" | "codex";
+export type EnrollmentTokenStatus =
+  | "active"
+  | "expired"
+  | "exhausted"
+  | "revoked";
+
+export interface TokenPair {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+}
+
+export interface User {
+  id: string;
+  username: string;
+  display_name: string;
+  role: string;
+  permissions: string[];
+}
+
+export interface LoginResponse {
+  tokens: TokenPair;
+  user: User;
+}
+
+export interface NodeRuntime {
+  runtime: string;
+  available: boolean;
+  version: string | null;
+  binary_path: string | null;
+  checked_at: string | null;
+}
+
+export interface NodeWorkspaceRoot {
+  path: string;
+  display_name: string | null;
+  is_enabled: boolean;
+}
+
+export interface NodeSummary {
+  id: string;
+  name: string;
+  hostname: string;
+  status: NodeStatus;
+  os: string | null;
+  architecture: string | null;
+  claude_available: boolean;
+  codex_available: boolean;
+  session_count: number;
+  last_seen_at: string | null;
+}
+
+// A live resource sample taken from the last heartbeat. Every field mirrors
+// contracts/v1/schemas/messages/node-heartbeat.schema.json (single numbers,
+// minimum 0); load_average is the system load, not a per-interval array. The
+// whole object is null when the node is offline or has no heartbeat data yet.
+export interface NodeResources {
+  cpu_usage: number | null;
+  memory_usage: number | null;
+  load_average: number | null;
+  disk_usage: number | null;
+  daemon_uptime: number | null;
+}
+
+// What version a node is on, what it could be on, and what happened the last time
+// it was asked to change (P4-10).
+export type NodeUpdateState =
+  | "in_progress"
+  | "succeeded"
+  | "failed"
+  | "rolled_back"
+  | "unknown";
+
+export interface NodeUpdateStatus {
+  current_version: string | null;
+  // The newest allowlisted release. Null when nothing is published — not an error,
+  // just nothing to offer.
+  latest_version: string | null;
+  // Null means this node has never been asked to update, which is a different fact
+  // from `succeeded`.
+  status: NodeUpdateState | null;
+  target_version: string | null;
+  // A stable `UPDATE_*` code, or "succeeded". Never a daemon error string.
+  last_result: string | null;
+  updated_at: string | null;
+  // Still false: MVP updates are explicitly triggered, never scheduled (ADR 0017).
+  auto_update_enabled: boolean;
+}
+
+// The only thing a client may say about an update. Deliberately not a URL, a
+// filename or a digest: the daemon derives those from the release manifest and its
+// own config, so a client that could name a binary could name any binary (SEC-002).
+export interface UpdateNodeInput {
+  target_version: string;
+  allow_downgrade?: boolean;
+}
+
+export interface ReleaseArtifact {
+  version: string;
+  architecture: string;
+  filename: string;
+  sha256: string;
+  size: number;
+}
+
+export interface ReleaseManifest {
+  latest: string | null;
+  artifacts: ReleaseArtifact[];
+  generated_at: string;
+}
+
+export interface NodeRecentError {
+  // RFC 3339 UTC instant; localized for display with a full-instant tooltip.
+  occurred_at: string;
+  message: string;
+}
+
+export interface NodeDetail extends NodeSummary {
+  os_version: string | null;
+  daemon_version: string | null;
+  run_user: string | null;
+  is_enabled: boolean;
+  registered_at: string;
+  runtimes: NodeRuntime[];
+  workspace_roots: NodeWorkspaceRoot[];
+  resources: NodeResources | null;
+  update_status: NodeUpdateStatus;
+  recent_errors: NodeRecentError[];
+}
+
+export interface EnrollmentToken {
+  id: string;
+  created_by: string;
+  created_at: string;
+  expires_at: string;
+  max_uses: number;
+  used_count: number;
+  status: EnrollmentTokenStatus;
+}
+
+export interface EnrollmentTokenCreated {
+  id: string;
+  // Plaintext returned exactly once, at creation.
+  token: string;
+  expires_at: string;
+  max_uses: number;
+}
+
+export type SessionStatus =
+  | "starting"
+  | "running"
+  | "disconnected"
+  | "exited"
+  | "failed"
+  | "terminating"
+  | "terminated";
+
+// What the signed-in user may do to one session, computed by the server from the
+// role *and* the ownership rules (ADR 0016). The browser renders these flags and
+// must never re-derive them: a role check alone would show a "Terminate" button
+// on a colleague's session that the server refuses. Hiding a control is a
+// courtesy, not the authorization — the server denies it either way.
+export interface SessionCapabilities {
+  can_view: boolean;
+  can_write: boolean;
+  can_takeover: boolean;
+  can_terminate: boolean;
+  can_browse_files: boolean;
+}
+
+export interface SessionSummary {
+  id: string;
+  node_id: string;
+  user_id: string;
+  name: string;
+  runtime: string;
+  workspace: string;
+  status: SessionStatus;
+  rows: number;
+  columns: number;
+  pid: number | null;
+  started_at: string | null;
+  last_activity_at: string | null;
+  ended_at: string | null;
+  created_at: string;
+  capabilities: SessionCapabilities;
+}
+
+export interface SessionDetail extends SessionSummary {
+  exit_code: number | null;
+  error_message: string | null;
+}
+
+export interface CreateSessionInput {
+  node_id: string;
+  runtime: string;
+  name: string;
+  workspace: string;
+  rows?: number;
+  columns?: number;
+}
+
+export interface AttachTicket {
+  session_id: string;
+  ticket: string;
+}
+
+// --- P3 workspace files (read-only) ---
+// Shapes come from the daemon filesystem.* response payloads relayed verbatim by
+// Central (daemon/internal/connection/files_handlers.go). Paths are always
+// workspace-relative: no server absolute path ever crosses this boundary.
+
+export type FileEntryType = "directory" | "file" | "symlink";
+
+export interface FileEntry {
+  name: string;
+  rel_path: string;
+  type: FileEntryType;
+  size: number;
+  modified_at: string;
+  hidden: boolean;
+  symlink: boolean;
+  // An excluded directory (node_modules, .venv, …) is listed but not loadable.
+  excluded: boolean;
+  expandable: boolean;
+}
+
+export interface FileTreePage {
+  path: string;
+  entries: FileEntry[];
+  truncated: boolean;
+  next_cursor?: string;
+}
+
+export interface FileSearchHit {
+  name: string;
+  rel_path: string;
+  type: FileEntryType;
+  modified_at: string;
+}
+
+// Why the daemon stopped a bounded filename walk early (ADR 0015).
+export type FileSearchStopReason = "depth" | "results" | "scanned" | "timeout";
+
+export interface FileSearchResult {
+  results: FileSearchHit[];
+  partial: boolean;
+  stopped_reason?: FileSearchStopReason;
+  scanned_count: number;
+}
+
+// A preview denial arrives in-band with success:false (HTTP 200) so the browser
+// can render a specific "cannot preview" pane. error.reason is a coarse
+// classification (dotenv/private_key/binary/…), never a content fragment.
+export interface FileContent {
+  success: boolean;
+  rel_path: string;
+  size?: number;
+  modified_at?: string;
+  encoding?: string;
+  language_hint?: string;
+  content?: string;
+  mime?: string;
+  error?: { code: string; reason?: string };
+}
+
+// --- P4 dashboard aggregates (backend/app/services/dashboard.py) ---
+// Every block is fetched independently and carries its own status and fetch time.
+// `generated_at` is when the data was *fetched*, not when the request was served:
+// a cached value must be visible as one, so the UI shows the age rather than
+// implying every number is live.
+//
+// A block that could not be loaded is always {status:"degraded", data:null,
+// error_code}. That is the one uniform shape on this endpoint, and it is what lets
+// one card say "temporarily unavailable" while the others show real numbers.
+
+export type DashboardBlockStatus = "ok" | "stale" | "degraded";
+
+export interface DashboardBlock<T> {
+  status: DashboardBlockStatus;
+  generated_at: string;
+  data: T | null;
+  error_code: string | null;
+}
+
+export interface DashboardNodeCounts {
+  online: number;
+  degraded: number;
+  offline: number;
+  disabled: number;
+  total: number;
+}
+
+export interface DashboardSessionCounts {
+  starting: number;
+  running: number;
+  disconnected: number;
+  terminating: number;
+  total_active: number;
+  // Only runtimes that actually have active sessions. A zero entry would be
+  // indistinguishable from a runtime that does not exist.
+  per_runtime: Record<string, number>;
+}
+
+export interface DashboardRuntimeAvailability {
+  available: number;
+  unavailable: number;
+  // Nodes that have never reported this runtime. Silence is not a negative:
+  // folding it into `unavailable` would show a fresh fleet as broken.
+  unknown: number;
+  checked_at: string | null;
+}
+
+export interface DashboardRuntimes {
+  runtimes: Record<string, DashboardRuntimeAvailability>;
+  eligible_nodes: number;
+}
+
+// `nodes` is how many nodes reported this measurement, not the fleet size. When it
+// is 0 there is no data — the UI must say so and never render it as 0%.
+export interface DashboardMeasurement {
+  average: number | null;
+  maximum: number | null;
+  nodes: number;
+}
+
+export interface DashboardResources {
+  measurements: Record<string, DashboardMeasurement>;
+  sampled_nodes: number;
+  latest_sample_at: string | null;
+  window_seconds: number;
+}
+
+export interface DashboardActivityItem {
+  id: string;
+  action: string;
+  created_at: string;
+  // Null for a system/daemon event, and also for every event when the viewer
+  // lacks `audit.view` — see `actors_hidden`.
+  actor_id: string | null;
+  actor_name: string | null;
+  node_id: string | null;
+  node_name: string | null;
+}
+
+export interface DashboardActivity {
+  items: DashboardActivityItem[];
+  limit: number;
+  // True when actor identity was withheld for this viewer, so the UI can say the
+  // column is hidden rather than imply the events had no actor.
+  actors_hidden?: boolean;
+}
+
+export type UnhealthyReason =
+  | "offline_but_enabled"
+  | "heartbeat_degraded"
+  | "no_runtime_available"
+  | "recent_session_failure";
+
+export interface UnhealthyNode {
+  id: string;
+  name: string;
+  status: NodeStatus;
+  reasons: UnhealthyReason[];
+  last_seen_at: string | null;
+}
+
+export interface DashboardUnhealthyNodes {
+  items: UnhealthyNode[];
+  // The count before truncation, so "10 of 37" is honest instead of implying the
+  // list is complete.
+  total: number;
+  limit: number;
+}
+
+export interface DashboardSummary {
+  generated_at: string;
+  blocks: {
+    nodes: DashboardBlock<DashboardNodeCounts>;
+    sessions: DashboardBlock<DashboardSessionCounts>;
+    runtimes: DashboardBlock<DashboardRuntimes>;
+    resources: DashboardBlock<DashboardResources>;
+    recent_activity: DashboardBlock<DashboardActivity>;
+    unhealthy_nodes: DashboardBlock<DashboardUnhealthyNodes>;
+  };
+}
+
+// --- P4 audit trail (read-only, Admin) ---
+// Shapes mirror backend/app/api/http/schemas.py (AuditItemDTO / AuditPageDTO).
+// `actor` and `node` are null when the row has no such resource *or* when the id
+// no longer resolves: the audit table stores ids without a foreign key so history
+// survives deletion, and a name that cannot be resolved is reported as null
+// rather than dropping the row.
+
+export interface AuditActor {
+  id: string;
+  username: string | null;
+  display_name: string | null;
+}
+
+export interface AuditNodeRef {
+  id: string;
+  name: string | null;
+}
+
+export interface AuditItem {
+  id: string;
+  action: string;
+  created_at: string;
+  actor: AuditActor | null;
+  node: AuditNodeRef | null;
+  session_id: string | null;
+  // Correlates the entry with that request's server logs; null for daemon or
+  // system-initiated events.
+  request_id: string | null;
+  // Already minimized on write and re-filtered on read. Never contains terminal
+  // bytes, file content, secrets or absolute paths.
+  metadata: Record<string, unknown>;
+}
+
+export interface AuditPage {
+  items: AuditItem[];
+  // Null when the window is exhausted. There is deliberately no total count —
+  // the UI shows how many rows it has loaded and never invents a total.
+  next_cursor: string | null;
+}
+
+export interface AuditQuery {
+  action?: string[];
+  user_id?: string;
+  node_id?: string;
+  session_id?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+// The closed action vocabulary (backend/app/services/audit.py ALL_ACTIONS). The
+// filter offers exactly these: the server answers 422 for anything else, so an
+// input that allowed free text would only produce failed queries. Kept in
+// lockstep by test_audit_actions_match_the_frontend_constants.
+export const AUDIT_ACTIONS = [
+  "authz.denied",
+  "credential.revoke",
+  "credential.rotate",
+  "daemon.update_result",
+  "daemon.update_started",
+  "enrollment.create",
+  "enrollment.revoke",
+  "enrollment.use",
+  "file.sensitive_read_denied",
+  "node.disable",
+  "node.enable",
+  "node.register",
+  "node.remove",
+  "session.attach",
+  "session.create",
+  "session.failed",
+  "session.takeover",
+  "session.terminate",
+  "user.login",
+  "user.login_failed",
+  "user.logout",
+] as const;
+
+// --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
+
+// Why a favourite cannot be used right now. Computed per response by the server,
+// never stored: a favourite saved while a root existed stops claiming to be usable
+// once that root is withdrawn. The UI owns the wording for each code.
+export type FavoriteUsability =
+  | "usable"
+  | "node_disabled"
+  | "node_offline"
+  | "outside_allowed_root";
+
+export interface WorkspaceFavorite {
+  id: string;
+  node_id: string;
+  node_name: string;
+  path: string;
+  display_name: string | null;
+  created_at: string;
+  usability: FavoriteUsability;
+}
+
+export interface RecentWorkspace {
+  node_id: string;
+  node_name: string;
+  path: string;
+  last_used_at: string;
+  node_online: boolean;
+  node_enabled: boolean;
+}
+
+// Stable RBAC action keys (backend/app/services/rbac.py). Used to gate UI.
+export const ACTION_NODE_VIEW = "node.view";
+export const ACTION_NODE_MANAGE = "node.manage";
+export const ACTION_ENROLLMENT_MANAGE = "enrollment.manage";
+export const ACTION_SESSION_CREATE = "session.create";
+export const ACTION_SESSION_VIEW = "session.view";
+export const ACTION_SESSION_TERMINATE = "session.terminate";
+export const ACTION_TERMINAL_OPERATE = "terminal.operate";
+export const ACTION_TERMINAL_TAKEOVER = "terminal.takeover";
+export const ACTION_FILE_BROWSE = "file.browse";
+export const ACTION_AUDIT_VIEW = "audit.view";
