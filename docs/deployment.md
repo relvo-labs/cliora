@@ -2,6 +2,16 @@
 
 Reference topology: **one host**, nginx terminating TLS, one Central, one PostgreSQL.
 
+> There is a second supported target: **[deployment-railway.md](./deployment-railway.md)**
+> (ADR 0020). It is not a replacement — both are maintained, both use the same images, and the
+> two edge configurations are held together by `scripts/railway/check-edge-parity.sh`. If you
+> change the CSP, the security header set, the body limit or the `/ws/` read timeout here, that
+> check will tell you the other file needs the same edit.
+>
+> One thing on this page changed because of it: `/readyz` now answers **503** when degraded
+> rather than 200 with a `degraded` body, because a managed platform's health check reads the
+> status code and nothing else.
+
 Stated plainly because it constrains what you can do with it: Central's connection
 registry and terminal relay are **process-local** (see the module docstrings in
 `app/services/registry.py` and `app/services/terminal_relay.py`). A second backend
@@ -168,8 +178,12 @@ procedure.
 
 | Endpoint | Use |
 |---|---|
-| `/healthz` | Liveness. The process is up. Says nothing about the database. |
-| `/readyz` | Readiness. Database reachable **and** the applied migration matches head. This is the one to gate traffic on. |
+| `/healthz` | Liveness. The process is up. Says nothing about the database. `200` always. |
+| `/readyz` | Readiness. Database reachable **and** the applied migration matches head. This is the one to gate traffic on. `200` when ready, **`503` when degraded**; the body names which half failed. |
+
+`/readyz` carries readiness in the status code so that a health check which cannot parse a body
+still gates traffic correctly (ADR 0020). The body is still there and still worth reading — it
+is what tells you whether to open the database runbook or check the migration.
 
 ## Observability
 

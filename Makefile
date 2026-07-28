@@ -1,4 +1,4 @@
-.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability
+.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability railway-parity railway-test railway-check
 
 # Postgres URL for the P1 data layer (override to point at your instance).
 DB_URL ?= postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -43,7 +43,23 @@ build:
 	cd daemon && mkdir -p bin && go build -o bin/agentd ./cmd/agentd && go build -o bin/fakecli ./cmd/fakecli
 	cd frontend && npm run build
 
-check: format-check lint typecheck unit contract build traceability-validate
+check: format-check lint typecheck unit contract build traceability-validate railway-check
+
+# --- Railway deployment target (ADR 0020 / plan/07) ---
+# Both of these are static and hermetic: no platform account, no network. What they cannot
+# prove is asserted against a running deployment by scripts/railway/verify-deployment.sh.
+
+# The two edge configurations (host nginx and the Railway template) must not drift on the
+# security policy, or "Cliora sends this CSP" stops being a true sentence.
+railway-parity:
+	scripts/railway/check-edge-parity.sh
+
+# The artifact baker and the pre-deploy variable check. Both are gates whose whole value is
+# that they fail on a bad input, so both have negative tests.
+railway-test:
+	uv run --project backend python -m pytest scripts/railway/tests -q
+
+railway-check: railway-parity railway-test
 
 # --- Requirement traceability (ADR 0019 / plan/06) ---
 traceability-validate:

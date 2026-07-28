@@ -1,0 +1,193 @@
+# Deploying Cliora on Railway
+
+The second supported target, alongside the single-host compose topology in
+[deployment.md](./deployment.md). Same images, same security properties, different mechanisms.
+Decisions and their reasoning: [ADR 0020](./adr/0020-railway-deployment-topology.md). Variable
+contract: [`deploy/railway/env.md`](../deploy/railway/env.md).
+
+```
+browser ──HTTPS/WSS──▶ Railway edge ──▶ console (public)  ──private IPv6──▶ central ──▶ Postgres
+                                        nginx + dist              /api /ws
+agentd, on the user's own Linux host ──outbound WSS──▶ the same public origin
+```
+
+**Nothing about `agentd` changes.** It runs on the user's machines, holds the tmux sessions,
+and dials Central outbound (FR-CONN-001), so Railway hosts only the control plane. That is why
+this system fits a PaaS at all: the stateful part is the customer's, not the platform's.
+
+## What is different from the compose topology, and why
+
+| Compose | Railway | Reason |
+|---|---|---|
+| `stop_grace_period: 30s` | `drainingSeconds: 25` | The platform default is **0**: SIGTERM then immediate SIGKILL. The drain would never complete and every deploy would disconnect browsers without explanation |
+| `depends_on: migrate: service_completed_successfully` | `preDeployCommand: alembic upgrade head` | Non-zero exit stops the deploy and is not retried. Migrations still never run from the app's lifespan |
+| healthcheck parses `/readyz`'s body | `healthcheckPath: /readyz`, and `/readyz` answers **503** when degraded | The platform reads the status code only |
+| nginx `server backend:8000` | `resolver` + `proxy_pass http://$variable$request_uri` | Service IPs change every deploy and nginx caches a static upstream for the life of the process |
+| TLS terminated by our nginx | Terminated at the platform edge; console 301s on `X-Forwarded-Proto: http` | No certificate exists inside the container |
+| `CLIORA_ARTIFACTS_DIR` on a mounted host directory | Baked into the image at build time, digests verified | The container filesystem is ephemeral |
+| `--host 0.0.0.0` | `--host ::` | The private network is IPv6 |
+| Prometheus/Grafana profile | Off; scrape over the private network if wanted | An always-on public metrics endpoint is a permanent read surface |
+
+## First deployment
+
+Order matters, and two steps are one-way doors.
+
+1. **Create the project and the three services** in the same region (`asia-southeast1`):
+   `Postgres`, `central` (Dockerfile), `console` (Dockerfile). Set each service's
+   *Config as code path*:
+   - `central` → `deploy/railway/central.railway.json`
+   - `console` → `deploy/railway/console.railway.json`
+2. **Bind the custom domain to `console`** and wait for the certificate.
+   *Do this before step 4.* `CLIORA_PUBLIC_BASE_URL` is written into every node's config file.
+3. **Give `central` no public domain.** It is reached only over the private network.
+4. **Set the variables** per [`deploy/railway/env.md`](../deploy/railway/env.md), then check
+   them before deploying:
+   ```bash
+   scripts/railway/check-env.sh --domain cliora.example.com
+   ```
+5. **Deploy.** Watch that the migration runs before the app starts:
+   ```bash
+   railway logs --service central | grep -E "alembic|central_startup"
+   ```
+6. **Create the first administrator.** The password must not become a service variable:
+   ```bash
+   railway ssh --service central
+     read -rs CLIORA_ADMIN_PASSWORD && export CLIORA_ADMIN_PASSWORD
+     python -m app.bootstrap create-admin --username admin
+     unset CLIORA_ADMIN_PASSWORD; exit
+   ```
+   If `railway ssh` is unavailable, temporarily enable the Postgres public TCP proxy and run
+   the same command locally against `CLIORA_DATABASE_URL=postgresql+asyncpg://…@<proxy>/…`,
+   then **disable the proxy again**.
+7. **Verify the deployment over the wire:**
+   ```bash
+   scripts/railway/verify-deployment.sh https://cliora.example.com artifacts/rw/$(date -u +%Y%m%d%H%M%S)
+   # add the idle-WebSocket leg (it enrolls and then removes a probe node):
+   CLIORA_VERIFY_ADMIN=admin CLIORA_VERIFY_PASSWORD=… \
+     scripts/railway/verify-deployment.sh https://cliora.example.com
+   ```
+8. **Set up external monitoring** (see below). The platform health check does not run after the
+   deploy completes.
+
+## Publishing a daemon release
+
+Artifacts are baked into the Central image and verified at build time, so publishing a release
+is a Central redeploy:
+
+1. Tag and build the daemon release (`make release`), so the tarballs and `checksums.txt` exist
+   as release assets.
+2. Set on `central`: `AGENTD_VERSION=1.2.3`,
+   `AGENTD_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3`, and
+   `CLIORA_ARTIFACTS_DIR=/srv/artifacts`.
+3. Redeploy. **A digest mismatch fails the build**, which is the point — it fails before any
+   node can download a bad artifact.
+4. Confirm, then publish the one-line install command:
+   ```bash
+   curl -sS https://cliora.example.com/api/releases/manifest | python -m json.tool
+   curl -sSI https://cliora.example.com/api/downloads/checksums.txt | head -1
+   sudo agentd update --dry-run     # on a real node: manifest → download → digest → stop
+   ```
+
+Until `AGENTD_VERSION` is set, `/api/downloads` and `/api/install-script` answer 404 and the
+manifest answers `{"latest": null, "artifacts": []}`. That is a correct state — a daemon can
+tell "no update" from "no endpoint" — but **do not publish the one-line install command while
+it holds**; enroll nodes by installing `agentd` manually and running `agentd install`.
+
+## Upgrading
+
+`git push` → CI → deploy. `watchPatterns` keeps a backend change from restarting the console
+and vice versa.
+
+During the drain, Central:
+
+1. sends every subscribed browser `terminal.server_shutdown` with `session_preserved: true`;
+2. closes daemon sockets with 1012, which their backoff handles (FR-CONN-003);
+3. fails in-flight daemon requests as `NODE_OFFLINE`.
+
+**No CLI session is terminated by a deploy.** Verify it, once, deliberately:
+
+```bash
+# with a session running and a browser attached, trigger a redeploy, then:
+railway logs --service central | grep -E "shutdown_drained|shutdown_drain_timeout"
+#   expect shutdown_drained with duration_ms < 15000 and no timeout line
+#   expect the browser to log terminal.server_shutdown
+#   expect `tmux ls` on the node to still list the session, and re-attach to have scrollback
+```
+
+If there is no `shutdown_drained` line, `drainingSeconds` is not set — the platform default is
+0 and SIGKILL arrived first.
+
+## Rollback
+
+Application rollback is cheap; schema rollback is not. Try the first.
+
+**Application only** — roll back to the previous deployment in Railway, or redeploy the previous
+commit. Safe whenever the previous version understands the current schema; migrations 0008–0011
+are additive, so this usually holds.
+
+**With a schema downgrade** — only when the new revision is itself the problem:
+
+```bash
+# back up first; a downgrade drops what the newer revision added, including rows written since
+railway ssh --service central -- alembic current
+railway ssh --service central -- alembic downgrade <revision>
+```
+
+Read that migration's `downgrade()` docstring first: every P4 migration is reversible, and
+reversible is not harmless. Then deploy the previous image and confirm `/readyz` is 200.
+
+**Configuration rollback.** Fixing `CLIORA_PUBLIC_BASE_URL` after nodes have enrolled against
+the wrong value requires `sudo agentd register --server https://<correct>/ --token …` on each
+node. Fixing `CLIORA_TOKEN_PEPPER` is not possible: every node must re-enroll.
+
+## Backups
+
+- Enable platform backups on the Postgres service.
+- **Also** keep an off-platform `pg_dump`. Platform backups share the platform's fate, and that
+  is one of the things a backup is for.
+- Verify a dump with the existing drill rather than assuming: `scripts/p4/backup-restore-drill.sh`
+  restores into a throwaway database and scans the dump to prove it contains no terminal output,
+  file content or plaintext credential. Run it against a Railway dump after any schema change.
+- Back up **before** running the retention prune — it is the only operation that deliberately
+  deletes audit history.
+
+## Audit retention
+
+Not scheduled, on purpose (ADR 0016, reaffirmed in ADR 0020 §10). A mis-scheduled deletion of
+the audit trail is worse than manual retention:
+
+```bash
+# 1. take a backup
+# 2. report only (no --yes)
+railway ssh --service central -- python -m app.retention prune
+# 3. apply, once the numbers look right
+railway ssh --service central -- python -m app.retention prune --yes
+```
+
+## Monitoring
+
+The platform queries `healthcheckPath` **only while a deployment is going live** and never
+again. With a single replica there is nothing to fail over to either. So an external check is
+required, not optional:
+
+| Check | Endpoint | Alert when | Runbook |
+|---|---|---|---|
+| Readiness | `https://<domain>/readyz` | not 200 (degraded now answers 503) | [db-exhaustion](./runbooks/db-exhaustion.md) |
+| Liveness | `https://<domain>/healthz` | not 200 | — |
+| Edge | `https://<domain>/edge-health` | not 200 | [railway-edge-502](./runbooks/railway-edge-502.md) |
+| Certificate | the custom domain | expiry < 14 days | platform renews it; you still need to know if it does not |
+
+Checking the edge separately from Central is what makes a 502 diagnosable in one step instead of
+four.
+
+## Capacity and latency
+
+Two PRD numbers are deployment-dependent here and must be measured on the instance size and
+region actually used, not inherited from the host measurements in `artifacts/p4/`:
+
+- **NFR-001** (terminal added latency < 200 ms): report the network RTT and Cliora's added
+  latency as two numbers. A user in Taiwan is ~40–60 ms from `asia-southeast1` before Cliora
+  does anything.
+- **NFR-003** (500 concurrent terminal WebSockets): re-run `scripts/p4/load/capacity.py`
+  against the deployment. If the instance cannot reach 500, record the measured number and the
+  size that would, and take a release decision — do not restate the threshold.

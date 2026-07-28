@@ -1,0 +1,220 @@
+# Cliora edge configuration for Railway (plan/07 RW-05, ADR 0020).
+#
+# Derived from `deploy/nginx/nginx.conf`, which is the reference topology's edge and whose
+# header/CSP/timeout reasoning applies here unchanged — read that file's header comment
+# first. `scripts/railway/check-edge-parity.sh` fails the build if the two drift on the
+# parts that must not drift (CSP, the security header set, body limit, WS timeout, the
+# metrics refusal, cache policy).
+#
+# Four differences, all forced by the platform rather than chosen:
+#
+#   1. **No TLS here.** Railway terminates TLS at its edge, so this listens on plain
+#      `${PORT}` and there is no 443 block and no certificate. HTTPS-only (FR-CONN-002,
+#      SEC-005, tech §23 #1) is therefore enforced by redirecting anything the edge tells
+#      us arrived over http — see the `map` below, and note it is fail-open by
+#      construction, which is why `verify-deployment.sh` asserts the redirect over the
+#      wire instead of trusting this comment.
+#
+#   2. **The upstream is resolved per request.** A Railway service's private IP changes on
+#      every deploy, and nginx resolves a static `upstream { server … }` once at config
+#      load and caches it for the life of the process. That combination does not fail
+#      loudly: Central redeploys fine and *this* container then 502s every request until it
+#      is itself redeployed. So the backend address goes through a variable, which makes
+#      nginx re-resolve it — and that requires a `resolver`. nginx does not read
+#      /etc/resolv.conf itself, so the addresses come from the image's own
+#      `15-local-resolvers.envsh`, enabled by NGINX_ENTRYPOINT_LOCAL_RESOLVERS in
+#      console.Dockerfile. (A hand-written version of that script was tried first and was
+#      silently skipped for not being executable — the image's own is both maintained
+#      upstream and already handles bracketing IPv6 nameservers.)
+#
+#      The cost is real and accepted: `proxy_pass` to a variable cannot use an `upstream`
+#      block, so there is no keepalive pool to Central. Every `/api` request opens a TCP
+#      connection over the private network. That is sub-millisecond here and a fair price
+#      for not serving stale addresses; the terminal path is a long-lived WebSocket and is
+#      unaffected either way.
+#
+#   3. **`$request_uri` is spelled out.** Once `proxy_pass` carries a variable, nginx no
+#      longer passes the original URI implicitly. Omitting it silently drops the path *and
+#      the query string* — and the terminal handshake carries its single-use ws-ticket in
+#      the query string, so the failure mode is "every terminal fails to authorize".
+#
+#   4. **`/edge-health`** exists so the platform can health-check this service without
+#      depending on Central being ready. Distinguishing "the edge is down" from "Central is
+#      down" is the first step of the 502 runbook.
+#
+# One templating rule dominates editing this file: the nginx image's
+# `20-envsubst-on-templates.sh` substitutes every `${NAME}` whose NAME is in the
+# environment. nginx's own variables must therefore be written `$host`, `$request_uri`,
+# `$http_upgrade` — never `${host}`. A braced nginx variable becomes an empty string and
+# the config stays syntactically valid, which is the worst possible combination.
+
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log warn;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 4096;  # 500 terminal WS (NFR-003) plus HTTP, with headroom
+}
+
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    log_format cliora '$remote_addr - $status "$request" '
+                      'rt=$request_time up=$upstream_response_time '
+                      'nginx_req_id=$request_id';
+    access_log /var/log/nginx/access.log cliora;
+
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;      # terminal frames are small and latency-sensitive (NFR-001)
+    server_tokens off;   # the version is not information a client needs
+
+    keepalive_timeout 65;
+    client_max_body_size 16m;   # >= the 8 MiB filesystem contract, matching uvicorn
+    large_client_header_buffers 4 16k;
+
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1024;
+
+    # Redirect only when the edge positively says the client used plain HTTP. The default
+    # is *not* to redirect, because platform-internal probes arrive without this header and
+    # a redirect would fail the service's own health check — a self-inflicted outage in
+    # pursuit of a redirect the probe does not need.
+    map $http_x_forwarded_proto $cliora_insecure {
+        default  0;
+        http     1;
+    }
+
+    server {
+        listen ${PORT};
+        listen [::]:${PORT};
+        server_name _;
+
+        # Runtime DNS for the private network, from the container's own /etc/resolv.conf.
+        # `valid=10s` bounds how long a departed deployment's address can be reused after a
+        # Central rollout. If the container somehow has no nameserver this renders empty and
+        # nginx refuses to start — the right direction, since starting without a resolver
+        # would produce a container that looks healthy and 502s every proxied request.
+        resolver ${NGINX_LOCAL_RESOLVERS} valid=10s ipv6=on;
+        resolver_timeout 5s;
+
+        if ($cliora_insecure) {
+            return 301 https://$host$request_uri;
+        }
+
+        add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+        add_header X-Frame-Options "DENY" always;
+        add_header Cross-Origin-Opener-Policy "same-origin" always;
+        add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; child-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss: ws:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+
+        # --- this service's own liveness, independent of Central ---
+        location = /edge-health {
+            access_log off;
+            default_type text/plain;
+            return 200 "ok\n";
+        }
+
+        # --- WebSocket: terminals and daemons ---
+        location /ws/ {
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            # The client reached the platform edge over TLS; that is what Central should
+            # see, not this hop's plain HTTP.
+            proxy_set_header X-Forwarded-Proto https;
+
+            # Must exceed uvicorn's `ws_ping_interval` (default 20 s). Railway's own edge
+            # exempts WebSockets from its idle and duration limits, but this proxy is still
+            # on the path: set this below the ping interval and every terminal and daemon
+            # socket dies on a fixed cycle regardless of activity.
+            proxy_read_timeout 3600s;
+            proxy_send_timeout 3600s;
+            proxy_buffering off;   # a buffered terminal is a laggy terminal
+            proxy_cache off;
+        }
+
+        # --- API ---
+        location /api/ {
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto https;
+            # Longer than the daemon-update relay budget (180 s, ADR 0017), which is the
+            # slowest legitimate request Central makes.
+            proxy_read_timeout 240s;
+            proxy_buffering on;
+        }
+
+        # Probed constantly, never logged: a health check every second would drown the
+        # access log it shares with real requests. `/readyz` answers 503 when degraded
+        # (ADR 0020), which is what makes it usable by an external uptime check.
+        location = /healthz {
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_set_header Host $host;
+            access_log off;
+        }
+        location = /readyz {
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_set_header Host $host;
+            access_log off;
+        }
+
+        # `/api/metrics` is refused at the edge. `location /api/` is a prefix match and
+        # would otherwise proxy it straight through; `location =` is an exact match and
+        # takes priority, so this block is the rule rather than a comment claiming one.
+        # When metrics are enabled they belong on the private network, reachable only by a
+        # scraper inside the project (ADR 0018).
+        location = /api/metrics {
+            return 404;
+        }
+
+        # --- Static console ---
+        root /usr/share/nginx/html;
+        index index.html;
+
+        location /assets/ {
+            expires 1y;
+            add_header Cache-Control "public, immutable" always;
+            # Repeated, not inherited: `add_header` in a location discards the whole
+            # server-level set. Editing this set means editing every copy — the parity
+            # script and the over-the-wire verification both fail if one drifts.
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Cross-Origin-Opener-Policy "same-origin" always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; child-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss: ws:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+            try_files $uri =404;
+        }
+
+        location / {
+            add_header Cache-Control "no-store" always;
+            # Repeated, not inherited: see the note in /assets/ above.
+            add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+            add_header X-Content-Type-Options "nosniff" always;
+            add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+            add_header X-Frame-Options "DENY" always;
+            add_header Cross-Origin-Opener-Policy "same-origin" always;
+            add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+            add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; child-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self' wss: ws:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+            try_files $uri $uri/ /index.html;
+        }
+    }
+}

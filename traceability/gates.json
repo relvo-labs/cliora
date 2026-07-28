@@ -171,6 +171,73 @@
       "required_for": ["mvp"],
       "environment": ["claude-cli", "codex-cli"],
       "artifacts": ["manual-result.json"]
+    },
+    {
+      "id": "GATE-RAILWAY-EDGE-PARITY",
+      "owner": "operations",
+      "layer": "static",
+      "command": ["scripts/railway/check-edge-parity.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all"]
+    },
+    {
+      "id": "GATE-RAILWAY-CONFIG-TESTS",
+      "owner": "operations",
+      "layer": "unit",
+      "command": ["make", "railway-test"],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all"]
+    },
+    {
+      "id": "GATE-RAILWAY-ENV",
+      "owner": "operations",
+      "layer": "operations",
+      "command": ["scripts/railway/check-env.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": ["release", "manual"],
+      "required_for": ["all"],
+      "environment": ["railway-cli", "railway-production"]
+    },
+    {
+      "id": "GATE-RAILWAY-DEPLOY-VERIFY",
+      "owner": "operations",
+      "layer": "e2e",
+      "command": ["scripts/railway/verify-deployment.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 1800,
+      "trigger": ["release", "manual"],
+      "required_for": ["all", "security"],
+      "environment": ["railway-production"],
+      "artifacts": ["deployment-verification.md"]
+    },
+    {
+      "id": "GATE-RAILWAY-NODE-E2E",
+      "owner": "release",
+      "layer": "manual",
+      "command": ["scripts/trace", "manual-template", "--procedure", "railway-node-e2e"],
+      "working_directory": ".",
+      "timeout_seconds": 14400,
+      "trigger": ["release", "manual"],
+      "required_for": ["mvp"],
+      "environment": ["railway-production", "real-linux-host"],
+      "artifacts": ["manual-result.json"]
+    },
+    {
+      "id": "GATE-RAILWAY-LATENCY",
+      "owner": "operations",
+      "layer": "performance",
+      "command": ["uv", "run", "--project", "backend", "python", "scripts/p4/load/capacity.py", "--profile", "full"],
+      "working_directory": ".",
+      "timeout_seconds": 3600,
+      "trigger": ["release", "manual"],
+      "required_for": ["nfr"],
+      "environment": ["railway-production", "asia-southeast1"],
+      "artifacts": ["capacity.json"]
     }
   ]
 }

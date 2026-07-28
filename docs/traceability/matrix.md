@@ -21,7 +21,7 @@
 | FR-AUTH-002 | [FR-AUTH-002.AC-11](../../research/prd.md#fr-auth-002-ac-11) | \| 瀏覽檔案         \|     ✓ \|         ✓ \|      ✓ \| | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/rbac.py | pytest:backend/tests/db/test_permission_matrix.py<br>pytest:backend/tests/db/test_files_api.py::test_viewer_can_browse<br>pytest:backend/tests/db/test_permission_matrix.py::test_file_relay_refuses_before_reaching_the_daemon |
 | FR-AUTH-002 | [FR-AUTH-002.AC-12](../../research/prd.md#fr-auth-002-ac-12) | \| 查看 Audit Log \|     ✓ \|           \|        \| | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/rbac.py | pytest:backend/tests/db/test_permission_matrix.py<br>pytest:backend/tests/db/test_audit_query_api.py::test_only_admin_may_read_the_trail |
 | FR-CONN-001 | [FR-CONN-001.AC-01](../../research/prd.md#fr-conn-001-ac-01) | Daemon 必須主動建立至中央平台的 WebSocket 連線。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/connection#TestSessionAuthRegisterHeartbeatShutdown |
-| FR-CONN-002 | [FR-CONN-002.AC-01](../../research/prd.md#fr-conn-002-ac-01) | 正式環境所有通訊必須使用： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL |
+| FR-CONN-002 | [FR-CONN-002.AC-01](../../research/prd.md#fr-conn-002-ac-01) | 正式環境所有通訊必須使用： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md<br>plan:plan/07/03-edge-console-and-single-origin.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
 | FR-CONN-003 | [FR-CONN-003.AC-01](../../research/prd.md#fr-conn-003-ac-01) | Daemon 與中央斷線後，應持續重連。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/connection#TestReconnectReregistersAfterCentralDrop |
 | FR-CONN-003 | [FR-CONN-003.AC-02](../../research/prd.md#fr-conn-003-ac-02) | 1 秒 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/connection#TestReconnectBackoffScheduleMatchesThePRD |
 | FR-CONN-003 | [FR-CONN-003.AC-03](../../research/prd.md#fr-conn-003-ac-03) | 2 秒 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | gotest:daemon/internal/connection<br>gotest:daemon/internal/connection#TestReconnectBackoffScheduleMatchesThePRD |
@@ -89,7 +89,7 @@
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-06](../../research/prd.md#fr-install-001-ac-06) | 最大使用次數 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-07](../../research/prd.md#fr-install-001-ac-07) | 已使用次數 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-08](../../research/prd.md#fr-install-001-ac-08) | 是否停用 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
-| FR-INSTALL-002 | [FR-INSTALL-002.AC-01](../../research/prd.md#fr-install-002-ac-01) | 平台應產生類似以下指令： | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>pytest:backend/tests/test_downloads.py::test_install_script_served_as_shellscript |
+| FR-INSTALL-002 | [FR-INSTALL-002.AC-01](../../research/prd.md#fr-install-002-ac-01) | 平台應產生類似以下指令： | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>pytest:backend/tests/test_downloads.py::test_install_script_served_as_shellscript<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
 | FR-INSTALL-003 | [FR-INSTALL-003.AC-01](../../research/prd.md#fr-install-003-ac-01) | 安裝腳本應： | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>gotest:daemon/internal/install#TestBuildConfigValidAndSelective |
 | FR-INSTALL-003 | [FR-INSTALL-003.AC-02](../../research/prd.md#fr-install-003-ac-02) | 檢查 Linux 發行版。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>scenario:deploy/install.sh#/etc/os-release |
 | FR-INSTALL-003 | [FR-INSTALL-003.AC-03](../../research/prd.md#fr-install-003-ac-03) | 檢查 CPU 架構。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>scenario:deploy/install.sh#uname -m |
@@ -293,18 +293,18 @@
 | MVP-AC-18 | [MVP-AC-18.AC-01](../../research/prd.md#mvp-ac-18-ac-01) | Node 離線時不可建立新 Session。 | requirement:FR-NODE-002 | — | pytest:backend/tests/db/test_sessions_api.py |
 | MVP-AC-19 | [MVP-AC-19.AC-01](../../research/prd.md#mvp-ac-19-ac-01) | 使用者可正常終止 Session。 | requirement:FR-SESSION-005 | — | playwright:frontend/tests/e2e/session.spec.ts |
 | MVP-AC-20 | [MVP-AC-20.AC-01](../../research/prd.md#mvp-ac-20-ac-01) | 所有重要操作均有 Audit Log。 | requirement:SEC-006 | — | pytest:backend/tests/db/test_audit_coverage.py |
-| NFR-001 | [NFR-001.AC-01](../../research/prd.md#nfr-001-ac-01) | Terminal 輸入至顯示的額外延遲目標小於 200 ms。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
-| NFR-001 | [NFR-001.AC-02](../../research/prd.md#nfr-001-ac-02) | Node 列表載入時間小於 2 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
-| NFR-001 | [NFR-001.AC-03](../../research/prd.md#nfr-001-ac-03) | 目錄列表回應小於 2 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
-| NFR-001 | [NFR-001.AC-04](../../research/prd.md#nfr-001-ac-04) | 2 MB 以下檔案預覽小於 3 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
+| NFR-001 | [NFR-001.AC-01](../../research/prd.md#nfr-001-ac-01) | Terminal 輸入至顯示的額外延遲目標小於 200 ms。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py<br>gate:GATE-RAILWAY-LATENCY |
+| NFR-001 | [NFR-001.AC-02](../../research/prd.md#nfr-001-ac-02) | Node 列表載入時間小於 2 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py<br>gate:GATE-RAILWAY-LATENCY |
+| NFR-001 | [NFR-001.AC-03](../../research/prd.md#nfr-001-ac-03) | 目錄列表回應小於 2 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py<br>gate:GATE-RAILWAY-LATENCY |
+| NFR-001 | [NFR-001.AC-04](../../research/prd.md#nfr-001-ac-04) | 2 MB 以下檔案預覽小於 3 秒。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py<br>gate:GATE-RAILWAY-LATENCY |
 | NFR-002 | [NFR-002.AC-01](../../research/prd.md#nfr-002-ac-01) | Daemon 應自動重連。 | source:research/tech.md | — | scenario:daemon/internal/session |
-| NFR-002 | [NFR-002.AC-02](../../research/prd.md#nfr-002-ac-02) | 中央平台重啟後，Daemon 應重新註冊。 | source:research/tech.md | — | scenario:daemon/internal/session |
-| NFR-002 | [NFR-002.AC-03](../../research/prd.md#nfr-002-ac-03) | 瀏覽器中斷不得直接終止 CLI Session。 | source:research/tech.md | — | scenario:daemon/internal/session |
+| NFR-002 | [NFR-002.AC-02](../../research/prd.md#nfr-002-ac-02) | 中央平台重啟後，Daemon 應重新註冊。 | source:research/tech.md<br>plan:plan/07/05-verification-and-exit.md | — | scenario:daemon/internal/session<br>gate:GATE-RAILWAY-NODE-E2E |
+| NFR-002 | [NFR-002.AC-03](../../research/prd.md#nfr-002-ac-03) | 瀏覽器中斷不得直接終止 CLI Session。 | source:research/tech.md<br>plan:plan/07/05-verification-and-exit.md | — | scenario:daemon/internal/session<br>gate:GATE-RAILWAY-NODE-E2E |
 | NFR-002 | [NFR-002.AC-04](../../research/prd.md#nfr-002-ac-04) | Session 狀態應可恢復。 | source:research/tech.md | — | scenario:daemon/internal/session |
 | NFR-003 | [NFR-003.AC-01](../../research/prd.md#nfr-003-ac-01) | MVP 目標： | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
 | NFR-003 | [NFR-003.AC-02](../../research/prd.md#nfr-003-ac-02) | 100 個 Node。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
 | NFR-003 | [NFR-003.AC-03](../../research/prd.md#nfr-003-ac-03) | 每個 Node 10 個同時 Session。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
-| NFR-003 | [NFR-003.AC-04](../../research/prd.md#nfr-003-ac-04) | 全平台 500 個同時 Terminal WebSocket。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py |
+| NFR-003 | [NFR-003.AC-04](../../research/prd.md#nfr-003-ac-04) | 全平台 500 個同時 Terminal WebSocket。 | source:research/tech.md | — | scenario:scripts/p4/load/capacity.py<br>gate:GATE-RAILWAY-LATENCY |
 | NFR-004 | [NFR-004.AC-01](../../research/prd.md#nfr-004-ac-01) | Daemon 應： | source:research/tech.md | — | scenario:scripts/p4/evidence.sh |
 | NFR-004 | [NFR-004.AC-02](../../research/prd.md#nfr-004-ac-02) | 使用結構化 Log。 | source:research/tech.md | — | scenario:scripts/p4/evidence.sh |
 | NFR-004 | [NFR-004.AC-03](../../research/prd.md#nfr-004-ac-03) | 支援 Log Level。 | source:research/tech.md | — | scenario:scripts/p4/evidence.sh |
@@ -352,7 +352,7 @@
 | SEC-003 | [SEC-003.AC-04](../../research/prd.md#sec-003-ac-04) | 可設定過期時間。 | source:research/tech.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token |
 | SEC-003 | [SEC-003.AC-05](../../research/prd.md#sec-003-ac-05) | 可設定使用次數。 | source:research/tech.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_node_registration.py::test_concurrent_consume_respects_max_uses |
 | SEC-004 | [SEC-004.AC-01](../../research/prd.md#sec-004-ac-01) | 敏感檔案預設不可透過 Web 預覽。 | source:research/tech.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files<br>gotest:daemon/internal/files#TestReadPolicyMatrix<br>pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path |
-| SEC-005 | [SEC-005.AC-01](../../research/prd.md#sec-005-ac-01) | 正式環境必須使用 TLS。 | source:research/tech.md | code:deploy/nginx/nginx.conf | scenario:scripts/p4/verify-edge.sh<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served |
+| SEC-005 | [SEC-005.AC-01](../../research/prd.md#sec-005-ac-01) | 正式環境必須使用 TLS。 | source:research/tech.md<br>plan:plan/07/03-edge-console-and-single-origin.md | code:deploy/nginx/nginx.conf | scenario:scripts/p4/verify-edge.sh<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
 | SEC-006 | [SEC-006.AC-01](../../research/prd.md#sec-006-ac-01) | 以下動作需記錄： | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_every_row_written_during_a_full_flow_is_well_formed<br>pytest:backend/tests/test_audit_redaction.py::test_every_audit_action_has_a_write_site |
 | SEC-006 | [SEC-006.AC-02](../../research/prd.md#sec-006-ac-02) | Node 註冊。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_enrollment_create_and_revoke |
 | SEC-006 | [SEC-006.AC-03](../../research/prd.md#sec-006-ac-03) | 建立 Session。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_session_create_and_terminate |
@@ -363,7 +363,7 @@
 | SEC-006 | [SEC-006.AC-08](../../research/prd.md#sec-006-ac-08) | 停用 Node。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_disable_and_enable_are_distinct_actions |
 | SEC-006 | [SEC-006.AC-09](../../research/prd.md#sec-006-ac-09) | Daemon 更新。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_node_update_api.py::test_a_successful_update_records_the_new_version_and_two_audit_rows |
 | SEC-007 | [SEC-007.AC-01](../../research/prd.md#sec-007-ac-01) | Daemon 不應預設以 root 長期執行。 | source:research/tech.md | code:daemon/internal/install/systemd.go | gotest:daemon/internal/install<br>gotest:daemon/internal/config#TestEnsureNonRoot<br>gotest:daemon/internal/install#TestUnitFile |
-| TECH-SEC-01 | [TECH-SEC-01.AC-01](../../research/tech.md#tech-sec-01-ac-01) | 中央平台只允許 HTTPS／WSS。 | adr:docs/adr/0019-requirement-traceability.md | code:deploy/nginx/nginx.conf | scenario:scripts/p4/verify-edge.sh<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served |
+| TECH-SEC-01 | [TECH-SEC-01.AC-01](../../research/tech.md#tech-sec-01-ac-01) | 中央平台只允許 HTTPS／WSS。 | adr:docs/adr/0019-requirement-traceability.md<br>plan:plan/07/03-edge-console-and-single-origin.md | code:deploy/nginx/nginx.conf | scenario:scripts/p4/verify-edge.sh<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
 | TECH-SEC-02 | [TECH-SEC-02.AC-01](../../research/tech.md#tech-sec-02-ac-01) | Daemon 不使用 root 長期執行。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install/systemd.go | gotest:daemon/internal/install<br>gotest:daemon/internal/config#TestEnsureNonRoot<br>gotest:daemon/internal/install#TestUnitFile |
 | TECH-SEC-03 | [TECH-SEC-03.AC-01](../../research/tech.md#tech-sec-03-ac-01) | Enrollment Token 一次性或限時。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token |
 | TECH-SEC-04 | [TECH-SEC-04.AC-01](../../research/tech.md#tech-sec-04-ac-01) | Node Secret 不明文保存於中央。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_security.py::test_keyed_hash_is_deterministic_and_verifies<br>pytest:backend/tests/db/test_node_registration.py::test_node_auth_rejects_revoked_credential |
@@ -373,8 +373,8 @@
 | TECH-SEC-08 | [TECH-SEC-08.AC-01](../../research/tech.md#tech-sec-08-ac-01) | Terminal 原始內容不寫入 Log。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/test_audit_redaction.py::test_forbidden_metadata_keys_cover_the_content_bearing_names<br>pytest:backend/tests/db/test_files_api.py::test_correlation_log_has_ids_and_volumes_but_no_path_or_content |
 | TECH-SEC-09 | [TECH-SEC-09.AC-01](../../research/tech.md#tech-sec-09-ac-01) | 敏感檔案預設禁止預覽。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files<br>gotest:daemon/internal/files#TestReadPolicyMatrix |
 | TECH-SEC-10 | [TECH-SEC-10.AC-01](../../research/tech.md#tech-sec-10-ac-01) | Session 建立、接管、終止需 Audit。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_session_create_and_terminate<br>pytest:backend/tests/test_terminal_relay.py::test_takeover_transfers_writer |
-| TECH-SEC-11 | [TECH-SEC-11.AC-01](../../research/tech.md#tech-sec-11-ac-01) | WebSocket 必須做身分與權限檢查。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/auth.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_security.py::test_ws_ticket_single_use_and_resource_bound<br>pytest:backend/tests/db/test_node_ws.py::test_ws_requires_auth_first |
-| TECH-SEC-12 | [TECH-SEC-12.AC-01](../../research/tech.md#tech-sec-12-ac-01) | Binary Download 必須驗證 Checksum。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/update#TestAChecksumMismatchAbortsBeforeAnythingIsExtracted<br>pytest:backend/tests/test_downloads.py::test_download_checksums |
+| TECH-SEC-11 | [TECH-SEC-11.AC-01](../../research/tech.md#tech-sec-11-ac-01) | WebSocket 必須做身分與權限檢查。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/auth.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_security.py::test_ws_ticket_single_use_and_resource_bound<br>pytest:backend/tests/db/test_node_ws.py::test_ws_requires_auth_first<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
+| TECH-SEC-12 | [TECH-SEC-12.AC-01](../../research/tech.md#tech-sec-12-ac-01) | Binary Download 必須驗證 Checksum。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install<br>code:scripts/railway/bake_artifacts.py | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/update#TestAChecksumMismatchAbortsBeforeAnythingIsExtracted<br>pytest:backend/tests/test_downloads.py::test_download_checksums<br>gate:GATE-RAILWAY-CONFIG-TESTS |
 | TECH-SEC-13 | [TECH-SEC-13.AC-01](../../research/tech.md#tech-sec-13-ac-01) | Daemon Config 與 Credential 權限為 0600。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/config#TestLoadRejectsGroupReadablePerms |
 | TECH-SEC-14 | [TECH-SEC-14.AC-01](../../research/tech.md#tech-sec-14-ac-01) | 限制單一使用者與 Node 的 Session 數量。 | adr:docs/adr/0019-requirement-traceability.md | code:scripts/p4/load/capacity.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet<br>pytest:backend/tests/db/test_sessions_service.py::test_session_limit_reached |
 | TECH-SEC-15 | [TECH-SEC-15.AC-01](../../research/tech.md#tech-sec-15-ac-01) | 限制 Terminal Queue 與 Frame 大小。 | adr:docs/adr/0019-requirement-traceability.md | code:scripts/p4/load/capacity.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_terminal_queue.py::test_output_overflow_emits_single_sentinel_and_does_not_raise<br>pytest:backend/tests/contract/test_contract.py::test_oversize_control_and_binary_are_rejected |
@@ -414,6 +414,19 @@
 - `requirement:FR-TERM-004.AC-03` ← `FR-TERM-004.AC-05` (supersedes)
 - `requirement:FR-WORKSPACE-002` ← `MVP-AC-08.AC-01` (refined_by)
 - `requirement:FR-WORKSPACE-003` ← `MVP-AC-09.AC-01` (refined_by)
+- `gate:GATE-RAILWAY-CONFIG-TESTS` ← `TECH-SEC-12.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `FR-CONN-002.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `FR-INSTALL-002.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `SEC-005.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `TECH-SEC-01.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `TECH-SEC-11.AC-01` (verified_by)
+- `gate:GATE-RAILWAY-LATENCY` ← `NFR-001.AC-01` (measured_by)
+- `gate:GATE-RAILWAY-LATENCY` ← `NFR-001.AC-02` (measured_by)
+- `gate:GATE-RAILWAY-LATENCY` ← `NFR-001.AC-03` (measured_by)
+- `gate:GATE-RAILWAY-LATENCY` ← `NFR-001.AC-04` (measured_by)
+- `gate:GATE-RAILWAY-LATENCY` ← `NFR-003.AC-04` (measured_by)
+- `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-02` (verified_by)
+- `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-03` (verified_by)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
 - `code:backend/app/security/tokens.py` ← `SEC-003.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `SEC-003.AC-02` (implemented_by)
@@ -1479,6 +1492,11 @@
 - `plan:plan/05/00-execution-plan.md` ← `SCOPE-010.AC-01` (guards_scope)
 - `plan:plan/05/00-execution-plan.md` ← `SCOPE-011.AC-01` (guards_scope)
 - `plan:plan/05/00-execution-plan.md` ← `SCOPE-012.AC-01` (guards_scope)
+- `plan:plan/07/03-edge-console-and-single-origin.md` ← `FR-CONN-002.AC-01` (planned_by)
+- `plan:plan/07/03-edge-console-and-single-origin.md` ← `SEC-005.AC-01` (planned_by)
+- `plan:plan/07/03-edge-console-and-single-origin.md` ← `TECH-SEC-01.AC-01` (planned_by)
+- `plan:plan/07/05-verification-and-exit.md` ← `NFR-002.AC-02` (planned_by)
+- `plan:plan/07/05-verification-and-exit.md` ← `NFR-002.AC-03` (planned_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-03` (specified_by)
@@ -1827,3 +1845,4 @@
 - `scenario:scripts/p4/verify-edge.sh` ← `TECH-SEC-01.AC-01` (verified_by)
 - `scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served` ← `SEC-005.AC-01` (verified_by)
 - `scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served` ← `TECH-SEC-01.AC-01` (verified_by)
+- `code:scripts/railway/bake_artifacts.py` ← `TECH-SEC-12.AC-01` (implemented_by)

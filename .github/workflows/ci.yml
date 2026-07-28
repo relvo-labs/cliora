@@ -45,6 +45,38 @@ jobs:
         working-directory: frontend
       - run: npm run format:check && npm run lint && npm run typecheck && npm run test:unit -- --run && npm run build
         working-directory: frontend
+  # Deployment configuration, checked statically and hermetically: no platform account, no
+  # network. It belongs in the baseline gate rather than a phase workflow because the two edge
+  # configurations can be made to disagree by a change to either one of them, and the
+  # disagreement is invisible until whichever deployment nobody tested is the one in use.
+  deploy-config:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - run: make railway-check
+      # The rendered Railway edge config must be a config nginx accepts. `nginx -t` on the
+      # real image is the cheapest possible version of "execute it, do not read it" — the
+      # over-the-wire assertions need a deployment and live in
+      # scripts/railway/verify-deployment.sh.
+      - name: nginx accepts the rendered Railway template
+        run: |
+          mkdir -p /tmp/edge-html
+          echo '<!doctype html><title>x</title>' > /tmp/edge-html/index.html
+          docker run --rm \
+            -v "$PWD/deploy/railway/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro" \
+            -v /tmp/edge-html:/usr/share/nginx/html:ro \
+            -e NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx \
+            -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+            -e PORT=8080 \
+            -e CLIORA_BACKEND_HOST=central.railway.internal \
+            -e CLIORA_BACKEND_PORT=8080 \
+            nginx:1.27-alpine sh -c '/docker-entrypoint.sh nginx -t'
+
   tmux-integration:
     runs-on: ubuntu-24.04
     needs: [backend, daemon, frontend]

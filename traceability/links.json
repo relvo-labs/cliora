@@ -22176,6 +22176,304 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-FR-CONN-002-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
+      "from": "FR-CONN-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-DEPLOY-VERIFY"
+      },
+      "role": "supporting",
+      "assertion": "Redirect, certificate and WSS asserted over the wire against the Railway deployment.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-DEPLOY-VERIFY"
+    },
+    {
+      "id": "LNK-FR-CONN-002-AC-01-PLANNED-BY-PLAN07-03",
+      "from": "FR-CONN-002.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/07/03-edge-console-and-single-origin.md"
+      },
+      "role": "supporting",
+      "assertion": "TLS responsibility split between the platform edge and the console service.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-005-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
+      "from": "SEC-005.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-DEPLOY-VERIFY"
+      },
+      "role": "supporting",
+      "assertion": "Redirect, certificate and WSS asserted over the wire against the Railway deployment.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-DEPLOY-VERIFY"
+    },
+    {
+      "id": "LNK-SEC-005-AC-01-PLANNED-BY-PLAN07-03",
+      "from": "SEC-005.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/07/03-edge-console-and-single-origin.md"
+      },
+      "role": "supporting",
+      "assertion": "TLS responsibility split between the platform edge and the console service.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-TECH-SEC-01-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
+      "from": "TECH-SEC-01.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-DEPLOY-VERIFY"
+      },
+      "role": "supporting",
+      "assertion": "Redirect, certificate and WSS asserted over the wire against the Railway deployment.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-DEPLOY-VERIFY"
+    },
+    {
+      "id": "LNK-TECH-SEC-01-AC-01-PLANNED-BY-PLAN07-03",
+      "from": "TECH-SEC-01.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/07/03-edge-console-and-single-origin.md"
+      },
+      "role": "supporting",
+      "assertion": "TLS responsibility split between the platform edge and the console service.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-TECH-SEC-11-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
+      "from": "TECH-SEC-11.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-DEPLOY-VERIFY"
+      },
+      "role": "supporting",
+      "assertion": "An unticketed terminal socket completes the handshake through both proxies and is closed 1008.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-DEPLOY-VERIFY"
+    },
+    {
+      "id": "LNK-TECH-SEC-12-AC-01-VERIFIED-BY-RAILWAY-BAKE",
+      "from": "TECH-SEC-12.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-CONFIG-TESTS"
+      },
+      "role": "supporting",
+      "assertion": "The artifact baker refuses a digest mismatch, a missing digest and an unparseable checksums.txt.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-CONFIG-TESTS"
+    },
+    {
+      "id": "LNK-TECH-SEC-12-AC-01-IMPLEMENTED-BY-BAKE-ARTIFACTS",
+      "from": "TECH-SEC-12.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "scripts/railway/bake_artifacts.py"
+      },
+      "role": "supporting",
+      "assertion": "Build-time digest verification for artifacts baked into the Central image.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-INSTALL-002-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
+      "from": "FR-INSTALL-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-DEPLOY-VERIFY"
+      },
+      "role": "supporting",
+      "assertion": "install-script and checksums.txt reachable through the platform edge, or both 404 while artifacts are disabled.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-DEPLOY-VERIFY"
+    },
+    {
+      "id": "LNK-NFR-002-AC-02-VERIFIED-BY-RAILWAY-NODE-E2E",
+      "from": "NFR-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-NODE-E2E"
+      },
+      "role": "supporting",
+      "assertion": "Central redeploy on the platform: daemon re-registers and no CLI session is terminated.",
+      "owner": "release",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-NODE-E2E"
+    },
+    {
+      "id": "LNK-NFR-002-AC-02-PLANNED-BY-PLAN07-05",
+      "from": "NFR-002.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/07/05-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Deploy-drain and re-registration verification procedure for the platform target.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-002-AC-03-VERIFIED-BY-RAILWAY-NODE-E2E",
+      "from": "NFR-002.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-NODE-E2E"
+      },
+      "role": "supporting",
+      "assertion": "Central redeploy on the platform: daemon re-registers and no CLI session is terminated.",
+      "owner": "release",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-NODE-E2E"
+    },
+    {
+      "id": "LNK-NFR-002-AC-03-PLANNED-BY-PLAN07-05",
+      "from": "NFR-002.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/07/05-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Deploy-drain and re-registration verification procedure for the platform target.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-001-AC-01-MEASURED-BY-RAILWAY-LATENCY",
+      "from": "NFR-001.AC-01",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-LATENCY"
+      },
+      "role": "supporting",
+      "assertion": "Re-measured on the platform region and instance size; network RTT reported separately from Cliora's added latency.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-LATENCY"
+    },
+    {
+      "id": "LNK-NFR-001-AC-02-MEASURED-BY-RAILWAY-LATENCY",
+      "from": "NFR-001.AC-02",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-LATENCY"
+      },
+      "role": "supporting",
+      "assertion": "Re-measured on the platform region and instance size; network RTT reported separately from Cliora's added latency.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-LATENCY"
+    },
+    {
+      "id": "LNK-NFR-001-AC-03-MEASURED-BY-RAILWAY-LATENCY",
+      "from": "NFR-001.AC-03",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-LATENCY"
+      },
+      "role": "supporting",
+      "assertion": "Re-measured on the platform region and instance size; network RTT reported separately from Cliora's added latency.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-LATENCY"
+    },
+    {
+      "id": "LNK-NFR-001-AC-04-MEASURED-BY-RAILWAY-LATENCY",
+      "from": "NFR-001.AC-04",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-LATENCY"
+      },
+      "role": "supporting",
+      "assertion": "Re-measured on the platform region and instance size; network RTT reported separately from Cliora's added latency.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-LATENCY"
+    },
+    {
+      "id": "LNK-NFR-003-AC-04-MEASURED-BY-RAILWAY-LATENCY",
+      "from": "NFR-003.AC-04",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-RAILWAY-LATENCY"
+      },
+      "role": "supporting",
+      "assertion": "Re-measured on the platform region and instance size; network RTT reported separately from Cliora's added latency.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-RAILWAY-LATENCY"
     }
   ]
 }
