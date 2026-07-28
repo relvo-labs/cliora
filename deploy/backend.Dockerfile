@@ -15,12 +15,22 @@ FROM python:3.12-slim-bookworm AS build
 # the build of the thing that enforces checksums elsewhere (SEC-002).
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 
-# /app, not /build: `uv sync` writes an absolute shebang (`#!/app/.venv/bin/python`) into
-# every console script, so the venv must be assembled at the path it will be executed
-# from. Staging it elsewhere and copying leaves `alembic` and `uvicorn` pointing at an
-# interpreter that does not exist in the runtime image, and the exec failure reports the
-# *script* as missing — "exec /app/.venv/bin/uvicorn: no such file or directory".
-WORKDIR /app
+# The image mirrors the repository layout: /app is the repo root and the backend lives at
+# /app/backend, with contracts/ beside it. Two things depend on that, and both fail at
+# import or exec time rather than gracefully:
+#
+#   * `app/protocol/codec.py` and `app/api/error_catalog.py` resolve the v1 contracts as
+#     `Path(__file__).parents[3] / "contracts"`, which is the repo root in a checkout.
+#     Flattening backend/ into /app makes parents[3] the filesystem root, and codec.py
+#     reads its schema at *import* time — so the process dies before serving anything.
+#   * `uv sync` writes an absolute shebang into every console script it generates, so the
+#     venv has to be assembled at the path it will be executed from. Staged elsewhere and
+#     copied, `alembic` and `uvicorn` point at an interpreter this image does not contain,
+#     and the exec failure names the *script* as missing.
+#
+# Both were invisible until something exec'd the image; `.github/workflows/ci.yml` now
+# builds it and imports the app.
+WORKDIR /app/backend
 # Dependency layer first, so application edits do not re-resolve the lock.
 COPY backend/pyproject.toml backend/uv.lock ./
 # --locked, not --frozen: a lock that does not match pyproject must fail the build
@@ -38,9 +48,16 @@ FROM python:3.12-slim-bookworm AS runtime
 RUN groupadd --system --gid 10001 cliora \
  && useradd --system --uid 10001 --gid cliora --no-create-home --shell /usr/sbin/nologin cliora
 
-WORKDIR /app
+# WORKDIR is the backend, because alembic.ini's `script_location` is relative to it and
+# `uvicorn app.main:app` needs the package on the path. The platform's start and pre-deploy
+# commands and compose's migrate entrypoint all run here.
+WORKDIR /app/backend
 COPY --from=build --chown=root:root /app /app
-ENV PATH="/app/.venv/bin:$PATH" \
+# Read at import time by the protocol codec, so this is a runtime dependency of the
+# application and not merely test data. Copied read-only: Central validates against these
+# schemas and has no reason to be able to alter them.
+COPY --chown=root:root contracts /app/contracts
+ENV PATH="/app/backend/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
