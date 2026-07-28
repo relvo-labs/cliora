@@ -63,10 +63,13 @@ def packed(tmp_path: Path) -> Path:
 
     source = tmp_path / "src"
     (source / "cmd" / "agentd").mkdir(parents=True)
+    # No version is passed on the command line: the packer takes it from here, the way the
+    # image build does.
+    (source / "VERSION").write_text(f"{VERSION}\n")
     dest = tmp_path / "artifacts"
 
     subprocess.run(
-        [str(_SCRIPT), VERSION, str(dest)],
+        [str(_SCRIPT), str(dest)],
         cwd=source,
         check=True,
         capture_output=True,
@@ -76,12 +79,33 @@ def packed(tmp_path: Path) -> Path:
     return dest
 
 
-def test_it_writes_both_architectures_and_a_checksums_file(packed: Path) -> None:
+def test_it_takes_the_version_from_the_version_file(packed: Path) -> None:
+    """Nothing passed 1.2.3 on the command line — `daemon/VERSION` is the only place the
+    release version is declared, so the image build never has to be told it."""
     assert sorted(p.name for p in packed.iterdir()) == [
         "agentd_1.2.3_linux_amd64.tar.gz",
         "agentd_1.2.3_linux_arm64.tar.gz",
         "checksums.txt",
     ]
+
+
+def test_the_repository_version_file_can_produce_a_servable_name() -> None:
+    """The real file, not a fixture: a value that cannot appear in an artifact name would
+    fail the image build rather than a test."""
+    declared = (_REPO_ROOT / "daemon" / "VERSION").read_text(encoding="utf-8").strip()
+    assert declared
+    assert ARTIFACT_PATTERN.match(f"agentd_{declared}_linux_amd64.tar.gz")
+
+
+def test_a_missing_version_file_is_refused(tmp_path: Path) -> None:
+    result = subprocess.run(
+        [str(_SCRIPT), str(tmp_path / "artifacts")],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 1
+    assert "VERSION" in result.stderr
 
 
 def test_every_name_it_writes_is_accepted_by_the_server_side_allowlist(packed: Path) -> None:
@@ -127,7 +151,7 @@ def test_the_archives_are_reproducible(tmp_path: Path, packed: Path) -> None:
     first = (packed / f"agentd_{VERSION}_linux_amd64.tar.gz").read_bytes()
     second_dest = packed.parent / "artifacts-again"
     subprocess.run(
-        [str(_SCRIPT), VERSION, str(second_dest)],
+        [str(_SCRIPT), str(second_dest)],
         cwd=packed.parent / "src",
         check=True,
         capture_output=True,
@@ -142,7 +166,7 @@ def test_a_version_that_cannot_appear_in_an_artifact_name_is_refused(
     tmp_path: Path, version: str
 ) -> None:
     result = subprocess.run(
-        [str(_SCRIPT), version, str(tmp_path / "artifacts")],
+        [str(_SCRIPT), str(tmp_path / "artifacts"), version],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -153,6 +177,6 @@ def test_a_version_that_cannot_appear_in_an_artifact_name_is_refused(
 
 def test_missing_arguments_are_refused(tmp_path: Path) -> None:
     result = subprocess.run(
-        [str(_SCRIPT), VERSION], cwd=tmp_path, capture_output=True, text=True
+        [str(_SCRIPT)], cwd=tmp_path, capture_output=True, text=True
     )
     assert result.returncode == 2

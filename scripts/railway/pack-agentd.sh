@@ -15,15 +15,29 @@
 # `daemon/internal/update` both verify the tarball against this file before executing
 # anything (tech §23 #12). Release signing remains a separate decision (ADR 0017).
 #
-#   pack-agentd.sh <version> <dest>     # run from the daemon module root
+#   pack-agentd.sh <dest> [version]     # run from the daemon module root
+#
+# The version is not an input the deployment supplies. It is declared in `daemon/VERSION`
+# alongside the code being compiled, because it describes that code: a platform variable
+# would let the image serve a binary labelled with a version nobody built. The optional
+# argument exists for tests.
 set -euo pipefail
 
-VERSION="${1:-}"
-DEST="${2:-}"
-[ -n "$VERSION" ] && [ -n "$DEST" ] || {
-  echo "usage: pack-agentd.sh <version> <dest>" >&2
+DEST="${1:-}"
+VERSION="${2:-}"
+[ -n "$DEST" ] || {
+  echo "usage: pack-agentd.sh <dest> [version]" >&2
   exit 2
 }
+
+if [ -z "$VERSION" ]; then
+  [ -r VERSION ] || {
+    echo "error: no VERSION file in $(pwd); run this from the daemon module root" >&2
+    exit 1
+  }
+  VERSION="$(tr -d '[:space:]' < VERSION)"
+fi
+[ -n "$VERSION" ] || { echo "error: VERSION is empty" >&2; exit 1; }
 
 # The same character class `bake_artifacts.py` enforces, for the same reason: the version
 # is interpolated into a filename and into linker flags, and a name this script can write

@@ -124,20 +124,36 @@ release's own `checksums.txt`, and writes the files read-only into `/srv/artifac
 version it writes nothing and exits 0, so the compose build is unchanged and acquires no
 build-time network dependency.
 
-**Amended: a second route, for when the release cannot be fetched.** The download route needs
-the assets to be reachable without credentials. This repository is private, so an
-unauthenticated fetch of its release assets answers 404 — which fails the image build and
-leaves `/api/downloads` and `/api/install-script` answering 404 permanently. With
-`AGENTD_VERSION` set and **no** base URL, the image instead compiles `agentd` for both
-architectures from `daemon/` at the commit being deployed and generates `checksums.txt` itself
-(`scripts/railway/pack-agentd.sh`), using the same flags as `daemon/.goreleaser.yaml` so
-`-trimpath` reproducibility (ADR 0017) still holds. Both routes remain supported; the gate is
-inside a build stage so the no-op case still compiles nothing and downloads no modules.
+**Amended: the image builds the release, and the download route became the option.** Two things
+were wrong with the original shape.
 
-Rejected for that case: publishing the assets to a second, public repository (an extra
+The download route needs the assets reachable without credentials. This repository is private,
+so an unauthenticated fetch of its release assets answers 404 — the image build fails, and
+`/api/downloads` and `/api/install-script` answer 404 permanently. Rejected before settling on
+building in the image: publishing the assets to a second, public repository (an extra
 artifact-hosting surface to keep in step with the private one, and a manual step per release),
 and threading a read token into the build (a credential in the build environment and its layer
 cache, to authenticate a fetch of bytes the build already has in source form).
+
+And the artifacts were configuration when they are not a choice. Serving them took two platform
+variables — a version and a directory — either of which, forgotten, produced a deployment that
+looked healthy and answered 404 to its own installer. That is how this was found. So the default
+is now that `deploy/backend.Dockerfile` compiles `agentd` for both architectures from `daemon/`
+at the commit being built and generates `checksums.txt` itself
+(`scripts/railway/pack-agentd.sh`), with the same flags as `daemon/.goreleaser.yaml` so
+`-trimpath` reproducibility (ADR 0017) still holds; the image sets `CLIORA_ARTIFACTS_DIR` to the
+directory it wrote them to. An image now serves the daemon built from its own commit, and cannot
+be configured into serving none.
+
+The version lives in `daemon/VERSION`, next to the code it names, because it describes that code
+rather than the deployment: a platform variable can label a binary with a version nobody built.
+Four things read it and none of them can drift silently — the packer, `main.go`'s unstamped
+fallback (pinned by a Go test), the git tag `make release` accepts, and the version the download
+route looks for. Bumping it on a daemon change stays a human judgement, and is the one thing
+this design still relies on a person to do.
+
+`AGENTD_RELEASE_BASE_URL` remains, and is now the only knob: it is a real choice, about where
+the bytes come from. Setting it takes the download-and-verify route instead.
 
 What changes about the trust model, precisely. On the download route the digest check proves
 the bytes match what the release published. On the build route there is no external digest,
@@ -148,11 +164,12 @@ is what tech §23 #12 requires. What the build route drops is the ability to det
 between the image and a separately published release, which on this route does not exist.
 Release signing remains the separate decision it already was (ADR 0017).
 
-The cost, stated because it is paid on every build: the runtime stage's `COPY --from` cannot be
-conditional, so the `golang` base image is pulled even when no version is set — including by
-CI's image-exec check. That is the same class of dependency as the existing `python:3.12-slim`
-and `uv` pulls, and unlike the thing the original no-op property protects: no *release* is
-fetched at build time.
+The cost, stated because it is paid on every build: the Central image build now pulls the
+`golang` base image and compiles the daemon (~7s), including in CI and in the compose build,
+which mounts a host directory over the result and discards it. The original no-op property was
+about not fetching a *release* at build time; a module download is the same class of dependency
+as the `uv sync` this build already performs. Paying it unconditionally is what buys the
+property that the two are never out of step.
 
 Rejected: a platform volume. A volume forbids replicas (already true here) but also makes
 **every deploy incur downtime**, since two deployments cannot mount it at once — and it turns a
@@ -164,8 +181,9 @@ What the digest check proves is bounded and stated in `scripts/railway/bake_arti
 bytes match the digests the release published. It does not authenticate the release host —
 the same trust model as `deploy/install.sh`.
 
-Until a version is in the image, `CLIORA_ARTIFACTS_DIR` stays empty: `/api/downloads` and
-`/api/install-script` answer 404 and the manifest answers `{"latest": null, "artifacts": []}`
+If the artifacts directory is ever empty — overridden to a path with nothing mounted at it —
+`/api/downloads` and `/api/install-script` answer 404 and the manifest answers
+`{"latest": null, "artifacts": []}`
 rather than 404, so a daemon can still distinguish "no update available" from "no such
 endpoint". The one-line install command must not be published while that holds.
 

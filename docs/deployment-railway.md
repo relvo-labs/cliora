@@ -71,33 +71,31 @@ Order matters, and two steps are one-way doors.
 
 ## Publishing a daemon release
 
-Artifacts live in the Central image, so publishing a release is a Central redeploy. There are
-two routes, and the choice is made by whether `AGENTD_RELEASE_BASE_URL` is set.
+Artifacts live in the Central image, so publishing a release is a Central redeploy — and by
+default there is nothing to configure. The image compiles `agentd` for amd64 and arm64 from
+`daemon/` at the commit being deployed, at the version `daemon/VERSION` declares, with the same
+flags as `daemon/.goreleaser.yaml`, and generates `checksums.txt`.
 
-### Route A — build from the deployed commit (no release hosting)
+**Publishing a new daemon release is therefore: edit `daemon/VERSION`, merge, redeploy.**
 
-The route a **private** repository needs: a published release's assets are only usable here if
-they can be fetched without credentials, and a private repository answers 404.
+Bump that file on every daemon change. The bytes come from the commit, so reusing a version
+republishes different bytes under a version nodes already think they run — and `agentd update`
+compares versions, so nothing would reach the fleet. Three things are pinned to that file so it
+cannot drift: `main.go`'s fallback version (a Go test), the git tag `make release` will accept,
+and the version the download route below looks for.
 
-1. Set on `central`: `AGENTD_VERSION=1.2.3` and `CLIORA_ARTIFACTS_DIR=/srv/artifacts`. Leave
-   `AGENTD_RELEASE_BASE_URL` unset.
-2. Redeploy. The image compiles `agentd` for amd64 and arm64 from `daemon/` at that commit with
-   the same flags as `daemon/.goreleaser.yaml`, and generates `checksums.txt`.
-3. Bump `AGENTD_VERSION` on every daemon change. The bytes come from the commit, so reusing a
-   version republishes different bytes under a version nodes already think they run — and
-   `agentd update` compares versions, so nothing would reach the fleet.
+### Optional: serve a published release instead of building one
 
-### Route B — download a published release and verify it
+Set `AGENTD_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3` on
+`central` after `make release` has published the assets, and the build downloads and verifies
+them instead of compiling. **A digest mismatch fails the build**, which is the point — it fails
+before any node can download a bad artifact.
 
-1. Tag and build the daemon release (`make release`), so the tarballs and `checksums.txt` exist
-   as release assets, reachable unauthenticated.
-2. Set on `central`: `AGENTD_VERSION=1.2.3`,
-   `AGENTD_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3`, and
-   `CLIORA_ARTIFACTS_DIR=/srv/artifacts`.
-3. Redeploy. **A digest mismatch fails the build**, which is the point — it fails before any
-   node can download a bad artifact.
+This needs the assets to be fetchable **without credentials**; a private repository's release
+assets answer 404 and fail the build. The URL's version must also equal `daemon/VERSION`, or the
+digest lookup fails with `checksums.txt has no digest for …`.
 
-### Either route
+### Confirming
 
 Confirm, then publish the one-line install command:
 
@@ -109,10 +107,12 @@ curl -sS -o /dev/null -w '%{http_code}\n' https://cliora.example.com/api/downloa
 sudo agentd update --dry-run     # on a real node: manifest → download → digest → stop
 ```
 
-Until `AGENTD_VERSION` is set, `/api/downloads` and `/api/install-script` answer 404 and the
-manifest answers `{"latest": null, "artifacts": []}`. That is a correct state — a daemon can
-tell "no update" from "no endpoint" — but **do not publish the one-line install command while
-it holds**; enroll nodes by installing `agentd` manually and running `agentd install`.
+If those answer 404, the artifacts directory is empty or elsewhere — check that
+`CLIORA_ARTIFACTS_DIR` has not been overridden away from the `/srv/artifacts` the image sets.
+The manifest answers `{"latest": null, "artifacts": []}` rather than 404 in that state, so a
+daemon can still tell "no update" from "no endpoint", but **do not publish the one-line install
+command while it holds**; enroll nodes by installing `agentd` manually and running
+`agentd install`.
 
 ## Upgrading
 

@@ -9,7 +9,12 @@ import (
 	"github.com/cliora/cliora/daemon/internal/config"
 )
 
-// version is overridden at build time via -ldflags "-X main.version=...".
+// version is overridden at build time via -ldflags "-X main.version=...". The release
+// it is overridden *to* is declared in daemon/VERSION, which is the single place the
+// daemon's version is set: GoReleaser, the in-image build (scripts/railway/pack-agentd.sh)
+// and this default all derive from it, and TestVersionMatchesTheVersionFile fails if this
+// literal drifts from that file. An unstamped build says `-dev` so a developer binary
+// cannot be mistaken for the release it was cut from.
 var version = "0.2.0-dev"
 
 func main() {

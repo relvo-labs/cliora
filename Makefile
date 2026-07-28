@@ -130,7 +130,16 @@ perf:
 # Requires GoReleaser on PATH (https://goreleaser.com/install/). Output lands in
 # daemon/dist/. `release-snapshot` is a tag-less dry run for local verification;
 # CI runs `release` on version tags (.github/workflows/p1.yml).
+#
+# GoReleaser takes its version from the git tag while everything else in the tree takes it
+# from daemon/VERSION, so this refuses to run when they disagree. A tag one patch off from
+# the file would publish artifacts under a version the code never claimed, and the daemon
+# compares versions to decide whether to update.
 release:
+	@tag="$$(git describe --tags --exact-match 2>/dev/null || true)"; \
+	want="v$$(tr -d '[:space:]' < daemon/VERSION)"; \
+	if [ -z "$$tag" ]; then echo "HEAD is not tagged; expected $$want" >&2; exit 1; fi; \
+	if [ "$$tag" != "$$want" ]; then echo "git tag $$tag does not match daemon/VERSION ($$want)" >&2; exit 1; fi
 	cd daemon && goreleaser release --clean
 
 release-snapshot:
