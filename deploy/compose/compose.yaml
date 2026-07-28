@@ -84,7 +84,13 @@ services:
       # /readyz, not /healthz: it also compares the applied migration against the
       # expected head, so a container that started against a database the migrate job
       # did not reach is reported unready instead of taking traffic.
-      test: ["CMD-SHELL", "python -c \"import urllib.request,json,sys; b=json.load(urllib.request.urlopen('http://127.0.0.1:8000/readyz')); sys.exit(0 if b['status']=='ready' else 1)\""]
+      #
+      # This used to parse the body, because /readyz answered 200 either way. It now
+      # answers 503 when degraded (ADR 0020), so the status code is the whole signal
+      # and `urlopen` raising on 503 is exactly the required behaviour. Keeping the
+      # check trivial matters: the same endpoint is what a managed platform's health
+      # check reads, and that reader cannot be taught to parse a body.
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz')\""]
       interval: 10s
       timeout: 5s
       retries: 6
