@@ -45,8 +45,8 @@ jobs:
         working-directory: frontend
       - run: npm run format:check && npm run lint && npm run typecheck && npm run test:unit -- --run && npm run build
         working-directory: frontend
-  # Deployment configuration, checked statically and hermetically: no platform account, no
-  # network. It belongs in the baseline gate rather than a phase workflow because the two edge
+  # Deployment configuration, checked without a platform account. It belongs in the baseline
+  # gate rather than a phase workflow because the two edge
   # configurations can be made to disagree by a change to either one of them, and the
   # disagreement is invisible until whichever deployment nobody tested is the one in use.
   deploy-config:
@@ -76,6 +76,23 @@ jobs:
             -e CLIORA_BACKEND_HOST=central.railway.internal \
             -e CLIORA_BACKEND_PORT=8080 \
             nginx:1.27-alpine sh -c '/docker-entrypoint.sh nginx -t'
+      # Same rule applied to Central's image: execute it, do not read it. `uv sync` writes an
+      # absolute shebang into every console script, so a venv assembled at a staging path and
+      # copied elsewhere leaves `alembic` and `uvicorn` pointing at an interpreter the runtime
+      # image does not contain. The exec failure then names the *script* as missing rather
+      # than the interpreter, which is as misleading as container errors get.
+      #
+      # This is here because nothing else in CI builds this image: the e2e stack runs uvicorn
+      # from source (scripts/e2e/run-stack.sh), so the first process ever to exec the image
+      # was a real deployment. The three commands below are exactly the three invocations the
+      # two deployments use — central.railway.json's start and pre-deploy commands, compose's
+      # migrate entrypoint, and the create-admin step in both runbooks.
+      - name: the Central image can exec what the deployments invoke
+        run: |
+          docker build -f deploy/backend.Dockerfile -t cliora-central .
+          docker run --rm --entrypoint alembic cliora-central --version
+          docker run --rm --entrypoint sh cliora-central -c 'exec uvicorn --version'
+          docker run --rm --entrypoint python cliora-central -m app.bootstrap --help >/dev/null
 
   tmux-integration:
     runs-on: ubuntu-24.04
