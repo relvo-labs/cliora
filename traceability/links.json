@@ -22318,6 +22318,36 @@
       ]
     },
     {
+      "id": "LNK-TECH-SEC-12-AC-01-IMPLEMENTED-BY-PACK-AGENTD",
+      "from": "TECH-SEC-12.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "scripts/railway/pack-agentd.sh"
+      },
+      "role": "supporting",
+      "assertion": "Generates the checksums.txt that the installer and agentd update verify every downloaded binary against, when the release is built into the Central image instead of downloaded.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-TECH-SEC-12-AC-01-VERIFIED-BY-PACK-AGENTD-TESTS",
+      "from": "TECH-SEC-12.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "scripts/railway/tests/test_pack_agentd.py"
+      },
+      "role": "supporting",
+      "assertion": "Asserts the generated checksums.txt parses in the server's format and its digests match the archives on disk.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
       "id": "LNK-FR-INSTALL-002-AC-01-VERIFIED-BY-RAILWAY-DEPLOY",
       "from": "FR-INSTALL-002.AC-01",
       "type": "verified_by",

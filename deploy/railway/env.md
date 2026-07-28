@@ -26,7 +26,7 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_PUBLIC_BASE_URL` | ✅ | `https://<custom domain>` | **One-way door.** It is written into the installer and into every node's `/etc/agentd/config.yaml`; a platform-generated `*.up.railway.app` value means re-registering every node when the real domain arrives |
 | `PORT` | ✅ | `8080` | Must equal the console's `CLIORA_BACKEND_PORT`, or every `/api` and `/ws` request answers 502 |
 | `CLIORA_SHUTDOWN_DRAIN_SECONDS` | — | `15` (default) | Must stay **below** `drainingSeconds` in `central.railway.json` (25), or SIGKILL lands mid-drain and every deploy disconnects browsers without explanation |
-| `CLIORA_ARTIFACTS_DIR` | — | empty, or `/srv/artifacts` once a release is baked in | Empty means `/api/downloads` and `/api/install-script` answer 404 and the manifest is empty (not 404). That is the documented pre-RW-08 state: correct, but the one-line install command must not be published while it holds |
+| `CLIORA_ARTIFACTS_DIR` | ❌ **leave unset** | — | The image sets it to `/srv/artifacts`, which is where the image puts the release. Override it only to point at a different directory, and only if something is mounted there — a wrong path means `/api/downloads` and `/api/install-script` answer 404 and the manifest goes empty (not 404) |
 | `CLIORA_METRICS_ENABLED` | — | `false` | `true` without a ≥16-character `CLIORA_METRICS_SCRAPE_TOKEN` → startup fails (deliberate). The endpoint is also refused at the edge either way |
 | `CLIORA_METRICS_SCRAPE_TOKEN` | — | unset | See above |
 
@@ -34,8 +34,14 @@ Build-time only (Docker build args, read by `deploy/backend.Dockerfile`):
 
 | Variable | Value | Notes |
 |---|---|---|
-| `AGENTD_VERSION` | e.g. `1.2.3`, or unset | Unset = no artifacts baked in. Set = the build downloads that release and **fails** unless every SHA-256 matches the release's own `checksums.txt` |
-| `AGENTD_RELEASE_BASE_URL` | `https://github.com/<owner>/<repo>/releases/download/v<version>` | Required when `AGENTD_VERSION` is set. Must be https |
+| `AGENTD_RELEASE_BASE_URL` | unset, or `https://github.com/<owner>/<repo>/releases/download/v<version>` | **Unset (default)**: the image compiles `agentd` from the commit being deployed at the version in `daemon/VERSION`, and generates `checksums.txt` itself (ADR 0020 §8). **Set**: it downloads that release instead and **fails** unless every SHA-256 matches the release's own `checksums.txt`. Must be https, must be fetchable without credentials (a private repository's assets answer 404), and its version must equal `daemon/VERSION` or the digest lookup fails the build |
+
+**The daemon version is not set here.** It lives in `daemon/VERSION`, next to the code it
+names, and the release the image serves is built from that. Bump that file when the daemon
+changes: reusing a version republishes different bytes under a version nodes already believe
+they are running, and `agentd update` compares versions — so the fix would never reach the
+fleet. `main.go`'s fallback and `make release`'s tag check are both pinned to that file, so it
+cannot drift silently.
 
 ## Service: `console`
 

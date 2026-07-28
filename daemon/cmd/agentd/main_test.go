@@ -31,6 +31,21 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
+// daemon/VERSION is what the release is built as: GoReleaser tags against it and the
+// Central image compiles against it. This default is the fourth copy of that number and
+// the only one nothing else reads, so it is the one that drifts — and a stale value here
+// is what a developer's binary reports to Central at registration.
+func TestVersionMatchesTheVersionFile(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "VERSION"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.TrimSpace(string(raw)) + "-dev"
+	if version != want {
+		t.Errorf("main.version = %q, but daemon/VERSION implies %q", version, want)
+	}
+}
+
 func TestConfigValidateCommand(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	content := "server:\n  url: wss://x/ws\nnode:\n  name: n\nheartbeat:\n  interval_seconds: 10\n"

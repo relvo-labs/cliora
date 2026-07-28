@@ -71,27 +71,48 @@ Order matters, and two steps are one-way doors.
 
 ## Publishing a daemon release
 
-Artifacts are baked into the Central image and verified at build time, so publishing a release
-is a Central redeploy:
+Artifacts live in the Central image, so publishing a release is a Central redeploy — and by
+default there is nothing to configure. The image compiles `agentd` for amd64 and arm64 from
+`daemon/` at the commit being deployed, at the version `daemon/VERSION` declares, with the same
+flags as `daemon/.goreleaser.yaml`, and generates `checksums.txt`.
 
-1. Tag and build the daemon release (`make release`), so the tarballs and `checksums.txt` exist
-   as release assets.
-2. Set on `central`: `AGENTD_VERSION=1.2.3`,
-   `AGENTD_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3`, and
-   `CLIORA_ARTIFACTS_DIR=/srv/artifacts`.
-3. Redeploy. **A digest mismatch fails the build**, which is the point — it fails before any
-   node can download a bad artifact.
-4. Confirm, then publish the one-line install command:
-   ```bash
-   curl -sS https://cliora.example.com/api/releases/manifest | python -m json.tool
-   curl -sSI https://cliora.example.com/api/downloads/checksums.txt | head -1
-   sudo agentd update --dry-run     # on a real node: manifest → download → digest → stop
-   ```
+**Publishing a new daemon release is therefore: edit `daemon/VERSION`, merge, redeploy.**
 
-Until `AGENTD_VERSION` is set, `/api/downloads` and `/api/install-script` answer 404 and the
-manifest answers `{"latest": null, "artifacts": []}`. That is a correct state — a daemon can
-tell "no update" from "no endpoint" — but **do not publish the one-line install command while
-it holds**; enroll nodes by installing `agentd` manually and running `agentd install`.
+Bump that file on every daemon change. The bytes come from the commit, so reusing a version
+republishes different bytes under a version nodes already think they run — and `agentd update`
+compares versions, so nothing would reach the fleet. Three things are pinned to that file so it
+cannot drift: `main.go`'s fallback version (a Go test), the git tag `make release` will accept,
+and the version the download route below looks for.
+
+### Optional: serve a published release instead of building one
+
+Set `AGENTD_RELEASE_BASE_URL=https://github.com/<owner>/<repo>/releases/download/v1.2.3` on
+`central` after `make release` has published the assets, and the build downloads and verifies
+them instead of compiling. **A digest mismatch fails the build**, which is the point — it fails
+before any node can download a bad artifact.
+
+This needs the assets to be fetchable **without credentials**; a private repository's release
+assets answer 404 and fail the build. The URL's version must also equal `daemon/VERSION`, or the
+digest lookup fails with `checksums.txt has no digest for …`.
+
+### Confirming
+
+Confirm, then publish the one-line install command:
+
+```bash
+curl -sS https://cliora.example.com/api/releases/manifest | python -m json.tool
+curl -sS https://cliora.example.com/api/install-script | head -3
+# GET, not HEAD: the download route is registered for GET only and answers 405 to a HEAD.
+curl -sS -o /dev/null -w '%{http_code}\n' https://cliora.example.com/api/downloads/checksums.txt
+sudo agentd update --dry-run     # on a real node: manifest → download → digest → stop
+```
+
+If those answer 404, the artifacts directory is empty or elsewhere — check that
+`CLIORA_ARTIFACTS_DIR` has not been overridden away from the `/srv/artifacts` the image sets.
+The manifest answers `{"latest": null, "artifacts": []}` rather than 404 in that state, so a
+daemon can still tell "no update" from "no endpoint", but **do not publish the one-line install
+command while it holds**; enroll nodes by installing `agentd` manually and running
+`agentd install`.
 
 ## Upgrading
 
