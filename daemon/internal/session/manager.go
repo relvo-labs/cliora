@@ -138,7 +138,9 @@ func (m *Manager) Attach(ctx context.Context, id uuid.UUID, rows, columns uint16
 			onExit(code)
 		}
 	}
-	process, err := terminal.Attach(ctx, exec.CommandContext(ctx, "tmux", args...), rows, columns, output, exit)
+	attach := exec.CommandContext(ctx, "tmux", args...)
+	attach.Env = ctmux.Env()
+	process, err := terminal.Attach(ctx, attach, rows, columns, output, exit)
 	if err != nil {
 		return ctmux.Snapshot{}, err
 	}

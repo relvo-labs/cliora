@@ -28,7 +28,12 @@ type Process struct {
 // exit code when the child exits on its own (not on Detach/Close).
 func Attach(parent context.Context, command *exec.Cmd, rows, columns uint16, output func([]byte) error, onExit func(int)) (*Process, error) {
 	ctx, cancel := context.WithCancel(parent)
-	command = exec.CommandContext(ctx, command.Path, command.Args[1:]...)
+	// Rebuilt so the child dies with ctx. Env and Dir must be carried over by
+	// hand: a fresh exec.Cmd has neither, and silently dropping Env cost us a
+	// TERM-less tmux client that exited on every attach.
+	rebuilt := exec.CommandContext(ctx, command.Path, command.Args[1:]...)
+	rebuilt.Env, rebuilt.Dir = command.Env, command.Dir
+	command = rebuilt
 	f, err := pty.StartWithSize(command, &pty.Winsize{Rows: rows, Cols: columns})
 	if err != nil {
 		cancel()

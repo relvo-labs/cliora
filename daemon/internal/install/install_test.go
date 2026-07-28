@@ -144,6 +144,7 @@ func TestUnitFile(t *testing.T) {
 		"ExecStart=/usr/local/bin/agentd run --config /etc/agentd/config.yaml",
 		"Restart=always", "RestartSec=5", "LimitNOFILE=65535",
 		"NoNewPrivileges=true", "PrivateTmp=true",
+		"Environment=TERM=xterm-256color",
 		"Wants=network-online.target", "WantedBy=multi-user.target",
 	} {
 		if !strings.Contains(unit, want) {

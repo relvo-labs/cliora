@@ -3,6 +3,7 @@ package tmux
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -14,6 +15,32 @@ import (
 )
 
 const Prefix = "cliora-"
+
+// DefaultTerm is the TERM handed to tmux when the daemon's own environment has
+// nothing usable. agentd runs as a systemd service, which starts with TERM
+// unset; tmux then falls back to the `unknown` terminfo entry, which has no
+// `clear` capability, and the client dies with "open terminal failed: terminal
+// does not support clear" the moment a session is attached. `dumb` fails the
+// same way, so both are treated as absent.
+const DefaultTerm = "xterm-256color"
+
+// Env returns the daemon environment with TERM guaranteed to name a terminal
+// tmux can open. An operator-supplied TERM is left alone.
+func Env() []string {
+	env := os.Environ()
+	switch os.Getenv("TERM") {
+	case "", "dumb", "unknown":
+	default:
+		return env
+	}
+	out := make([]string, 0, len(env)+1)
+	for _, kv := range env {
+		if !strings.HasPrefix(kv, "TERM=") {
+			out = append(out, kv)
+		}
+	}
+	return append(out, "TERM="+DefaultTerm)
+}
 
 var namePattern = regexp.MustCompile(`^cliora-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
@@ -67,6 +94,7 @@ func (c Client) Start(ctx context.Context, s StartSpec) error {
 		return err
 	}
 	cmd := exec.CommandContext(ctx, "tmux", c.args("new-session", "-d", "-x", strconv.Itoa(int(s.Size.Columns)), "-y", strconv.Itoa(int(s.Size.Rows)), "-s", name, "-c", s.Workspace, s.Binary)...)
+	cmd.Env = Env()
 	if cmd.Run() != nil {
 		return errors.New("tmux start failed")
 	}
