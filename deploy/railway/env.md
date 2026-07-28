@@ -26,7 +26,7 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_PUBLIC_BASE_URL` | ✅ | `https://<custom domain>` | **One-way door.** It is written into the installer and into every node's `/etc/agentd/config.yaml`; a platform-generated `*.up.railway.app` value means re-registering every node when the real domain arrives |
 | `PORT` | ✅ | `8080` | Must equal the console's `CLIORA_BACKEND_PORT`, or every `/api` and `/ws` request answers 502 |
 | `CLIORA_SHUTDOWN_DRAIN_SECONDS` | — | `15` (default) | Must stay **below** `drainingSeconds` in `central.railway.json` (25), or SIGKILL lands mid-drain and every deploy disconnects browsers without explanation |
-| `CLIORA_ARTIFACTS_DIR` | — | empty, or `/srv/artifacts` once a release is baked in | Empty means `/api/downloads` and `/api/install-script` answer 404 and the manifest is empty (not 404). That is the documented pre-RW-08 state: correct, but the one-line install command must not be published while it holds |
+| `CLIORA_ARTIFACTS_DIR` | — | empty, or `/srv/artifacts` once a release is in the image | Empty means `/api/downloads` and `/api/install-script` answer 404 and the manifest is empty (not 404). That is a correct pre-release state, but the one-line install command must not be published while it holds. Setting it without an `AGENTD_VERSION` build arg changes nothing: the directory is there but empty |
 | `CLIORA_METRICS_ENABLED` | — | `false` | `true` without a ≥16-character `CLIORA_METRICS_SCRAPE_TOKEN` → startup fails (deliberate). The endpoint is also refused at the edge either way |
 | `CLIORA_METRICS_SCRAPE_TOKEN` | — | unset | See above |
 
@@ -34,8 +34,13 @@ Build-time only (Docker build args, read by `deploy/backend.Dockerfile`):
 
 | Variable | Value | Notes |
 |---|---|---|
-| `AGENTD_VERSION` | e.g. `1.2.3`, or unset | Unset = no artifacts baked in. Set = the build downloads that release and **fails** unless every SHA-256 matches the release's own `checksums.txt` |
-| `AGENTD_RELEASE_BASE_URL` | `https://github.com/<owner>/<repo>/releases/download/v<version>` | Required when `AGENTD_VERSION` is set. Must be https |
+| `AGENTD_VERSION` | e.g. `1.2.3`, or unset | Unset = no artifacts in the image, and `/api/downloads` and `/api/install-script` answer 404. Set = the build produces that release, by one of the two routes below |
+| `AGENTD_RELEASE_BASE_URL` | `https://github.com/<owner>/<repo>/releases/download/v<version>`, or unset | **Set**: the build downloads that release and **fails** unless every SHA-256 matches the release's own `checksums.txt`. Must be https, and the assets must be fetchable without credentials — a private repository's assets answer 404 and fail the build. **Unset**: the build compiles `agentd` from this checkout instead and generates `checksums.txt` itself (ADR 0020 §8) |
+
+Because the in-image build takes its source from the commit being deployed, **bump
+`AGENTD_VERSION` whenever the daemon changes**. Leaving it alone republishes different bytes
+under a version nodes already believe they are running, and `agentd update` compares versions —
+so the fix would never reach the fleet.
 
 ## Service: `console`
 

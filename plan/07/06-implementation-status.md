@@ -18,7 +18,7 @@
 | RW-05 | `console` 服務、nginx template、私網 upstream、parity gate | 1 | ✅ 完成（含實跑） | `deploy/railway/{console.Dockerfile,nginx.conf.template,console.railway.json}`；`scripts/railway/check-edge-parity.sh`；`nginx -t` 與真實流量驗證見 §2 |
 | RW-06 | 變數契約與 `check-env.sh` | 2 | ✅ 完成 | `deploy/railway/env.md`；`scripts/railway/{check-env.sh,check_env.py}`；24 個測試 |
 | RW-07 | 自訂網域、`CLIORA_PUBLIC_BASE_URL` 定案、HTTPS/HSTS/WSS 實測 | 2 | ⬜ 未開工（需帳號與網域） | 檢查已就位：`check_env.py` 拒絕 `*.up.railway.app` 與非 https；`verify-deployment.sh` 驗 301/憑證 |
-| RW-08 | artifacts 烘進 image、manifest 與 install-script 端到端 | 2 | ◐ 實作完成，未對真實 release 跑 | `deploy/backend.Dockerfile` 條件式步驟；`scripts/railway/bake_artifacts.py`；12 個測試（含 digest 不符不落地） |
+| RW-08 | artifacts 進 image、manifest 與 install-script 端到端 | 2 | ◐ 兩條路徑實作完成，未對真實部署跑 | `deploy/backend.Dockerfile` 三種模式；下載並驗證 digest 走 `scripts/railway/bake_artifacts.py`（12 個測試，含 digest 不符不落地），private repo 下改由 image 內編譯，走 `scripts/railway/pack-agentd.sh`（11 個測試，含 tar 根目錄成員與可重現性）；理由見 ADR 0020 §8 |
 | RW-09 | 第一位 Admin、備份、外部 uptime、retention 手動流程 | 2 | ◐ 程序文件完成，未執行 | `docs/deployment-railway.md`：兩種 create-admin 路徑、備份、監控表、retention 三步 |
 | RW-10 | `verify-deployment.sh` 與 drain 驗證程序 | 3 | ✅ 腳本完成（本機實跑 23 檢查） | `scripts/railway/verify-deployment.sh`、`idle_socket_probe.py`；證據見 §2 |
 | RW-11 | 真實 node 端到端九步、NFR-001/003 量測 | 3 | ⬜ 未開工（需帳號與真實 Linux host） | — |

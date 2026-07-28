@@ -5,9 +5,11 @@
     "dockerfilePath": "deploy/backend.Dockerfile",
     "watchPatterns": [
       "backend/**",
+      "daemon/**",
       "deploy/backend.Dockerfile",
       "deploy/install.sh",
       "scripts/railway/bake_artifacts.py",
+      "scripts/railway/pack-agentd.sh",
       "deploy/railway/central.railway.json"
     ]
   },

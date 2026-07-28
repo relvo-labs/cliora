@@ -41,6 +41,25 @@ COPY backend/ ./
 RUN uv sync --locked --no-dev
 
 
+# Builds the agentd release this image will serve, when there is no published release to
+# download (see the artifacts block in the runtime stage for the three modes). The whole
+# build is gated *inside* this stage rather than by skipping the stage, because the
+# runtime stage's `COPY --from` cannot be made conditional: with the gate closed the stage
+# resolves to an empty /out and neither `go mod download` nor any compile runs.
+FROM golang:1.26-bookworm AS agentd
+ARG AGENTD_VERSION=""
+ARG AGENTD_RELEASE_BASE_URL=""
+WORKDIR /src
+COPY daemon/go.mod daemon/go.sum ./
+RUN if [ -n "$AGENTD_VERSION" ] && [ -z "$AGENTD_RELEASE_BASE_URL" ]; then go mod download; fi
+COPY daemon/ ./
+COPY scripts/railway/pack-agentd.sh /usr/local/bin/pack-agentd.sh
+RUN mkdir -p /out \
+ && if [ -n "$AGENTD_VERSION" ] && [ -z "$AGENTD_RELEASE_BASE_URL" ]; then \
+      /usr/local/bin/pack-agentd.sh "$AGENTD_VERSION" /out; \
+    fi
+
+
 FROM python:3.12-slim-bookworm AS runtime
 
 # Non-root, matching the daemon's own rule (SEC-007). Central has no reason to hold
@@ -61,30 +80,53 @@ ENV PATH="/app/backend/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# --- optional: bake one verified agentd release into the image (ADR 0020) ---
+# --- optional: put one agentd release into the image (ADR 0020 §8) ---
 #
 # For a host deployment this stays off and `CLIORA_ARTIFACTS_DIR` points at a mounted
 # directory (see deploy/compose/compose.yaml). It exists because a managed platform's
 # container filesystem is ephemeral, while `/api/downloads` and the release manifest read
 # the local filesystem — so on such a platform the artifacts must arrive at build time.
 #
-# Off by default *and* a no-op when off: with no AGENTD_VERSION the script writes nothing
-# and exits 0, so the host build acquires no build-time network dependency. Every digest
-# is verified against the release's own checksums.txt before anything is written
-# (SEC-002, tech §23 #12); see scripts/railway/bake_artifacts.py for what that does and
-# does not prove.
+# Three modes, keyed on the two build args:
+#
+#   AGENTD_VERSION empty                         no-op. Nothing is written and the build
+#                                                acquires no dependency on any release.
+#   AGENTD_VERSION + AGENTD_RELEASE_BASE_URL     download that release and verify every
+#                                                SHA-256 against its own checksums.txt
+#                                                before anything lands (SEC-002,
+#                                                tech §23 #12). See bake_artifacts.py for
+#                                                what that does and does not prove.
+#   AGENTD_VERSION, no base URL                  build agentd from this checkout in the
+#                                                `agentd` stage above. This is the mode a
+#                                                private repository needs: an
+#                                                unauthenticated fetch of a private
+#                                                release asset answers 404, which would
+#                                                fail the build with nothing baked in.
+#
+# The COPY is unconditional because a `COPY --from` cannot be conditional; in the first
+# two modes /out is empty and this creates an empty directory that the step below fills or
+# leaves alone.
 ARG AGENTD_VERSION=""
 ARG AGENTD_RELEASE_BASE_URL=""
+COPY --from=agentd /out /srv/artifacts
 COPY scripts/railway/bake_artifacts.py /tmp/bake_artifacts.py
 COPY deploy/install.sh /tmp/install.sh
+# install.sh is placed by whichever mode produced the tarballs, because serving it without
+# them is worse than serving neither: the installer's first act is to fetch
+# /api/downloads/checksums.txt, so it would fail on the node instead of here.
+#
 # The chmod is read-only for everyone, including the user Central runs as: Central
 # publishes these and has no reason to be able to alter them. That is what the compose
-# deployment says with `:ro` on its mount.
-RUN python /tmp/bake_artifacts.py \
-      --version "$AGENTD_VERSION" \
-      --base-url "$AGENTD_RELEASE_BASE_URL" \
-      --dest /srv/artifacts \
-      --install-script /tmp/install.sh \
+# deployment says with `:ro` on its mount. It stays last — both branches above write.
+RUN if [ -n "$AGENTD_RELEASE_BASE_URL" ]; then \
+      python /tmp/bake_artifacts.py \
+        --version "$AGENTD_VERSION" \
+        --base-url "$AGENTD_RELEASE_BASE_URL" \
+        --dest /srv/artifacts \
+        --install-script /tmp/install.sh; \
+    elif [ -n "$AGENTD_VERSION" ]; then \
+      install -m 0644 /tmp/install.sh /srv/artifacts/install.sh; \
+    fi \
  && rm -f /tmp/bake_artifacts.py /tmp/install.sh \
  && if [ -d /srv/artifacts ]; then chown -R 10001:10001 /srv/artifacts && chmod -R a-w /srv/artifacts; fi
 

@@ -116,13 +116,43 @@ inside the private network would mean managing certificates for internal names, 
 threat model that would address is "an attacker already inside the project's private
 network". FR-CONN-002 and SEC-005 are about the public path, and that path is TLS-only.
 
-### 8. Artifacts are baked into the image, verified at build time
+### 8. Artifacts are put into the image at build time
 
 `deploy/backend.Dockerfile` gained an optional step: given `AGENTD_VERSION` and
 `AGENTD_RELEASE_BASE_URL`, it downloads that release, verifies every SHA-256 against the
 release's own `checksums.txt`, and writes the files read-only into `/srv/artifacts`. With no
 version it writes nothing and exits 0, so the compose build is unchanged and acquires no
 build-time network dependency.
+
+**Amended: a second route, for when the release cannot be fetched.** The download route needs
+the assets to be reachable without credentials. This repository is private, so an
+unauthenticated fetch of its release assets answers 404 — which fails the image build and
+leaves `/api/downloads` and `/api/install-script` answering 404 permanently. With
+`AGENTD_VERSION` set and **no** base URL, the image instead compiles `agentd` for both
+architectures from `daemon/` at the commit being deployed and generates `checksums.txt` itself
+(`scripts/railway/pack-agentd.sh`), using the same flags as `daemon/.goreleaser.yaml` so
+`-trimpath` reproducibility (ADR 0017) still holds. Both routes remain supported; the gate is
+inside a build stage so the no-op case still compiles nothing and downloads no modules.
+
+Rejected for that case: publishing the assets to a second, public repository (an extra
+artifact-hosting surface to keep in step with the private one, and a manual step per release),
+and threading a read token into the build (a credential in the build environment and its layer
+cache, to authenticate a fetch of bytes the build already has in source form).
+
+What changes about the trust model, precisely. On the download route the digest check proves
+the bytes match what the release published. On the build route there is no external digest,
+because there is no external source — `checksums.txt` records what this build produced. The
+guarantee the *node* depends on is unchanged either way: `deploy/install.sh` and
+`daemon/internal/update` verify the tarball against that file before executing anything, which
+is what tech §23 #12 requires. What the build route drops is the ability to detect a mismatch
+between the image and a separately published release, which on this route does not exist.
+Release signing remains the separate decision it already was (ADR 0017).
+
+The cost, stated because it is paid on every build: the runtime stage's `COPY --from` cannot be
+conditional, so the `golang` base image is pulled even when no version is set — including by
+CI's image-exec check. That is the same class of dependency as the existing `python:3.12-slim`
+and `uv` pulls, and unlike the thing the original no-op property protects: no *release* is
+fetched at build time.
 
 Rejected: a platform volume. A volume forbids replicas (already true here) but also makes
 **every deploy incur downtime**, since two deployments cannot mount it at once — and it turns a
@@ -132,10 +162,9 @@ route as the fallback if artifacts ever need to change without a redeploy.
 
 What the digest check proves is bounded and stated in `scripts/railway/bake_artifacts.py`: the
 bytes match the digests the release published. It does not authenticate the release host —
-the same trust model as `deploy/install.sh`. Release signing remains a separate decision
-(ADR 0017).
+the same trust model as `deploy/install.sh`.
 
-Until a version is baked in, `CLIORA_ARTIFACTS_DIR` stays empty: `/api/downloads` and
+Until a version is in the image, `CLIORA_ARTIFACTS_DIR` stays empty: `/api/downloads` and
 `/api/install-script` answer 404 and the manifest answers `{"latest": null, "artifacts": []}`
 rather than 404, so a daemon can still distinguish "no update available" from "no such
 endpoint". The one-line install command must not be published while that holds.
