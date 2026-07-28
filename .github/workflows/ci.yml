@@ -93,6 +93,13 @@ jobs:
           docker run --rm --entrypoint alembic cliora-central --version
           docker run --rm --entrypoint sh cliora-central -c 'exec uvicorn --version'
           docker run --rm --entrypoint python cliora-central -m app.bootstrap --help >/dev/null
+          # Importing the application is a separate assertion, not a redundant one: the
+          # checks above exec the venv's scripts without ever loading `app`, so an image
+          # missing a file the app reads at import time passes all three and then dies on
+          # first start. `app/protocol/codec.py` reads its JSON Schema at import, which is
+          # exactly how a missing contracts/ turned into an unexplained health-check
+          # timeout. No database is touched: the engine connects lazily.
+          docker run --rm --entrypoint python cliora-central -c 'import app.main'
 
   tmux-integration:
     runs-on: ubuntu-24.04
