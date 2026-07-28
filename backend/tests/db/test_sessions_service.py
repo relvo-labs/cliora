@@ -13,9 +13,19 @@ import pytest
 import sqlalchemy as sa
 
 from app.api.errors import ApiError
-from app.db.models import Node, NodeRuntime, NodeWorkspaceRoot, Role, TerminalSession, User
+from app.db.models import (
+    AuditLog,
+    Node,
+    NodeRuntime,
+    NodeWorkspaceRoot,
+    Role,
+    TerminalSession,
+    User,
+)
 from app.protocol import ControlMessage
 from app.security.passwords import hash_password
+from app.services import audit
+from app.services.nodes import NodeManagementService
 from app.services.sessions import FAILED, RUNNING, TERMINATED, SessionService
 from app.settings import Settings
 
@@ -303,3 +313,130 @@ async def test_terminate_already_ended_rejected(session) -> None:
     with pytest.raises(ApiError) as exc:
         await svc.terminate(actor_id=user_id, session_id=created.id)
     assert exc.value.code == "SESSION_INVALID_STATE"
+
+
+async def _running_session(session, user_id, node_id, name: str) -> TerminalSession:
+    return await SessionService(session, registry=FakeRegistry()).create(
+        actor_id=user_id,
+        node_id=node_id,
+        runtime="claude",
+        name=name,
+        workspace="/home/neil/projects/app",
+        rows=24,
+        columns=80,
+    )
+
+
+async def test_disabling_a_node_leaves_running_sessions_alone_by_default(session) -> None:
+    """FR-NODE-005: disabling stops new work. Whether the work already running is
+    torn down is the administrator's decision, and the default is to let it finish."""
+    user_id, node_id = await _seed(session)
+    first = await _running_session(session, user_id, node_id, "s1")
+    second = await _running_session(session, user_id, node_id, "s2")
+
+    service = NodeManagementService(session, registry=FakeRegistry())
+    await service.set_enabled(node_id, enabled=False, actor_id=user_id)
+    await session.flush()
+
+    assert first.status == RUNNING
+    assert second.status == RUNNING
+    row = await _latest_audit(session, audit.NODE_DISABLE)
+    assert row.audit_metadata["terminate_sessions"] is False
+    assert row.audit_metadata["sessions_terminated"] == 0
+
+
+async def test_disabling_a_node_with_the_flag_actually_terminates_its_sessions(
+    session,
+) -> None:
+    """The flag used to be accepted and audited while nothing acted on it, so a
+    disable that an administrator believed had cleared the node left every session
+    running."""
+    user_id, node_id = await _seed(session)
+    first = await _running_session(session, user_id, node_id, "s1")
+    second = await _running_session(session, user_id, node_id, "s2")
+
+    registry = FakeRegistry()
+    service = NodeManagementService(session, registry=registry)
+    await service.set_enabled(node_id, enabled=False, actor_id=user_id, terminate_sessions=True)
+    await session.flush()
+
+    assert first.status == TERMINATED
+    assert second.status == TERMINATED
+    # Each one was really asked to stop, not just marked in the database.
+    stopped = [payload["session_id"] for type_, payload in registry.sent if type_ == "session.stop"]
+    assert sorted(stopped) == sorted([str(first.id), str(second.id)])
+
+    row = await _latest_audit(session, audit.NODE_DISABLE)
+    assert row.audit_metadata["terminate_sessions"] is True
+    assert row.audit_metadata["sessions_terminated"] == 2
+
+
+async def test_only_sessions_on_that_node_are_terminated(session) -> None:
+    user_id, node_id = await _seed(session)
+    mine = await _running_session(session, user_id, node_id, "s1")
+
+    other = Node(name="vm-2", hostname="vm-2", status="online", is_enabled=True)
+    other.runtimes = [NodeRuntime(runtime="claude", available=True)]
+    other.workspace_roots = [
+        NodeWorkspaceRoot(path="/home/neil/projects", display_name="proj", is_enabled=True)
+    ]
+    session.add(other)
+    await session.flush()
+    theirs = await _running_session(session, user_id, other.id, "s2")
+
+    await NodeManagementService(session, registry=FakeRegistry()).set_enabled(
+        node_id, enabled=False, actor_id=user_id, terminate_sessions=True
+    )
+    await session.flush()
+
+    assert mine.status == TERMINATED
+    assert theirs.status == RUNNING
+
+
+async def test_one_session_that_will_not_stop_does_not_strand_the_others(session) -> None:
+    """A node is disabled because something is wrong with it, so the least likely
+    moment for every daemon reply to arrive is exactly this one. One failure must
+    not leave the remaining sessions running."""
+    user_id, node_id = await _seed(session)
+    first = await _running_session(session, user_id, node_id, "s1")
+    second = await _running_session(session, user_id, node_id, "s2")
+
+    class StubbornRegistry(FakeRegistry):
+        async def request(self, node_id, type_, payload, *, timeout_seconds, request_id=None):
+            if type_ == "session.stop" and payload["session_id"] == str(first.id):
+                raise ApiError("NODE_TIMEOUT", "no answer", 504)
+            return await super().request(
+                node_id, type_, payload, timeout_seconds=timeout_seconds, request_id=request_id
+            )
+
+    await NodeManagementService(session, registry=StubbornRegistry()).set_enabled(
+        node_id, enabled=False, actor_id=user_id, terminate_sessions=True
+    )
+    await session.flush()
+
+    assert second.status == TERMINATED
+    row = await _latest_audit(session, audit.NODE_DISABLE)
+    assert row.audit_metadata["sessions_terminated"] == 1
+
+
+async def test_re_enabling_a_node_never_terminates_anything(session) -> None:
+    user_id, node_id = await _seed(session)
+    running = await _running_session(session, user_id, node_id, "s1")
+
+    registry = FakeRegistry()
+    await NodeManagementService(session, registry=registry).set_enabled(
+        node_id, enabled=True, actor_id=user_id, terminate_sessions=True
+    )
+    await session.flush()
+
+    assert running.status == RUNNING
+    assert not [type_ for type_, _ in registry.sent if type_ == "session.stop"]
+
+
+async def _latest_audit(session, action: str):
+    result = await session.execute(
+        sa.select(AuditLog).where(AuditLog.action == action).order_by(AuditLog.created_at.desc())
+    )
+    row = result.scalars().first()
+    assert row is not None, f"no {action} audit row"
+    return row

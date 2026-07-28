@@ -498,3 +498,34 @@ func TestSessionAuthFailureStops(t *testing.T) {
 	case <-time.After(500 * time.Millisecond):
 	}
 }
+
+// TestReconnectBackoffScheduleMatchesThePRD pins the reconnect schedule to the
+// steps PRD FR-CONN-003 lists. TestReconnectReregistersAfterCentralDrop proves
+// the daemon comes back; this proves it comes back on the published cadence,
+// which is what the criteria for each step actually claim.
+func TestReconnectBackoffScheduleMatchesThePRD(t *testing.T) {
+	want := []time.Duration{
+		1 * time.Second,
+		2 * time.Second,
+		5 * time.Second,
+		10 * time.Second,
+		30 * time.Second,
+	}
+	if len(backoff) != len(want) {
+		t.Fatalf("backoff has %d steps, PRD FR-CONN-003 lists %d: %v", len(backoff), len(want), backoff)
+	}
+	for i, step := range want {
+		if backoff[i] != step {
+			t.Errorf("backoff step %d = %v, PRD says %v", i+1, backoff[i], step)
+		}
+	}
+	if maxBackoff != 60*time.Second {
+		t.Errorf("maxBackoff = %v, PRD FR-CONN-003 caps it at 60s", maxBackoff)
+	}
+	// The ceiling has to actually bound the table, or the last step wins silently.
+	for i, step := range backoff {
+		if step > maxBackoff {
+			t.Errorf("backoff step %d (%v) exceeds the %v ceiling", i+1, step, maxBackoff)
+		}
+	}
+}

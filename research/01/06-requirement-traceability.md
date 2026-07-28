@@ -133,3 +133,30 @@
 | tech §18（可觀測性） | `app/metrics.py` + `daemon/internal/metrics`（request/duration/denied/timeout/cancel/disconnect/bounds）、correlation log（keyword 只留 12 字 digest） | 單元 + DB 測試涵蓋各 op 計數、逾時/斷線計數、denial 分類；log 以 `JsonFormatter` 實際輸出斷言無 path/content/keyword |
 
 本節只記錄實際執行或可定位的自動化證據。尚未在真實 runner 執行：`.github/workflows/p3.yml`（每個 job 的核心命令已在本機逐一執行通過）。完整判定見 `docs/p3-report.md`。
+
+## 10. P4 與目前逐需求狀態
+
+P4 的逐 requirement/criterion 狀態不再手工複製到本文件。ADR 0019 建立的
+`traceability/requirements.json`、`links.json` 與 `gates.json` 是可驗證來源，以下文件由
+`scripts/trace render --write` 產生：
+
+- `docs/traceability/matrix.md`：需求 → criterion → 規劃／設計／實作／驗證，以及反向索引。
+- `docs/traceability/coverage.md`：靜態 link coverage；不把「test 存在」誤寫成已通過。
+- `docs/traceability/mvp.md`：PRD §19 二十項、SEC 與 tech §23 release view。
+- `docs/traceability/historical-gaps.md`：P0–P4 當時 verdict、local/CI/skip 限制。
+
+P4 report 中原先對「本文件 §10」的引用早於本節存在，屬文件漂移；現由
+`scripts/trace validate` 與 generated-doc drift gate 防止再次發生。動態 pass/fail 只存在於綁定
+commit、runner、gate definition 與 artifact digest 的 `trace-snapshot.json`，不寫回 canonical
+需求文件。
+
+## 11. Requirement 變更與證據治理
+
+- Normative product behavior 仍以 `research/prd.md` 為準；accepted ADR 細化實作，tech §23
+  提供額外 release control。
+- 每個 atomic criterion 使用 stable anchor；ID 不重排、不重用。
+- `links.json` 是 verification claim，`gate-results.json` 是實際 run，兩者由 snapshot resolver
+  合併；skip、stale、manual pending 與 waiver 均不是 pass。
+- Critical/High security finding及任意 command、path containment、credential/content leakage
+  邊界不可 waiver。
+- 完整決策見 `docs/adr/0019-requirement-traceability.md`，實作與 rollout 見 `plan/06/`。

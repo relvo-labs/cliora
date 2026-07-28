@@ -285,6 +285,12 @@ echo "==> evidence pack written to $OUT"
 echo
 cat "$COMMANDS"
 echo
+scripts/trace emit-evidence \
+  --gate-id GATE-P3-EVIDENCE \
+  --commands "$COMMANDS" \
+  --run-id "${GITHUB_RUN_ID:-p3-local}" \
+  --profile "${GITHUB_REF_NAME:-local}" \
+  --out "$OUT/gate-results.json"
 if grep -qE 'exit=[1-9]' "$COMMANDS"; then
   echo "!! one or more gates failed; see commands.txt" >&2
   exit 1

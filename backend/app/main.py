@@ -18,7 +18,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from alembic.script import ScriptDirectory
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.api.errors import install_error_handlers
@@ -169,10 +169,28 @@ async def _migration_head_applied() -> bool:
 
 
 @app.get("/readyz")
-async def ready() -> dict[str, object]:
+async def ready(response: Response) -> dict[str, object]:
+    """Readiness, expressed in the status code as well as the body.
+
+    The body alone was not enough. A managed platform's health check reads the
+    **status code** and nothing else (Railway is the case that forced this — see ADR
+    0020), so a `200 {"status": "degraded"}` meant a Central that could not reach its
+    database, or was running against an unmigrated schema, passed the check and took
+    traffic. The rule "an unready replica does not serve" then existed only in the
+    compose healthcheck, which parses the body, and nowhere else.
+
+    503 also settles a disagreement that was already in the tree:
+    `scripts/p4/drills/db-exhaustion.sh` tells the operator to "expect some 503s" when
+    the pool is saturated, but `_database_ready()` swallows the checkout timeout and
+    returned 200 — so that drill's stated expectation had never once held.
+
+    The body keeps both booleans: which half is broken decides which runbook to open.
+    """
     database_ok = await _database_ready()
     migration_ok = await _migration_head_applied() if database_ok else False
     ready_ok = database_ok and migration_ok
+    if not ready_ok:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return {
         "status": "ready" if ready_ok else "degraded",
         "database": database_ok,

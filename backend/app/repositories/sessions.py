@@ -45,6 +45,23 @@ class SessionRepository:
         result = await self._session.execute(query)
         return result.scalars().all()
 
+    async def list_active_for_node(self, node_id: uuid.UUID) -> Sequence[TerminalSession]:
+        """Every session on a node that has not ended, oldest first.
+
+        Used when an administrator disables a node and asks for its sessions to be
+        torn down (FR-NODE-005). Oldest first so a partial failure leaves the
+        newest — most likely still in use — for last.
+        """
+        result = await self._session.execute(
+            select(TerminalSession)
+            .where(
+                TerminalSession.node_id == node_id,
+                TerminalSession.status.in_(ACTIVE_STATES),
+            )
+            .order_by(TerminalSession.created_at.asc())
+        )
+        return result.scalars().all()
+
     async def active_count_for_node(self, node_id: uuid.UUID) -> int:
         result = await self._session.execute(
             select(func.count())

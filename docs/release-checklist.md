@@ -44,6 +44,18 @@ Two rules for using it:
 
 ## 3. The evidence pack
 
+- [ ] `make traceability` exits 0 (schema, anchors, links, selectors, generated views,
+      changed-scope coverage and the traceability tool tests).
+- [ ] `traceability/baseline-debt.json` is still empty. It is checked in both directions, so an
+      entry is a deliberate, reviewable step down from full release blocking — never a quiet way
+      to land a gap.
+- [ ] No criterion is `needs_rewrite`. That state means the requirement text cannot be decided,
+      and the fix is a product decision, not a test.
+- [ ] Required gate shards produced `gate-results.json` for the release commit and the resolved
+      `trace-snapshot.json` has no stale/dirty/hash/digest/skip/manual-pending error.
+      `scripts/traceability/dogfood.sh artifacts/traceability/<run-id>` does the whole sequence.
+- [ ] No criterion resolved to `environment-incomplete`. A gate that declares a browser or
+      platform matrix must report every leg as executed; a partial matrix is not a pass.
 - [ ] `scripts/p4/evidence.sh artifacts/p4/<run-id>` exits 0.
 - [ ] **Read `skipped.txt`.** A green pack with three skipped legs is not a green release;
       the pack lists skips precisely so they cannot pass silently.

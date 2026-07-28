@@ -350,6 +350,8 @@ jobs:
           git diff --exit-code docs/error-catalog.md docs/permission-matrix.md
       - name: alert rules and runbooks agree
         run: uv run --project backend pytest backend/tests/test_alerts_and_runbooks.py -q
+      - name: requirement traceability registry and generated views agree
+        run: make traceability
       - name: prometheus rules are valid
         run: |
           docker run --rm -v "$PWD/deploy/prometheus:/rules" \

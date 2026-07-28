@@ -256,3 +256,28 @@ func TestGeneratedConfigCarriesFilesystemPolicy(t *testing.T) {
 		t.Fatalf("policy did not survive the round trip: %+v", loaded.Filesystem)
 	}
 }
+
+// TestGeneratedConfigCarriesThePublishedScrollback pins FR-TERM-004: the daemon a
+// one-line install produces keeps at least the scrollback the PRD promises, on
+// the tmux backend the PRD says MVP uses. Reconnect replays that buffer, so a
+// change here shortens what every returning user can see.
+func TestGeneratedConfigCarriesThePublishedScrollback(t *testing.T) {
+	now := time.Unix(1700000000, 0).UTC()
+	cfg, err := BuildConfig(Params{
+		Server:         "https://platform.example.com",
+		NodeName:       "dev-vm-01",
+		RunUser:        "neil",
+		WorkspaceRoots: []string{"/home/neil/projects"},
+		DaemonVersion:  "0.2.0",
+	}, detected(now))
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	if cfg.Session.Backend != "tmux" {
+		t.Errorf("session backend = %q, PRD FR-TERM-004 uses tmux scrollback", cfg.Session.Backend)
+	}
+	if cfg.Session.ScrollbackLimit < 5000 {
+		t.Errorf("scrollback limit = %d, PRD FR-TERM-004 promises at least 5000 lines",
+			cfg.Session.ScrollbackLimit)
+	}
+}

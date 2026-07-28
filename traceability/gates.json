@@ -1,0 +1,243 @@
+{
+  "schema_version": 1,
+  "gates": [
+    {
+      "id": "GATE-TRACE-STATIC",
+      "owner": "test-infra",
+      "layer": "static",
+      "command": ["scripts/trace", "validate", "--level", "static"],
+      "working_directory": ".",
+      "timeout_seconds": 30,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security", "nfr"],
+      "artifacts": ["traceability-static.json"]
+    },
+    {
+      "id": "GATE-BACKEND-UNIT",
+      "owner": "central",
+      "layer": "unit",
+      "command": ["uv", "run", "--project", "backend", "pytest", "backend/tests", "-q"],
+      "working_directory": ".",
+      "timeout_seconds": 900,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security"]
+    },
+    {
+      "id": "GATE-BACKEND-DB",
+      "owner": "central",
+      "layer": "integration",
+      "command": ["make", "test-db"],
+      "working_directory": ".",
+      "timeout_seconds": 1200,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security"],
+      "environment": ["postgresql-16"]
+    },
+    {
+      "id": "GATE-DAEMON-RACE",
+      "owner": "daemon",
+      "layer": "unit",
+      "command": ["go", "test", "-race", "./..."],
+      "working_directory": "daemon",
+      "timeout_seconds": 1200,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security"]
+    },
+    {
+      "id": "GATE-CONTRACT-CROSS-LANGUAGE",
+      "owner": "architecture",
+      "layer": "contract",
+      "command": ["make", "contract"],
+      "working_directory": ".",
+      "timeout_seconds": 600,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security"]
+    },
+    {
+      "id": "GATE-DAEMON-INTEGRATION",
+      "owner": "daemon",
+      "layer": "integration",
+      "command": ["make", "integration"],
+      "working_directory": ".",
+      "timeout_seconds": 1200,
+      "trigger": ["main", "release"],
+      "required_for": ["all", "mvp", "security"],
+      "environment": ["tmux"]
+    },
+    {
+      "id": "GATE-FRONTEND-UNIT",
+      "owner": "frontend",
+      "layer": "unit",
+      "command": ["npm", "run", "test:unit", "--", "--run"],
+      "working_directory": "frontend",
+      "timeout_seconds": 900,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp"]
+    },
+    {
+      "id": "GATE-BROWSER-E2E",
+      "owner": "test-infra",
+      "layer": "e2e",
+      "command": ["npm", "run", "test:e2e"],
+      "working_directory": "frontend",
+      "timeout_seconds": 1800,
+      "trigger": ["main", "release"],
+      "required_for": ["all", "mvp"],
+      "environment": ["chromium", "firefox", "webkit"]
+    },
+    {
+      "id": "GATE-PERFORMANCE",
+      "owner": "operations",
+      "layer": "performance",
+      "command": ["make", "perf"],
+      "working_directory": ".",
+      "timeout_seconds": 1800,
+      "trigger": ["main", "release"],
+      "required_for": ["nfr", "mvp"],
+      "artifacts": ["artifacts/p2", "artifacts/p3"]
+    },
+    {
+      "id": "GATE-CAPACITY",
+      "owner": "operations",
+      "layer": "capacity",
+      "command": ["uv", "run", "--project", "backend", "python", "scripts/p4/load/capacity.py", "--profile", "full"],
+      "working_directory": ".",
+      "timeout_seconds": 3600,
+      "trigger": ["main", "release"],
+      "required_for": ["nfr", "mvp"],
+      "environment": ["100-nodes", "500-terminal-websockets"],
+      "artifacts": ["capacity.json"]
+    },
+    {
+      "id": "GATE-SECURITY",
+      "owner": "security",
+      "layer": "security",
+      "command": ["uv", "run", "--project", "backend", "pytest", "backend/tests/test_security.py", "backend/tests/db/test_audit_coverage.py", "-q"],
+      "working_directory": ".",
+      "timeout_seconds": 1200,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all", "mvp", "security"]
+    },
+    {
+      "id": "GATE-P3-EVIDENCE",
+      "owner": "test-infra",
+      "layer": "security",
+      "command": ["scripts/p3/evidence.sh", "artifacts/p3/traceability"],
+      "working_directory": ".",
+      "timeout_seconds": 7200,
+      "trigger": ["main", "release", "manual"],
+      "required_for": ["all", "mvp", "security", "nfr"],
+      "environment": ["postgresql", "tmux", "browsers"],
+      "artifacts": ["artifacts/p3/traceability"]
+    },
+    {
+      "id": "GATE-OPERATIONS",
+      "owner": "operations",
+      "layer": "operations",
+      "command": ["scripts/p4/evidence.sh", "artifacts/p4/traceability"],
+      "working_directory": ".",
+      "timeout_seconds": 7200,
+      "trigger": ["release", "manual"],
+      "required_for": ["mvp", "nfr"],
+      "environment": ["postgresql", "docker", "tmux", "browsers"],
+      "artifacts": ["artifacts/p4/traceability"]
+    },
+    {
+      "id": "GATE-MANUAL-INSTALL-MATRIX",
+      "owner": "release",
+      "layer": "manual",
+      "command": ["scripts/trace", "manual-template", "--procedure", "install-matrix"],
+      "working_directory": ".",
+      "timeout_seconds": 14400,
+      "trigger": ["release", "manual"],
+      "required_for": ["mvp"],
+      "environment": [
+        "ubuntu-22.04",
+        "ubuntu-24.04",
+        "debian-12",
+        "linux-amd64",
+        "linux-arm64"
+      ],
+      "artifacts": ["manual-result.json"]
+    },
+    {
+      "id": "GATE-MANUAL-LIVE-CLI",
+      "owner": "release",
+      "layer": "manual",
+      "command": ["scripts/trace", "manual-template", "--procedure", "live-cli-approval"],
+      "working_directory": ".",
+      "timeout_seconds": 14400,
+      "trigger": ["release", "manual"],
+      "required_for": ["mvp"],
+      "environment": ["claude-cli", "codex-cli"],
+      "artifacts": ["manual-result.json"]
+    },
+    {
+      "id": "GATE-RAILWAY-EDGE-PARITY",
+      "owner": "operations",
+      "layer": "static",
+      "command": ["scripts/railway/check-edge-parity.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all"]
+    },
+    {
+      "id": "GATE-RAILWAY-CONFIG-TESTS",
+      "owner": "operations",
+      "layer": "unit",
+      "command": ["make", "railway-test"],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": ["pull_request", "main", "release"],
+      "required_for": ["changed", "all"]
+    },
+    {
+      "id": "GATE-RAILWAY-ENV",
+      "owner": "operations",
+      "layer": "operations",
+      "command": ["scripts/railway/check-env.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": ["release", "manual"],
+      "required_for": ["all"],
+      "environment": ["railway-cli", "railway-production"]
+    },
+    {
+      "id": "GATE-RAILWAY-DEPLOY-VERIFY",
+      "owner": "operations",
+      "layer": "e2e",
+      "command": ["scripts/railway/verify-deployment.sh"],
+      "working_directory": ".",
+      "timeout_seconds": 1800,
+      "trigger": ["release", "manual"],
+      "required_for": ["all", "security"],
+      "environment": ["railway-production"],
+      "artifacts": ["deployment-verification.md"]
+    },
+    {
+      "id": "GATE-RAILWAY-NODE-E2E",
+      "owner": "release",
+      "layer": "manual",
+      "command": ["scripts/trace", "manual-template", "--procedure", "railway-node-e2e"],
+      "working_directory": ".",
+      "timeout_seconds": 14400,
+      "trigger": ["release", "manual"],
+      "required_for": ["mvp"],
+      "environment": ["railway-production", "real-linux-host"],
+      "artifacts": ["manual-result.json"]
+    },
+    {
+      "id": "GATE-RAILWAY-LATENCY",
+      "owner": "operations",
+      "layer": "performance",
+      "command": ["uv", "run", "--project", "backend", "python", "scripts/p4/load/capacity.py", "--profile", "full"],
+      "working_directory": ".",
+      "timeout_seconds": 3600,
+      "trigger": ["release", "manual"],
+      "required_for": ["nfr"],
+      "environment": ["railway-production", "asia-southeast1"],
+      "artifacts": ["capacity.json"]
+    }
+  ]
+}

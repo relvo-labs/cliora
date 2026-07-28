@@ -39,10 +39,41 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
+# --- optional: bake one verified agentd release into the image (ADR 0020) ---
+#
+# For a host deployment this stays off and `CLIORA_ARTIFACTS_DIR` points at a mounted
+# directory (see deploy/compose/compose.yaml). It exists because a managed platform's
+# container filesystem is ephemeral, while `/api/downloads` and the release manifest read
+# the local filesystem — so on such a platform the artifacts must arrive at build time.
+#
+# Off by default *and* a no-op when off: with no AGENTD_VERSION the script writes nothing
+# and exits 0, so the host build acquires no build-time network dependency. Every digest
+# is verified against the release's own checksums.txt before anything is written
+# (SEC-002, tech §23 #12); see scripts/railway/bake_artifacts.py for what that does and
+# does not prove.
+ARG AGENTD_VERSION=""
+ARG AGENTD_RELEASE_BASE_URL=""
+COPY scripts/railway/bake_artifacts.py /tmp/bake_artifacts.py
+COPY deploy/install.sh /tmp/install.sh
+# The chmod is read-only for everyone, including the user Central runs as: Central
+# publishes these and has no reason to be able to alter them. That is what the compose
+# deployment says with `:ro` on its mount.
+RUN python /tmp/bake_artifacts.py \
+      --version "$AGENTD_VERSION" \
+      --base-url "$AGENTD_RELEASE_BASE_URL" \
+      --dest /srv/artifacts \
+      --install-script /tmp/install.sh \
+ && rm -f /tmp/bake_artifacts.py /tmp/install.sh \
+ && if [ -d /srv/artifacts ]; then chown -R 10001:10001 /srv/artifacts && chmod -R a-w /srv/artifacts; fi
+
 USER cliora
 EXPOSE 8000
 
 # No shell form: SIGTERM must reach uvicorn directly, or the graceful drain
 # (`app.main._drain`) never runs and every deploy disconnects browsers without
 # explanation. A shell wrapper would swallow the signal.
+#
+# A managed platform that overrides the start command replaces this ENTRYPOINT; the
+# override must bind `::`, not `0.0.0.0`, or an IPv6 private network cannot reach it
+# (deploy/railway/central.railway.json does exactly that).
 ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

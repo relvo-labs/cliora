@@ -202,4 +202,11 @@ FAILED=$(grep -oE 'exit=[0-9]+' "$COMMANDS" | grep -vc 'exit=0$' || true)
 echo
 echo "evidence pack: $OUT"
 echo "summary:       $OUT/summary.md"
+scripts/trace emit-evidence \
+  --gate-id GATE-OPERATIONS \
+  --commands "$COMMANDS" \
+  --skips "$SKIPS" \
+  --run-id "${GITHUB_RUN_ID:-p4-local}" \
+  --profile "${GITHUB_REF_NAME:-local}" \
+  --out "$OUT/gate-results.json"
 [ "$FAILED" -eq 0 ] || exit 1

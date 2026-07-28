@@ -213,7 +213,7 @@ func startFsHarness(t *testing.T, ws string) *fsHarness {
 	manager.sessions = session.New(ctmux.Client{Socket: socket}, "", "")
 	manager.guard = workspace.New([]string{ws})
 	manager.resolveBinary = func(string) (string, error) { return bin, nil }
-	t.Cleanup(func() { _ = manager.sessions.Stop(context.Background(), sessionID) })
+	t.Cleanup(func() { _, _ = manager.sessions.Stop(context.Background(), sessionID) })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)

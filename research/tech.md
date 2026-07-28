@@ -2217,20 +2217,50 @@ v1.0.0
 
 正式上線前必須符合：
 
+<a id="tech-sec-01"></a>
+<a id="tech-sec-01-ac-01"></a>
 1. 中央平台只允許 HTTPS／WSS。
+<a id="tech-sec-02"></a>
+<a id="tech-sec-02-ac-01"></a>
 2. Daemon 不使用 root 長期執行。
+<a id="tech-sec-03"></a>
+<a id="tech-sec-03-ac-01"></a>
 3. Enrollment Token 一次性或限時。
+<a id="tech-sec-04"></a>
+<a id="tech-sec-04-ac-01"></a>
 4. Node Secret 不明文保存於中央。
+<a id="tech-sec-05"></a>
+<a id="tech-sec-05-ac-01"></a>
 5. Workspace 每次操作都驗證 Root。
+<a id="tech-sec-06"></a>
+<a id="tech-sec-06-ac-01"></a>
 6. Symlink 必須解析。
+<a id="tech-sec-07"></a>
+<a id="tech-sec-07-ac-01"></a>
 7. 前端不可傳任意 Command。
+<a id="tech-sec-08"></a>
+<a id="tech-sec-08-ac-01"></a>
 8. Terminal 原始內容不寫入 Log。
+<a id="tech-sec-09"></a>
+<a id="tech-sec-09-ac-01"></a>
 9. 敏感檔案預設禁止預覽。
+<a id="tech-sec-10"></a>
+<a id="tech-sec-10-ac-01"></a>
 10. Session 建立、接管、終止需 Audit。
+<a id="tech-sec-11"></a>
+<a id="tech-sec-11-ac-01"></a>
 11. WebSocket 必須做身分與權限檢查。
+<a id="tech-sec-12"></a>
+<a id="tech-sec-12-ac-01"></a>
 12. Binary Download 必須驗證 Checksum。
+<a id="tech-sec-13"></a>
+<a id="tech-sec-13-ac-01"></a>
 13. Daemon Config 與 Credential 權限為 `0600`。
+<a id="tech-sec-14"></a>
+<a id="tech-sec-14-ac-01"></a>
 14. 限制單一使用者與 Node 的 Session 數量。
+<a id="tech-sec-15"></a>
+<a id="tech-sec-15-ac-01"></a>
 15. 限制 Terminal Queue 與 Frame 大小。
 
 ---

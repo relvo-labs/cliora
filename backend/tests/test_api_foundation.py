@@ -32,6 +32,64 @@ def test_readyz_reports_database_and_daemon_keys() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Readiness is a status code, not only a body (ADR 0020)
+#
+# Both halves are patched explicitly rather than relying on whether a database
+# happens to be reachable from the test host: the point of these three tests is the
+# mapping from (database, migration) to the status code, and a test that passes
+# because the developer has no PostgreSQL running proves nothing about it.
+# --------------------------------------------------------------------------- #
+
+
+def _patch_readiness(monkeypatch: pytest.MonkeyPatch, *, database: bool, migration: bool) -> None:
+    async def _database() -> bool:
+        return database
+
+    async def _migration() -> bool:
+        return migration
+
+    monkeypatch.setattr("app.main._database_ready", _database)
+    monkeypatch.setattr("app.main._migration_head_applied", _migration)
+
+
+def test_readyz_returns_200_when_the_database_and_migration_are_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_readiness(monkeypatch, database=True, migration=True)
+    with TestClient(app) as client:
+        response = client.get("/readyz")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["status"] == "ready"
+
+
+def test_readyz_returns_503_when_the_database_is_unreachable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A managed platform's health check reads the status code and nothing else, so a
+    degraded 200 let an unready Central take traffic."""
+    _patch_readiness(monkeypatch, database=False, migration=False)
+    with TestClient(app) as client:
+        response = client.get("/readyz")
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    body = response.json()
+    assert body["status"] == "degraded"
+    # Which half failed still has to be readable: it decides which runbook applies.
+    assert body["database"] is False
+
+
+def test_readyz_returns_503_when_the_applied_migration_is_not_head(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The database being reachable is not readiness. A container started against a
+    schema the migration step never reached must stay out of rotation."""
+    _patch_readiness(monkeypatch, database=True, migration=False)
+    with TestClient(app) as client:
+        response = client.get("/readyz")
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    assert response.json()["database"] is True
+
+
+# --------------------------------------------------------------------------- #
 # P0 dev relay retirement (P4-07, ADR 0016)
 # --------------------------------------------------------------------------- #
 

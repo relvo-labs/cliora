@@ -52,6 +52,10 @@ class MockSocket {
     this.sent.push(data);
   }
   close() {
+    // A real WebSocket fires `close` once. Without this guard the composable's
+    // own `socket?.close()` on reconnect raises a second close event and silently
+    // burns an extra step of the retry schedule.
+    if (this.readyState === MockSocket.CLOSED) return;
     this.closed = true;
     this.readyState = MockSocket.CLOSED;
     this.onclose?.();
@@ -164,6 +168,40 @@ describe("useTerminalSession", () => {
     expect(sockets).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(1000);
     expect(sockets).toHaveLength(2);
+  });
+
+  // The test above only proves the first hop. PRD FR-TERM-006 publishes the whole
+  // schedule, so each step is walked here: a drift to a flat 1 s retry would look
+  // identical from the first hop alone while hammering a struggling Central.
+  it("retries on the full 1/2/5/10/30 second schedule", async () => {
+    const s = newSession();
+    s.mount(document.createElement("div"));
+    await s.connect(SESSION);
+
+    // Every attempt fails to come up, so the schedule advances instead of being
+    // reset by a successful open. The last value repeats: it is a ceiling, not
+    // the end of the list.
+    for (const [attempt, delay] of [
+      1000, 2000, 5000, 10000, 30000, 30000,
+    ].entries()) {
+      const before = sockets.length;
+      sockets[before - 1].close();
+      expect(s.status.value).toBe("reconnecting");
+
+      // Just short of the step: nothing may be dialled yet.
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(
+        sockets,
+        `attempt ${attempt + 1} dialled before its ${delay}ms step`,
+      ).toHaveLength(before);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(
+        sockets,
+        `attempt ${attempt + 1} should dial at ${delay}ms`,
+      ).toHaveLength(before + 1);
+    }
+
+    s.dispose();
   });
 
   it("does not reconnect after exit", async () => {

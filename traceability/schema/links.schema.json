@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cliora.local/traceability/links.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "links"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "from",
+          "type",
+          "target",
+          "role",
+          "assertion",
+          "owner",
+          "applicability"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^LNK-[A-Z0-9._-]+$"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[A-Z0-9._-]+\\.AC-[0-9]{2}$"
+          },
+          "type": {
+            "enum": [
+              "refined_by",
+              "planned_by",
+              "specified_by",
+              "implemented_by",
+              "verified_by",
+              "measured_by",
+              "validated_by",
+              "guards_scope",
+              "depends_on",
+              "supersedes"
+            ]
+          },
+          "target": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "locator"],
+            "properties": {
+              "kind": {
+                "enum": [
+                  "requirement",
+                  "plan",
+                  "adr",
+                  "source",
+                  "code",
+                  "migration",
+                  "config",
+                  "pytest",
+                  "gotest",
+                  "vitest",
+                  "playwright",
+                  "scenario",
+                  "fixture",
+                  "gate",
+                  "manual"
+                ]
+              },
+              "locator": {"type": "string", "minLength": 1, "maxLength": 500}
+            }
+          },
+          "role": {"enum": ["primary", "supporting"]},
+          "assertion": {"type": "string", "minLength": 1, "maxLength": 500},
+          "owner": {
+            "enum": [
+              "product",
+              "architecture",
+              "security",
+              "central",
+              "daemon",
+              "frontend",
+              "test-infra",
+              "operations",
+              "release"
+            ]
+          },
+          "applicability": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {"type": "string", "minLength": 1}
+          },
+          "gate_id": {
+            "type": "string",
+            "pattern": "^GATE-[A-Z0-9._-]+$"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "note": "Named, finite baseline debt for the ADR 0019 rollout. Anything not listed here blocks. An entry that is no longer a gap also fails validation, so this file cannot rot. Empty means full release blocking is on: `make traceability-coverage-strict` is the gate, not a report.",
+  "entries": []
+}

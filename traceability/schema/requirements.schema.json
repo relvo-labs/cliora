@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cliora.local/traceability/requirements.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "requirements"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "requirements": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/requirement"}
+    }
+  },
+  "$defs": {
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "anchor"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^[^/~][^\\u0000]*$"},
+        "anchor": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$"}
+      }
+    },
+    "criterion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "source_anchor",
+        "verification_profile",
+        "risk"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(FR-[A-Z]+-[0-9]{3}|SEC-[0-9]{3}|NFR-[0-9]{3}|MVP-AC-[0-9]{2}|TECH-SEC-[0-9]{2}|SCOPE-[0-9]{3})\\.AC-[0-9]{2}$"
+        },
+        "source_anchor": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "verification_profile": {
+          "enum": ["automated", "measurement", "inspection", "manual_external"]
+        },
+        "risk": {"enum": ["low", "medium", "high", "critical"]},
+        "lifecycle": {
+          "enum": ["proposed", "active", "deprecated", "retired"],
+          "default": "active"
+        },
+        "classification": {
+          "enum": [
+            "criterion",
+            "constraint",
+            "data_shape",
+            "example",
+            "needs_rewrite"
+          ],
+          "default": "criterion"
+        },
+        "covered_by": {
+          "type": "string",
+          "pattern": "^(FR-[A-Z]+-[0-9]{3}|SEC-[0-9]{3}|NFR-[0-9]{3}|MVP-AC-[0-9]{2}|TECH-SEC-[0-9]{2}|SCOPE-[0-9]{3})\\.AC-[0-9]{2}$"
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["classified_by", "classified_at", "rationale"],
+          "properties": {
+            "classified_by": {
+              "enum": [
+                "product",
+                "architecture",
+                "security",
+                "central",
+                "daemon",
+                "frontend",
+                "test-infra",
+                "operations",
+                "release"
+              ]
+            },
+            "classified_at": {"type": "string", "format": "date"},
+            "rationale": {"type": "string", "minLength": 1, "maxLength": 400},
+            "approved": {"type": "boolean", "default": false}
+          }
+        }
+      }
+    },
+    "requirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "kind",
+        "title",
+        "source",
+        "lifecycle",
+        "applicability",
+        "criticality",
+        "owner",
+        "criteria"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(FR-[A-Z]+-[0-9]{3}|SEC-[0-9]{3}|NFR-[0-9]{3}|MVP-AC-[0-9]{2}|TECH-SEC-[0-9]{2}|SCOPE-[0-9]{3})$"
+        },
+        "kind": {
+          "enum": [
+            "functional",
+            "security",
+            "non_functional",
+            "mvp",
+            "tech_security",
+            "scope"
+          ]
+        },
+        "title": {"type": "string", "minLength": 1, "maxLength": 160},
+        "source": {"$ref": "#/$defs/source"},
+        "lifecycle": {
+          "enum": ["proposed", "active", "deprecated", "retired"]
+        },
+        "applicability": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": ["all", "mvp", "release", "development", "linux", "browser"]
+          }
+        },
+        "criticality": {"enum": ["must", "should", "informational"]},
+        "owner": {
+          "enum": [
+            "product",
+            "architecture",
+            "security",
+            "central",
+            "daemon",
+            "frontend",
+            "test-infra",
+            "operations",
+            "release"
+          ]
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/criterion"}
+        }
+      }
+    }
+  }
+}
