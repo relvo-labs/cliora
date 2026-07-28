@@ -95,7 +95,9 @@ EXPOSE 8000
 # (`app.main._drain`) never runs and every deploy disconnects browsers without
 # explanation. A shell wrapper would swallow the signal.
 #
-# A managed platform that overrides the start command replaces this ENTRYPOINT; the
-# override must bind `::`, not `0.0.0.0`, or an IPv6 private network cannot reach it
+# A managed platform that overrides the start command replaces this ENTRYPOINT. On an
+# IPv6 private network `0.0.0.0` is unreachable, but `::` is not the fix: asyncio sets
+# IPV6_V6ONLY on an AF_INET6 socket, so it refuses IPv4 regardless of the bindv6only
+# sysctl. The override binds an empty host, which asyncio reads as "every family"
 # (deploy/railway/central.railway.json does exactly that).
 ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -12,7 +12,7 @@
     ]
   },
   "deploy": {
-    "startCommand": "sh -c 'exec uvicorn app.main:app --host :: --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=\"*\"'",
+    "startCommand": "sh -c 'exec uvicorn app.main:app --host \"\" --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=\"*\"'",
     "preDeployCommand": "alembic upgrade head",
     "healthcheckPath": "/readyz",
     "healthcheckTimeout": 120,

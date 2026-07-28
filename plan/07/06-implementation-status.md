@@ -55,6 +55,7 @@
 | 路徑穿越測試「應回 404」 | 實測回 **200**，因為 nginx 先解碼 `%2f`、解析 `..`，請求被正規化成 `/etc/passwd` 並由 SPA fallback 回 index.html。沒有洩漏，但那個斷言打不到 Central——Central 的 allowlist 整個移除也會過 | 拆成兩項：回應內容不得像系統檔；另外用三個會原樣抵達 Central 的名稱測 allowlist |
 | parity 檢查直接 grep `proxy_read_timeout` | 抓到 `deploy/nginx/nginx.conf` **註解裡**當作反例寫的 `proxy_read_timeout 20s`，回報了不存在的不一致 | 比對前先用 `sed 's/#.*//'` 去掉註解 |
 | 用 `urlsplit` 就能抓到未編碼的 DB 密碼 | Python 在**最後一個** `@` 切 userinfo，所以看起來完全正常；SQLAlchemy 的 regex 用 `[^@]*`，停在**第一個** `@`，把密碼餘段當成 host。兩者不一致，只用 `urlsplit` 的檢查會過 | 直接檢查 userinfo 區段是否含未編碼的 `@` 或多餘的 `:` |
+| `--host ::` 在 `bindv6only=0` 的 Linux 上同時接受 IPv4-mapped，「一個值同時滿足私網與平台探測」（`00` §52、`02` §51） | **不成立。** asyncio 在 `AF_INET6` socket 上明確設 `IPV6_V6ONLY=1`，sysctl 因此無關。實測：`host='::'` → 1 個 socket、`IPV6_V6ONLY=1`、IPv4 connection refused。症狀是平台探測**完全不到達 uvicorn**（log 裡沒有任何 `GET /readyz` access 行），503 來自平台 proxy 而不是 `/readyz`，於是看起來像 readiness 失敗 | `--host ""`：空字串在 asyncio 是 `None`，會綁**每個** family。實測得到 `['AF_INET6', 'AF_INET']` 兩個 socket，`[::1]` 與 `127.0.0.1` 皆回 200 |
 
 ## 4. 需要在平台上實測才能定案的項目
 

@@ -32,8 +32,14 @@ agentd on the user's own host ──outbound WSS──▶ same public origin
    disconnect the drain exists to prevent. `central.railway.json` sets 25, which must stay
    above `CLIORA_SHUTDOWN_DRAIN_SECONDS` (15) — the same pairing as compose's
    `stop_grace_period`.
-2. **Bind `::`, not `0.0.0.0`.** The private network is IPv6; the image's own ENTRYPOINT
-   binds IPv4 and would be unreachable from `console`. The start command overrides it.
+2. **Bind both families — `--host ""`, not `0.0.0.0` and not `::`.** The private network is
+   IPv6, so the image's own `--host 0.0.0.0` is unreachable from `console`. But `--host ::`
+   is not the answer either: asyncio sets `IPV6_V6ONLY` on an `AF_INET6` socket, so it
+   refuses IPv4 no matter what `net.ipv6.bindv6only` says, and the platform health check
+   then never reaches the process — no access-log line, and a 503 that came from the
+   platform's proxy rather than from `/readyz`. An empty host is `None` to asyncio, which
+   binds every family: one IPv6 socket for the private network, one IPv4 socket for the
+   probe. The start command overrides the ENTRYPOINT.
 3. **The upstream must be resolved per request.** Railway service IPs change on every
    deploy and nginx caches a static `upstream` for the life of the process, so a static
    upstream means "Central redeployed, console now 502s until it is also redeployed".

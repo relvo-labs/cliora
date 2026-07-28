@@ -25,7 +25,7 @@ this system fits a PaaS at all: the stateful part is the customer's, not the pla
 | nginx `server backend:8000` | `resolver` + `proxy_pass http://$variable$request_uri` | Service IPs change every deploy and nginx caches a static upstream for the life of the process |
 | TLS terminated by our nginx | Terminated at the platform edge; console 301s on `X-Forwarded-Proto: http` | No certificate exists inside the container |
 | `CLIORA_ARTIFACTS_DIR` on a mounted host directory | Baked into the image at build time, digests verified | The container filesystem is ephemeral |
-| `--host 0.0.0.0` | `--host ::` | The private network is IPv6 |
+| `--host 0.0.0.0` | `--host ""` | The private network is IPv6, so IPv4-only is unreachable from `console` — but `::` alone is IPv6-only (asyncio sets `IPV6_V6ONLY`) and the platform's health check never arrives. An empty host binds both families |
 | Prometheus/Grafana profile | Off; scrape over the private network if wanted | An always-on public metrics endpoint is a permanent read surface |
 
 ## First deployment
