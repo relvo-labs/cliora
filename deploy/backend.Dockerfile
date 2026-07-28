@@ -15,7 +15,12 @@ FROM python:3.12-slim-bookworm AS build
 # the build of the thing that enforces checksums elsewhere (SEC-002).
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 
-WORKDIR /build
+# /app, not /build: `uv sync` writes an absolute shebang (`#!/app/.venv/bin/python`) into
+# every console script, so the venv must be assembled at the path it will be executed
+# from. Staging it elsewhere and copying leaves `alembic` and `uvicorn` pointing at an
+# interpreter that does not exist in the runtime image, and the exec failure reports the
+# *script* as missing — "exec /app/.venv/bin/uvicorn: no such file or directory".
+WORKDIR /app
 # Dependency layer first, so application edits do not re-resolve the lock.
 COPY backend/pyproject.toml backend/uv.lock ./
 # --locked, not --frozen: a lock that does not match pyproject must fail the build
@@ -34,7 +39,7 @@ RUN groupadd --system --gid 10001 cliora \
  && useradd --system --uid 10001 --gid cliora --no-create-home --shell /usr/sbin/nologin cliora
 
 WORKDIR /app
-COPY --from=build --chown=root:root /build /app
+COPY --from=build --chown=root:root /app /app
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
