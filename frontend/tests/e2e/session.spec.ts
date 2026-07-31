@@ -334,6 +334,172 @@ test.describe("session & terminal", () => {
     ).toBeVisible({ timeout: 15_000 });
   });
 
+  // FR-TERM-001.AC-13 / AC-14 (plan/09 LY-06). The vertical counterpart of the
+  // test above, and the reason it exists: that one only ever measured *width*, so
+  // for three phases the CLI panel could sit at roughly half the height of its
+  // pane with every gate green. The mechanism was self-stabilising — the terminal
+  // host was placed in an `auto` grid row, so it measured exactly the 24 rows
+  // xterm already had, and FitAddon kept re-proposing 24 rows at any window size.
+  // Nothing but a real browser can see this: jsdom has no layout at all.
+  test("layout: the CLI terminal fills the centre pane and the page does not scroll", async ({
+    page,
+  }) => {
+    await signIn(page);
+    const nodeCount = await openDialogAndCountNodes(page);
+    test.skip(nodeCount === 0, "no online node available in this stack");
+
+    const dialog = newSessionDialog(page);
+    await dialog.locator("select").first().selectOption({ index: 1 });
+    const runtime = dialog.locator("select").nth(1);
+    await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
+    await runtime.selectOption({ index: 1 });
+    await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
+    await dialog
+      .locator('input[placeholder="e.g. refactor-api"]')
+      .fill("e2e-fill");
+    await dialog.getByRole("button", { name: "Start" }).click();
+
+    await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
+    await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
+      "FAKECLI_READY",
+      { timeout: 15_000 },
+    );
+
+    // One evaluate for the whole picture: a failure message that names only the
+    // ratio cannot tell "the host did not grow" from "the host grew and xterm
+    // never re-fitted", which are different bugs with different fixes.
+    const measure = () =>
+      page.evaluate(() => {
+        const pane = document.querySelector("#panel-cli") as HTMLElement;
+        const host = pane.querySelector(
+          '[aria-label="Interactive CLI terminal"]',
+        ) as HTMLElement;
+        const screen = pane.querySelector(".xterm-screen") as HTMLElement;
+        const root = document.documentElement;
+        const main = document.querySelector("main") as HTMLElement;
+        return {
+          paneHeight: pane.clientHeight,
+          hostHeight: host.clientHeight,
+          screenHeight: Math.round(screen.getBoundingClientRect().height),
+          // One <div> per row; xterm's own rows/cols are not exposed to the page.
+          rows: pane.querySelectorAll(".xterm-rows > div").length,
+          centreWidth: pane.clientWidth,
+          asideWidth: (document.querySelector("aside") as HTMLElement)
+            .clientWidth,
+          pageOverflowY: root.scrollHeight - root.clientHeight,
+          mainOverflowY: main.scrollHeight - main.clientHeight,
+        };
+      });
+
+    const wide = await measure();
+    const why = (m: object) => JSON.stringify(m);
+    // The host takes the whole pane. 4px of slack, not 0: the pane's own border
+    // radius and sub-pixel rounding are not a layout bug.
+    expect(
+      wide.hostHeight,
+      `host did not fill the pane: ${why(wide)}`,
+    ).toBeGreaterThanOrEqual(wide.paneHeight - 4);
+    // …and xterm actually re-fitted into it. The screen is rows × cell height, so
+    // it always leaves under one row spare; 90% is well clear of that and well
+    // clear of the 50% the collapsed layout produced.
+    expect(
+      wide.screenHeight,
+      `xterm did not re-fit to the host: ${why(wide)}`,
+    ).toBeGreaterThanOrEqual(wide.paneHeight * 0.9);
+    // A ratio alone would also pass on a correct-but-tiny terminal. 24 rows was
+    // the broken value at every window size, so the floor is set above it.
+    expect(
+      wide.rows,
+      `too few rows to work in: ${why(wide)}`,
+    ).toBeGreaterThanOrEqual(30);
+    // Two competing height formulas (the shell's and the view's) used to differ
+    // by 16px, which showed up as a page that could be scrolled a little.
+    expect(
+      wide.pageOverflowY,
+      `the page scrolls: ${why(wide)}`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      wide.mainOverflowY,
+      `fill-mode main scrolls: ${why(wide)}`,
+    ).toBeLessThanOrEqual(1);
+    // The rail is navigation for five items, not a column of its own; the centre
+    // is what the work happens in (style.md §9/§12).
+    expect(
+      wide.asideWidth,
+      `the rail is too wide: ${why(wide)}`,
+    ).toBeLessThanOrEqual(220);
+    expect(
+      wide.centreWidth,
+      `the centre pane is too narrow: ${why(wide)}`,
+    ).toBeGreaterThanOrEqual(860);
+
+    // A round trip through the preview must not disturb the terminal: it is
+    // hidden while the file is open, and a fit taken from a hidden 0×0 host would
+    // reshape the PTY behind the user's back.
+    const readme = page
+      .getByRole("tree", { name: "工作區檔案" })
+      .getByRole("treeitem", { name: /^README\.md,/ });
+    if (
+      await readme
+        .waitFor({ state: "visible", timeout: 15_000 })
+        .then(() => true)
+        .catch(() => false)
+    ) {
+      await readme.click();
+      // The preview pane fills its own height too — the same defect lived in
+      // PreviewPane, where the row template only worked while the meta line was
+      // rendered.
+      const preview = await page.evaluate(() => {
+        const pane = document.querySelector("#panel-preview") as HTMLElement;
+        const body = pane.querySelector(".body") as HTMLElement;
+        return { paneHeight: pane.clientHeight, bodyHeight: body.clientHeight };
+      });
+      expect(
+        preview.bodyHeight,
+        `the preview body did not fill its pane: ${why(preview)}`,
+      ).toBeGreaterThanOrEqual(preview.paneHeight * 0.85);
+
+      await page.getByRole("tab", { name: "CLI" }).click();
+      const back = await measure();
+      expect(back.rows, `the round trip changed the size: ${why(back)}`).toBe(
+        wide.rows,
+      );
+      // A gap banner here would mean the tab switch cost output continuity.
+      await expect(page.locator(".banner.gap")).toHaveCount(0);
+    }
+
+    // Inside the 1100px breakpoint: one column, no file tree, and the terminal
+    // still fills what is left.
+    await page.setViewportSize({ width: 1000, height: 800 });
+    // The refit is debounced by 100ms; measuring sooner reads the old size.
+    await page.waitForTimeout(400);
+    const narrow = await measure();
+    expect(
+      narrow.hostHeight,
+      `host did not fill at 1000x800: ${why(narrow)}`,
+    ).toBeGreaterThanOrEqual(narrow.paneHeight - 4);
+    expect(
+      narrow.screenHeight,
+      `xterm did not re-fit at 1000x800: ${why(narrow)}`,
+    ).toBeGreaterThanOrEqual(narrow.paneHeight * 0.9);
+    expect(
+      narrow.rows,
+      `too few rows at 1000x800: ${why(narrow)}`,
+    ).toBeGreaterThanOrEqual(20);
+    expect(
+      narrow.pageOverflowY,
+      `the page scrolls at 1000x800: ${why(narrow)}`,
+    ).toBeLessThanOrEqual(1);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.getByRole("button", { name: "Terminate" }).click();
+    const confirm = page.getByRole("dialog", { name: "Terminate session" });
+    await confirm.getByRole("button", { name: "Terminate" }).click();
+    await expect(
+      page.locator('[data-status="terminated"], [data-status="exited"]'),
+    ).toBeVisible({ timeout: 15_000 });
+  });
+
   // WT-11 exit condition 10 (FR-SHELL-001 AC-02 / AC-08). Everything else about
   // the shell is asserted against a fake registry or a unit boundary; this is the
   // only place a real `bash` is started on a real node through the real relay.
@@ -388,6 +554,16 @@ test.describe("session & terminal", () => {
     await terminalTab.click();
     const createdBody = await created.then((res) => res.json());
     expect(createdBody.runtime).toBe("shell");
+    // plan/09 LY-04: the size the shell was *created* at, read from the server's
+    // own record of it. This is asserted on the create response rather than by
+    // measuring the terminal afterwards, because a later measurement would be
+    // satisfied by "opened at 24×80, then resized" — the very thing that makes
+    // bash redraw its prompt in front of the user.
+    expect(
+      createdBody.rows,
+      `the shell opened at ${createdBody.rows}x${createdBody.columns}, not at the panel's size`,
+    ).toBeGreaterThanOrEqual(30);
+    expect(createdBody.columns).toBeGreaterThanOrEqual(60);
     const shellId: string = createdBody.id;
 
     const shellPanel = page.locator("#panel-terminal");

@@ -1702,6 +1702,30 @@ Daemon 重啟後重新 Attach／Recovery。
 
 # 16. 前端技術設計
 
+## 16.0 App Shell（可用高度的唯一來源）
+
+App Shell 是佔滿視窗高度的 grid：欄為 `sidebar / 1fr`，列為 `header / 1fr`，
+Header 與 Sidebar **不使用 `position: fixed`**。
+
+```text
+grid-template-columns: var(--layout-sidebar) minmax(0, 1fr);
+grid-template-rows: auto minmax(0, 1fr);
+height: 100vh; height: 100dvh;
+```
+
+由此得到兩個對整個前端成立的性質：
+
+* **Main 是唯一的滾動容器。** Header 與 Sidebar 不隨內容滾走，任何 view 都不需要
+  為它們保留空間。
+* **Main 有確定高度**，所以 view 只需要 `height: 100%`，不必（也不得）自行推導。
+  `minmax(0, 1fr)` 而非 `1fr`：後者的最小值是 `auto`，一個很寬的子元素會把欄撐出
+  視窗外。
+
+**fill 模式**：頁面本身就是固定版面（目前只有 Session Workspace）時，Main 標記
+`data-fill`，改為 `overflow: hidden` 與 `12px 16px` 內距，滾動一律發生在 view 內部
+的面板中。`hidden` 是刻意的——面板算錯高度時要表現為看得見的裁切，而不是「整頁可以
+多滾一點」這種會被容忍的症狀。
+
 ## 16.1 Session Workspace 頁面
 
 布局：
@@ -1732,6 +1756,16 @@ Daemon 重啟後重新 Attach／Recovery。
   改成使用者看不到的錯誤值。切回 Tab 後才重新量測。
 * Terminal 的掛載必須跟隨 host element（而非只在 mount 生命週期執行一次），
   容器被重建時才能重新掛回。
+* 可用高度只有一個來源（App Shell，見 §16.0）。view **不得**以 `100vh`／`dvh` 或
+  `calc()` 自行推導頁面高度；需要固定版面的頁面使用 App Shell 的 fill 模式。兩套
+  公式必然分歧，而分歧的表現是「整頁多出一小段可以滾」，不是明顯的錯誤。
+* 面板的高度分配**不得依賴子元素的數量或順序**（例如 grid 的 `auto / 1fr` 列樣板
+  搭配 auto-placement）。面板內有條件渲染的提示列與狀態列，數量會變；一律用
+  flex column 並明確指定「哪一個成長」（`flex: 1 1 auto; min-height: 0`）。
+  違反時的症狀是終端機或編輯器容器塌陷成內容高度，而 jsdom 沒有版面、量不到。
+* 建立新的終端機 session 時，若容器已可量測，**應以量測到的 rows/columns 建立**；
+  量不到就交給伺服器預設，不要送猜測值。以錯誤尺寸開場再 resize，使用者會看到
+  PTY 在眼前重排一次。送出前必須夾到 wire 契約的範圍（rows 2–300、columns 2–500）。
 
 TERMINAL tab（系統終端機）僅於使用者持有 `terminal.shell`、Session 為自己擁有、
 且該 Node 未停用 shell 時出現；三個條件由 server 端計算後以 `can_open_shell` 下發，

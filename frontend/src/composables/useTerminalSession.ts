@@ -80,6 +80,30 @@ export function useTerminalSession(getTicket: TicketProvider) {
     lastSize = size;
     sendResize();
   }
+  // The size a *new* session should be started at, or null when the container
+  // cannot be measured yet (hidden panel, no layout). Callers must fall back to
+  // the server's default rather than guess: starting a PTY at the wrong size and
+  // resizing it a moment later makes the shell redraw in front of the user.
+  //
+  // Clamped to the wire contract's own bounds
+  // (contracts/v1/schemas/messages/session-start.schema.json: rows 2-300,
+  // columns 2-500), because a very wide window really can propose more than 500
+  // columns and Central answers that with a 422 — the terminal would simply fail
+  // to open.
+  function proposeSize(): { rows: number; columns: number } | null {
+    if (!terminal || !hostElement) return null;
+    if (hostElement.clientWidth === 0 || hostElement.clientHeight === 0) {
+      return null;
+    }
+    const proposed = fit?.proposeDimensions();
+    if (!proposed) return null;
+    // Same floor as sendResize(): under 2 the daemon's tmux rejects the size.
+    if (proposed.rows < 2 || proposed.cols < 2) return null;
+    return {
+      rows: Math.min(proposed.rows, 300),
+      columns: Math.min(proposed.cols, 500),
+    };
+  }
   function makeObserver(): ResizeObserver {
     return new ResizeObserver(() => {
       window.clearTimeout(resizeTimer);
@@ -258,6 +282,7 @@ export function useTerminalSession(getTicket: TicketProvider) {
     // Re-measure after the host becomes visible again (tab activation). The
     // caller must wait for the DOM to actually be laid out first.
     fit: applyFit,
+    proposeSize,
     focus: () => terminal?.focus(),
     status: readonly(status),
     role: readonly(role),

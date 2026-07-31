@@ -19,6 +19,13 @@ const { term } = vi.hoisted(() => ({
     dispose: vi.fn(),
     fit: vi.fn(),
     focus: vi.fn(),
+    // What a not-yet-started session should be opened at (plan/09 LY-04). The
+    // return type is written out so a test can hand back the "cannot measure"
+    // answer without TypeScript narrowing it away.
+    proposeSize: vi.fn((): { rows: number; columns: number } | null => ({
+      rows: 43,
+      columns: 110,
+    })),
     status: { value: "connected" },
     role: { value: "writer" },
     gap: { value: undefined },
@@ -314,6 +321,30 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     expect(shellApi.openShell.mock.calls[0][0]).toBe(ID);
     const panel = wrapper.get("#panel-terminal");
     expect(panel.text()).toContain("不受 workspace");
+  });
+
+  // plan/09 LY-04: the shell used to be created at a hardcoded 24×80 and
+  // corrected by the first fit, so the very first thing the user saw was bash
+  // redrawing its prompt at a different width.
+  it("opens the shell at the size the panel actually has", async () => {
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+    expect(shellApi.openShell.mock.calls[0][1]).toEqual({
+      rows: 43,
+      columns: 110,
+    });
+  });
+
+  it("falls back to the server default when the panel cannot be measured", async () => {
+    term.proposeSize.mockReturnValueOnce(null);
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+    expect(shellApi.openShell.mock.calls[0][1]).toEqual({
+      rows: 24,
+      columns: 80,
+    });
   });
 
   it("does not open a second shell when the tab is activated again", async () => {
