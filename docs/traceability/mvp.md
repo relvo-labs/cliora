@@ -230,6 +230,8 @@
 | FR-TERM-001.AC-10 | functional | covered-by-parent | — |
 | FR-TERM-001.AC-11 | functional | covered-by-parent | — |
 | FR-TERM-001.AC-12 | functional | covered-by-parent | — |
+| FR-TERM-001.AC-13 | functional | verifiable | — |
+| FR-TERM-001.AC-14 | functional | verifiable | — |
 | FR-TERM-002.AC-01 | functional | verifiable | — |
 | FR-TERM-003.AC-01 | functional | verifiable | — |
 | FR-TERM-003.AC-02 | functional | covered-by-parent | — |

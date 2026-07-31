@@ -152,12 +152,20 @@ const fileName = computed(
 </template>
 
 <style scoped>
+/* Same fix as the terminal panes (plan/09 LY-03): the row template this replaces
+ * (`auto auto 1fr`) only worked when `.meta` was rendered. It is a `v-if`, so in
+ * the raw, hint and error states `.body` fell into the second `auto` row and
+ * Monaco's container collapsed to nothing. */
 .preview {
-  display: grid;
-  grid-template-rows: auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   min-height: 0;
   height: 100%;
+}
+.head,
+.meta {
+  flex: 0 0 auto;
 }
 .head {
   display: flex;
@@ -218,6 +226,7 @@ h2 {
   white-space: nowrap;
 }
 .body {
+  flex: 1 1 auto;
   position: relative;
   min-height: 0;
   border-radius: var(--radius-md);

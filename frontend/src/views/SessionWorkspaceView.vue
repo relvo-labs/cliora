@@ -173,7 +173,13 @@ async function openShellTab(): Promise<void> {
   shellState.value = "starting";
   shellError.value = "";
   try {
-    const created = await api().openShell(props.id, { rows: 24, columns: 80 });
+    // The panel was just revealed by `v-show`; it has no layout until the DOM
+    // updates, and an unmeasurable host reports nothing. Opening at a hardcoded
+    // 24×80 and letting the first fit correct it made bash redraw its prompt at
+    // a different width in front of the user (plan/09 LY-04).
+    await nextTick();
+    const size = shellTerminal.proposeSize() ?? { rows: 24, columns: 80 };
+    const created = await api().openShell(props.id, size);
     shellSession.value = created;
     shellState.value = "ready";
     await nextTick();
@@ -306,7 +312,9 @@ async function confirmTerminate(): Promise<void> {
 </script>
 
 <template>
-  <AppLayout>
+  <!-- fill: this page is a fixed layout that owns the viewport. The terminal's
+       height comes from the shell, so nothing here re-derives it (plan/09 D1). -->
+  <AppLayout fill>
     <!-- The workspace container is never unmounted: the terminal host lives
          inside it, and xterm cannot survive its container being replaced.
          Loading / forbidden / error therefore render as an overlay on top
@@ -487,11 +495,16 @@ async function confirmTerminate(): Promise<void> {
 </template>
 
 <style scoped>
+/* The height comes from AppLayout's fill mode — deliberately not recomputed
+ * here. The previous `calc(100vh - header - 48px)` was 16px taller than the
+ * space main actually offered, which is why this page always had a small page
+ * scrollbar (plan/09 D1). */
 .workspace {
   position: relative;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - var(--layout-header) - 48px);
+  height: 100%;
+  min-height: 0;
 }
 .head {
   display: flex;
@@ -595,12 +608,27 @@ async function confirmTerminate(): Promise<void> {
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
+/* A column, not a row template. The template this replaces
+ * (`auto minmax(0,1fr) auto`) assumed three children — true for the system
+ * terminal, but the CLI panel has one, so auto-placement put the terminal host
+ * in the leading `auto` row and its height became "whatever xterm already is".
+ * With xterm's default 24 rows that self-stabilised: the host measured exactly
+ * the terminal it contained, so FitAddon kept proposing 24 rows at every window
+ * size, and the CLI sat at roughly half the pane forever.
+ *
+ * flex removes the assumption instead of correcting the count: only the host
+ * grows, and adding or removing a notice cannot change that (plan/09 D3). */
 .terminal-pane {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  display: flex;
+  flex-direction: column;
   background: var(--terminal-background);
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+/* Both are `v-if`: present or not, they must not affect who gets the slack. */
+.shell-notice,
+.shell-status {
+  flex: 0 0 auto;
 }
 /* Not decoration: the user has to be able to tell which security boundary they
    are inside (ADR 0021 §4). */
@@ -628,9 +656,15 @@ async function confirmTerminate(): Promise<void> {
   place-items: center;
   background: var(--surface-default);
 }
+/* No `height: 100%`: inside a flex column it feeds flex-basis, so the host would
+ * ask for the whole pane while the notice asks for its own height, and shrinking
+ * would decide the outcome. `flex: 1` says the one true thing — take what is
+ * left. `min-height: 0` lets it shrink below xterm's rendered height, without
+ * which the pane, not the host, would be what overflows. */
 .terminal-host {
+  flex: 1 1 auto;
+  min-height: 0;
   width: 100%;
-  height: 100%;
 }
 .link {
   border: 0;

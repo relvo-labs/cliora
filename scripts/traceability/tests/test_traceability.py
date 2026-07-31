@@ -84,9 +84,13 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # full release blocking stay on.
     # 2026-07-31: +8 for FR-SHELL-001 (the system terminal, ADR 0021), -1 for
     # SCOPE-011.AC-01 leaving the active set as `deprecated`/superseded.
+    # 2026-07-31: +2 for FR-TERM-001.AC-13/AC-14 (plan/09) — the terminal filling
+    # the height it was given, measured, and the page not scrolling because of a
+    # second height formula. Both were true-by-intention before and asserted by
+    # nothing, which is how the CLI panel spent three phases at half height.
     assert result["summary"] == {
-        "total": 379,
-        "verifiable": 248,
+        "total": 381,
+        "verifiable": 250,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

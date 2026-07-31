@@ -23102,6 +23102,128 @@
       "applicability": [
         "all"
       ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-13-PLANNED-BY",
+      "from": "FR-TERM-001.AC-13",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/09/02-panel-fill.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-13-SPECIFIED-BY",
+      "from": "FR-TERM-001.AC-13",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/tech.md"
+      },
+      "role": "primary",
+      "assertion": "Technical design constraining this functional criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-13-IMPLEMENTED-BY",
+      "from": "FR-TERM-001.AC-13",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/views/SessionWorkspaceView.vue"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-13-VERIFIED-BY",
+      "from": "FR-TERM-001.AC-13",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll"
+      },
+      "role": "primary",
+      "assertion": "A real browser measures the terminal against the pane it was given.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-14-PLANNED-BY",
+      "from": "FR-TERM-001.AC-14",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/09/01-app-shell-and-height.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-14-SPECIFIED-BY",
+      "from": "FR-TERM-001.AC-14",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/tech.md"
+      },
+      "role": "primary",
+      "assertion": "Technical design constraining this functional criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-14-IMPLEMENTED-BY",
+      "from": "FR-TERM-001.AC-14",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/layout/AppLayout.vue"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-14-VERIFIED-BY",
+      "from": "FR-TERM-001.AC-14",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll"
+      },
+      "role": "primary",
+      "assertion": "A real browser measures the page and the fill surface for residual scroll.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
     }
   ]
 }
