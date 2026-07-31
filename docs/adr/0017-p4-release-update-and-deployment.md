@@ -53,6 +53,20 @@ When Central sends a `daemon.update` control frame and the daemon has no route t
 
 Rejected: a helper unit or narrow sudoers rule permitting "replace this file + restart this unit". It would enable one-click updates but widens the attack surface on every node for a convenience the MVP does not need — an operator already has shell access to run the installer.
 
+**The healthcheck runs `doctor` as the unit's `User=`, not as the updater.** The
+elevation above is what makes this necessary: the updater is root, so a plain child
+process would be root too, and `doctor`'s first check is `EnsureNonRoot`. Every real
+`sudo agentd update` therefore failed the healthcheck stage and rolled back, reporting
+`agentd must not run as root` — a message about the wrong process entirely. The
+identity comes from `systemctl show --property=User`, so it is what systemd resolved
+including drop-ins, and the child carries that uid/gid, the user's supplementary
+groups and a matching `HOME`. Skipping the root check instead was rejected: `doctor`'s
+remaining checks — config readable, `credentials.yaml` at 0600, workspace roots
+readable — are assertions about a *specific* identity, and root satisfies all of them
+regardless of who owns what, so a root `doctor` run is a green light that means
+nothing. If the process is root and the unit's user cannot be determined, the stage
+fails rather than falling back to a root run.
+
 ### The update protocol carries a version, nothing else
 
 `daemon.update` payload is `{target_version}` with `additionalProperties:false`; the version pattern is strict semver. **No URL, filename, path, checksum or binary ever crosses the wire, and the `Updater` API accepts none** — the CLI exposes only `--version` / `--allow-downgrade` / `--dry-run`. Download location and digest come exclusively from the manifest plus local config (SEC-002 extended to the release path). Contract fixtures assert that frames carrying `url` or a path are rejected by all three languages.

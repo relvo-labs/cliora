@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"os/user"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -343,6 +345,109 @@ func TestSystemdRestarterAllowsRoot(t *testing.T) {
 	}
 	if err := r.Available(); err != nil {
 		t.Fatalf("Available() = %v, want nil", err)
+	}
+}
+
+// --------------------------------------------------------------------------- //
+// Healthcheck stage
+// --------------------------------------------------------------------------- //
+
+// The regression this file exists for. `agentd update` runs under sudo (ADR 0017),
+// so a plain doctor child inherits euid 0 and trips doctor's own EnsureNonRoot —
+// which made *every* real update fail healthcheck and roll back, with the
+// misleading message "agentd must not run as root". The doctor child must carry the
+// unit's User=, not the updater's.
+func TestHealthcheckRunsDoctorAsTheServiceUserNotAsRoot(t *testing.T) {
+	c := DoctorHealthChecker{
+		Unit:        "agentd",
+		Geteuid:     func() int { return 0 },
+		ServiceUser: func(context.Context, string) (string, error) { return "cliora", nil },
+		LookupUser: func(name string) (*user.User, error) {
+			return &user.User{Username: name, Uid: "4242", Gid: "4243", HomeDir: "/home/cliora"}, nil
+		},
+	}
+	cred, env, err := c.doctorIdentity(context.Background(), exec.LookPath)
+	if err != nil {
+		t.Fatalf("doctorIdentity() error = %v", err)
+	}
+	if cred == nil {
+		t.Fatal("doctor would run as root; it must drop to the service user")
+	}
+	if cred.Uid != 4242 || cred.Gid != 4243 {
+		t.Errorf("credential = uid %d gid %d, want 4242/4243", cred.Uid, cred.Gid)
+	}
+	// HOME must follow the uid: doctor's runtime detection probes the home
+	// directory, and root's is unreadable to the service user.
+	var home string
+	for _, kv := range env {
+		if strings.HasPrefix(kv, "HOME=") {
+			home = kv
+		}
+	}
+	if home != "HOME=/home/cliora" {
+		t.Errorf("HOME = %q, want HOME=/home/cliora", home)
+	}
+}
+
+func TestHealthcheckRunsDoctorAsItselfWhenNotRoot(t *testing.T) {
+	// Unprivileged local dev: there is no privilege to drop, and asking systemd
+	// who the service is would be pointless.
+	c := DoctorHealthChecker{
+		Unit:    "agentd",
+		Geteuid: func() int { return 1000 },
+		ServiceUser: func(context.Context, string) (string, error) {
+			t.Error("the service user must not be looked up when the updater is not root")
+			return "", nil
+		},
+	}
+	cred, env, err := c.doctorIdentity(context.Background(), exec.LookPath)
+	if err != nil || cred != nil || env != nil {
+		t.Fatalf("doctorIdentity() = %v, %v, %v; want nil, nil, nil", cred, env, err)
+	}
+}
+
+func TestHealthcheckFailsWhenTheServiceUserCannotBeDetermined(t *testing.T) {
+	// Root, but systemd cannot say who the unit runs as. Falling back to a root
+	// doctor run would report a green healthcheck for a daemon that may not be
+	// able to read its own credentials, so the stage fails and names the cause.
+	c := DoctorHealthChecker{
+		Unit:        "agentd",
+		Geteuid:     func() int { return 0 },
+		ServiceUser: func(context.Context, string) (string, error) { return "", errors.New("no such unit") },
+	}
+	_, _, err := c.doctorIdentity(context.Background(), exec.LookPath)
+	if err == nil || !strings.Contains(err.Error(), "cannot determine the user of unit agentd") {
+		t.Fatalf("doctorIdentity() error = %v, want it to name the unit", err)
+	}
+}
+
+func TestHealthcheckLetsDoctorReportAServiceThatReallyRunsAsRoot(t *testing.T) {
+	// No User= in the unit means the service is genuinely root, which SEC-007
+	// forbids. That is doctor's finding to report, not something to mask by
+	// dropping to some other identity.
+	for _, name := range []string{"", "root"} {
+		c := DoctorHealthChecker{
+			Unit:        "agentd",
+			Geteuid:     func() int { return 0 },
+			ServiceUser: func(context.Context, string) (string, error) { return name, nil },
+		}
+		cred, _, err := c.doctorIdentity(context.Background(), exec.LookPath)
+		if err != nil || cred != nil {
+			t.Errorf("User=%q: doctorIdentity() = %v, %v; want no credential and no error", name, cred, err)
+		}
+	}
+}
+
+func TestHealthcheckFailsWhenTheServiceUserDoesNotExist(t *testing.T) {
+	c := DoctorHealthChecker{
+		Unit:        "agentd",
+		Geteuid:     func() int { return 0 },
+		ServiceUser: func(context.Context, string) (string, error) { return "ghost", nil },
+		LookupUser:  func(string) (*user.User, error) { return nil, errors.New("unknown user") },
+	}
+	_, _, err := c.doctorIdentity(context.Background(), exec.LookPath)
+	if err == nil || !strings.Contains(err.Error(), `service user "ghost"`) {
+		t.Fatalf("doctorIdentity() error = %v, want it to name the missing user", err)
 	}
 }
 
