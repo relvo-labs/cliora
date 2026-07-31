@@ -22,7 +22,7 @@ MVP 成功需同時成立：
 | 原型能力 | 處置 | 正式實作要求 |
 |---|---|---|
 | Dashboard、Nodes、Sessions、Enrollment、Workspace | 沿用頁面概念 | 拆成 route/view/component，接 typed API |
-| 三欄 Session Workspace | 沿用主要布局 | Terminal 最大、面板可調整/收合、狀態可恢復 |
+| Session Workspace | 沿用主要布局 | Terminal 最大、狀態可恢復。**plan/08 改版**：兩欄 + 中央區 tab；左欄 Session 清單與面板拖曳/收合已放棄 |
 | Node filter、session modal | 沿用互動意圖 | 真實 validation、RBAC、loading/error/offline |
 | Terminal 文字展示 | 僅作視覺參考 | 換成 xterm.js，不可用 input 模擬 Terminal |
 | File tree/preview | 僅作視覺參考 | typed relay + Monaco read-only + deny reasons |

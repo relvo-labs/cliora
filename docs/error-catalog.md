@@ -79,7 +79,7 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
 |---|---:|---|---|---|:--:|:--:|:--:|
-| `RUNTIME_NOT_ALLOWED` | 400 | Runtime is not allowed | The requested runtime is not in the closed allowlist (claude, codex). | Choose an allowlisted runtime. | no | no | daemon |
+| `RUNTIME_NOT_ALLOWED` | 400 | Runtime is not allowed | The requested runtime is not in the closed allowlist (claude, codex, shell). | Choose an allowlisted runtime. | no | no | daemon |
 | `RUNTIME_NOT_FOUND` | 409 | Runtime is not available on this node | The CLI binary was not detected on the node. | Install it on the node, then run `agentd runtime list` to confirm. | no | no | daemon |
 | `RUNTIME_DISABLED` | 409 | Runtime is disabled on this node | The node's config has this runtime turned off. | Enable it in `/etc/agentd/config.yaml` and restart the daemon. | no | no | daemon |
 | `RUNTIME_NOT_EXECUTABLE` | 409 | Runtime binary cannot be executed | The configured binary exists but is not executable by the daemon's user. | Fix its permissions, then `agentd doctor`. | no | no | daemon |
@@ -94,6 +94,7 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `SESSION_INVALID_STATE` | 409 | Session has already ended | The operation does not apply to a session in its current state. | Reload to see the current state. | no | no | daemon |
 | `SESSION_LIMIT_REACHED` | 409 | The node has reached its session limit | This node already runs the maximum number of concurrent sessions. | End a session, or use another node. | no | no | daemon |
 | `SESSION_START_FAILED` | 502 | Runtime failed to start | The node accepted the request but the CLI did not start. | Check the node's log for this request id; verify the runtime with `agentd runtime list`. | yes | yes | daemon |
+| `SHELL_ALREADY_OPEN` | 409 | This session already has a system terminal | One live system terminal per CLI session (ADR 0021): the existing one is still open somewhere, or a previous tab did not close cleanly. | Return to the tab holding it, or close it and open a new one. An abandoned terminal is also reaped by the idle timeout. | no | no | central |
 | `INVALID_TERMINAL_SIZE` | 400 | Terminal size is out of range | The requested rows/columns are outside the accepted bounds. | Resize the window and retry. | no | no | daemon |
 | `TERMINAL_ALREADY_CONTROLLED` | 409 | Terminal already has a writer | Someone else holds the writer role for this terminal. | Attach read-only, or take over if you have permission. | no | no | daemon |
 

@@ -48,7 +48,11 @@ _TRANSITIONS: dict[str, frozenset[str]] = {
     TERMINATED: frozenset(),
 }
 
-RUNTIMES = frozenset({"claude", "codex", "fake"})
+# The system terminal (FR-SHELL-001, ADR 0021). Named because several modules
+# branch on it and a bare "shell" literal scattered across them would drift.
+SHELL_RUNTIME = "shell"
+
+RUNTIMES = frozenset({"claude", "codex", SHELL_RUNTIME, "fake"})
 
 
 def can_transition(frm: str, to: str) -> bool:
@@ -94,6 +98,9 @@ def _require_runtime(node: Node, runtime: str) -> None:
         raise ApiError("RUNTIME_NOT_ALLOWED", "Runtime is not allowed")
     if runtime == "fake":
         return  # test/dev runtime is not enumerated in node.runtimes
+    # `shell` deliberately does *not* get the same shortcut: the node's report is
+    # the only place its availability (and an operator's `enabled: false`) is
+    # expressed, so skipping it would make the node's veto unenforceable.
     match = next((r for r in node.runtimes if r.runtime == runtime), None)
     if match is None or not match.available:
         raise ApiError(
@@ -235,6 +242,50 @@ class SessionService:
             "SESSION_START_FAILED", "Runtime failed to start", status.HTTP_502_BAD_GATEWAY
         )
 
+    async def open_shell(
+        self, *, actor_id: uuid.UUID, parent: TerminalSession, rows: int, columns: int
+    ) -> TerminalSession:
+        """Open a system terminal inside an existing CLI session (FR-SHELL-001).
+
+        Deliberately not reachable through `create()`: the parent comes from the URL,
+        so there is no code path that can produce a shell session without one. That
+        is what keeps the New Session dialog and the Sessions list free of shells
+        rather than relying on every caller to remember (ADR 0021).
+
+        Authorization (`may_open_shell`) is the caller's job — the HTTP layer does it
+        before we get here, the same split every other mutation uses.
+        """
+        node = await self._nodes.get(parent.node_id)
+        if node is None:
+            raise ApiError("NODE_NOT_FOUND", "Node not found", status.HTTP_404_NOT_FOUND)
+        ensure_node_enabled(node)
+        if not self._registry.is_connected(node.id):
+            raise ApiError("NODE_OFFLINE", "Node is not connected", status.HTTP_409_CONFLICT)
+        # A node that disabled the shell, or has no usable binary, reports it
+        # unavailable; this is where that veto takes effect.
+        _require_runtime(node, SHELL_RUNTIME)
+        if await self._repo.live_shell_for_parent(parent.id) is not None:
+            raise ApiError(
+                "SHELL_ALREADY_OPEN",
+                "This session already has a system terminal",
+                status.HTTP_409_CONFLICT,
+            )
+        session = await self.create(
+            actor_id=actor_id,
+            node_id=parent.node_id,
+            runtime=SHELL_RUNTIME,
+            name=f"{parent.name} · terminal",
+            # The shell starts where the CLI is. It can walk out of the directory
+            # afterwards — that is the trade recorded in ADR 0021 — but the launch
+            # point is still an allowed root, and `create()` re-checks it.
+            workspace=parent.workspace,
+            rows=rows,
+            columns=columns,
+        )
+        session.parent_session_id = parent.id
+        await self._session.flush()
+        return session
+
     async def terminate(self, *, actor_id: uuid.UUID, session_id: uuid.UUID) -> TerminalSession:
         session = await self.get(session_id)
         if session.status in TERMINAL_STATES:
@@ -258,9 +309,42 @@ class SessionService:
             user_id=actor_id,
             node_id=session.node_id,
             session_id=session.id,
-            metadata={"forced": bool(message.payload.get("forced"))},
+            metadata={
+                "forced": bool(message.payload.get("forced")),
+                "runtime": session.runtime,
+            },
         )
+        await self._terminate_children(session, actor_id=actor_id)
         return session
+
+    async def _terminate_children(self, parent: TerminalSession, *, actor_id: uuid.UUID) -> None:
+        """Stop any system terminal that belonged to a session that just ended.
+
+        Best-effort per child: a node that fails to stop one shell must not stop the
+        parent from being reported terminated, and the row is marked ended either way
+        so the node's own reconciliation is what cleans up the process. Leaving the
+        row alive would be worse — it would occupy the parent's unique-index slot and
+        block the user from ever opening another terminal.
+        """
+        for child in await self._repo.live_children(parent.id):
+            try:
+                await self._registry.request(
+                    child.node_id,
+                    "session.stop",
+                    {"session_id": str(child.id)},
+                    timeout_seconds=self._settings.session_stop_timeout_seconds,
+                )
+            except ApiError:
+                pass
+            child.status = TERMINATED
+            child.ended_at = now_utc()
+            await self._audit.record(
+                audit.SESSION_TERMINATE,
+                user_id=actor_id,
+                node_id=child.node_id,
+                session_id=child.id,
+                metadata={"runtime": child.runtime, "reason": "parent_ended"},
+            )
 
     async def delete(self, *, session_id: uuid.UUID) -> None:
         session = await self.get(session_id)
@@ -285,6 +369,11 @@ class SessionService:
             session.ended_at = now_utc()
             if exit_code is not None:
                 session.exit_code = exit_code
+            # A CLI that exits on its own reaches a terminal state here rather than
+            # through `terminate()`, and its shell must not outlive it either
+            # (FR-SHELL-001.AC-04). `actor_id` is the session owner: nobody pressed
+            # a button, so attributing it to the owner is the honest record.
+            await self._terminate_children(session, actor_id=session.user_id)
         elif new_status == RUNNING:
             session.last_activity_at = now_utc()
         return session

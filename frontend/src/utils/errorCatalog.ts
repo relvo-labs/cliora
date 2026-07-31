@@ -209,6 +209,12 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
       "以此 request_id 查該 Node 的日誌；並用 agentd runtime list 確認 runtime。",
     retryable: true,
   },
+  SHELL_ALREADY_OPEN: {
+    cause: "此 Session 已經開著一個系統終端機（每個 Session 同時只能有一個）。",
+    nextStep:
+      "回到持有它的分頁，或關閉後再重新開啟；閒置一段時間後也會自動回收。",
+    retryable: false,
+  },
   INVALID_TERMINAL_SIZE: {
     cause: "要求的終端機尺寸超出允許範圍。",
     nextStep: "調整視窗大小後重試。",

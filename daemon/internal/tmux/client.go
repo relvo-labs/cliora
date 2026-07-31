@@ -82,7 +82,7 @@ func (c Client) args(args ...string) []string {
 }
 
 func allowedRuntimeID(id string) bool {
-	return id == "claude" || id == "codex" || id == "fake"
+	return id == "claude" || id == "codex" || id == "shell" || id == "fake"
 }
 
 func (c Client) Start(ctx context.Context, s StartSpec) error {

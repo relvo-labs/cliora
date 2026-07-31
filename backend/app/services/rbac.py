@@ -22,12 +22,13 @@ from __future__ import annotations
 
 from app.db.models import User
 
-# Stable action keys (must match the role seed migrations 0002 + 0006 + 0007 + 0008).
+# Stable action keys (must match the role seed migrations 0002 + 0006 + 0007 + 0008 + 0012).
 NODE_VIEW = "node.view"
 SESSION_CREATE = "session.create"
 SESSION_VIEW = "session.view"
 TERMINAL_OPERATE = "terminal.operate"
 TERMINAL_TAKEOVER = "terminal.takeover"
+TERMINAL_SHELL = "terminal.shell"
 SESSION_TERMINATE = "session.terminate"
 FILE_BROWSE = "file.browse"
 ENROLLMENT_MANAGE = "enrollment.manage"
@@ -45,11 +46,16 @@ VIEWER = "Viewer"
 # no mutation action, so a Viewer's forged create/terminate/takeover/enrollment
 # request fails at the action layer before any resource is loaded.
 _VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE})
+# `terminal.shell` sits with the other session-mutation actions rather than in the
+# Admin set (ADR 0021): a Developer already drives a CLI in their own session. The
+# boundary is ownership, not role — `authz.may_open_shell` requires the caller to own
+# the session, and nobody may attach to a shell they did not open.
 _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     SESSION_CREATE,
     SESSION_TERMINATE,
     TERMINAL_OPERATE,
     TERMINAL_TAKEOVER,
+    TERMINAL_SHELL,
 }
 _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {ENROLLMENT_MANAGE, NODE_MANAGE, AUDIT_VIEW}
 

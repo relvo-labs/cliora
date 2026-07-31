@@ -104,10 +104,26 @@ type Config struct {
 	Filesystem FilesystemConfig         `yaml:"filesystem"`
 	Session    SessionConfig            `yaml:"session"`
 	Heartbeat  HeartbeatConfig          `yaml:"heartbeat"`
+
+	// ShellFromDefault reports that runtime.shell was absent and defaulted to
+	// enabled, rather than being written by an operator. Never serialised.
+	ShellFromDefault bool `yaml:"-"`
 }
 
 // AllowedRuntimeIDs is the closed allowlist; no other runtime id may appear.
-var AllowedRuntimeIDs = map[string]bool{"claude": true, "codex": true}
+var AllowedRuntimeIDs = map[string]bool{"claude": true, "codex": true, "shell": true}
+
+// ShellRuntimeID is the system terminal (FR-SHELL-001, ADR 0021). Unlike the CLI
+// runtimes it is enabled by default, including on a config that predates it, so
+// an upgraded node gains the capability without the operator editing a file.
+// That is a capability change, which is why Load records where the setting came
+// from and the daemon logs it at startup.
+const ShellRuntimeID = "shell"
+
+// DefaultShellBinary is resolved through PATH like any other runtime binary. It
+// is a single token on purpose: RuntimeConfig has no argv field, and adding one
+// would be the beginning of letting a caller name a command (SEC-002).
+const DefaultShellBinary = "bash"
 
 // Load reads, permission-checks, strictly parses, and validates a config file.
 func Load(path string) (*Config, error) {
@@ -122,10 +138,25 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 	cfg.applyFilesystemDefaults()
+	cfg.applyRuntimeDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// applyRuntimeDefaults enables the system terminal when the config says nothing
+// about it. An explicit `enabled: false` is left alone — the node operator's veto
+// must survive every future default change, so this only ever fills an absent key.
+func (c *Config) applyRuntimeDefaults() {
+	if _, ok := c.Runtime[ShellRuntimeID]; ok {
+		return
+	}
+	if c.Runtime == nil {
+		c.Runtime = map[string]RuntimeConfig{}
+	}
+	c.Runtime[ShellRuntimeID] = RuntimeConfig{Enabled: true, Binary: DefaultShellBinary}
+	c.ShellFromDefault = true
 }
 
 // applyFilesystemDefaults fills omitted P3 filesystem/workspace fields with the
@@ -184,7 +215,7 @@ func (c *Config) Validate() error {
 	}
 	for id, rc := range c.Runtime {
 		if !AllowedRuntimeIDs[id] {
-			return fmt.Errorf("runtime %q is not allowed (only claude, codex)", id)
+			return fmt.Errorf("runtime %q is not allowed (only claude, codex, shell)", id)
 		}
 		if rc.Enabled && rc.Binary == "" {
 			return fmt.Errorf("runtime %q is enabled but has no binary", id)

@@ -273,6 +273,14 @@
 | FR-WORKSPACE-005.AC-04 | functional | covered-by-parent | — |
 | FR-WORKSPACE-005.AC-05 | functional | covered-by-parent | — |
 | FR-WORKSPACE-005.AC-06 | functional | covered-by-parent | — |
+| FR-SHELL-001.AC-01 | functional | verifiable | — |
+| FR-SHELL-001.AC-02 | functional | verifiable | — |
+| FR-SHELL-001.AC-03 | functional | verifiable | — |
+| FR-SHELL-001.AC-04 | functional | verifiable | — |
+| FR-SHELL-001.AC-05 | functional | verifiable | — |
+| FR-SHELL-001.AC-06 | functional | verifiable | — |
+| FR-SHELL-001.AC-07 | functional | verifiable | — |
+| FR-SHELL-001.AC-08 | functional | verifiable | — |
 | MVP-AC-01.AC-01 | mvp | verifiable | — |
 | MVP-AC-02.AC-01 | mvp | verifiable | — |
 | MVP-AC-03.AC-01 | mvp | verifiable | — |

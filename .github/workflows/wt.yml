@@ -1,0 +1,194 @@
+name: WT
+on: [push, pull_request]
+jobs:
+  # Backend against a real PostgreSQL. The two things this leg exists for that the
+  # hermetic suite cannot check: the RBAC seed for `terminal.shell` (0012) actually
+  # produces in Postgres what `ROLE_ACTIONS` claims, and the partial unique index
+  # from 0013 really is what stops a second live shell per session.
+  backend-db:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - name: format / lint / typecheck
+        run: |
+          uv run --project backend ruff format --check backend
+          uv run --project backend ruff check backend
+          uv run --project backend mypy backend/app
+      # Down to 0011 and back rather than to base: the interesting window is the
+      # two new migrations, and 0013's downgrade has to cope with live shell rows.
+      - name: migrations up / down / up (0012 seed + 0013 parent index)
+        working-directory: backend
+        run: |
+          uv run --project . alembic upgrade head
+          uv run --project . alembic downgrade 0011_workspace_favorites
+          uv run --project . alembic upgrade head
+      - name: unit + DB-backed tests
+        run: uv run --project backend pytest backend/tests -q
+
+  # Daemon: the `shell` runtime joins a closed allowlist in four places, and the
+  # enable-by-default rule must never override an operator's explicit disable.
+  daemon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - name: tmux (integration launches real tmux sessions)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - working-directory: daemon
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+          go test -race ./...
+      - name: session integration (a shell session is an ordinary session)
+        working-directory: daemon
+        run: go test -tags integration -race ./internal/session ./internal/connection
+
+  # Three-language protocol v1.5 consistency. The load-bearing fixture is
+  # invalid/session-start-shell-with-binary.json: `runtime:"shell"` plus a `binary`
+  # field must be refused identically by Python, Go and TypeScript, which is what
+  # keeps SEC-002 true after SCOPE-011 was narrowed.
+  contract:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - run: make contract
+
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: |
+          npm run format:check
+          npm run lint
+          npm run typecheck
+          npm run test:unit -- --run
+          npm run build
+      # The rail is gone and the split is gone. Both are cheap to reintroduce by
+      # accident and expensive to notice, so they are grepped rather than trusted.
+      - name: the removed layout does not come back
+        working-directory: frontend
+        run: |
+          if grep -rn 'sessions-rail\|data-split' src; then
+            echo "the left rail or the 45% split reappeared (plan/08 WT-01/WT-03)"; exit 1
+          fi
+
+  # Full-stack browser E2E. Two things only this leg can assert.
+  #
+  # The tab behaviour: coming back to CLI must find the *same* socket and the same
+  # scrollback, and the terminal must still take input after repeated switching (a
+  # PTY resized from a hidden 0x0 container passes a naive tab test and fails this
+  # one). Plus no horizontal overflow at 1440x900 or inside the 1100px breakpoint,
+  # which jsdom cannot answer because it has no layout.
+  #
+  # And the system terminal against a real `bash` on a real node — every other
+  # shell assertion in this repo runs against a fake registry or a unit boundary.
+  # The node needs no shell configuration for this: an absent runtime.shell block
+  # means enabled, so the leg exercises the upgraded-node default rather than a
+  # test-only override. install/plan.go's defaults must not be edited to make this
+  # green.
+  browser-e2e:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      E2E_FULL_STACK: "1"
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+      CLIORA_ADMIN_PASSWORD: e2e-admin-pw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: tmux (the daemon launches real tmux sessions)
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - working-directory: frontend
+        run: npm ci
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium firefox webkit
+      - name: full stack + playwright
+        env:
+          PLAYWRIGHT_JUNIT_OUTPUT_NAME: ${{ github.workspace }}/artifacts/wt/${{ github.run_id }}/e2e.xml
+        run: ./scripts/e2e/run-stack.sh bash -c 'cd frontend && npx playwright test --reporter=junit'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: wt-e2e-evidence, path: artifacts/wt/ }
+
+  # Requirement traceability: FR-SHELL-001's eight criteria must be `verifiable`
+  # and SCOPE-011.AC-01 must have its supersedes link, or release blocking fails.
+  traceability:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: cliora, POSTGRES_PASSWORD: cliora, POSTGRES_DB: cliora_test }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - run: uv sync --project backend --locked
+      - run: make traceability

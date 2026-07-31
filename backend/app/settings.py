@@ -82,6 +82,12 @@ class Settings(BaseSettings):
     session_attach_timeout_seconds: float = 15
     session_list_timeout_seconds: float = 15
     writer_hold_window_seconds: float = 30
+    # A system terminal with nobody attached is terminated after this long
+    # (FR-SHELL-001.AC-08, ADR 0021 §6). Deliberately the opposite of a CLI
+    # session, which must survive a disconnect (FR-SESSION-006): a long-running
+    # CLI has value while unwatched, an unattended shell has only risk. Long
+    # enough to survive a reload, a suspended laptop or a tunnel blip.
+    shell_idle_terminate_seconds: float = 900
     reattach_snapshot_max_bytes: int = 2 * 1024 * 1024
     # Per-browser terminal output queue bounds (byte-aware backpressure).
     terminal_queue_max_bytes: int = 4 * 1024 * 1024

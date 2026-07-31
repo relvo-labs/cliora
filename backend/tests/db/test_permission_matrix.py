@@ -398,6 +398,9 @@ async def test_created_session_reports_its_creators_capabilities(api: tuple) -> 
         "can_takeover": True,
         "can_terminate": True,
         "can_browse_files": True,
+        # A Developer holds `terminal.shell` and owns this session, so the tab is
+        # offered here (ADR 0021 / D7).
+        "can_open_shell": True,
     }
 
 
@@ -426,6 +429,9 @@ async def test_demoted_owner_loses_write_and_terminate(api: tuple) -> None:
         "can_takeover": False,
         "can_terminate": False,
         "can_browse_files": True,
+        # Contraction reaches the system terminal too: a demoted owner still owns
+        # the session but no longer holds `terminal.shell`.
+        "can_open_shell": False,
     }
 
     registry = RecordingRegistry()

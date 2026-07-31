@@ -159,8 +159,10 @@ func TestSessionAuthRegisterHeartbeatShutdown(t *testing.T) {
 		if protocolUnmarshal(env, &p) != nil || p.Name != "vm-test" {
 			t.Fatalf("bad register payload: %+v", p)
 		}
-		if len(p.Runtimes) != 2 {
-			t.Errorf("expected 2 runtimes, got %d", len(p.Runtimes))
+		// claude, codex and shell: every allowlisted runtime is reported, whether
+		// or not it is enabled, so Central can tell "off" from "never heard of".
+		if len(p.Runtimes) != 3 {
+			t.Errorf("expected 3 runtimes, got %d", len(p.Runtimes))
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("no node.register received")

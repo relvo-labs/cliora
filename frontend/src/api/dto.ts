@@ -172,6 +172,9 @@ export interface SessionCapabilities {
   can_takeover: boolean;
   can_terminate: boolean;
   can_browse_files: boolean;
+  // Already folds in the action, ownership and the node's own veto: the browser
+  // renders it, it does not recombine it (ADR 0016/0021).
+  can_open_shell: boolean;
 }
 
 export interface SessionSummary {
@@ -509,5 +512,6 @@ export const ACTION_SESSION_VIEW = "session.view";
 export const ACTION_SESSION_TERMINATE = "session.terminate";
 export const ACTION_TERMINAL_OPERATE = "terminal.operate";
 export const ACTION_TERMINAL_TAKEOVER = "terminal.takeover";
+export const ACTION_TERMINAL_SHELL = "terminal.shell";
 export const ACTION_FILE_BROWSE = "file.browse";
 export const ACTION_AUDIT_VIEW = "audit.view";

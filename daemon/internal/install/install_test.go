@@ -282,3 +282,92 @@ func TestGeneratedConfigCarriesThePublishedScrollback(t *testing.T) {
 			cfg.Session.ScrollbackLimit)
 	}
 }
+
+// TestGeneratedConfigExplainsTheSystemTerminal pins the operator-facing half of
+// D6 (plan/08/03 §1.2). Enabling the shell by default puts the only veto in this
+// file, so the file has to say the block exists and how to say no — and the
+// comment has to survive strict parsing (KnownFields(true)) on the way back in,
+// which is the part a hand-assembled header string would get wrong.
+func TestGeneratedConfigExplainsTheSystemTerminal(t *testing.T) {
+	now := time.Unix(1700000000, 0).UTC()
+	withShell := append(detected(now), runtime.DetectResult{
+		Runtime:    config.ShellRuntimeID,
+		Available:  true,
+		Version:    "GNU bash 5.2.21",
+		BinaryPath: "/usr/bin/bash",
+		CheckedAt:  now,
+	})
+	cfg, err := BuildConfig(Params{
+		Server:         "https://platform.example.com",
+		NodeName:       "dev-vm-01",
+		RunUser:        "neil",
+		WorkspaceRoots: []string{"/home/neil/projects"},
+		DaemonVersion:  "0.2.0",
+	}, withShell)
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	out, err := MarshalConfig(cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	text := string(out)
+	// The comment has to sit above the block it describes; a file-level header
+	// would drift away from it the first time a field is added.
+	shellAt := strings.Index(text, "\n    shell:")
+	commentAt := strings.Index(text, "The system terminal")
+	if shellAt < 0 {
+		t.Fatalf("no shell runtime block in the generated config:\n%s", text)
+	}
+	if commentAt < 0 || commentAt > shellAt {
+		t.Errorf("the shell block is not preceded by its explanation:\n%s", text)
+	}
+	// The veto and the reason agentd must stay unprivileged are the two things an
+	// operator reading only this file has to come away with.
+	for _, want := range []string{`"enabled: false"`, "not run as root", "ADR 0021"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("generated config never mentions %q:\n%s", want, text)
+		}
+	}
+
+	// A comment is still valid YAML to a strict decoder — and the round trip must
+	// report the setting as coming from the config, not from the default.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if shell := loaded.Runtime[config.ShellRuntimeID]; !shell.Enabled || shell.Binary != "/usr/bin/bash" {
+		t.Errorf("shell runtime did not survive the round trip: %+v", shell)
+	}
+	if loaded.ShellFromDefault {
+		t.Error("a config that writes the shell block explicitly must not report source=default")
+	}
+}
+
+// TestGeneratedConfigOmitsTheCommentWithoutAShell keeps the annotation honest on
+// a node where bash was not found: BuildConfig writes no shell block there, and a
+// comment describing an absent block would send the operator looking for it.
+func TestGeneratedConfigOmitsTheCommentWithoutAShell(t *testing.T) {
+	now := time.Unix(1700000000, 0).UTC()
+	cfg, err := BuildConfig(Params{
+		Server:         "https://platform.example.com",
+		NodeName:       "dev-vm-01",
+		RunUser:        "neil",
+		WorkspaceRoots: []string{"/home/neil/projects"},
+		DaemonVersion:  "0.2.0",
+	}, detected(now))
+	if err != nil {
+		t.Fatalf("BuildConfig: %v", err)
+	}
+	out, err := MarshalConfig(cfg)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if strings.Contains(string(out), "The system terminal") {
+		t.Errorf("commented a shell block that was never written:\n%s", out)
+	}
+}

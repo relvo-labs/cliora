@@ -200,7 +200,9 @@ func validSize(rows, columns uint16) bool {
 
 func validArch(s string) bool { return s == "amd64" || s == "arm64" }
 
-func validRuntimeID(s string) bool { return s == "claude" || s == "codex" || s == "fake" }
+func validRuntimeID(s string) bool {
+	return s == "claude" || s == "codex" || s == "shell" || s == "fake"
+}
 
 // validRelPath accepts a workspace-relative path: non-empty, no control chars,
 // not absolute, not `~`-rooted, and no `..` segment after cleaning. This is the
@@ -269,7 +271,8 @@ func ValidTargetVersion(s string) bool {
 
 func validRuntimes(items []runtimeItem) bool {
 	for _, it := range items {
-		if (it.Runtime != "claude" && it.Runtime != "codex") || it.Available == nil {
+		if (it.Runtime != "claude" && it.Runtime != "codex" && it.Runtime != "shell") ||
+			it.Available == nil {
 			return false
 		}
 	}

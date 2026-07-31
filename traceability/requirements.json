@@ -3451,6 +3451,71 @@
       ]
     },
     {
+      "id": "FR-SHELL-001",
+      "kind": "functional",
+      "title": "系統終端機",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-shell-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SHELL-001.AC-01",
+          "source_anchor": "fr-shell-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SHELL-001.AC-02",
+          "source_anchor": "fr-shell-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-SHELL-001.AC-03",
+          "source_anchor": "fr-shell-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-SHELL-001.AC-04",
+          "source_anchor": "fr-shell-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SHELL-001.AC-05",
+          "source_anchor": "fr-shell-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-SHELL-001.AC-06",
+          "source_anchor": "fr-shell-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SHELL-001.AC-07",
+          "source_anchor": "fr-shell-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SHELL-001.AC-08",
+          "source_anchor": "fr-shell-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
       "id": "MVP-AC-01",
       "kind": "mvp",
       "title": "管理員可於中央平台產生安裝 Token。",
@@ -4418,7 +4483,14 @@
           "id": "SCOPE-011.AC-01",
           "source_anchor": "scope-011-ac-01",
           "verification_profile": "inspection",
-          "risk": "high"
+          "risk": "high",
+          "lifecycle": "deprecated",
+          "review": {
+            "classified_by": "product",
+            "classified_at": "2026-07-31",
+            "rationale": "Narrowed, not withdrawn (ADR 0021). The half that still holds — the front end names no command, binary, argv, env or entrypoint — is carried by FR-SHELL-001.AC-03 and still guarded by test_scope_guards.py. The half given up is arbitrary commands inside an allowlisted shell.",
+            "approved": true
+          }
         }
       ]
     },

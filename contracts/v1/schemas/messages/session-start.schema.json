@@ -4,7 +4,7 @@
   "required": ["session_id", "runtime", "workspace", "rows", "columns"],
   "properties": {
     "session_id": {"type": "string", "format": "uuid"},
-    "runtime": {"enum": ["claude", "codex", "fake"]},
+    "runtime": {"enum": ["claude", "codex", "shell", "fake"]},
     "workspace": {"type": "string", "minLength": 1, "maxLength": 4096},
     "rows": {"type": "integer", "minimum": 2, "maximum": 300},
     "columns": {"type": "integer", "minimum": 2, "maximum": 500}

@@ -36,9 +36,11 @@ from app.services.rbac import (
     SESSION_TERMINATE,
     SESSION_VIEW,
     TERMINAL_OPERATE,
+    TERMINAL_SHELL,
     TERMINAL_TAKEOVER,
     has_action,
 )
+from app.services.sessions import SHELL_RUNTIME, TERMINAL_STATES
 
 # Reasons are coarse and low-cardinality so they are safe as a metric label
 # (ADR 0018): "action" = the role never holds it, "scope" = the role holds it but
@@ -80,12 +82,26 @@ def is_owner(user: User, session: TerminalSession) -> bool:
     return session.user_id == user.id
 
 
+# A system-terminal session (ADR 0021). Its authorization is *narrower* than a CLI
+# session's at every point, so the predicates below branch on it first rather than
+# inheriting the CLI rules and trying to subtract from them.
+def is_shell(session: TerminalSession) -> bool:
+    return session.runtime == SHELL_RUNTIME
+
+
 # --- Predicates (terminal WebSocket) ---
 
 
 def may_view_session(user: User, session: TerminalSession) -> bool:
     """Read-only attach. Any holder of `session.view`, including Viewer, matching
-    P2's read-only viewer attach (ADR 0013)."""
+    P2's read-only viewer attach (ADR 0013).
+
+    A shell session is the exception: **owner only**. Read-only attach exists so a
+    colleague can watch a CLI do its work; nobody has that reason to watch another
+    person's shell, and the contents are unbounded by the workspace (ADR 0021).
+    """
+    if is_shell(session):
+        return is_owner(user, session) and has_action(user, TERMINAL_SHELL)
     return has_action(user, SESSION_VIEW)
 
 
@@ -96,7 +112,13 @@ def may_write_session(user: User, session: TerminalSession) -> bool:
     `terminal.takeover` action. `terminal.operate` is required even for the owner:
     a user demoted to Viewer still owns the sessions they created earlier, and
     permission contraction must actually contract.
+
+    A shell session is owner-only and cannot be reached through
+    `terminal.takeover`: the writer of a shell is the person who opened it, full
+    stop.
     """
+    if is_shell(session):
+        return may_view_session(user, session)
     if not has_action(user, TERMINAL_OPERATE):
         return False
     return is_owner(user, session) or has_action(user, TERMINAL_TAKEOVER)
@@ -109,7 +131,11 @@ def may_takeover_session(user: User, session: TerminalSession) -> bool:
     reclaim it. The difference is not in the permission but in the effect — a
     takeover displaces someone, so it is announced to every subscriber and
     audited (`session.takeover`).
+
+    Never allowed for a shell session: there is no second party to hand it to.
     """
+    if is_shell(session):
+        return False
     return may_write_session(user, session)
 
 
@@ -123,8 +149,31 @@ def may_terminate_session(user: User, session: TerminalSession) -> bool:
 
 def may_browse_files(user: User, session: TerminalSession) -> bool:
     """File access is scoped by the session that owns the workspace, so it needs
-    both `file.browse` and view access to that session (P3 semantics)."""
+    both `file.browse` and view access to that session (P3 semantics).
+
+    Never through a shell session's id. The file tree is bound to the CLI session
+    that owns the workspace, so routing the filesystem relay through a shell
+    session would add a second path to the same data with a different owner check
+    — a lateral route, not a feature.
+    """
+    if is_shell(session):
+        return False
     return has_action(user, FILE_BROWSE) and may_view_session(user, session)
+
+
+def may_open_shell(user: User, session: TerminalSession) -> bool:
+    """Whether `user` may open a system terminal inside `session`.
+
+    Requires `terminal.shell` and ownership of the *CLI* session. An Admin holds
+    the action but not other people's sessions: they can terminate an orphan shell
+    (`may_terminate_session`), which is cleaning up, but not open one inside a
+    colleague's workspace, which is not.
+
+    A shell cannot host a shell.
+    """
+    if is_shell(session) or session.status in TERMINAL_STATES:
+        return False
+    return has_action(user, TERMINAL_SHELL) and is_owner(user, session)
 
 
 # --- Raisers (HTTP boundary) ---
@@ -140,6 +189,19 @@ def authorize_session_terminate(user: User, session: TerminalSession) -> None:
         raise _forbidden(SESSION_TERMINATE, user, REASON_ACTION)
     if not may_terminate_session(user, session):
         raise _forbidden(SESSION_TERMINATE, user, REASON_SCOPE)
+
+
+def forbidden_shell(user: User, session: TerminalSession) -> ApiError:
+    """The 403 for a refused system terminal, with the layer that refused it.
+
+    Returned rather than raised so the route reads like the others. The reason
+    label matters: `action` and `scope` are separate metric series, and with
+    Developer holding `terminal.shell` (ADR 0021) the scope refusals — somebody
+    reaching for a colleague's session — are the interesting signal.
+    """
+    if not has_action(user, TERMINAL_SHELL):
+        return _forbidden(TERMINAL_SHELL, user, REASON_ACTION)
+    return _forbidden(TERMINAL_SHELL, user, REASON_SCOPE)
 
 
 def authorize_file_browse(user: User, session: TerminalSession) -> None:
@@ -182,4 +244,5 @@ def session_capabilities(user: User, session: TerminalSession) -> dict[str, bool
         "can_takeover": may_takeover_session(user, session),
         "can_terminate": may_terminate_session(user, session),
         "can_browse_files": may_browse_files(user, session),
+        "can_open_shell": may_open_shell(user, session),
     }

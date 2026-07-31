@@ -82,9 +82,11 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # Pinned on purpose: every one of these numbers moving is a reviewable event.
     # Nothing is blocking and nothing is awaiting a rewrite, which is what lets
     # full release blocking stay on.
+    # 2026-07-31: +8 for FR-SHELL-001 (the system terminal, ADR 0021), -1 for
+    # SCOPE-011.AC-01 leaving the active set as `deprecated`/superseded.
     assert result["summary"] == {
-        "total": 372,
-        "verifiable": 241,
+        "total": 379,
+        "verifiable": 248,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

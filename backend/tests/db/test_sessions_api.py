@@ -272,3 +272,203 @@ async def test_a_terminated_session_frees_the_users_allowance(
 
         again = await client.post("/api/sessions", json=_body(node_id, name="c"), headers=headers)
     assert again.status_code == 201, again.text
+
+
+# --------------------------------------------------------------------------- #
+# System terminal (WT-07, FR-SHELL-001, ADR 0021)
+# --------------------------------------------------------------------------- #
+
+
+async def _make_shell_node(maker: async_sessionmaker, *, shell: bool = True) -> uuid.UUID:
+    """A node that also reports a usable shell — or explicitly does not."""
+    async with maker() as session:
+        node = Node(name="vm-shell", hostname="vm-shell", status="online", is_enabled=True)
+        node.runtimes = [
+            NodeRuntime(runtime="claude", available=True),
+            NodeRuntime(runtime="shell", available=shell),
+        ]
+        node.workspace_roots = [NodeWorkspaceRoot(path="/home/neil/projects", is_enabled=True)]
+        session.add(node)
+        await session.commit()
+        return node.id
+
+
+async def _parent(client: AsyncClient, node_id: uuid.UUID, headers: dict[str, str]) -> dict:
+    created = await client.post("/api/sessions", json=_body(node_id), headers=headers)
+    assert created.status_code == 201, created.text
+    return created.json()
+
+
+async def test_owner_opens_a_system_terminal_bound_to_the_cli_session(api: tuple) -> None:
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        assert parent["capabilities"]["can_open_shell"] is True
+
+        resp = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+
+    assert resp.status_code == 201, resp.text
+    shell = resp.json()
+    assert shell["runtime"] == "shell"
+    # Same node and workspace as the CLI it belongs to: the caller supplies neither,
+    # so there is no request in which they could differ.
+    assert shell["node_id"] == parent["node_id"]
+    assert shell["workspace"] == parent["workspace"]
+    # A shell cannot host a shell.
+    assert shell["capabilities"]["can_open_shell"] is False
+
+
+async def test_the_system_terminal_is_hidden_from_the_session_list(api: tuple) -> None:
+    """D13: it is a view of a CLI session, not a work item. Opening it from the
+    list would land the user in a workspace with no CLI."""
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        shell = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+    assert shell.status_code == 201
+
+    listed = await client.get("/api/sessions", headers=headers)
+    ids = {row["id"] for row in listed.json()}
+    assert parent["id"] in ids
+    assert shell.json()["id"] not in ids
+
+
+async def test_a_second_terminal_for_the_same_session_is_refused(api: tuple) -> None:
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        first = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+        assert first.status_code == 201
+        second = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "SHELL_ALREADY_OPEN"
+
+
+async def test_viewer_is_refused_at_the_action_layer(api: tuple) -> None:
+    """Viewer holds no `terminal.shell`, so the refusal happens before the parent
+    session is even loaded."""
+    client, maker = api
+    owner = await _login(client, maker, role_name="Developer")
+    viewer = await _login(client, maker, role_name="Viewer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, owner)
+        resp = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=viewer)
+
+    assert resp.status_code == 403
+    detail = await client.get(f"/api/sessions/{parent['id']}", headers=viewer)
+    assert detail.json()["capabilities"]["can_open_shell"] is False
+
+
+async def test_a_developer_cannot_open_a_shell_in_someone_elses_session(api: tuple) -> None:
+    """The scope half of the boundary, and the one that carries the weight now that
+    Developer holds the action (ADR 0021 §4)."""
+    client, maker = api
+    owner = await _login(client, maker, role_name="Developer")
+    other = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, owner)
+        resp = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=other)
+
+    assert resp.status_code == 403
+
+
+async def test_an_admin_cannot_open_a_shell_in_someone_elses_session(api: tuple) -> None:
+    """Admin holds the action and can terminate an orphan, but opening one inside a
+    colleague's workspace is not cleaning up."""
+    client, maker = api
+    owner = await _login(client, maker, role_name="Developer")
+    admin = await _login(client, maker, role_name="Admin")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, owner)
+        resp = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=admin)
+
+    assert resp.status_code == 403
+
+
+async def test_a_node_that_disabled_the_shell_refuses_it(api: tuple) -> None:
+    """The node's veto. It reports the runtime unavailable, and Central stops there
+    rather than relaying a request the daemon would refuse anyway."""
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker, shell=False)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        assert parent["capabilities"]["can_open_shell"] is True  # the action/ownership half
+        resp = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "RUNTIME_NOT_FOUND"
+
+
+async def test_terminating_the_cli_session_takes_its_terminal_with_it(api: tuple) -> None:
+    """FR-SHELL-001.AC-04. Leaving the row alive would also occupy the parent's
+    unique-index slot and block the user from ever opening another one."""
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        shell = (
+            await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+        ).json()
+        assert (
+            await client.post(f"/api/sessions/{parent['id']}/terminate", headers=headers)
+        ).status_code == 200
+
+    after = await client.get(f"/api/sessions/{shell['id']}", headers=headers)
+    assert after.status_code == 200
+    assert after.json()["status"] == "terminated"
+
+
+async def test_a_terminal_cannot_be_opened_inside_a_terminal(api: tuple) -> None:
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        shell = (
+            await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+        ).json()
+        resp = await client.post(f"/api/sessions/{shell['id']}/shell", json={}, headers=headers)
+
+    assert resp.status_code == 403
+
+
+async def test_the_shell_endpoint_accepts_nothing_but_a_size(api: tuple) -> None:
+    """SEC-002 at the HTTP boundary: no field exists for a command, a binary or a
+    workspace, so there is nothing to reject at runtime — the schema has no slot."""
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        resp = await client.post(
+            f"/api/sessions/{parent['id']}/shell",
+            json={"rows": 30, "columns": 100, "binary": "/bin/sh"},
+            headers=headers,
+        )
+    # Pydantic ignores unknown fields by default; what matters is that the created
+    # session took nothing from it.
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["rows"] == 30
+    assert resp.json()["columns"] == 100

@@ -79,6 +79,73 @@ heartbeat: {interval_seconds: 10}
 	}
 }
 
+// withShell splices a runtime.shell block into validConfig. Appending to the
+// string would land it under `session:`, where strict parsing rejects it — and
+// the test would then "pass" on a YAML error rather than on the behaviour.
+func withShell(body string) string {
+	const anchor = "  codex:\n    enabled: false\n    binary: \"\"\n"
+	if !strings.Contains(validConfig, anchor) {
+		panic("validConfig no longer has the codex runtime block")
+	}
+	return strings.Replace(validConfig, anchor, anchor+body, 1)
+}
+
+// ADR 0021 / D6. Three cases, because the interesting one is the third: a
+// default that quietly overrides an operator's "no" would hand out remote shells
+// on the nodes whose owners specifically refused them.
+func TestShellRuntimeDefaultsToEnabledWhenAbsent(t *testing.T) {
+	// validConfig names claude and codex only.
+	cfg, err := Load(writeFile(t, "config.yaml", validConfig, 0o600))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	shell := cfg.Runtime[ShellRuntimeID]
+	if !shell.Enabled {
+		t.Error("an absent runtime.shell block must default to enabled")
+	}
+	if shell.Binary != DefaultShellBinary {
+		t.Errorf("binary = %q, want %q", shell.Binary, DefaultShellBinary)
+	}
+	if !cfg.ShellFromDefault {
+		t.Error("ShellFromDefault must record that this came from the default")
+	}
+}
+
+func TestShellRuntimeHonoursExplicitConfig(t *testing.T) {
+	cfg, err := Load(writeFile(t, "config.yaml",
+		withShell("  shell:\n    enabled: true\n    binary: /usr/bin/zsh\n"), 0o600))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Runtime[ShellRuntimeID].Binary != "/usr/bin/zsh" {
+		t.Errorf("binary = %q", cfg.Runtime[ShellRuntimeID].Binary)
+	}
+	if cfg.ShellFromDefault {
+		t.Error("an explicit block is not the default")
+	}
+}
+
+func TestShellRuntimeDisabledIsNotOverwrittenByTheDefault(t *testing.T) {
+	cfg, err := Load(writeFile(t, "config.yaml",
+		withShell("  shell:\n    enabled: false\n    binary: \"\"\n"), 0o600))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Runtime[ShellRuntimeID].Enabled {
+		t.Fatal("an explicit `enabled: false` must survive the default")
+	}
+	if cfg.ShellFromDefault {
+		t.Error("ShellFromDefault must be false when the operator wrote the block")
+	}
+}
+
+func TestValidateRejectsEnabledShellWithoutBinary(t *testing.T) {
+	bad := withShell("  shell:\n    enabled: true\n    binary: \"\"\n")
+	if _, err := Load(writeFile(t, "config.yaml", bad, 0o600)); err == nil {
+		t.Fatal("expected rejection: enabled runtime with no binary")
+	}
+}
+
 func TestValidateRejectsInsecureURL(t *testing.T) {
 	bad := `
 server: {url: "ws://x/ws"}

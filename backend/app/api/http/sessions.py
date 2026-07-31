@@ -15,13 +15,19 @@ from app.api.http.deps import require_action
 from app.api.http.schemas import (
     AttachTicketResponse,
     CreateSessionRequest,
+    OpenShellRequest,
     SessionDetail,
     SessionSummary,
 )
 from app.db.engine import get_session
 from app.db.models import User
 from app.services import authz
-from app.services.rbac import SESSION_CREATE, SESSION_TERMINATE, SESSION_VIEW
+from app.services.rbac import (
+    SESSION_CREATE,
+    SESSION_TERMINATE,
+    SESSION_VIEW,
+    TERMINAL_SHELL,
+)
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.services.sessions import SessionService
 from app.services.ws_ticket import get_ws_ticket_service
@@ -108,6 +114,43 @@ async def terminate_session(
     existing = await service.get(session_id)
     authz.authorize_session_terminate(user, existing)
     result = await service.terminate(actor_id=user.id, session_id=session_id)
+    await session.commit()
+    return SessionDetail.from_model(result, viewer=user)
+
+
+@router.post(
+    "/{session_id}/shell",
+    response_model=SessionDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+async def open_shell(
+    session_id: uuid.UUID,
+    body: OpenShellRequest,
+    user: User = Depends(require_action(TERMINAL_SHELL)),
+    session: AsyncSession = Depends(get_session),
+    registry: NodeConnectionRegistry = Depends(get_registry),
+) -> SessionDetail:
+    """Open a system terminal inside a CLI session (FR-SHELL-001, ADR 0021).
+
+    The parent is in the path rather than the body, so a shell session cannot be
+    created without one — that structural choice, not a validation rule, is what
+    keeps shells out of the New Session dialog and the session list.
+
+    Two layers, in this order: `terminal.shell` (action) then ownership of the
+    parent (scope). An Admin holds the action but not other people's sessions.
+    """
+    service = SessionService(session, registry=registry)
+    parent = await service.get(session_id)
+    if not authz.may_open_shell(user, parent):
+        raise authz.forbidden_shell(user, parent)
+    try:
+        result = await service.open_shell(
+            actor_id=user.id, parent=parent, rows=body.rows, columns=body.columns
+        )
+    except ApiError:
+        # Same reasoning as create(): a row and a failure audit may already exist.
+        await session.commit()
+        raise
     await session.commit()
     return SessionDetail.from_model(result, viewer=user)
 
