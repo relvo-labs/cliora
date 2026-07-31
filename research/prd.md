@@ -106,7 +106,10 @@
 10. 不建立跨 Runtime 的統一 Agent 行為模型。
 <a id="scope-011"></a>
 <a id="scope-011-ac-01"></a>
-11. 不允許使用者從前端執行任意 Shell Command。
+11. 前端不得指定任意 Shell Command 字串。前端只送 Runtime ID，實際 Binary 由 Node 自行解析；
+    協定上不存在 Command／Binary／Argv／Env／Entrypoint 欄位。
+    （範圍變更 2026-07-31，ADR 0021：互動式系統終端機改由 FR-SHELL-001 明文規範並限定條件開放，
+    本條原先的「完全不提供任意 Shell」已由 FR-SHELL-001.AC-03 取代。）
 <a id="scope-012"></a>
 <a id="scope-012-ac-01"></a>
 12. 不將 VM 檔案系統直接掛載至中央伺服器。
@@ -742,6 +745,40 @@ Daemon 必須驗證：
 * Display Name
 <a id="fr-workspace-005-ac-06"></a>
 * 建立時間
+
+---
+
+# 8.5.1 系統終端機
+
+<a id="fr-shell-001"></a>
+## FR-SHELL-001 系統終端機
+
+系統終端機是 Session 工作區中的一個互動式 Shell，供使用者直接在 Node 上操作。
+範圍變更與取捨見 ADR 0021。
+
+<a id="fr-shell-001-ac-01"></a>
+Node 可停用系統終端機；停用後該 Node 上不得開啟。
+
+<a id="fr-shell-001-ac-02"></a>
+僅持有 `terminal.shell` 的使用者，且僅於自己擁有的 Session 上，可開啟系統終端機。
+
+<a id="fr-shell-001-ac-03"></a>
+前端僅指定 Runtime ID，不得指定 Binary、Command 或 Shell 指令字串。
+
+<a id="fr-shell-001-ac-04"></a>
+系統終端機綁定於一個 CLI Session；該 Session 結束時一併結束。
+
+<a id="fr-shell-001-ac-05"></a>
+其他使用者（含 Admin）不得連線至他人的系統終端機。
+
+<a id="fr-shell-001-ac-06"></a>
+系統終端機的建立、連線與終止須留下稽核紀錄；終端機內容不得寫入資料庫或 Log。
+
+<a id="fr-shell-001-ac-07"></a>
+系統終端機計入 Node 與使用者的 Session 上限。
+
+<a id="fr-shell-001-ac-08"></a>
+關閉終端機或離開 Session 工作區時，系統終端機即終止。
 
 ---
 
@@ -1444,17 +1481,20 @@ Workspace 與 Session 控制請求需設定 Timeout。
 
 # 10.6 Session 工作區
 
-建議三欄布局：
+兩欄布局，中央區以 Tab 切換：
 
 ```text
-┌──────────────┬─────────────────────────┬──────────────────┐
-│ Sessions     │ Terminal                │ Workspace        │
-│              │                         │                  │
-│ Claude ●     │ xterm.js                │ File Tree        │
-│ Codex        │                         │ File Preview     │
-│              │                         │                  │
-└──────────────┴─────────────────────────┴──────────────────┘
+┌──────────────────────────────────────────┬──────────────────┐
+│ ┌ CLI ┬ [檔名] ┐                          │ Workspace        │
+│ │                                      │ │                  │
+│ │  選中的 Tab 佔滿整個中央區              │ │ File Tree        │
+│ │  CLI = xterm.js                      │ │                  │
+│ └──────────────────────────────────────┘ │                  │
+└──────────────────────────────────────────┴──────────────────┘
 ```
+
+不提供 workspace 內的 Session 清單與切換：切換 Session 一律回到 Sessions 頁。
+中央區不採上下分割——同時顯示 Terminal 與 Preview 會讓兩者都不足以操作。
 
 頂部顯示：
 
@@ -1466,11 +1506,15 @@ Workspace 與 Session 控制請求需設定 Timeout。
 * 重新連線
 * 終止
 
+中央區 Tab：
+
+* CLI（恆存在，預設選中）
+* 檔案預覽（開啟檔案時出現，同時最多一個，標籤為檔名）
+* TERMINAL（系統終端機，符合 FR-SHELL-001.AC-01/AC-02 的條件時才出現）
+
 右側 Workspace 區域提供：
 
-* Files
-* Preview
-* Info
+* File Tree
 
 # 10.7 安裝管理頁
 

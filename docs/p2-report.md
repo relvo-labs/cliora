@@ -21,7 +21,7 @@ The P2 vertical is implemented end to end and locally verified: a session create
 | P2-09 terminal relay | ✅ node-WS binary routing + relay hub + browser endpoint; daemon streams verified |
 | P2-10 writer/viewer/takeover | ✅ server-side writer marker, viewer input dropped, takeover (RBAC) |
 | P2-11 sessions list + dialog | ✅ dependent Node→runtime→workspace selects, error mapping |
-| P2-12 session workspace route | ✅ 3-column layout, header status/reconnect/terminate |
+| P2-12 session workspace route | ✅ 3-column layout, header status/reconnect/terminate. **Not disclosed at the time: the left Sessions rail was placeholder text with no list and no switching, and the drag/collapse behaviour was never built. Both were withdrawn from the specs and removed in plan/08 (WT-01), which also moved the centre pane to tabs.** |
 | P2-13 xterm composable | ✅ ws-ticket + session WS, raw bytes, resize, gap/exit, dispose; leak gate |
 | P2-14 writer/viewer UI | ✅ role indication (not colour-only) + takeover control |
 | P2-15 audit + observability | ◐ session create/attach/takeover/terminate/failed audited; metrics infra minimal (relay/queue stats only) |

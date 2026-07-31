@@ -1362,6 +1362,10 @@ node.shutdown
 
 ### Session
 
+`session.start` 的 `runtime` 值域：`claude` | `codex` | `shell` | `fake`。
+`shell` 為系統終端機（FR-SHELL-001、ADR 0021），與其他 runtime 走完全相同的
+session／terminal 管線；payload 形狀不變，協定上仍不存在 Command／Binary 欄位。
+
 ```text
 session.start
 session.started
@@ -1700,28 +1704,43 @@ Daemon 重啟後重新 Attach／Recovery。
 
 ## 16.1 Session Workspace 頁面
 
-建議布局：
+布局：
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
 │ Session Header                                             │
 │ Node / Runtime / Workspace / Status / Stop                 │
-├──────────────┬───────────────────────────┬─────────────────┤
-│ Session List │ Terminal                  │ Workspace       │
-│              │                           │                 │
-│ Claude ●     │ xterm.js                  │ File Tree       │
-│ Codex        │                           │ File Preview    │
-│              │                           │                 │
-└──────────────┴───────────────────────────┴─────────────────┘
+├──────────────────────────────────────────┬─────────────────┤
+│ ┌ CLI ┬ [檔名] ┐                          │ Workspace       │
+│ │                                      │ │                 │
+│ │  xterm.js / Monaco（擇一佔滿）          │ │ File Tree       │
+│ └──────────────────────────────────────┘ │                 │
+└──────────────────────────────────────────┴─────────────────┘
 ```
 
 支援：
 
-* 左右面板拖曳調整。
-* Workspace 面板收合。
+* 中央區 Tab 切換；同一時間僅一個面板可見並佔滿。
 * Terminal 自動 Fit。
 * 頁面刷新後重連。
-* Session 切換時保留狀態。
+
+實作限制（皆為正確性條件，不是偏好）：
+
+* 非作用中的 Tab 面板**以 CSS 隱藏，不得卸載**。卸載 Terminal 面板會一併拆掉活的
+  WebSocket 與 scrollback；xterm 也無法在容器被替換後自行掛回。
+* 隱藏中的容器量測為 0×0，**不得對其執行 fit 或送出 resize**，否則會把 PTY 尺寸
+  改成使用者看不到的錯誤值。切回 Tab 後才重新量測。
+* Terminal 的掛載必須跟隨 host element（而非只在 mount 生命週期執行一次），
+  容器被重建時才能重新掛回。
+
+TERMINAL tab（系統終端機）僅於使用者持有 `terminal.shell`、Session 為自己擁有、
+且該 Node 未停用 shell 時出現；三個條件由 server 端計算後以 `can_open_shell` 下發，
+前端不自行組合（ADR 0016）。
+
+不提供（曾規劃、已於 plan/08 放棄）：
+
+* 左欄 Session 清單與 workspace 內切換 Session——切換一律回 Sessions 頁。
+* 左右面板拖曳調整與 Workspace 面板收合。
 
 ---
 

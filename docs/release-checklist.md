@@ -132,6 +132,39 @@ found three defects and disproved its own premise, so the boxes below are not fo
       the timeout; if you raise the ping interval above the proxy timeout, *every* WebSocket
       dies on a fixed cycle regardless of activity.
 
+## 4.5 The system terminal (plan/08, ADR 0021)
+
+Only two of these are commands; the rest are decisions that have to be made before
+an upgrade rather than discovered after one. The reason they are a numbered gate
+and not advice: **upgrading a daemon enables the shell on that node**, because an
+absent `runtime.shell` block counts as enabled. Nothing in CI can notice that a
+fleet gained a capability.
+
+- [ ] **`agentd` does not run as root on any node.** Not hygiene — the shell
+      escalates nothing, so the daemon's execution identity is the ceiling of the
+      feature. `systemctl show agentd -p User` on each node. `agentd run` refuses
+      to start as root and the shipped unit sets `User=`, so this is only reachable
+      through a hand-edited unit or a container running the binary directly.
+- [ ] **`docs/release-note-system-terminal.md` has been sent to node owners**, and
+      they have had the chance to answer. This is the notice for a capability
+      change, so it goes out *before* the upgrade, not with it.
+- [ ] Understood that `terminal.shell` is held by **Admin and Developer**, and that
+      the boundary is therefore **ownership**, not role scarcity: a shell can only
+      be opened on a session the user owns, and nobody can attach to anybody
+      else's. If that is not the boundary you want, change the role grant before
+      release, not after.
+- [ ] Decided on `CLIORA_SHELL_IDLE_TERMINATE_SECONDS` (default **900**). After a
+      browser crash, an unattended shell exists on the node for up to that long.
+      The default is a trade against reload/suspend churn with **no usage data
+      behind it yet** (security review Finding 3) — 300 is a defensible starting
+      point for a stricter environment.
+- [ ] Accepted that **commands are not recorded** (ADR 0004, `TECH-SEC-08`): the
+      audit trail says a shell existed, never what ran in it. If an auditor needs
+      the latter, host-level auditing has to be in place *before* this ships,
+      because there is nothing to backfill.
+- [ ] `docs/runbooks/system-terminal.md` is reachable by whoever is on call. §6 is
+      the part that matters at 3am.
+
 ## 5. Accepted-and-unexercised (tick only if you accept each)
 
 These cannot be closed on a normal host. Ticking means you accept them for this release.

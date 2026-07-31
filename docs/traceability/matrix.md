@@ -217,6 +217,14 @@
 | FR-SESSION-007 | [FR-SESSION-007.AC-02](../../research/prd.md#fr-session-007-ac-02) | 同一 Session 僅允許一個可寫入連線。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/test_terminal_relay.py::test_first_write_capable_subscriber_is_writer_rest_viewers |
 | FR-SESSION-007 | [FR-SESSION-007.AC-03](../../research/prd.md#fr-session-007-ac-03) | 其他使用者可唯讀觀看。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/test_terminal_relay.py::test_route_output_fans_out_to_all_subscribers |
 | FR-SESSION-007 | [FR-SESSION-007.AC-04](../../research/prd.md#fr-session-007-ac-04) | 新使用者要求控制權時，需明確接管。 | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/test_terminal_relay.py::test_takeover_transfers_writer<br>pytest:backend/tests/test_terminal_relay.py::test_takeover_unknown_connection_fails |
+| FR-SHELL-001 | [FR-SHELL-001.AC-01](../../research/prd.md#fr-shell-001-ac-01) | Node 可停用系統終端機；停用後該 Node 上不得開啟。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:daemon/internal/config/config.go | gotest:daemon/internal/config#TestShellRuntimeDisabledIsNotOverwrittenByTheDefault |
+| FR-SHELL-001 | [FR-SHELL-001.AC-02](../../research/prd.md#fr-shell-001-ac-02) | 僅持有 terminal.shell 的使用者，且僅於自己擁有的 Session 上，可開啟系統終端機。 | plan:plan/08/02-system-terminal-decisions.md<br>source:research/prd.md | code:backend/app/services/authz.py | pytest:backend/tests/db/test_sessions_api.py::test_viewer_is_refused_at_the_action_layer<br>playwright:frontend/tests/e2e/session.spec.ts |
+| FR-SHELL-001 | [FR-SHELL-001.AC-03](../../research/prd.md#fr-shell-001-ac-03) | 前端僅指定 Runtime ID，不得指定 Binary、Command 或 Shell 指令字串。 | plan:plan/08/02-system-terminal-decisions.md<br>source:research/tech.md | code:contracts/v1/schemas/messages/session-start.schema.json | pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command |
+| FR-SHELL-001 | [FR-SHELL-001.AC-04](../../research/prd.md#fr-shell-001-ac-04) | 系統終端機綁定於一個 CLI Session；該 Session 結束時一併結束。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_terminating_the_cli_session_takes_its_terminal_with_it |
+| FR-SHELL-001 | [FR-SHELL-001.AC-05](../../research/prd.md#fr-shell-001-ac-05) | 其他使用者（含 Admin）不得連線至他人的系統終端機。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/authz.py | pytest:backend/tests/test_authz.py::test_nobody_but_the_owner_can_watch_a_shell |
+| FR-SHELL-001 | [FR-SHELL-001.AC-06](../../research/prd.md#fr-shell-001-ac-06) | 系統終端機的建立、連線與終止須留下稽核紀錄；終端機內容不得寫入資料庫或 Log。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py |
+| FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
+| FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts |
 | FR-TERM-001 | [FR-TERM-001.AC-01](../../research/prd.md#fr-term-001-ac-01) | 前端使用 xterm.js 顯示完整 ANSI Terminal。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons<br>playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate |
 | FR-TERM-001 | [FR-TERM-001.AC-02](../../research/prd.md#fr-term-001-ac-02) | ANSI 色彩 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-03](../../research/prd.md#fr-term-001-ac-03) | Cursor | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -332,7 +340,7 @@
 | SCOPE-008 | [SCOPE-008.AC-01](../../research/prd.md#scope-008-ac-01) | 不提供自動 Git Commit、Push 或 Merge Request。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface |
 | SCOPE-009 | [SCOPE-009.AC-01](../../research/prd.md#scope-009-ac-01) | 不提供 CLI 對話內容的語意分析。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation |
 | SCOPE-010 | [SCOPE-010.AC-01](../../research/prd.md#scope-010-ac-01) | 不建立跨 Runtime 的統一 Agent 行為模型。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model |
-| SCOPE-011 | [SCOPE-011.AC-01](../../research/prd.md#scope-011-ac-01) | 不允許使用者從前端執行任意 Shell Command。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command |
+| SCOPE-011 | [SCOPE-011.AC-01](../../research/prd.md#scope-011-ac-01) | 前端不得指定任意 Shell Command 字串。前端只送 Runtime ID，實際 Binary 由 Node 自行解析； | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command |
 | SCOPE-012 | [SCOPE-012.AC-01](../../research/prd.md#scope-012-ac-01) | 不將 VM 檔案系統直接掛載至中央伺服器。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central |
 | SEC-001 | [SEC-001.AC-01](../../research/prd.md#sec-001-ac-01) | 所有 Workspace 與檔案路徑必須： | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveContainmentMatrix |
 | SEC-001 | [SEC-001.AC-02](../../research/prd.md#sec-001-ac-02) | 使用 Absolute Path。 | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveReturnsCanonicalPath |
@@ -374,7 +382,7 @@
 | TECH-SEC-09 | [TECH-SEC-09.AC-01](../../research/tech.md#tech-sec-09-ac-01) | 敏感檔案預設禁止預覽。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files<br>gotest:daemon/internal/files#TestReadPolicyMatrix |
 | TECH-SEC-10 | [TECH-SEC-10.AC-01](../../research/tech.md#tech-sec-10-ac-01) | Session 建立、接管、終止需 Audit。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_session_create_and_terminate<br>pytest:backend/tests/test_terminal_relay.py::test_takeover_transfers_writer |
 | TECH-SEC-11 | [TECH-SEC-11.AC-01](../../research/tech.md#tech-sec-11-ac-01) | WebSocket 必須做身分與權限檢查。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/services/auth.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_security.py::test_ws_ticket_single_use_and_resource_bound<br>pytest:backend/tests/db/test_node_ws.py::test_ws_requires_auth_first<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
-| TECH-SEC-12 | [TECH-SEC-12.AC-01](../../research/tech.md#tech-sec-12-ac-01) | Binary Download 必須驗證 Checksum。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install<br>code:scripts/railway/bake_artifacts.py | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/update#TestAChecksumMismatchAbortsBeforeAnythingIsExtracted<br>pytest:backend/tests/test_downloads.py::test_download_checksums<br>gate:GATE-RAILWAY-CONFIG-TESTS |
+| TECH-SEC-12 | [TECH-SEC-12.AC-01](../../research/tech.md#tech-sec-12-ac-01) | Binary Download 必須驗證 Checksum。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install<br>code:scripts/railway/bake_artifacts.py<br>code:scripts/railway/pack-agentd.sh | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/update#TestAChecksumMismatchAbortsBeforeAnythingIsExtracted<br>pytest:backend/tests/test_downloads.py::test_download_checksums<br>gate:GATE-RAILWAY-CONFIG-TESTS<br>pytest:scripts/railway/tests/test_pack_agentd.py |
 | TECH-SEC-13 | [TECH-SEC-13.AC-01](../../research/tech.md#tech-sec-13-ac-01) | Daemon Config 與 Credential 權限為 0600。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>gotest:daemon/internal/config#TestLoadRejectsGroupReadablePerms |
 | TECH-SEC-14 | [TECH-SEC-14.AC-01](../../research/tech.md#tech-sec-14-ac-01) | 限制單一使用者與 Node 的 Session 數量。 | adr:docs/adr/0019-requirement-traceability.md | code:scripts/p4/load/capacity.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet<br>pytest:backend/tests/db/test_sessions_service.py::test_session_limit_reached |
 | TECH-SEC-15 | [TECH-SEC-15.AC-01](../../research/tech.md#tech-sec-15-ac-01) | 限制 Terminal Queue 與 Frame 大小。 | adr:docs/adr/0019-requirement-traceability.md | code:scripts/p4/load/capacity.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/test_terminal_queue.py::test_output_overflow_emits_single_sentinel_and_does_not_raise<br>pytest:backend/tests/contract/test_contract.py::test_oversize_control_and_binary_are_rejected |
@@ -427,6 +435,7 @@
 - `gate:GATE-RAILWAY-LATENCY` ← `NFR-003.AC-04` (measured_by)
 - `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-02` (verified_by)
 - `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-03` (verified_by)
+- `requirement:SCOPE-011.AC-01` ← `FR-SHELL-001.AC-03` (supersedes)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
 - `code:backend/app/security/tokens.py` ← `SEC-003.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `SEC-003.AC-02` (implemented_by)
@@ -436,6 +445,7 @@
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-03.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-04.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-13.AC-01` (implemented_by)
+- `code:backend/app/services/audit.py` ← `FR-SHELL-001.AC-06` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-01` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-02` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-03` (implemented_by)
@@ -452,6 +462,8 @@
 - `code:backend/app/services/auth.py` ← `FR-AUTH-001.AC-03` (implemented_by)
 - `code:backend/app/services/auth.py` ← `FR-AUTH-001.AC-04` (implemented_by)
 - `code:backend/app/services/auth.py` ← `TECH-SEC-11.AC-01` (implemented_by)
+- `code:backend/app/services/authz.py` ← `FR-SHELL-001.AC-02` (implemented_by)
+- `code:backend/app/services/authz.py` ← `FR-SHELL-001.AC-05` (implemented_by)
 - `code:backend/app/services/enrollment.py` ← `FR-INSTALL-001.AC-01` (implemented_by)
 - `code:backend/app/services/enrollment.py` ← `FR-INSTALL-001.AC-02` (implemented_by)
 - `code:backend/app/services/enrollment.py` ← `FR-INSTALL-001.AC-03` (implemented_by)
@@ -569,6 +581,9 @@
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-007.AC-02` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-007.AC-03` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-007.AC-04` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-SHELL-001.AC-04` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-SHELL-001.AC-07` (implemented_by)
+- `code:backend/app/services/shell_reaper.py` ← `FR-SHELL-001.AC-08` (implemented_by)
 - `pytest:backend/tests/contract/test_contract.py` ← `SEC-002.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py` ← `TECH-SEC-07.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py::test_binary_manifest` ← `FR-CONN-005.AC-01` (verified_by)
@@ -577,6 +592,7 @@
 - `pytest:backend/tests/contract/test_contract.py::test_json_manifest` ← `SEC-002.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py::test_json_manifest` ← `TECH-SEC-07.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py::test_oversize_control_and_binary_are_rejected` ← `TECH-SEC-15.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_audit_coverage.py` ← `FR-SHELL-001.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `MVP-AC-20.AC-01` (validated_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `SEC-006.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `SEC-006.AC-02` (verified_by)
@@ -684,6 +700,7 @@
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `MVP-AC-18.AC-01` (validated_by)
+- `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `FR-SHELL-001.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `TECH-SEC-14.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_bad_runtime_rejected_422` ← `FR-RUNTIME-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_bad_runtime_rejected_422` ← `FR-SESSION-001.AC-01` (verified_by)
@@ -693,7 +710,9 @@
 - `pytest:backend/tests/db/test_sessions_api.py::test_get_unknown_session_404` ← `FR-SESSION-004.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_terminate_flow` ← `FR-SESSION-005.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_terminate_flow` ← `FR-SESSION-005.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_sessions_api.py::test_terminating_the_cli_session_takes_its_terminal_with_it` ← `FR-SHELL-001.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_viewer_cannot_create` ← `FR-AUTH-002.AC-08` (verified_by)
+- `pytest:backend/tests/db/test_sessions_api.py::test_viewer_is_refused_at_the_action_layer` ← `FR-SHELL-001.AC-02` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected` ← `FR-NODE-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-06` (verified_by)
@@ -704,6 +723,7 @@
 - `pytest:backend/tests/db/test_sessions_service.py::test_terminate_transitions_to_terminated` ← `FR-SESSION-005.AC-07` (verified_by)
 - `pytest:backend/tests/test_audit_redaction.py::test_every_audit_action_has_a_write_site` ← `SEC-006.AC-01` (verified_by)
 - `pytest:backend/tests/test_audit_redaction.py::test_forbidden_metadata_keys_cover_the_content_bearing_names` ← `TECH-SEC-08.AC-01` (verified_by)
+- `pytest:backend/tests/test_authz.py::test_nobody_but_the_owner_can_watch_a_shell` ← `FR-SHELL-001.AC-05` (verified_by)
 - `pytest:backend/tests/test_correlation.py::test_request_times_out_and_cleans_up` ← `FR-CONN-006.AC-01` (verified_by)
 - `pytest:backend/tests/test_downloads.py::test_download_checksums` ← `TECH-SEC-12.AC-01` (verified_by)
 - `pytest:backend/tests/test_downloads.py::test_install_script_served_as_shellscript` ← `FR-INSTALL-002.AC-01` (verified_by)
@@ -737,6 +757,7 @@
 - `pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface` ← `SCOPE-008.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation` ← `SCOPE-009.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model` ← `SCOPE-010.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command` ← `FR-SHELL-001.AC-03` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command` ← `SCOPE-011.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central` ← `SCOPE-012.AC-01` (guards_scope)
 - `pytest:backend/tests/test_security.py` ← `SEC-003.AC-01` (verified_by)
@@ -761,6 +782,7 @@
 - `pytest:backend/tests/test_session_state.py::test_running_lifecycle` ← `FR-SESSION-002.AC-01` (verified_by)
 - `pytest:backend/tests/test_session_state.py::test_start_to_running_and_failed` ← `FR-SESSION-002.AC-01` (verified_by)
 - `pytest:backend/tests/test_session_state.py::test_terminal_states_are_immutable` ← `FR-SESSION-002.AC-01` (verified_by)
+- `pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated` ← `FR-SHELL-001.AC-08` (verified_by)
 - `pytest:backend/tests/test_terminal_queue.py::test_output_overflow_emits_single_sentinel_and_does_not_raise` ← `TECH-SEC-15.AC-01` (verified_by)
 - `pytest:backend/tests/test_terminal_relay.py::test_first_write_capable_subscriber_is_writer_rest_viewers` ← `FR-SESSION-007.AC-01` (verified_by)
 - `pytest:backend/tests/test_terminal_relay.py::test_first_write_capable_subscriber_is_writer_rest_viewers` ← `FR-SESSION-007.AC-02` (verified_by)
@@ -769,6 +791,7 @@
 - `pytest:backend/tests/test_terminal_relay.py::test_takeover_transfers_writer` ← `TECH-SEC-10.AC-01` (verified_by)
 - `pytest:backend/tests/test_terminal_relay.py::test_takeover_unknown_connection_fails` ← `FR-SESSION-007.AC-04` (verified_by)
 - `pytest:backend/tests/test_terminal_relay.py::test_viewer_only_user_never_becomes_writer` ← `FR-AUTH-002.AC-09` (verified_by)
+- `code:contracts/v1/schemas/messages/session-start.schema.json` ← `FR-SHELL-001.AC-03` (implemented_by)
 - `gotest:daemon/cmd/agentd#TestConfigValidateCommand` ← `FR-INSTALL-004.AC-01` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-06` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-07` (verified_by)
@@ -779,10 +802,12 @@
 - `gotest:daemon/internal/config#TestEnsureNonRoot` ← `SEC-007.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestEnsureNonRoot` ← `TECH-SEC-02.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestLoadRejectsGroupReadablePerms` ← `TECH-SEC-13.AC-01` (verified_by)
+- `gotest:daemon/internal/config#TestShellRuntimeDisabledIsNotOverwrittenByTheDefault` ← `FR-SHELL-001.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsInsecureURL` ← `FR-CONN-002.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsInsecureURL` ← `SEC-005.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsInsecureURL` ← `TECH-SEC-01.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsUnknownRuntime` ← `FR-RUNTIME-004.AC-01` (verified_by)
+- `code:daemon/internal/config/config.go` ← `FR-SHELL-001.AC-01` (implemented_by)
 - `code:daemon/internal/connection` ← `FR-CONN-001.AC-01` (implemented_by)
 - `gotest:daemon/internal/connection` ← `FR-CONN-001.AC-01` (verified_by)
 - `code:daemon/internal/connection` ← `FR-CONN-002.AC-01` (implemented_by)
@@ -1191,6 +1216,8 @@
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-01.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-04.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-05.AC-01` (validated_by)
+- `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-SHELL-001.AC-02` (verified_by)
+- `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-SHELL-001.AC-08` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-001.AC-06` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-002.AC-01` (verified_by)
@@ -1497,6 +1524,21 @@
 - `plan:plan/07/03-edge-console-and-single-origin.md` ← `TECH-SEC-01.AC-01` (planned_by)
 - `plan:plan/07/05-verification-and-exit.md` ← `NFR-002.AC-02` (planned_by)
 - `plan:plan/07/05-verification-and-exit.md` ← `NFR-002.AC-03` (planned_by)
+- `plan:plan/08/02-system-terminal-decisions.md` ← `FR-SHELL-001.AC-02` (planned_by)
+- `plan:plan/08/02-system-terminal-decisions.md` ← `FR-SHELL-001.AC-03` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-01` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-04` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-05` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-06` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-07` (planned_by)
+- `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-08` (planned_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-06` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-07` (specified_by)
+- `source:research/prd.md` ← `FR-SHELL-001.AC-08` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-03` (specified_by)
@@ -1710,6 +1752,7 @@
 - `source:research/tech.md` ← `FR-SESSION-007.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-SESSION-007.AC-03` (specified_by)
 - `source:research/tech.md` ← `FR-SESSION-007.AC-04` (specified_by)
+- `source:research/tech.md` ← `FR-SHELL-001.AC-03` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-001.AC-03` (specified_by)
@@ -1846,3 +1889,5 @@
 - `scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served` ← `SEC-005.AC-01` (verified_by)
 - `scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served` ← `TECH-SEC-01.AC-01` (verified_by)
 - `code:scripts/railway/bake_artifacts.py` ← `TECH-SEC-12.AC-01` (implemented_by)
+- `code:scripts/railway/pack-agentd.sh` ← `TECH-SEC-12.AC-01` (implemented_by)
+- `pytest:scripts/railway/tests/test_pack_agentd.py` ← `TECH-SEC-12.AC-01` (verified_by)

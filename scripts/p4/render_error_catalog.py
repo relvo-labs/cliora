@@ -115,6 +115,7 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "SESSION_INVALID_STATE",
             "SESSION_LIMIT_REACHED",
             "SESSION_START_FAILED",
+            "SHELL_ALREADY_OPEN",
             "INVALID_TERMINAL_SIZE",
             "TERMINAL_ALREADY_CONTROLLED",
         ),

@@ -22504,6 +22504,541 @@
         "mvp"
       ],
       "gate_id": "GATE-RAILWAY-LATENCY"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-01-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-01-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-01-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/config/config.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-01-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/config#TestShellRuntimeDisabledIsNotOverwrittenByTheDefault"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-02-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/02-system-terminal-decisions.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-02-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-02-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/authz.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-02-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_api.py::test_viewer_is_refused_at_the_action_layer"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-02-VERIFIED-BY-E2E",
+      "from": "FR-SHELL-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/session.spec.ts"
+      },
+      "role": "supporting",
+      "assertion": "Browser end-to-end: the owner of a session opens the TERMINAL tab on a real node and runs a command whose output comes back through the relay.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-03-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/02-system-terminal-decisions.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-03-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/tech.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-03-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "contracts/v1/schemas/messages/session-start.schema.json"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-03-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-04-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-04-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-04-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-04-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_api.py::test_terminating_the_cli_session_takes_its_terminal_with_it"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-05-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-05-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-05-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/authz.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-05-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_authz.py::test_nobody_but_the_owner_can_watch_a_shell"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-06-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-06-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-06-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/audit.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-06-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_audit_coverage.py"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-07-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-07-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-07-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-07-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-PLANNED-BY",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/08/03-system-terminal-implementation.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-SPECIFIED-BY",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-IMPLEMENTED-BY",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/shell_reaper.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-VERIFIED-BY",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated"
+      },
+      "role": "primary",
+      "assertion": "Automated assertion of this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-VERIFIED-BY-E2E",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/session.spec.ts"
+      },
+      "role": "supporting",
+      "assertion": "Browser end-to-end: closing the TERMINAL tab terminates that shell session, asserted from the server's own reply, and leaves the CLI session connected.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-03-SUPERSEDES-SCOPE-011",
+      "from": "FR-SHELL-001.AC-03",
+      "type": "supersedes",
+      "target": {
+        "kind": "requirement",
+        "locator": "SCOPE-011.AC-01"
+      },
+      "role": "primary",
+      "assertion": "Narrows SCOPE-011 rather than withdrawing it: the front end still names no command, binary, argv, env or entrypoint (ADR 0021 §1).",
+      "owner": "product",
+      "applicability": [
+        "all"
+      ]
     }
   ]
 }

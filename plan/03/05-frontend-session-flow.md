@@ -30,9 +30,13 @@ Session Header（名稱/Node/Runtime/Workspace/狀態/Reconnect/Terminate）
 Status Bar
 ```
 
-- **布局行為**（tech §16.1、style.md §18「Terminal 就是工作區、不包 Card」）：左右面板可拖曳調整、右側 Workspace 面板可收合（P2 先放 P3 佔位/收合狀態）；Terminal 佔最大比例並自動 fit；深色工作區背景（`--terminal-*` token）。
+> **已於 plan/08（WT-01/WT-03）改版。** 左欄 Sessions 清單自始未實作（只有一段佔位文字），
+> 現已移除；中央區改為 tab 切換（CLI / 檔名），不再上下分割。理由與取捨見
+> `plan/08/00-execution-plan.md` §2 與 §6。以下 P2-12 原文保留為當時的決定紀錄。
+
+- **布局行為**（tech §16.1、style.md §18「Terminal 就是工作區、不包 Card」）：左右面板可拖曳調整、右側 Workspace 面板可收合（P2 先放 P3 佔位/收合狀態）；Terminal 佔最大比例並自動 fit；深色工作區背景（`--terminal-*` token）。（**拖曳與收合從未實作，已於 plan/08 從 tech §16.1 移除，不再是規格。**）
 - **Header**（PRD §10.6）：Session 名稱、Node、Runtime、Workspace、狀態（`StatusBadge`）、Reconnect、Terminate。Terminate 為 danger action，需 `ConfirmDialog` 二次確認並保持 focus。
-- **狀態可恢復 / 切換**：頁面刷新後重新以 attach ticket 連線（reconnect）；session 切換時保留/正確重建各面板狀態，切走完整 dispose（交由 P2-13 的 composable 落實）。左欄 session 清單支援切換不同 session。
+- **狀態可恢復 / 切換**：頁面刷新後重新以 attach ticket 連線（reconnect）；session 切換時保留/正確重建各面板狀態，切走完整 dispose（交由 P2-13 的 composable 落實）。~~左欄 session 清單支援切換不同 session。~~（**已放棄**：切換一律回 Sessions 頁，plan/08 WT-01。）
 - **不做**：Workspace 面板的 file tree/preview（P3）；此處僅保留面板骨架與 collapse。
 
-驗收（E2E）：從 Sessions list/建立後進入 workspace；header 狀態與 reconnect/terminate 正確；面板拖曳/收合；刷新後 reattach；session 切換不串流、狀態正確；responsive（≥1440×900 baseline，較窄 viewport 面板可收合、無水平溢位）；WCAG AA（狀態非僅顏色、focus 可見）。
+驗收（E2E）：從 Sessions list/建立後進入 workspace；header 狀態與 reconnect/terminate 正確；~~面板拖曳/收合~~（已放棄）；刷新後 reattach；~~session 切換不串流、狀態正確~~（workspace 內切換已放棄，plan/08 §6 記錄了因此不修的三個缺陷）；responsive（≥1440×900 baseline，較窄 viewport 面板可收合、無水平溢位）；WCAG AA（狀態非僅顏色、focus 可見）。

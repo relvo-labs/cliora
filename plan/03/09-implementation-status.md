@@ -17,7 +17,7 @@
 | P2-09 browser terminal WS relay | ✅ 完成 | daemon session.attach 串流；Central `terminal_relay` hub + node-WS binary 路由 + `/ws/sessions/{id}/terminal` endpoint |
 | P2-10 single writer/viewer/takeover | ✅ 完成 | server 端 writer 標記、viewer/偽造 input 丟棄、takeover（需 `terminal.takeover`）；relay hub 6 tests |
 | P2-11 Sessions list + New Session dialog | ✅ 完成 | `SessionsView` + `NewSessionDialog`（相依 Node→runtime→workspace、offline 過濾、error code 對映） |
-| P2-12 Session Workspace route | ✅ 完成 | `SessionWorkspaceView` 三欄、header 狀態/reconnect/terminate、切 session reconnect、P3 workspace 面板佔位 |
+| P2-12 Session Workspace route | ✅ 完成（後由 plan/08 改版） | `SessionWorkspaceView` 三欄、header 狀態/reconnect/terminate、切 session reconnect、P3 workspace 面板佔位。**當時未揭露：左欄 Sessions 同樣只是佔位文字，未實作切換；面板拖曳/收合亦未實作。** 兩者已於 plan/08（WT-01）移除並從規格撤下 |
 | P2-13 xterm production composable | ✅ 完成 | `useTerminalSession` 改用 ws-ticket + `/ws/sessions/{id}/terminal`；raw bytes/resize/gap/exit/dispose；9 tests 含 leak gate |
 | P2-14 writer/viewer + takeover UI | ✅ 完成 | 角色標示（非僅顏色）+ Request control；danger confirm |
 | P2-15 audit + observability | ✅ 完成（metrics 部分） | session create/attach/takeover/terminate/failed 均 audit（無 terminal content）；結構化 metrics 匯出留 P4 |
