@@ -111,29 +111,42 @@ LIMIT 50;
 ## 5. Lifetime, and the abandoned-shell case
 
 A system terminal is bound to the CLI session it was opened from and cannot
-outlive it. Three things end it, and the redundancy is the point — the first two
+outlive it. Four things end it, and the redundancy is the point — the first two
 depend on a browser that may be gone:
 
-1. **Closing the tab** — the browser terminates the session.
+1. **The user leaving it** — closing the TERMINAL tab, navigating out of the
+   workspace, reloading, or closing the browser tab. All four send the terminate;
+   the unload cases use a `keepalive` request, because an ordinary one would be
+   cancelled along with the page.
 2. **The parent ending** — terminating or losing the CLI session cascades to its
    shell.
 3. **The idle reaper** — a shell whose watcher disconnected and did not come back
    is terminated after `shell_idle_terminate_seconds` (**default 900**, i.e. 15
    minutes). Reconnecting cancels it; disconnect/reconnect churn cannot extend the
-   deadline; a CLI session is never reaped this way.
+   deadline; a CLI session is never reaped this way. An offline node is retried a
+   few times rather than written off, and Central re-arms these timers at startup
+   for every shell the database still shows as live — otherwise a restart would
+   drop the timer for a browser that was already gone.
+4. **The owner opening a new one** — if the existing shell has no subscriber, the
+   next open ends it (audited with `reason: abandoned`) and starts a fresh one.
 
 So after a browser crash or a lost network, **an unattended shell can exist on
-the node for up to 15 minutes.** That window is a trade against reload and
-suspend churn (security review Finding 3), and it is tunable per deployment. If
-your threat model does not accept it, lower it:
+the node for up to 15 minutes** — unless its owner comes back sooner, in which
+case (4) ends it immediately. That window is a trade against reload and suspend
+churn (security review Finding 3), and it is tunable per deployment. If your
+threat model does not accept it, lower it:
 
 ```sh
 CLIORA_SHELL_IDLE_TERMINATE_SECONDS=300
 ```
 
-Only one live shell per session exists at a time — enforced both by the API
-(`SHELL_ALREADY_OPEN`) and by a partial unique index in the database, so a
-double-click or a stale tab cannot produce a second one.
+Only one live shell per session exists at a time, enforced by a partial unique
+index in the database. `SHELL_ALREADY_OPEN` means specifically that **another tab
+or window is attached to the existing one right now** — that is a refusal the user
+resolves by going back to that tab. A terminal nobody is watching is not refused;
+it is replaced, per (4). Before that distinction existed, a reload produced a
+refusal the user could not act on: the terminal was live, the reloaded page no
+longer knew its id, and nothing could be closed until the reaper fired.
 
 ## 6. Incident response
 

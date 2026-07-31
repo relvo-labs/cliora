@@ -11,6 +11,7 @@ correlated request path (services/registry.py).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from pathlib import PurePosixPath
 
 from fastapi import status
@@ -147,6 +148,17 @@ class SessionService:
             await self._repo.list(node_id=node_id, status=status_filter, limit=limit, offset=offset)
         )
 
+    async def list_live_shells(self) -> Sequence[TerminalSession]:
+        """Every system terminal that has not ended, fleet-wide (shell reaper only).
+
+        Not exposed over HTTP: shells are a view of the CLI session that owns them,
+        and a list of them is an operational fact, not a work item (D13).
+
+        `Sequence`, not `list`: this class has a method named `list`, which shadows
+        the builtin for every annotation below it.
+        """
+        return await self._repo.live_sessions_for_runtime(SHELL_RUNTIME)
+
     async def create(
         self,
         *,
@@ -264,12 +276,9 @@ class SessionService:
         # A node that disabled the shell, or has no usable binary, reports it
         # unavailable; this is where that veto takes effect.
         _require_runtime(node, SHELL_RUNTIME)
-        if await self._repo.live_shell_for_parent(parent.id) is not None:
-            raise ApiError(
-                "SHELL_ALREADY_OPEN",
-                "This session already has a system terminal",
-                status.HTTP_409_CONFLICT,
-            )
+        existing = await self._repo.live_shell_for_parent(parent.id)
+        if existing is not None:
+            await self._resolve_existing_shell(existing, actor_id=actor_id)
         session = await self.create(
             actor_id=actor_id,
             node_id=parent.node_id,
@@ -285,6 +294,47 @@ class SessionService:
         session.parent_session_id = parent.id
         await self._session.flush()
         return session
+
+    async def _resolve_existing_shell(
+        self, existing: TerminalSession, *, actor_id: uuid.UUID
+    ) -> None:
+        """Decide what a second open means when a live shell is already on the row.
+
+        One live shell per CLI session stands (ADR 0021 §4.3, enforced by the
+        partial unique index). What is decided here is which of the two readings
+        of "already open" applies, and the row's existence alone cannot tell them
+        apart:
+
+        * **Somebody is watching it.** Another tab or window holds it. Refusing is
+          correct and `SHELL_ALREADY_OPEN` names a place the user can go back to.
+        * **Nobody is watching it.** Then by `FR-SHELL-001.AC-08` this terminal
+          should already be gone: it ends when its watcher leaves the workspace.
+          The row outliving that is the browser failing to report — a reload, a
+          crashed tab, a dropped tunnel — and refusing would lock the owner out
+          of their own terminal for up to `shell_idle_terminate_seconds`, with no
+          tab left to close because the front end has forgotten it exists. So the
+          idle reaper's job is done now, on demand, and a fresh shell opens.
+
+        The evidence is the relay's live subscriber list, the same evidence the
+        reaper acts on — not a heuristic about elapsed time, which would guess at
+        exactly the thing the relay knows.
+        """
+        # Imported here, not at module scope: the relay is transport, this is the
+        # domain service, and keeping the edge local marks the direction as
+        # deliberate (`shell_reaper` does the same for the same reason).
+        from app.services.terminal_relay import get_terminal_relay
+
+        if get_terminal_relay().subscriber_count(existing.id) > 0:
+            raise ApiError(
+                "SHELL_ALREADY_OPEN",
+                "This session already has a system terminal",
+                status.HTTP_409_CONFLICT,
+            )
+        await self._terminate_child(existing, actor_id=actor_id, reason="abandoned")
+        # Before `create()` inserts the replacement: the partial unique index counts
+        # live rows, and the UPDATE that ends this one has to reach the database
+        # first or the insert trips an index we are the ones satisfying.
+        await self._session.flush()
 
     async def terminate(self, *, actor_id: uuid.UUID, session_id: uuid.UUID) -> TerminalSession:
         session = await self.get(session_id)
@@ -318,33 +368,43 @@ class SessionService:
         return session
 
     async def _terminate_children(self, parent: TerminalSession, *, actor_id: uuid.UUID) -> None:
-        """Stop any system terminal that belonged to a session that just ended.
-
-        Best-effort per child: a node that fails to stop one shell must not stop the
-        parent from being reported terminated, and the row is marked ended either way
-        so the node's own reconciliation is what cleans up the process. Leaving the
-        row alive would be worse — it would occupy the parent's unique-index slot and
-        block the user from ever opening another terminal.
-        """
+        """Stop any system terminal that belonged to a session that just ended."""
         for child in await self._repo.live_children(parent.id):
-            try:
-                await self._registry.request(
-                    child.node_id,
-                    "session.stop",
-                    {"session_id": str(child.id)},
-                    timeout_seconds=self._settings.session_stop_timeout_seconds,
-                )
-            except ApiError:
-                pass
-            child.status = TERMINATED
-            child.ended_at = now_utc()
-            await self._audit.record(
-                audit.SESSION_TERMINATE,
-                user_id=actor_id,
-                node_id=child.node_id,
-                session_id=child.id,
-                metadata={"runtime": child.runtime, "reason": "parent_ended"},
+            await self._terminate_child(child, actor_id=actor_id, reason="parent_ended")
+
+    async def _terminate_child(
+        self, child: TerminalSession, *, actor_id: uuid.UUID, reason: str
+    ) -> None:
+        """End one child session without letting the node's answer decide the row.
+
+        Best-effort against the node: a node that fails to stop a shell must not stop
+        the caller's own operation — the parent being reported terminated, or a
+        replacement terminal opening — and the row is marked ended either way so the
+        node's own reconciliation is what collects the process. Leaving the row alive
+        would be worse: it would occupy the parent's unique-index slot and block the
+        user from ever opening another terminal.
+
+        `reason` goes into the audit metadata, because "the CLI session ended" and
+        "nobody was watching this one" are different events to whoever reads the trail.
+        """
+        try:
+            await self._registry.request(
+                child.node_id,
+                "session.stop",
+                {"session_id": str(child.id)},
+                timeout_seconds=self._settings.session_stop_timeout_seconds,
             )
+        except ApiError:
+            pass
+        child.status = TERMINATED
+        child.ended_at = now_utc()
+        await self._audit.record(
+            audit.SESSION_TERMINATE,
+            user_id=actor_id,
+            node_id=child.node_id,
+            session_id=child.id,
+            metadata={"runtime": child.runtime, "reason": reason},
+        )
 
     async def delete(self, *, session_id: uuid.UUID) -> None:
         session = await self.get(session_id)

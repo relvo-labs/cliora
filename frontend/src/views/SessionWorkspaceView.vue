@@ -3,6 +3,7 @@ import {
   computed,
   defineAsyncComponent,
   nextTick,
+  onBeforeUnmount,
   onMounted,
   ref,
   watch,
@@ -201,6 +202,38 @@ async function closeShell(): Promise<void> {
   }
 }
 
+// AC-08 has two halves and only the first was implemented: "closing the terminal
+// **or leaving the Session workspace** ends the system terminal". Leaving covers
+// three different exits, and each needs its own hook — a shell that survives any of
+// them is one nobody is watching, and the next visit could not even see it to close
+// it (the tab's close affordance keys off local state, which the exit just threw
+// away).
+//
+// 1. Navigating inside the app (Back, the sidebar): the component unmounts.
+onBeforeUnmount(() => {
+  void closeShell();
+});
+
+// 2. Reload, tab close, or leaving the origin: no unmount runs and an ordinary
+//    fetch would be cancelled with the document, so this one is `keepalive` and
+//    fire-and-forget. `pagehide` rather than `beforeunload`: it also fires when the
+//    page is discarded on mobile, and it does not risk a confirmation prompt.
+//    The local state is reset too, not just the request sent: `pagehide` also fires
+//    when the page is put in the back/forward cache, and a restored page that still
+//    believed it had this terminal would show its dead scrollback.
+function terminateShellOnUnload(): void {
+  const open = shellSession.value;
+  if (!open) return;
+  shellSession.value = null;
+  shellState.value = "idle";
+  shellTerminal.disconnect();
+  api().terminateSessionOnUnload(open.id);
+}
+window.addEventListener("pagehide", terminateShellOnUnload);
+onBeforeUnmount(() =>
+  window.removeEventListener("pagehide", terminateShellOnUnload),
+);
+
 const host = ref<HTMLElement | null>(null);
 const terminateOpen = ref(false);
 const actionError = ref("");
@@ -245,6 +278,12 @@ watch(
   () => props.id,
   async (next, prev) => {
     if (next && next !== prev) {
+      // 3. The third way out of a workspace: the route param changes and this
+      //    component is *reused*, so neither unmount nor pagehide fires. Without
+      //    this the previous session's shell stayed alive, and worse, its id stayed
+      //    in `shellSession` — the TERMINAL tab here would then show the terminal
+      //    of the session the user just left.
+      await closeShell();
       await resource.run();
       void terminal.connect(next);
     }

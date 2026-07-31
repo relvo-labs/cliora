@@ -23026,6 +23026,69 @@
       "gate_id": "GATE-BROWSER-E2E"
     },
     {
+      "id": "LNK-FR-SHELL-001-AC-08-IMPLEMENTED-BY-WORKSPACE-EXITS",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/views/SessionWorkspaceView.vue"
+      },
+      "role": "supporting",
+      "assertion": "The 'or leaving the Session workspace' half: in-app navigation (unmount), reload or tab close (pagehide + keepalive) and an in-place session switch each terminate the shell. No single hook fires for the other two.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-VERIFIED-BY-UNIT-NAVIGATION",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away"
+      },
+      "role": "supporting",
+      "assertion": "Leaving the workspace by navigation terminates the shell.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-VERIFIED-BY-UNIT-UNLOAD",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path"
+      },
+      "role": "supporting",
+      "assertion": "A reload or closed tab terminates the shell over the keepalive path, the exit that runs no unmount and where an ordinary fetch dies with the document.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-08-VERIFIED-BY-DB-REPLACEMENT",
+      "from": "FR-SHELL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused"
+      },
+      "role": "supporting",
+      "assertion": "Server-side backstop: a shell with no subscriber is ended and replaced on the owner's next open (audited reason=abandoned) instead of refusing it until the idle timeout.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
       "id": "LNK-FR-SHELL-001-AC-03-SUPERSEDES-SCOPE-011",
       "from": "FR-SHELL-001.AC-03",
       "type": "supersedes",

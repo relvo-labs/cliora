@@ -451,4 +451,71 @@ test.describe("session & terminal", () => {
       page.locator('[data-status="terminated"], [data-status="exited"]'),
     ).toBeVisible({ timeout: 15_000 });
   });
+
+  // The other half of AC-08: "closing the terminal **or leaving the Session
+  // workspace**". A reload is the exit nothing else can stand in for — no unmount
+  // runs, and an ordinary fetch is cancelled with the document — so only a real
+  // browser can show that the terminate actually leaves. The symptom this covers is
+  // the one users hit: after a reload the terminal was still live server-side, the
+  // page no longer knew its id, and reopening was refused with SHELL_ALREADY_OPEN.
+  test("system terminal: a reload ends the terminal and the next open is not refused", async ({
+    page,
+  }) => {
+    await signIn(page);
+    const nodeCount = await openDialogAndCountNodes(page);
+    test.skip(nodeCount === 0, "no online node available in this stack");
+
+    const dialog = newSessionDialog(page);
+    await dialog.locator("select").first().selectOption({ index: 1 });
+    const runtime = dialog.locator("select").nth(1);
+    await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
+    await runtime.selectOption({ index: 1 });
+    await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
+    await dialog
+      .locator('input[placeholder="e.g. refactor-api"]')
+      .fill("e2e-shell-reload");
+    await dialog.getByRole("button", { name: "Start" }).click();
+    await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
+
+    const terminalTab = page.getByRole("tab", { name: "TERMINAL" });
+    const offered = await terminalTab
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    test.skip(!offered, "this node reports no usable shell runtime");
+
+    const created = page.waitForResponse(
+      (res) => res.request().method() === "POST" && /\/shell$/.test(res.url()),
+    );
+    await terminalTab.click();
+    const first: string = await created.then(
+      async (res) => (await res.json()).id,
+    );
+    await expect(page.locator("#panel-terminal .xterm-rows")).toBeVisible({
+      timeout: 15_000,
+    });
+
+    // Armed before the reload: the request is sent from a `pagehide` handler with
+    // `keepalive`, so it is in flight while the document is going away.
+    const terminated = page.waitForRequest(
+      (req) =>
+        req.method() === "POST" &&
+        req.url().endsWith(`/api/sessions/${first}/terminate`),
+    );
+    await page.reload();
+    await terminated;
+
+    // Back on the same session: opening the terminal again is answered, not refused.
+    // A different id is the proof that the reloaded page is not being handed the
+    // terminal it abandoned (ADR 0021 §6 — an unattended shell is ended, not
+    // inherited).
+    const reopened = page.waitForResponse(
+      (res) => res.request().method() === "POST" && /\/shell$/.test(res.url()),
+    );
+    await page.getByRole("tab", { name: "TERMINAL" }).click();
+    const second = await reopened.then((res) => res.json());
+    expect(second.id).not.toBe(first);
+    expect(second.runtime).toBe("shell");
+    await expect(page.locator("#panel-terminal")).toBeVisible();
+  });
 });

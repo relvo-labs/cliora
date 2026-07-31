@@ -224,7 +224,7 @@
 | FR-SHELL-001 | [FR-SHELL-001.AC-05](../../research/prd.md#fr-shell-001-ac-05) | 其他使用者（含 Admin）不得連線至他人的系統終端機。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/authz.py | pytest:backend/tests/test_authz.py::test_nobody_but_the_owner_can_watch_a_shell |
 | FR-SHELL-001 | [FR-SHELL-001.AC-06](../../research/prd.md#fr-shell-001-ac-06) | 系統終端機的建立、連線與終止須留下稽核紀錄；終端機內容不得寫入資料庫或 Log。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py |
 | FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
-| FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts |
+| FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py<br>code:frontend/src/views/SessionWorkspaceView.vue | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path<br>pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused |
 | FR-TERM-001 | [FR-TERM-001.AC-01](../../research/prd.md#fr-term-001-ac-01) | 前端使用 xterm.js 顯示完整 ANSI Terminal。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons<br>playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate |
 | FR-TERM-001 | [FR-TERM-001.AC-02](../../research/prd.md#fr-term-001-ac-02) | ANSI 色彩 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-03](../../research/prd.md#fr-term-001-ac-03) | Cursor | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -700,6 +700,7 @@
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `MVP-AC-18.AC-01` (validated_by)
+- `pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused` ← `FR-SHELL-001.AC-08` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `FR-SHELL-001.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `TECH-SEC-14.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_bad_runtime_rejected_422` ← `FR-RUNTIME-002.AC-01` (verified_by)
@@ -1181,6 +1182,9 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-06` (implemented_by)
 - `vitest:frontend/src/protocol/v1.test.ts#preserves UTF-8 and binary input bytes` ← `FR-TERM-001.AC-06` (verified_by)
 - `vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone` ← `FR-TERM-005.AC-01` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-02` (verified_by)
