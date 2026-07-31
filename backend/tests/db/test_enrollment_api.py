@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import uuid
 from datetime import timedelta
+from typing import get_args
 
 import sqlalchemy as sa
 from httpx import AsyncClient
 
+from app.api.http.schemas import NodeReportedRuntime
 from app.clock import now_utc
-from app.db.models import EnrollmentToken, NodeCredential, Role, User
+from app.db.models import EnrollmentToken, NodeCredential, NodeRuntime, Role, User
 from app.security.hashing import keyed_hash
 from app.security.passwords import hash_password
+from app.services.sessions import RUNTIMES
 
 
 async def _make_user(maker, *, username, password, role_name="Admin") -> uuid.UUID:
@@ -140,3 +143,52 @@ async def test_revoked_token_cannot_register(api: tuple) -> None:
     response = await client.post("/api/nodes/register", json=_register_body(created["token"]))
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "ENROLLMENT_TOKEN_INVALID"
+
+
+async def test_register_accepts_the_runtime_set_the_daemon_detects(api: tuple) -> None:
+    """The daemon enumerates claude, codex *and* shell at enrolment.
+
+    `install.DetectRuntimes` has probed all three since the system terminal
+    shipped, but RuntimeItemDTO still only allowed two, so every real
+    `agentd install` died on HTTP 422 before a node row was ever written. The
+    fixture above registers one runtime and never caught it; this one sends
+    exactly what the daemon sends.
+    """
+    client, maker = api
+    await _make_user(maker, username="admin", password="pw")
+    headers = await _login(client, "admin", "pw")
+    token = (await client.post("/api/enrollment-tokens", json={}, headers=headers)).json()["token"]
+
+    body = _register_body(token)
+    body["runtimes"] = [
+        {"runtime": "claude", "available": True, "version": "1.2.3"},
+        {"runtime": "codex", "available": False},
+        {"runtime": "shell", "available": True, "version": "5.2.21", "binary_path": "/bin/bash"},
+    ]
+    response = await client.post("/api/nodes/register", json=body)
+    assert response.status_code == 201, response.text
+
+    # Persisted, and persisted as available: the node's report is the only place
+    # the system terminal's availability lives, and `_require_runtime` reads it
+    # back to decide whether a shell may be opened at all (ADR 0021).
+    async with maker() as session:
+        rows = (
+            await session.execute(
+                sa.select(NodeRuntime).where(
+                    NodeRuntime.node_id == uuid.UUID(response.json()["node_id"])
+                )
+            )
+        ).scalars()
+        runtimes = {r.runtime: r.available for r in rows}
+    assert runtimes == {"claude": True, "codex": False, "shell": True}
+
+
+def test_node_reported_runtimes_match_the_session_service() -> None:
+    """The drift guard the last change needed.
+
+    Two independent lists of runtime ids exist: the session service's RUNTIMES,
+    and the enrolment DTO's Literal. Adding `shell` to the first and not the
+    second is what broke enrolment, and nothing failed. `fake` is excluded
+    deliberately — `_require_runtime` short-circuits it and no node reports it.
+    """
+    assert set(get_args(NodeReportedRuntime)) == RUNTIMES - {"fake"}

@@ -203,8 +203,18 @@ class EnrollmentTokenResponse(BaseModel):
         )
 
 
+# What a node may report about itself at enrolment. This is *not* the set a
+# session may be started with: `fake` is a dev runtime that `_require_runtime`
+# short-circuits and no node ever enumerates, while `shell` must appear here even
+# though it cannot be named in CreateSessionRequest — the node's report is the only
+# place the system terminal's availability and the operator's `enabled: false` are
+# expressed (ADR 0021). `test_node_reported_runtimes_match_the_session_service`
+# fails if this drifts from services.sessions.RUNTIMES again.
+NodeReportedRuntime = Literal["claude", "codex", "shell"]
+
+
 class RuntimeItemDTO(BaseModel):
-    runtime: Literal["claude", "codex"]
+    runtime: NodeReportedRuntime
     available: bool
     version: str | None = Field(default=None, max_length=128)
     binary_path: str | None = Field(default=None, max_length=4096)
