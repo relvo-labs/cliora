@@ -12,6 +12,7 @@ import uuid
 
 import pytest
 
+from app.api.errors import ApiError
 from app.services import shell_reaper as reaper_module
 from app.services.shell_reaper import ShellReaper
 from app.services.terminal_queue import BrowserChannel
@@ -26,9 +27,25 @@ class _Terminated(Exception):
     """Raised by the stub service instead of touching a database."""
 
 
-def _service_stub(runtime: str, status: str, terminated: list[uuid.UUID]):
+def _service_stub(
+    runtime: str,
+    status: str,
+    terminated: list[uuid.UUID],
+    *,
+    fail_times: int = 0,
+    live_shells: list[uuid.UUID] | None = None,
+):
+    """Session service double.
+
+    `fail_times` makes the first N terminate attempts fail the way an offline node
+    does, which is the only way to observe the retry. `live_shells` is what startup
+    reconciliation reads.
+    """
+    failures = {"left": fail_times}
+
     class _Session:
-        def __init__(self) -> None:
+        def __init__(self, session_id: uuid.UUID | None = None) -> None:
+            self.id = session_id or uuid.uuid4()
             self.runtime = runtime
             self.status = status
             self.user_id = uuid.uuid4()
@@ -38,9 +55,15 @@ def _service_stub(runtime: str, status: str, terminated: list[uuid.UUID]):
             pass
 
         async def get(self, session_id: uuid.UUID) -> _Session:
-            return _Session()
+            return _Session(session_id)
+
+        async def list_live_shells(self) -> list[_Session]:
+            return [_Session(sid) for sid in (live_shells or [])]
 
         async def terminate(self, *, actor_id: uuid.UUID, session_id: uuid.UUID) -> None:
+            if failures["left"] > 0:
+                failures["left"] -= 1
+                raise ApiError("NODE_OFFLINE", "Node is not connected", 409)
             terminated.append(session_id)
 
     return _Service
@@ -143,6 +166,68 @@ async def test_an_already_ended_shell_is_left_alone(monkeypatch: pytest.MonkeyPa
     reaper.schedule(SHELL, delay_seconds=0)
     await asyncio.sleep(0.05)
     assert terminated == []
+
+
+async def test_an_offline_node_is_retried_rather_than_written_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A node that is unreachable when the timer fires used to end the attempt for
+    good, which left exactly what this module exists to prevent: a shell running with
+    nobody watching it, on a row that also blocks its owner from opening another."""
+    terminated: list[uuid.UUID] = []
+    monkeypatch.setattr(reaper_module, "get_database", lambda: _FakeDatabase())
+    monkeypatch.setattr(
+        "app.services.terminal_relay.get_terminal_relay", lambda: TerminalRelay(), raising=False
+    )
+    monkeypatch.setattr(
+        reaper_module, "SessionService", _service_stub("shell", "running", terminated, fail_times=2)
+    )
+    monkeypatch.setattr(reaper_module, "_RETRY_DELAY_SECONDS", 0.01)
+    reaper = ShellReaper()
+    reaper.schedule(SHELL, delay_seconds=0)
+    await asyncio.sleep(0.2)
+    assert terminated == [SHELL]
+
+
+async def test_retries_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A node that never comes back must not be retried forever — its own
+    reconciliation on reconnect is the last line, not this loop."""
+    terminated: list[uuid.UUID] = []
+    monkeypatch.setattr(reaper_module, "get_database", lambda: _FakeDatabase())
+    monkeypatch.setattr(
+        "app.services.terminal_relay.get_terminal_relay", lambda: TerminalRelay(), raising=False
+    )
+    monkeypatch.setattr(
+        reaper_module,
+        "SessionService",
+        _service_stub("shell", "running", terminated, fail_times=99),
+    )
+    monkeypatch.setattr(reaper_module, "_RETRY_DELAY_SECONDS", 0.01)
+    reaper = ShellReaper()
+    reaper.schedule(SHELL, delay_seconds=0)
+    await asyncio.sleep(0.3)
+    assert terminated == []
+    assert reaper.pending() == 0  # gave up and let go of the timer
+
+
+async def test_restart_rearms_the_timers_it_dropped(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`cancel_all()` on shutdown keeps a deploy from tearing down open terminals, but
+    the shells whose browsers left during the restart produced no teardown and so no
+    timer. Startup reconciliation is what stops those from living forever."""
+    live = [uuid.uuid4(), uuid.uuid4()]
+    monkeypatch.setattr(reaper_module, "get_database", lambda: _FakeDatabase())
+    monkeypatch.setattr(
+        "app.services.terminal_relay.get_terminal_relay", lambda: TerminalRelay(), raising=False
+    )
+    monkeypatch.setattr(
+        reaper_module, "SessionService", _service_stub("shell", "running", [], live_shells=live)
+    )
+    reaper = ShellReaper()
+    assert await reaper.reconcile() == 2
+    assert reaper.pending() == 2
+    # Nothing was terminated by the reconciliation itself: each timer re-checks the
+    # subscriber list, so a browser that reattaches during the window keeps its shell.
+    await reaper.cancel_all()
 
 
 async def test_shutdown_drops_pending_timers(wired) -> None:

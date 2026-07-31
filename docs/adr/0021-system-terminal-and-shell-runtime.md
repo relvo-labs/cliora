@@ -115,6 +115,41 @@ The two behaviours are opposite **on purpose**. A long-running CLI session has v
 nobody is watching; an unattended root-adjacent shell has only risk. Recorded here so that
 the difference is not later "fixed" into consistency.
 
+### Amendment (2026-07-31): "already open" is decided by who is watching, not by the row
+
+The first implementation shipped the three layers of §4.3 as three *statements* and
+only two of them as code. `FR-SHELL-001.AC-08` says a terminal ends when the user
+closes it **or leaves the workspace**; only the close was wired. Leaving has three
+distinct exits and no single hook covers the others — in-app navigation (unmount),
+reload / tab close (`pagehide`, and the request must be `keepalive` or it dies with
+the document), and a route-param change that *reuses* the component. So a reload left
+the shell running, the front end forgot its id, and the next open was refused with
+`SHELL_ALREADY_OPEN` for up to `shell_idle_terminate_seconds` — with no closable tab,
+because the close affordance keyed off the state the reload discarded.
+
+The backstop could not save it either: the idle reaper's timers are process memory
+armed only by a WebSocket teardown, so a restart (`cancel_all`) or a disconnect that
+happened while Central was down left a live shell with nothing to collect it, and a
+failed reap (offline node) was written off after one attempt.
+
+Three changes, all of which keep one live shell per CLI session:
+
+1. All three exits terminate the shell, so the cooperative layer is now real rather
+   than aspirational.
+2. On a second open, the **relay's subscriber list** decides which meaning of
+   "already open" applies: someone watching → `SHELL_ALREADY_OPEN`, and the message's
+   "return to the tab holding it" is then literally true; nobody watching → the row is
+   one the browser failed to report, so the reaper's work is done on demand (audited
+   with `reason: abandoned`) and a fresh terminal opens. This is not a relaxation of
+   §4.3 — the invariant is the same evidence the reaper already acts on, applied when
+   there is a caller to answer instead of only on a timer.
+3. The reaper retries a bounded number of times, and re-arms its timers at startup for
+   every shell the database says is live.
+
+What is deliberately *not* adopted: handing the existing shell back to the new caller
+(reattaching to it). §6 says an unattended shell has only risk, so it is ended, not
+inherited — a reload gets a new terminal, not the old one's scrollback.
+
 ## Consequences
 
 - Contract **v1.5.0**: `runtime` gains `shell` in `session-start.schema.json` and

@@ -30,6 +30,13 @@ from app.settings import get_settings
 
 _logger = get_logger("cliora.shell_reaper")
 
+# A node that is offline when the timer fires is usually back within minutes, and
+# the alternative to retrying is a shell running with nobody watching it — the one
+# state this module exists to prevent. Bounded, because a node that never returns
+# must not be retried forever: its own reconciliation on reconnect is the last line.
+_MAX_ATTEMPTS = 5
+_RETRY_DELAY_SECONDS = 60.0
+
 
 class ShellReaper:
     def __init__(self) -> None:
@@ -53,34 +60,69 @@ class ShellReaper:
         task.add_done_callback(lambda _: self._tasks.pop(session_id, None))
 
     async def _reap(self, session_id: uuid.UUID, delay: float) -> None:
-        try:
-            await asyncio.sleep(delay)
-        except asyncio.CancelledError:
-            return
-        # Imported here rather than at module scope: the relay imports nothing from
-        # this module, and keeping the edge one-directional avoids an import cycle
-        # through the WebSocket layer.
-        from app.services.terminal_relay import get_terminal_relay
+        wait = delay
+        for attempt in range(1, _MAX_ATTEMPTS + 1):
+            try:
+                await asyncio.sleep(wait)
+            except asyncio.CancelledError:
+                return
+            # Imported here rather than at module scope: the relay imports nothing from
+            # this module, and keeping the edge one-directional avoids an import cycle
+            # through the WebSocket layer.
+            from app.services.terminal_relay import get_terminal_relay
 
-        if get_terminal_relay().subscriber_count(session_id) > 0:
-            return  # somebody came back
-        try:
-            async with get_database().session() as db:
-                service = SessionService(db)
-                session = await service.get(session_id)
-                if session.runtime != SHELL_RUNTIME or session.status in TERMINAL_STATES:
-                    return
-                await service.terminate(actor_id=session.user_id, session_id=session_id)
-                await db.commit()
-        except ApiError as exc:
-            # A node that is offline or unresponsive cannot be cleaned up from here;
-            # its own reconciliation on reconnect is what collects the tmux session.
-            _logger.warning(
-                "shell_reap_failed",
-                extra={"event": "shell_reap_failed", "code": exc.code},
-            )
+            if get_terminal_relay().subscriber_count(session_id) > 0:
+                return  # somebody came back
+            try:
+                async with get_database().session() as db:
+                    service = SessionService(db)
+                    session = await service.get(session_id)
+                    if session.runtime != SHELL_RUNTIME or session.status in TERMINAL_STATES:
+                        return
+                    await service.terminate(actor_id=session.user_id, session_id=session_id)
+                    await db.commit()
+            except ApiError as exc:
+                # A node that is offline or unresponsive cannot be cleaned up on this
+                # attempt. Retrying is the point: giving up here left the row live and
+                # the shell running, and the row is also what blocks the owner from
+                # opening a replacement.
+                _logger.warning(
+                    "shell_reap_failed",
+                    extra={"event": "shell_reap_failed", "code": exc.code, "attempt": attempt},
+                )
+                wait = _RETRY_DELAY_SECONDS
+                continue
+            _logger.info("shell_reaped", extra={"event": "shell_reaped"})
             return
-        _logger.info("shell_reaped", extra={"event": "shell_reaped"})
+        _logger.warning(
+            "shell_reap_abandoned",
+            extra={"event": "shell_reap_abandoned", "attempts": _MAX_ATTEMPTS},
+        )
+
+    async def reconcile(self) -> int:
+        """Arm a timer for every shell that is live in the database (startup).
+
+        The timers are this process's memory and `cancel_all` drops them on shutdown,
+        while the only place that arms one is a WebSocket teardown
+        (`api/ws/terminal.py`). A browser that went away while Central was down or
+        restarting therefore produced no teardown and no timer, and its terminal was
+        left with nothing to collect it — indefinitely, since the row also blocks its
+        owner from opening a replacement.
+
+        Nothing is terminated here. Each timer re-checks the subscriber list before
+        acting, so a browser that reattaches during the window keeps its terminal,
+        exactly as it would after an ordinary detach.
+        """
+        async with get_database().session() as db:
+            shells = await SessionService(db).list_live_shells()
+        for shell in shells:
+            self.schedule(shell.id)
+        if shells:
+            _logger.info(
+                "shell_reaper_reconciled",
+                extra={"event": "shell_reaper_reconciled", "armed": len(shells)},
+            )
+        return len(shells)
 
     async def cancel_all(self) -> None:
         """Drop every pending timer on shutdown. Terminating shells during a drain

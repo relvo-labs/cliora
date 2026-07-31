@@ -63,6 +63,45 @@
 
 ---
 
+## 事後修正（2026-07-31）：`SHELL_ALREADY_OPEN` 把重新載入當成衝突
+
+使用者回報重開 TERMINAL 時被 409 `SHELL_ALREADY_OPEN` 擋住。根因不在唯一性規則，而在
+**`FR-SHELL-001.AC-08` 只實作了一半**：AC 寫的是「關閉終端機**或離開 Session 工作區**時即
+終止」，只有前者有程式碼。離開有三種出口，彼此無法互相代替——
+
+| 出口 | 需要的 hook | 原本的狀況 |
+|---|---|---|
+| 站內導覽離開 | `onBeforeUnmount` | 沒有；`useTerminalSession` 的 `onScopeDispose` 只關 ws，不終止 session |
+| 重新載入／關分頁 | `pagehide` + `fetch(keepalive)` | 沒有；一般 fetch 會隨 document 一起被取消 |
+| 原地換 session（route param 變動，元件被複用） | `watch(props.id)` 內先關 | 沒有；舊 shell 還活著，且它的 id 留在 `shellSession` 裡 |
+
+因此重新載入後：後端那列 row 還是 `running`，前端已忘記它的 id，於是 TERMINAL tab 連
+關閉鈕都沒有（`closable` 綁在被丟掉的本地狀態上），錯誤面板的重試必然再拿一次 409，
+使用者被鎖到 idle reaper 燒完 900 秒為止。錯誤文案叫他「回到持有它的分頁」，而那個分頁
+已經不存在。
+
+後備層也擋不住：reaper 的計時器是行程記憶體，只有 ws teardown 會武裝，`cancel_all()` 在
+關機時全丟且啟動時沒有補排；回收失敗（node 離線）只 log 一次就放棄 → 永久孤兒。
+
+修正（詳見 ADR 0021 的 Amendment）：
+
+1. 三個出口都會終止 shell，合作層才算真的存在。
+2. 第二次開啟改由 **relay 的 subscriber 列表**判定語意：有人在看 → 維持
+   `SHELL_ALREADY_OPEN`（此時文案才是真的）；沒人在看 → 那列 row 就是瀏覽器沒報成功的，
+   當場回收（稽核 `reason: abandoned`）並開新的。唯一性不變，判準與 reaper 同一個。
+3. reaper 失敗改為有上限的重試，並在啟動時為資料庫中所有存活的 shell 補排計時器。
+
+證據：`test_sessions_api.py` 兩個 DB 測試（有 subscriber → 409；無 subscriber → 201 且舊
+row 為 `terminated`、稽核 reason 為 `abandoned`）、`test_shell_reaper.py` 三個（離線重試、
+重試有上限、重啟後補排）、`SessionWorkspaceView.test.ts` 三個（三個出口各一）、
+`session.spec.ts` 新增 `system terminal: a reload ends the terminal and the next open is
+not refused`。
+
+**刻意不採**：把既有 shell 交還給新的請求（reattach）。ADR 0021 §6 的立場是無人看著的
+shell 只有風險，所以是結束它、不是繼承它——重新載入後拿到的是新終端機，不是舊的 scrollback。
+
+---
+
 ## 已決事項
 
 ### D-1：`SCOPE-011` 的處置 —— **選項 A（收窄）**

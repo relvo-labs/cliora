@@ -54,12 +54,34 @@ _logger = get_logger("cliora.central")
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     _logger.info("central_startup", extra={"event": "central_startup"})
+    await _rearm_shell_reaper()
     try:
         yield
     finally:
         await _drain()
         await reset_database()
         _logger.info("central_shutdown", extra={"event": "central_shutdown"})
+
+
+async def _rearm_shell_reaper() -> None:
+    """Re-arm the idle-shell timers this process lost when it last stopped.
+
+    The counterpart to `cancel_all()` in `_drain()`: dropping the timers keeps a
+    deploy from tearing down open terminals, but the shells detached during the
+    restart would otherwise have nobody left to collect them (see
+    `ShellReaper.reconcile`).
+
+    A failure here must not stop Central from serving. The cost of skipping it is a
+    stale shell row, which the next detach or the owner's next open now resolves;
+    the cost of refusing to boot is the whole product.
+    """
+    try:
+        await get_shell_reaper().reconcile()
+    except Exception as exc:  # noqa: BLE001 - startup must not depend on this
+        _logger.warning(
+            "shell_reaper_reconcile_failed",
+            extra={"event": "shell_reaper_reconcile_failed", "error": type(exc).__name__},
+        )
 
 
 async def _drain() -> None:
