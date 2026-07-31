@@ -1,0 +1,1 @@
+{"version":1,"type":"session.start","request_id":"01K0ABCDEFGHJKMNPQRSTVWX33","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-31T09:00:00Z","payload":{"session_id":"00000000-0000-4000-8000-000000000003","runtime":"shell","workspace":"/srv/work/api","rows":24,"columns":80,"binary":"/bin/sh"}}

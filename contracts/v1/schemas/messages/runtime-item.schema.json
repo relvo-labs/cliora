@@ -3,7 +3,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["runtime", "available"],
   "properties": {
-    "runtime": {"enum": ["claude", "codex"]},
+    "runtime": {"enum": ["claude", "codex", "shell"]},
     "available": {"type": "boolean"},
     "version": {"type": "string", "maxLength": 128},
     "binary_path": {"type": "string", "maxLength": 4096},

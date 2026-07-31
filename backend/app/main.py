@@ -43,6 +43,7 @@ from app.api.ws.terminal import router as terminal_ws_router
 from app.db.engine import get_database, reset_database
 from app.logging import configure_logging, get_logger
 from app.services.registry import get_node_registry
+from app.services.shell_reaper import get_shell_reaper
 from app.services.terminal_relay import get_terminal_relay
 from app.settings import get_settings
 
@@ -87,6 +88,9 @@ async def _drain() -> None:
     try:
         async with asyncio.timeout(settings.shutdown_drain_seconds):
             await relay.announce_shutdown("server_restarting")
+            # Drop the idle-shell timers rather than letting them fire mid-drain:
+            # a deploy must not turn into a fleet-wide teardown of open terminals.
+            await get_shell_reaper().cancel_all()
             await registry.close_all(code=1012)
     except TimeoutError:
         _logger.warning(

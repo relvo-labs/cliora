@@ -8,10 +8,14 @@ const { terminals } = vi.hoisted(() => ({
   >,
 }));
 
+const { fits } = vi.hoisted(() => ({ fits: [] as ReturnType<typeof vi.fn>[] }));
+
 vi.mock("@xterm/xterm", () => {
   class MockTerminal {
     rows = 24;
     cols = 80;
+    // xterm exposes the DOM node it rendered into; the re-mount path moves it.
+    element = globalThis.document?.createElement("div");
     loadAddon = vi.fn();
     open = vi.fn();
     focus = vi.fn();
@@ -26,7 +30,11 @@ vi.mock("@xterm/xterm", () => {
   return { Terminal: MockTerminal };
 });
 vi.mock("@xterm/addon-fit", () => ({
-  FitAddon: vi.fn(() => ({ fit: vi.fn() })),
+  FitAddon: vi.fn(() => {
+    const fit = vi.fn();
+    fits.push(fit);
+    return { fit };
+  }),
 }));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: vi.fn(() => ({})) }));
 vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: vi.fn(() => ({})) }));
@@ -98,8 +106,21 @@ beforeEach(() => {
   terminals.length = 0;
   sockets.length = 0;
   observers.length = 0;
+  fits.length = 0;
   scope = effectScope();
 });
+
+// jsdom reports 0 for every layout box, which is exactly the "hidden host" the
+// fit guard refuses to measure. Tests that need a *visible* host say so.
+function visible(element: HTMLElement): HTMLElement {
+  Object.defineProperty(element, "clientWidth", { value: 800 });
+  Object.defineProperty(element, "clientHeight", { value: 600 });
+  return element;
+}
+function host(options: { visible?: boolean } = {}): HTMLElement {
+  const element = document.createElement("div");
+  return options.visible ? visible(element) : element;
+}
 
 afterEach(() => {
   scope.stop();
@@ -131,6 +152,70 @@ describe("useTerminalSession", () => {
     const el = document.createElement("div");
     s.mount(el);
     s.mount(el);
+    expect(terminals).toHaveLength(1);
+  });
+
+  // The workspace tabs and the loading/error states both replace the host
+  // element. Before WT-02 `mount` returned early on an existing terminal, so
+  // xterm kept rendering into a node that was no longer in the document and the
+  // only way back was a page reload.
+  it("re-mounts into a new host element without rebuilding the terminal", () => {
+    const s = newSession();
+    const first = host();
+    const second = host();
+    s.mount(first);
+    const rendered = terminals[0].element as unknown as HTMLElement;
+    expect(rendered.parentElement).toBe(null);
+
+    s.mount(second);
+
+    expect(terminals).toHaveLength(1);
+    expect(terminals[0].open).toHaveBeenCalledOnce();
+    expect(rendered.parentElement).toBe(second);
+    // The old container is no longer observed; the new one is.
+    expect(observers[0].disconnect).toHaveBeenCalledOnce();
+    expect(observers[1].observe).toHaveBeenCalledWith(second);
+  });
+
+  it("does not measure or resize while the host is hidden", async () => {
+    const s = newSession();
+    s.mount(host()); // jsdom: clientWidth/Height are 0 → hidden
+    await s.connect(SESSION);
+    sockets[0].open();
+    const sentOnOpen = sockets[0].sent.length;
+
+    observers[0].cb();
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(fits[0]).not.toHaveBeenCalled();
+    expect(sockets[0].sent).toHaveLength(sentOnOpen);
+  });
+
+  it("fit() resizes once the host is visible, and de-duplicates", async () => {
+    const s = newSession();
+    const element = host({ visible: true });
+    s.mount(element);
+    await s.connect(SESSION);
+    sockets[0].open();
+    const before = sockets[0].sent.length;
+
+    s.fit();
+    const afterFirst = sockets[0].sent.length;
+    expect(afterFirst).toBe(before + 1);
+    expect(JSON.parse(sockets[0].sent[afterFirst - 1] as string).type).toBe(
+      "terminal.resize",
+    );
+
+    // Same measurement twice must not put a second resize on the wire.
+    s.fit();
+    expect(sockets[0].sent).toHaveLength(afterFirst);
+  });
+
+  it("mount after dispose creates nothing", () => {
+    const s = newSession();
+    s.mount(host());
+    s.dispose();
+    s.mount(host());
     expect(terminals).toHaveLength(1);
   });
 

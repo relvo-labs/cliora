@@ -1,5 +1,12 @@
 # Contract changelog
 
+## 1.5.0 — 2026-07-31 (compatible)
+
+- **`runtime` gains `shell`** in `session-start.schema.json` (`claude|codex|shell|fake`) and `runtime-item.schema.json` (`claude|codex|shell`). The system terminal (FR-SHELL-001, ADR 0021) is an ordinary session with a different runtime id, so it reuses the whole session/terminal pipeline: ws-ticket, relay, single-writer, reattach snapshot, two-stage stop and audit.
+- **No payload shape changed. No field was added anywhere.** That is the point of doing it this way: `session.start` stays closed over its five fields with `additionalProperties:false`, so the front end still cannot name a command, binary, argv, environment or entrypoint (SEC-002). `SCOPE-011` is narrowed rather than withdrawn, and this is the half that survives. Golden fixture `invalid/session-start-shell-with-binary.json` asserts that `runtime:"shell"` plus a `binary` field is rejected identically by Python, Go and TypeScript — without it, the property would be defended only by a comment.
+- `runtime-item` accepts `shell` so a node can report whether a usable shell exists (and at which path) the same way it reports `claude`/`codex`. A node that disables it, or has no shell binary, reports `available:false`, which Central turns into `RUNTIME_NOT_FOUND`.
+- New error code (Central, not on the wire): `SHELL_ALREADY_OPEN` — one live system terminal per CLI session.
+
 ## 1.4.0 — 2026-07-25 (compatible)
 
 - Additive Phase 4 daemon self-update frames (version integer stays `1`). New control types: `daemon.update` (Central → daemon) and `daemon.update_result` (daemon → Central). Requests are relayed through the existing `/ws/nodes/{node_id}` link with the usual `request_id` correlation; the browser never sees them (updates are triggered over HTTP).

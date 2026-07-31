@@ -1,0 +1,1 @@
+{"version":1,"type":"node.runtime_status","request_id":"01K0ABCDEFGHJKMNPQRSTVWX32","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-07-31T09:00:00Z","payload":{"runtimes":[{"runtime":"shell","available":true,"version":"5.2.21","binary_path":"/usr/bin/bash","checked_at":"2026-07-31T09:00:00Z"},{"runtime":"claude","available":true}]}}

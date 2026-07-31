@@ -27,7 +27,8 @@ from app.protocol import encode_binary
 from app.security.node_keys import new_request_id
 from app.services import audit, authz
 from app.services.registry import NodeConnectionRegistry, get_node_registry
-from app.services.sessions import SessionService
+from app.services.sessions import SHELL_RUNTIME, SessionService
+from app.services.shell_reaper import get_shell_reaper
 from app.services.terminal_queue import BrowserChannel
 from app.services.terminal_relay import TerminalRelay, get_terminal_relay
 from app.services.ws_ticket import get_ws_ticket_service
@@ -158,7 +159,7 @@ async def terminal_gateway(
             timeout_seconds=settings.session_attach_timeout_seconds,
         )
     except ApiError:
-        await _teardown(relay, session_id, conn_id, channel, pump_task)
+        await _teardown(relay, session_id, conn_id, channel, pump_task, runtime=sess.runtime)
         await websocket.close(code=1011)
         return
 
@@ -186,7 +187,7 @@ async def terminal_gateway(
     except (WebSocketDisconnect, RuntimeError):
         pass
     finally:
-        await _teardown(relay, session_id, conn_id, channel, pump_task)
+        await _teardown(relay, session_id, conn_id, channel, pump_task, runtime=sess.runtime)
 
 
 async def _handle_browser_control(
@@ -252,6 +253,8 @@ async def _teardown(
     conn_id: str,
     channel: BrowserChannel,
     pump_task: asyncio.Task[None],
+    *,
+    runtime: str,
 ) -> None:
     await relay.unsubscribe(session_id, conn_id)
     await channel.close()
@@ -260,3 +263,8 @@ async def _teardown(
         await pump_task
     except (asyncio.CancelledError, Exception):
         pass
+    # A CLI session outliving its browser is the product's core promise
+    # (FR-SESSION-006); a system terminal doing the same is a shell nobody is
+    # watching. This is the only place that knows the last subscriber just left.
+    if runtime == SHELL_RUNTIME and relay.subscriber_count(session_id) == 0:
+        get_shell_reaper().schedule(session_id)

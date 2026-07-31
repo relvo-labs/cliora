@@ -219,6 +219,16 @@ export class ApiClient {
     return this.request("POST", `/api/sessions/${id}/attach`);
   }
 
+  // Open a system terminal inside a CLI session (FR-SHELL-001). The parent is in
+  // the path and everything else comes from it, so there is no field here for a
+  // command, a binary or a workspace (SEC-002).
+  openShell(
+    id: string,
+    size: { rows: number; columns: number },
+  ): Promise<SessionDetail> {
+    return this.request("POST", `/api/sessions/${id}/shell`, size);
+  }
+
   // --- P3 workspace files (read-only) ---
   // Every filesystem call takes an AbortSignal: the file tree cancels an
   // in-flight expand/search when the user switches directory, keyword, or

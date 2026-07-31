@@ -36,7 +36,13 @@ class SessionRepository:
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[TerminalSession]:
-        query = select(TerminalSession)
+        # System terminals are excluded (D13/ADR 0021). They are a view of the CLI
+        # session that owns them, not a unit of work: opening one from this list
+        # would land the user in a workspace with no CLI. They are still counted
+        # everywhere capacity is reported — `active_count_*` and
+        # `list_active_for_node` below deliberately do *not* filter — because a
+        # list that disagrees with the node's own occupancy is worse than a long list.
+        query = select(TerminalSession).where(TerminalSession.parent_session_id.is_(None))
         if node_id is not None:
             query = query.where(TerminalSession.node_id == node_id)
         if status is not None:
@@ -59,6 +65,31 @@ class SessionRepository:
                 TerminalSession.status.in_(ACTIVE_STATES),
             )
             .order_by(TerminalSession.created_at.asc())
+        )
+        return result.scalars().all()
+
+    async def live_shell_for_parent(self, parent_id: uuid.UUID) -> TerminalSession | None:
+        """The parent's system terminal, if one is still alive.
+
+        Mirrors the partial unique index in migration 0013; the index is the real
+        guarantee, this is the check that turns a would-be IntegrityError into a
+        `SHELL_ALREADY_OPEN` the caller can act on.
+        """
+        result = await self._session.execute(
+            select(TerminalSession).where(
+                TerminalSession.parent_session_id == parent_id,
+                TerminalSession.status.in_(ACTIVE_STATES),
+            )
+        )
+        return result.scalars().first()
+
+    async def live_children(self, parent_id: uuid.UUID) -> Sequence[TerminalSession]:
+        """Every live child of a session, for the terminate cascade."""
+        result = await self._session.execute(
+            select(TerminalSession).where(
+                TerminalSession.parent_session_id == parent_id,
+                TerminalSession.status.in_(ACTIVE_STATES),
+            )
         )
         return result.scalars().all()
 

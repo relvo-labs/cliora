@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"os/signal"
 	"syscall"
 
@@ -33,6 +34,17 @@ func newRunCommand(configPath *string) *cobra.Command {
 				return err
 			}
 			registry := runtime.NewRegistry(cfg.Runtime)
+			// The system terminal is enabled unless the operator disabled it, and
+			// an upgraded node inherits it from the default rather than from its
+			// config file (ADR 0021). Which of the two applies here is not
+			// guessable from the outside, so it goes in the startup log.
+			shellSource := "config"
+			if cfg.ShellFromDefault {
+				shellSource = "default"
+			}
+			slog.Info("runtime_shell",
+				"enabled", cfg.Runtime[config.ShellRuntimeID].Enabled,
+				"source", shellSource)
 			info := systeminfo.Gather()
 			manager := connection.New(cfg, creds, registry, info, version)
 			manager.SetConfigPath(*configPath)

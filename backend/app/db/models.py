@@ -189,6 +189,12 @@ class TerminalSession(Base):
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     exit_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Set only on a system-terminal session: the CLI session it belongs to
+    # (FR-SHELL-001.AC-04). NULL for every CLI session, so nothing was backfilled.
+    # A partial unique index (migration 0013) enforces one *live* shell per parent.
+    parent_session_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("terminal_sessions.id", ondelete="CASCADE"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

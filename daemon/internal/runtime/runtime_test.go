@@ -112,11 +112,23 @@ func TestRegistryAllowlist(t *testing.T) {
 	if _, ok := reg.Get("codex"); !ok {
 		t.Error("codex should always be present (disabled)")
 	}
+	if _, ok := reg.Get("shell"); !ok {
+		t.Error("shell should always be present (ADR 0021)")
+	}
 	if _, ok := reg.Get("bash"); ok {
-		t.Error("bash must never be registered")
+		t.Error("bash must never be registered: the runtime id is `shell`, and the")
+		t.Error("binary behind it is the node's choice, never the caller's")
 	}
 	results := reg.DetectAll(context.Background(), time.Now())
-	if len(results) != 2 || results[0].Runtime != "claude" || results[1].Runtime != "codex" {
-		t.Fatalf("expected ordered [claude, codex], got %+v", results)
+	if len(results) != 3 || results[0].Runtime != "claude" ||
+		results[1].Runtime != "codex" || results[2].Runtime != "shell" {
+		t.Fatalf("expected ordered [claude, codex, shell], got %+v", results)
+	}
+	// The registry reflects the config it was handed; it does not apply the
+	// enable-by-default rule. That lives in config.Load, so a caller that builds a
+	// registry by hand (the installer's probe) cannot accidentally turn the shell
+	// on for a node whose operator disabled it.
+	if results[2].Reason != ReasonDisabled {
+		t.Errorf("shell absent from config should be disabled here, got %q", results[2].Reason)
 	}
 }

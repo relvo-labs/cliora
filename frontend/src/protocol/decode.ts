@@ -101,7 +101,7 @@ function validateSizePayload(payload: Record<string, unknown>): void {
     reject("INVALID_MESSAGE", "Terminal size out of range");
 }
 
-const RUNTIME_START_IDS = new Set(["claude", "codex", "fake"]);
+const RUNTIME_START_IDS = new Set(["claude", "codex", "shell", "fake"]);
 
 function validateStartPayload(payload: Record<string, unknown>): void {
   const keys = Object.keys(payload);
@@ -142,7 +142,7 @@ function validateSessionIdPayload(payload: Record<string, unknown>): void {
 // key check (additionalProperties:false) is what forbids injecting an
 // executable/command field into a node.register.
 const ARCHITECTURES = new Set(["amd64", "arm64"]);
-const RUNTIME_IDS = new Set(["claude", "codex"]);
+const RUNTIME_IDS = new Set(["claude", "codex", "shell"]);
 
 function requireKeys(
   payload: Record<string, unknown>,

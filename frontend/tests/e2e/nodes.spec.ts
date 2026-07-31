@@ -14,12 +14,18 @@ test.describe("authenticated node control plane", () => {
     "requires E2E_FULL_STACK + seeded admin credentials",
   );
 
-  test("admin signs in and lands on the nodes list", async ({ page }) => {
+  // The landing page is the dashboard (P4-08); the nodes list is one navigation
+  // away. Both halves are asserted because the previous version expected login
+  // to land on /nodes and had been failing since the dashboard shipped.
+  test("admin signs in, lands on the dashboard, and reaches the nodes list", async ({
+    page,
+  }) => {
     await page.goto("/login");
     await page.locator('input[name="username"]').fill(adminUser);
     await page.locator('input[name="password"]').fill(adminPass);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/nodes/);
+    await expect(page).toHaveURL(/\/dashboard/);
+    await page.goto("/nodes");
     await expect(page.getByRole("heading", { name: "Nodes" })).toBeVisible();
   });
 
@@ -30,7 +36,7 @@ test.describe("authenticated node control plane", () => {
     await page.locator('input[name="username"]').fill(adminUser);
     await page.locator('input[name="password"]').fill(adminPass);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await expect(page).toHaveURL(/\/nodes/);
+    await expect(page).toHaveURL(/\/dashboard/);
     await page.goto("/enrollment");
     await page.getByRole("button", { name: "Generate token" }).click();
     await expect(page.getByText("Token created")).toBeVisible();

@@ -17,7 +17,8 @@ async function signIn(page: Page): Promise<void> {
   await page.locator('input[name="username"]').fill(adminUser);
   await page.locator('input[name="password"]').fill(adminPass);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/nodes/);
+  // The landing page is the dashboard (P4-08), not the nodes list.
+  await expect(page).toHaveURL(/\/dashboard/);
 }
 
 function newSessionDialog(page: Page) {

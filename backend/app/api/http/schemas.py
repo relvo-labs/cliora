@@ -65,9 +65,22 @@ class WsTicketResponse(BaseModel):
 # --- P2 sessions (PRD §11.6, ADR 0013) ---
 class CreateSessionRequest(BaseModel):
     node_id: uuid.UUID
+    # `shell` is deliberately absent: a system terminal is opened through
+    # POST /api/sessions/{id}/shell, which supplies the parent. Allowing it here
+    # would put a shell in the New Session dialog and the session list, with no
+    # parent to bind its lifetime to (ADR 0021).
     runtime: Literal["claude", "codex", "fake"]
     name: str = Field(min_length=1, max_length=128)
     workspace: str = Field(min_length=1, max_length=4096)
+    rows: int = Field(default=24, ge=2, le=300)
+    columns: int = Field(default=80, ge=2, le=500)
+
+
+class OpenShellRequest(BaseModel):
+    """Only a terminal size. Node, workspace and runtime all come from the parent
+    session, and the binary comes from the node — there is nothing here for a
+    caller to point at a command (SEC-002)."""
+
     rows: int = Field(default=24, ge=2, le=300)
     columns: int = Field(default=80, ge=2, le=500)
 
@@ -85,6 +98,10 @@ class SessionCapabilities(BaseModel):
     can_takeover: bool
     can_terminate: bool
     can_browse_files: bool
+    # Whether this viewer may open a system terminal *inside* this session. Already
+    # folds in the action, ownership and the node's own veto, so the browser has
+    # nothing left to combine (ADR 0021).
+    can_open_shell: bool
 
 
 class SessionSummary(BaseModel):

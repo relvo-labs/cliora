@@ -122,7 +122,10 @@ def test_scope_010_no_cross_runtime_behaviour_model() -> None:
     unified behaviour model would need per-runtime capability or behaviour fields
     on the wire; the enum carries none."""
     start = json.loads((MESSAGE_SCHEMAS / "session-start.schema.json").read_text())
-    assert start["properties"]["runtime"] == {"enum": ["claude", "codex", "fake"]}
+    # `shell` joined the allowlist in v1.5.0 (ADR 0021). It changes nothing here:
+    # the field is still a closed enum of ids, with no capability or behaviour
+    # field beside it for a unified model to be expressed in.
+    assert start["properties"]["runtime"] == {"enum": ["claude", "codex", "shell", "fake"]}
 
 
 def test_scope_011_the_front_end_cannot_name_a_command() -> None:

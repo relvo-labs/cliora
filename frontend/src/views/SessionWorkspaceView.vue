@@ -16,6 +16,7 @@ import AsyncState from "../components/common/AsyncState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import StatusBadge from "../components/common/StatusBadge.vue";
 import FileTree from "../components/file/FileTree.vue";
+import WorkspaceTabs from "../components/session/WorkspaceTabs.vue";
 
 // Monaco is a large dependency and only the preview needs it, so the pane (and
 // with it the whole editor bundle) loads on the first file the user opens.
@@ -41,6 +42,13 @@ const canTakeover = computed(() => capabilities.value?.can_takeover === true);
 const canBrowseFiles = computed(
   () => capabilities.value?.can_browse_files === true,
 );
+// Whether a TERMINAL tab exists at all. The server already combined the action,
+// ownership and the node's own veto into this flag; recombining it here with
+// `hasPermission()` would show the tab on a colleague's session and only fail
+// when it was pressed.
+const canOpenShell = computed(
+  () => capabilities.value?.can_open_shell === true,
+);
 
 // The file panel keys off the session id; a null id (or a dead session) means it
 // binds nothing and issues no request.
@@ -65,8 +73,133 @@ const filesDisabledReason = computed(() =>
 );
 
 // The file currently open in the preview pane. Cleared when the tree clears
-// (session switch) so no previous session's content stays on screen.
+// (session switch) so no previous session's content stays on screen. There is
+// at most one preview at a time, so at most one `[filename]` tab (WT-03, D2).
 const previewPath = ref<string | null>(null);
+
+// Centre-pane tab selection. `cli` always exists; `preview` only while a file
+// is open, so a closed preview always falls back to the terminal.
+type CentreTab = "cli" | "preview" | "terminal";
+const activeTab = ref<CentreTab>("cli");
+
+const tabs = computed(() => [
+  { id: "cli", label: "CLI" },
+  ...(previewPath.value
+    ? [
+        {
+          id: "preview",
+          // Basename only. The full workspace-relative path goes in the
+          // tooltip; a node absolute path never reaches the browser (P3).
+          label: previewPath.value.split("/").pop() ?? previewPath.value,
+          title: previewPath.value,
+          closable: true,
+        },
+      ]
+    : []),
+  ...(canOpenShell.value
+    ? [
+        {
+          id: "terminal",
+          label: "TERMINAL",
+          title: "此 Node 上的系統終端機",
+          closable: shellSession.value !== null,
+        },
+      ]
+    : []),
+]);
+
+function openPreview(relPath: string): void {
+  previewPath.value = relPath;
+  activeTab.value = "preview";
+}
+
+function closePreview(): void {
+  previewPath.value = null;
+  activeTab.value = "cli";
+}
+
+function closeTab(id: string): void {
+  if (id === "preview") closePreview();
+  if (id === "terminal") void closeShell();
+}
+
+// Re-measure on the way into either terminal: while a panel is hidden its host
+// measures 0x0, so the composable deliberately refuses to fit it.
+watch(activeTab, async (tab) => {
+  if (tab === "cli") {
+    await nextTick();
+    terminal.fit();
+    terminal.focus();
+    return;
+  }
+  if (tab === "terminal") {
+    await openShellTab();
+  }
+});
+
+// --- System terminal (FR-SHELL-001) ---------------------------------------
+//
+// A second, independent instance of the same composable: the shell is an
+// ordinary session over the same relay, so nothing about the transport differs.
+const shellTerminal = useTerminalSession((sessionId) =>
+  api()
+    .attachSession(sessionId)
+    .then((res) => res.ticket),
+);
+const shellSession = ref<SessionDetail | null>(null);
+const shellHost = ref<HTMLElement | null>(null);
+const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
+const shellError = ref("");
+
+watch(
+  shellHost,
+  (element) => {
+    if (element) shellTerminal.mount(element);
+  },
+  { immediate: true },
+);
+
+// Started on first use, not on page load: a shell nobody opened would still
+// consume a slot against the node and user session caps (D8).
+async function openShellTab(): Promise<void> {
+  if (shellState.value === "starting") return;
+  if (shellSession.value) {
+    await nextTick();
+    shellTerminal.fit();
+    shellTerminal.focus();
+    return;
+  }
+  shellState.value = "starting";
+  shellError.value = "";
+  try {
+    const created = await api().openShell(props.id, { rows: 24, columns: 80 });
+    shellSession.value = created;
+    shellState.value = "ready";
+    await nextTick();
+    void shellTerminal.connect(created.id);
+  } catch (caught) {
+    shellState.value = "error";
+    shellError.value =
+      caught instanceof ApiError ? caught.message : "無法開啟系統終端機。";
+  }
+}
+
+// Closing the tab ends the session on the node. The server-side parent binding
+// and idle timeout are the backstop for the cases the browser cannot report
+// (a crash, a lost network), not a substitute for asking.
+async function closeShell(): Promise<void> {
+  const open = shellSession.value;
+  shellSession.value = null;
+  shellState.value = "idle";
+  shellTerminal.disconnect();
+  if (activeTab.value === "terminal") activeTab.value = "cli";
+  if (!open) return;
+  try {
+    await api().terminateSession(open.id);
+  } catch {
+    // Best effort: the parent binding and the idle timeout still collect it.
+  }
+}
 
 const host = ref<HTMLElement | null>(null);
 const terminateOpen = ref(false);
@@ -87,14 +220,22 @@ const terminal = useTerminalSession((sessionId) =>
 
 const session = computed(() => sessions.current);
 
+// Mounting follows the host element, not the lifecycle hook. `onMounted` fires
+// once, so any render that replaced the host — a failed load followed by Retry,
+// or a tab panel being rebuilt — left xterm attached to a detached node with
+// nobody to put it back (WT-02).
+watch(
+  host,
+  (element) => {
+    if (element) terminal.mount(element);
+  },
+  { immediate: true },
+);
+
 onMounted(async () => {
   await resource.run();
   if (resource.state.value === "success") {
-    await nextTick();
-    if (host.value) {
-      terminal.mount(host.value);
-      void terminal.connect(props.id);
-    }
+    void terminal.connect(props.id);
   }
 });
 
@@ -127,25 +268,12 @@ async function confirmTerminate(): Promise<void> {
 
 <template>
   <AppLayout>
-    <AsyncState v-if="resource.state.value === 'loading'" state="loading"
-      >Loading session…</AsyncState
-    >
-    <AsyncState
-      v-else-if="resource.state.value === 'forbidden'"
-      state="forbidden"
-    >
-      You do not have permission to view this session.
-    </AsyncState>
-    <AsyncState
-      v-else-if="resource.state.value === 'error' || !session"
-      state="error"
-    >
-      Could not load this session.
-      <button class="link" @click="resource.run()">Retry</button>
-    </AsyncState>
-
-    <div v-else class="workspace">
-      <header class="head">
+    <!-- The workspace container is never unmounted: the terminal host lives
+         inside it, and xterm cannot survive its container being replaced.
+         Loading / forbidden / error therefore render as an overlay on top
+         rather than instead of it (WT-02). -->
+    <div class="workspace">
+      <header v-if="session" class="head">
         <div class="meta">
           <h1>{{ session.name }}</h1>
           <span class="dim">{{ session.runtime }}</span>
@@ -198,13 +326,24 @@ async function confirmTerminate(): Promise<void> {
       </p>
 
       <div class="grid">
-        <aside class="rail sessions-rail">
-          <h2>Sessions</h2>
-          <p class="dim small">切換自 Sessions 清單。</p>
-        </aside>
+        <div class="center">
+          <WorkspaceTabs
+            :tabs="tabs"
+            :active="activeTab"
+            @select="(id) => (activeTab = id as CentreTab)"
+            @close="closeTab"
+          />
 
-        <div class="center" :data-split="previewPath ? 'preview' : 'terminal'">
-          <section class="terminal-pane">
+          <!-- The terminal panel is hidden, never unmounted: unmounting it
+               would tear down a live WebSocket and an xterm buffer that the
+               user expects to find unchanged when they come back (D4). -->
+          <section
+            v-show="activeTab === 'cli'"
+            id="panel-cli"
+            class="pane terminal-pane"
+            role="tabpanel"
+            aria-labelledby="tab-cli"
+          >
             <div
               ref="host"
               class="terminal-host"
@@ -212,31 +351,86 @@ async function confirmTerminate(): Promise<void> {
             />
           </section>
 
-          <!-- Read-only file preview: mounted only while a file is open, so the
-               editor and its models are disposed as soon as it is closed. -->
-          <section v-if="previewPath" class="preview-pane">
-            <button
-              class="close"
-              type="button"
-              aria-label="關閉預覽"
-              @click="previewPath = null"
+          <!-- System terminal. Same hide-don't-unmount rule as the CLI panel: it
+               holds a live WebSocket to a session on the node. -->
+          <section
+            v-if="canOpenShell"
+            v-show="activeTab === 'terminal'"
+            id="panel-terminal"
+            class="pane terminal-pane"
+            role="tabpanel"
+            aria-labelledby="tab-terminal"
+          >
+            <p class="shell-notice" role="note">
+              系統終端機：直接操作此 Node 的 shell，<strong
+                >不受 workspace 路徑限制</strong
+              >。指令內容不會被記錄。
+            </p>
+            <div
+              ref="shellHost"
+              class="terminal-host"
+              aria-label="System terminal"
+            />
+            <p
+              v-if="shellState === 'starting'"
+              class="shell-status"
+              role="status"
             >
-              關閉預覽
-            </button>
+              正在開啟系統終端機…
+            </p>
+            <p
+              v-else-if="shellState === 'error'"
+              class="shell-status bad"
+              role="alert"
+            >
+              {{ shellError }}
+              <button class="link" type="button" @click="openShellTab()">
+                重試
+              </button>
+            </p>
+          </section>
+
+          <!-- The preview is mounted only while a file is open: closing it must
+               dispose Monaco and its models, and unmounting costs nothing here
+               because there is no connection behind it. -->
+          <section
+            v-if="previewPath"
+            v-show="activeTab === 'preview'"
+            id="panel-preview"
+            class="pane"
+            role="tabpanel"
+            aria-labelledby="tab-preview"
+          >
             <PreviewPane :session-id="filesSessionId" :rel-path="previewPath" />
           </section>
         </div>
 
-        <aside class="rail workspace-rail">
+        <aside v-if="session" class="rail workspace-rail">
           <FileTree
             :session-id="filesSessionId"
             :root-label="workspaceLabel"
             :can-browse="canBrowseFiles"
             :disabled-reason="filesDisabledReason"
-            @open="(relPath) => (previewPath = relPath)"
-            @clear="previewPath = null"
+            @open="openPreview"
+            @clear="closePreview"
           />
         </aside>
+      </div>
+
+      <div v-if="!session || resource.state.value !== 'success'" class="veil">
+        <AsyncState v-if="resource.state.value === 'loading'" state="loading"
+          >Loading session…</AsyncState
+        >
+        <AsyncState
+          v-else-if="resource.state.value === 'forbidden'"
+          state="forbidden"
+        >
+          You do not have permission to view this session.
+        </AsyncState>
+        <AsyncState v-else state="error">
+          Could not load this session.
+          <button class="link" @click="resource.run()">Retry</button>
+        </AsyncState>
       </div>
     </div>
 
@@ -255,6 +449,7 @@ async function confirmTerminate(): Promise<void> {
 
 <style scoped>
 .workspace {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: calc(100vh - var(--layout-header) - 48px);
@@ -326,36 +521,26 @@ async function confirmTerminate(): Promise<void> {
 }
 .grid {
   display: grid;
-  grid-template-columns: 200px 1fr 300px;
+  grid-template-columns: 1fr 300px;
   gap: 12px;
   flex: 1;
   min-height: 0;
 }
-/* Terminal stays the primary surface; the preview takes the lower 45% only
-   while a file is open. */
+/* Tab bar plus exactly one visible panel. The selected panel gets the whole
+   centre column: splitting it left both halves too small to work in (WT-03). */
 .center {
   display: grid;
-  grid-template-rows: 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 8px;
   min-height: 0;
   min-width: 0;
 }
-.center[data-split="preview"] {
-  grid-template-rows: minmax(0, 1fr) minmax(0, 45%);
-}
-.preview-pane {
-  display: grid;
-  grid-template-rows: auto 1fr;
-  gap: 4px;
+/* Every panel occupies the same grid cell, so a hidden one costs no space. */
+.pane {
+  grid-row: 2;
+  grid-column: 1;
   min-height: 0;
-}
-.close {
-  justify-self: end;
-  border: 0;
-  background: none;
-  color: var(--action-primary);
-  font-size: 11px;
-  font-weight: 600;
+  min-width: 0;
 }
 .rail {
   border: 1px solid var(--border-default);
@@ -372,10 +557,37 @@ async function confirmTerminate(): Promise<void> {
   color: var(--text-muted);
 }
 .terminal-pane {
-  min-width: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--terminal-background);
   border-radius: var(--radius-md);
   overflow: hidden;
+}
+/* Not decoration: the user has to be able to tell which security boundary they
+   are inside (ADR 0021 §4). */
+.shell-notice {
+  margin: 0;
+  padding: 6px 10px;
+  background: #3a2f1b;
+  color: #f0d9a8;
+  font-size: 11px;
+}
+.shell-status {
+  margin: 0;
+  padding: 6px 10px;
+  color: #9aa4b2;
+  font-size: 12px;
+}
+.shell-status.bad {
+  color: var(--status-error);
+}
+/* Covers the workspace while it cannot be used, without unmounting it. */
+.veil {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--surface-default);
 }
 .terminal-host {
   width: 100%;
@@ -391,8 +603,7 @@ async function confirmTerminate(): Promise<void> {
   .grid {
     grid-template-columns: 1fr;
   }
-  .workspace-rail,
-  .sessions-rail {
+  .workspace-rail {
     display: none;
   }
 }

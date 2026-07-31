@@ -105,6 +105,7 @@ def test_capability_projection_matches_the_predicates(role: str, is_owner: bool)
         "can_takeover": authz.may_takeover_session(actor, session),
         "can_terminate": authz.may_terminate_session(actor, session),
         "can_browse_files": authz.may_browse_files(actor, session),
+        "can_open_shell": authz.may_open_shell(actor, session),
     }
 
 
@@ -231,6 +232,7 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/terminate"): rbac.SESSION_TERMINATE,
+    ("POST", "/api/sessions/{session_id}/shell"): rbac.TERMINAL_SHELL,
     ("DELETE", "/api/sessions/{session_id}"): rbac.SESSION_TERMINATE,
     ("GET", "/api/sessions/{session_id}/files/tree"): rbac.FILE_BROWSE,
     ("GET", "/api/sessions/{session_id}/files/search"): rbac.FILE_BROWSE,
@@ -343,3 +345,73 @@ def test_viewer_holds_no_mutation_action() -> None:
 def test_admin_is_a_superset_of_developer_which_is_a_superset_of_viewer() -> None:
     assert rbac.ROLE_ACTIONS[rbac.VIEWER] < rbac.ROLE_ACTIONS[rbac.DEVELOPER]
     assert rbac.ROLE_ACTIONS[rbac.DEVELOPER] < rbac.ROLE_ACTIONS[rbac.ADMIN]
+
+
+# --------------------------------------------------------------------------- #
+# System terminal (ADR 0021). Every rule here is *narrower* than the CLI rule it
+# shadows, so each one is asserted against the role that would otherwise pass.
+# --------------------------------------------------------------------------- #
+
+
+def _shell(owner: User, parent_status: str = "running") -> TerminalSession:
+    session = _session(owner)
+    session.runtime = "shell"
+    session.status = parent_status
+    return session
+
+
+def test_nobody_but_the_owner_can_watch_a_shell() -> None:
+    owner = _user("Developer")
+    shell = _shell(owner)
+    for role in ("Admin", "Developer", "Viewer"):
+        stranger = _user(role)
+        assert not authz.may_view_session(stranger, shell), (
+            f"{role} must not attach to another user's system terminal"
+        )
+    assert authz.may_view_session(owner, shell)
+
+
+def test_a_shell_cannot_be_taken_over() -> None:
+    """`terminal.takeover` reaches every CLI session its holder may write. It must
+    reach no shell at all — there is no second party to hand one to."""
+    owner = _user("Developer")
+    shell = _shell(owner)
+    assert not authz.may_takeover_session(owner, shell)
+    assert not authz.may_takeover_session(_user("Admin"), shell)
+
+
+def test_a_shell_session_id_is_not_a_route_to_the_filesystem_relay() -> None:
+    """The tree is bound to the CLI session that owns the workspace. Allowing the
+    relay through a shell id would add a second path to the same data with a
+    different owner check."""
+    owner = _user("Developer")
+    assert not authz.may_browse_files(owner, _shell(owner))
+    assert authz.may_browse_files(owner, _session(owner))
+
+
+def test_opening_a_shell_needs_the_action_and_ownership() -> None:
+    owner = _user("Developer")
+    cli = _session(owner)
+    assert authz.may_open_shell(owner, cli)
+    # Holds the action, does not own the session.
+    assert not authz.may_open_shell(_user("Admin"), cli)
+    # Owns nothing, holds nothing.
+    assert not authz.may_open_shell(_user("Viewer"), _session(_user("Viewer")))
+
+
+def test_a_shell_cannot_host_a_shell_and_a_dead_session_cannot_open_one() -> None:
+    owner = _user("Developer")
+    assert not authz.may_open_shell(owner, _shell(owner))
+    ended = _session(owner)
+    ended.status = "terminated"
+    assert not authz.may_open_shell(owner, ended)
+
+
+def test_an_admin_may_terminate_a_shell_they_may_not_watch() -> None:
+    """The one asymmetry, and it is deliberate: cleaning up an orphan is not the
+    same as looking inside it."""
+    owner = _user("Developer")
+    shell = _shell(owner)
+    admin = _user("Admin")
+    assert authz.may_terminate_session(admin, shell)
+    assert not authz.may_view_session(admin, shell)

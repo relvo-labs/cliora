@@ -305,7 +305,7 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "RUNTIME_NOT_ALLOWED",
             status.HTTP_400_BAD_REQUEST,
             "Runtime is not allowed",
-            "The requested runtime is not in the closed allowlist (claude, codex).",
+            "The requested runtime is not in the closed allowlist (claude, codex, shell).",
             "Choose an allowlisted runtime.",
             origin=DAEMON,
         ),
@@ -386,6 +386,17 @@ CATALOG: dict[str, ErrorEntry] = dict(
             retryable=True,
             audited=True,
             origin=DAEMON,
+        ),
+        _entry(
+            "SHELL_ALREADY_OPEN",
+            status.HTTP_409_CONFLICT,
+            "This session already has a system terminal",
+            "One live system terminal per CLI session (ADR 0021): the existing one is "
+            "still open somewhere, or a previous tab did not close cleanly.",
+            "Return to the tab holding it, or close it and open a new one. An "
+            "abandoned terminal is also reaped by the idle timeout.",
+            # Central-side: the parent is resolved here and the node never sees the
+            # request, so no daemon origin.
         ),
         _entry(
             "INVALID_TERMINAL_SIZE",
