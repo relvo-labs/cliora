@@ -17,6 +17,7 @@
     {"path":"valid/node-heartbeat.json","accept":true,"type":"node.heartbeat"},
     {"path":"valid/node-runtime-status.json","accept":true,"type":"node.runtime_status"},
     {"path":"valid/node-runtime-status-shell.json","accept":true,"type":"node.runtime_status"},
+    {"path":"valid/node-runtime-status-with-tunnel.json","accept":true,"type":"node.runtime_status"},
     {"path":"valid/node-system-info.json","accept":true,"type":"node.system_info"},
     {"path":"invalid/node-register-forbidden-field.json","accept":false,"code":"INVALID_MESSAGE"},
     {"path":"invalid/node-register-bad-architecture.json","accept":false,"code":"INVALID_MESSAGE"},
