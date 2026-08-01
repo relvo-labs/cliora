@@ -31,6 +31,34 @@ from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.settings import Settings, get_settings
 
 
+def apply_tunnel_report(node: Node, report: TunnelReportInput | None) -> None:
+    """Store a node's port-forwarding self-report, or leave the last one alone.
+
+    `tunnel_prereq_ok` is the AND of the three environment checks and is stored as its own
+    column so "which nodes are ready" is an indexable question rather than a JSON scan. The
+    three values are kept individually as well, because "not ready" without saying *which*
+    prerequisite is missing sends the operator to check all three.
+    """
+    if report is None:
+        return
+    node.tunnel_veto = report.veto
+    node.tunnel_prereq_ok = (
+        report.ssh_available
+        and report.egress_ok
+        and report.known_hosts_ok
+        and report.daemon_supports_tunnel
+    )
+    node.tunnel_prereq_detail = {
+        "ssh_available": report.ssh_available,
+        "egress_ok": report.egress_ok,
+        "known_hosts_ok": report.known_hosts_ok,
+        "daemon_supports_tunnel": report.daemon_supports_tunnel,
+    }
+    node.tunnel_local_allowed_ports = report.allowed_ports
+    node.tunnel_local_max = report.max_tunnels
+    node.tunnel_reported_at = now_utc()
+
+
 def ensure_node_enabled(node: Node) -> None:
     """Guard for establishing operations against a node (FR-NODE-005).
 
@@ -60,6 +88,49 @@ class WorkspaceRootInput:
 
 
 @dataclass(slots=True)
+class TunnelReportInput:
+    """What a node says about its own port-forwarding prerequisites (P11, ADR 0022).
+
+    Prerequisites, not a credential: the provider credential is the platform's (D18), so the
+    node has nothing to report about it. Central stores this so it can answer "can this node
+    forward a port" *before* somebody presses a button and waits twenty seconds for a
+    timeout — and so the answer survives the node going offline, which is why
+    `tunnel_reported_at` is written alongside: "not ready" and "not known yet" are different
+    states and the UI has to be able to tell them apart.
+    """
+
+    veto: bool
+    ssh_available: bool
+    egress_ok: bool
+    known_hosts_ok: bool
+    daemon_supports_tunnel: bool
+    allowed_ports: list[str] | None = None
+    max_tunnels: int | None = None
+
+    @classmethod
+    def from_payload(cls, payload: Any) -> TunnelReportInput | None:
+        """Build from a `node.register`/`node.runtime_status` `tunnel` object.
+
+        Returns None when the key is absent, which is what an agentd older than P11 sends.
+        Absent is not "false": nothing is written, so the node keeps its last known report
+        and `tunnel_reported_at` stays NULL until a daemon that has the capability speaks.
+        """
+        if not isinstance(payload, dict):
+            return None
+        ports = payload.get("allowed_ports")
+        limit = payload.get("max_tunnels")
+        return cls(
+            veto=bool(payload.get("veto")),
+            ssh_available=bool(payload.get("ssh_available")),
+            egress_ok=bool(payload.get("egress_ok")),
+            known_hosts_ok=bool(payload.get("known_hosts_ok")),
+            daemon_supports_tunnel=bool(payload.get("daemon_supports_tunnel")),
+            allowed_ports=[str(p) for p in ports] if isinstance(ports, list) else None,
+            max_tunnels=limit if isinstance(limit, int) and limit > 0 else None,
+        )
+
+
+@dataclass(slots=True)
 class RegisterNodeInput:
     name: str
     hostname: str
@@ -71,6 +142,7 @@ class RegisterNodeInput:
     public_key: str = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     runtimes: list[RuntimeInput] = field(default_factory=list)
     workspace_roots: list[WorkspaceRootInput] = field(default_factory=list)
+    tunnel: TunnelReportInput | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +253,7 @@ class NodeRegistrationService:
             NodeWorkspaceRoot(path=w.path, display_name=w.display_name, is_enabled=w.is_enabled)
             for w in data.workspace_roots
         ]
+        apply_tunnel_report(node, data.tunnel)
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -204,7 +277,10 @@ class NodeRegistrationService:
         return node
 
     async def update_runtime_status(
-        self, node_id: uuid.UUID, runtimes: list[RuntimeInput]
+        self,
+        node_id: uuid.UUID,
+        runtimes: list[RuntimeInput],
+        tunnel: TunnelReportInput | None = None,
     ) -> Node | None:
         """Apply a `node.runtime_status` frame (claude/codex detection refresh)."""
         node = await self._nodes.get(node_id)
@@ -224,6 +300,7 @@ class NodeRegistrationService:
             )
             for r in runtimes
         ]
+        apply_tunnel_report(node, tunnel)
         node.last_seen_at = now_utc()
         return node
 
@@ -346,6 +423,14 @@ class NodeManagementService:
             if terminate_sessions and not enabled
             else []
         )
+        # Tunnels are closed whether or not sessions are, and that asymmetry is deliberate: a
+        # session is work in progress that may reasonably finish, while a tunnel is an open
+        # door to the internet. "Stop anything new from starting" cannot leave the doors open.
+        tunnels_closed = (
+            await self._close_tunnels(node.id, actor_id=actor_id, reason="node_disabled")
+            if not enabled
+            else 0
+        )
         # The action names the direction: filtering for "who disabled this node"
         # must not also return the re-enables (P4-04).
         await self._audit.record(
@@ -357,9 +442,25 @@ class NodeManagementService:
                 # The count, not the ids: the per-session terminations write their
                 # own rows, and this row should not duplicate them.
                 "sessions_terminated": len(terminated),
+                "tunnels_closed": tunnels_closed,
             },
         )
         return node
+
+    async def _close_tunnels(self, node_id: uuid.UUID, *, actor_id: uuid.UUID, reason: str) -> int:
+        """End every live tunnel on a node.
+
+        Imported locally for the same reason as the session service: `TunnelService` imports
+        `ensure_node_enabled` from this module.
+
+        The tunnel would read as `unavailable` once the socket goes anyway, but a row left
+        live keeps counting against the fleet budget and both caps until its TTL runs out —
+        so "disable this node" would silently consume part of the platform's tunnel budget.
+        """
+        from app.services.tunnels import TunnelService
+
+        service = TunnelService(self._session, registry=self._registry)
+        return await service.close_for_node(node_id, actor_id=actor_id, reason=reason)
 
     async def _terminate_running_sessions(
         self, node_id: uuid.UUID, *, actor_id: uuid.UUID
@@ -394,6 +495,10 @@ class NodeManagementService:
         (stronger than disable: the node must re-enroll to reconnect)."""
         node = await self._require(node_id)
         await self._credentials.revoke_all(node.id, now_utc())
+        # Before the socket is severed, so the node is still reachable to be told (P11): a
+        # revoked node cannot reconnect, and a tunnel left running on it would outlive the
+        # platform's ability to close it.
+        await self._close_tunnels(node.id, actor_id=actor_id, reason="credential_revoked")
         await self._sever_connection(node.id)
         await self._audit.record(audit.CREDENTIAL_REVOKE, user_id=actor_id, node_id=node.id)
 
@@ -433,6 +538,7 @@ class NodeManagementService:
         node = await self._require(node_id)
         node.deleted_at = now_utc()
         await self._credentials.revoke_all(node.id, now_utc())
+        await self._close_tunnels(node.id, actor_id=actor_id, reason="node_removed")
         await self._sever_connection(node.id)
         # One operation, one row (ADR 0016). Removal implies credential revocation,
         # so the revocation is stated in metadata rather than written as a second

@@ -568,6 +568,103 @@ CATALOG: dict[str, ErrorEntry] = dict(
             retryable=True,
             origin=DAEMON,
         ),
+        # --- P11: port forwarding through a third-party tunnel provider (ADR 0022) ---
+        # Six of these travel on the wire: the daemon raises them and Central relays the
+        # code, never the daemon's own string. Three are Central-only settings states the
+        # daemon can never produce (TUNNEL_INTEGRATION_DISABLED, TUNNEL_NODE_DISABLED,
+        # SECRET_KEY_MISSING), and each was added together with the service that raises it,
+        # because an entry for a code nothing produces is a documented error nobody can see.
+        _entry(
+            "TUNNEL_INTEGRATION_DISABLED",
+            status.HTTP_404_NOT_FOUND,
+            "Port forwarding is not enabled for this deployment",
+            "The capability is switched off in the platform's integration settings, which is "
+            "where an administrator supplies the provider account it would run on.",
+            "Ask an administrator to enable port forwarding in Integration settings and "
+            "supply the provider credential.",
+        ),
+        _entry(
+            "TUNNEL_NODE_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "This node does not take part in port forwarding",
+            "Either the node is switched off for port forwarding in its platform settings, "
+            "or the node's own configuration vetoes it. The two have different remedies, "
+            "which is why the message names which one refused.",
+            "If it is the platform setting, turn it on from the node's port-forwarding page. "
+            "If the node vetoed it locally, its owner has to change `tunnel.enabled` in "
+            "/etc/agentd/config.yaml — the platform cannot override that.",
+        ),
+        _entry(
+            "SECRET_KEY_MISSING",
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "This deployment cannot store integration credentials",
+            "A provider credential can only be stored encrypted, and this deployment has no "
+            "encryption key configured. Storing it in plain text is refused rather than done "
+            "quietly, because plaintext already written cannot be un-disclosed.",
+            "Ask the deployment administrator to set CLIORA_SECRET_ENCRYPTION_KEY "
+            "(openssl rand -base64 32), then enable the integration again.",
+        ),
+        _entry(
+            "TUNNEL_PROVIDER_NOT_CONFIGURED",
+            status.HTTP_409_CONFLICT,
+            "This node cannot open a tunnel yet",
+            "The node is missing a prerequisite: the ssh client, outbound access to the "
+            "provider, or the pinned provider host key.",
+            "Run `agentd doctor` on the node; it names which of the three is missing.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "TUNNEL_PROVIDER_UNAVAILABLE",
+            status.HTTP_502_BAD_GATEWAY,
+            "The tunnel provider could not be reached",
+            "The node could not establish its outbound connection to the tunnel provider. "
+            "That is usually a network path problem rather than a platform fault.",
+            "Retry shortly. If it persists, confirm the node can reach the provider on port 443.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "TUNNEL_PROVIDER_UNAUTHORIZED",
+            status.HTTP_502_BAD_GATEWAY,
+            "The tunnel provider rejected the stored credential",
+            "The provider did not accept the credential. It answers this by silently "
+            "downgrading to an anonymous, time-limited tunnel, so the tunnel is torn "
+            "down rather than handed over as if it were the one that was asked for.",
+            "Ask an administrator to update the provider credential in Integration settings.",
+            audited=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "TUNNEL_PROVIDER_UNTRUSTED",
+            status.HTTP_502_BAD_GATEWAY,
+            "The tunnel provider's host key did not match",
+            "The provider presented a host key that does not match the one pinned on the "
+            "node, and the connection was stopped. This is what an intercepted outbound "
+            "connection looks like; it is also what a legitimate key rotation looks like.",
+            "Contact an administrator. Do not disable host key checking to get past this.",
+            audited=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "TUNNEL_PORT_NOT_ALLOWED",
+            status.HTTP_409_CONFLICT,
+            "That port may not be forwarded",
+            "Ports below 1024 are never forwarded, and this node's allowed range may be "
+            "narrower still. The narrowest of the platform, node and local settings wins.",
+            "Use a port at or above 1024 that is inside the range shown on the node's "
+            "port-forwarding page.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "TUNNEL_LIMIT_REACHED",
+            status.HTTP_409_CONFLICT,
+            "The tunnel limit has been reached",
+            "One of three limits is full: the platform's concurrent budget, this node's "
+            "cap, or your own. The message on screen says which.",
+            "Close a tunnel that is no longer needed, or ask an administrator to raise "
+            "the budget to match the provider plan.",
+            origin=DAEMON,
+        ),
     ]
 )
 

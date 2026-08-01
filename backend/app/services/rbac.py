@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from app.db.models import User
 
-# Stable action keys (must match the role seed migrations 0002 + 0006 + 0007 + 0008 + 0012).
+# Stable action keys (must match the role seed migrations 0002 + 0006 + 0007 + 0008 + 0012 + 0016).
 NODE_VIEW = "node.view"
 SESSION_CREATE = "session.create"
 SESSION_VIEW = "session.view"
@@ -34,6 +34,9 @@ FILE_BROWSE = "file.browse"
 ENROLLMENT_MANAGE = "enrollment.manage"
 NODE_MANAGE = "node.manage"
 AUDIT_VIEW = "audit.view"
+TUNNEL_VIEW = "tunnel.view"
+TUNNEL_MANAGE = "tunnel.manage"
+INTEGRATION_MANAGE = "integration.manage"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -56,8 +59,23 @@ _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     TERMINAL_OPERATE,
     TERMINAL_TAKEOVER,
     TERMINAL_SHELL,
+    # Port forwarding sits with the other session-shaped actions (ADR 0022): a Developer
+    # already drives sessions on the nodes they work on. Viewer holds neither, because a
+    # web application's read-only-ness is not something the platform can promise on the
+    # application's behalf — "read-only user" and "can open the preview" do not compose.
+    TUNNEL_VIEW,
+    TUNNEL_MANAGE,
 }
-_ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {ENROLLMENT_MANAGE, NODE_MANAGE, AUDIT_VIEW}
+# `integration.manage` is Admin-only for the same reason as enrollment and node management:
+# it covers supplying the organisation's third-party credential and deciding that traffic
+# may leave for a third party at all. A Developer may open tunnels; they may not decide
+# whose service and whose account (ADR 0022).
+_ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
+    ENROLLMENT_MANAGE,
+    NODE_MANAGE,
+    AUDIT_VIEW,
+    INTEGRATION_MANAGE,
+}
 
 ROLE_ACTIONS: dict[str, frozenset[str]] = {
     ADMIN: _ADMIN_ACTIONS,
@@ -76,6 +94,16 @@ ALL_ACTIONS: frozenset[str] = frozenset().union(*ROLE_ACTIONS.values())
 # Now empty. `audit.view` was seeded to Admin in migration 0002 (P1) and checked
 # by nothing until P4-05 landed `GET /api/audit`; P4-03 is what made that
 # visible. Every action in the vocabulary is now enforced somewhere.
+# Actions whose vocabulary and seed data exist but which no route enforces yet. The list is
+# not an exemption: `test_every_action_is_enforced_somewhere` fails both when an action is
+# missing from it *and* when a listed action starts being enforced, so an entry here has to
+# be removed by the change that adds the endpoint.
+#
+# Empty again. `tunnel.view`, `tunnel.manage` and `integration.manage` were listed here for
+# exactly as long as their vocabulary existed without an enforcement point: they arrived with
+# the port-forwarding data layer (PG-04) and were removed by the services and routes that
+# check them (PG-07/PG-08/PG-09) — `app/services/authz.py` for the resource layer,
+# `app/api/http/{tunnels,integrations}.py` for the action guard.
 UNENFORCED_ACTIONS: frozenset[str] = frozenset()
 
 

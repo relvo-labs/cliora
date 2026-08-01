@@ -33,7 +33,7 @@ contract:
 	cd frontend && npm run test:unit -- --run src/protocol
 
 integration:
-	cd daemon && go test -tags integration -race ./internal/session ./internal/connection ./internal/files ./internal/workspace
+	cd daemon && go test -tags integration -race ./internal/session ./internal/connection ./internal/files ./internal/workspace ./internal/tunnel
 
 e2e:
 	cd frontend && npm run test:e2e

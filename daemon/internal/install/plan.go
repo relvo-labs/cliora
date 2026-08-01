@@ -116,6 +116,14 @@ func BuildConfig(p Params, detected []runtime.DetectResult) (*config.Config, err
 		},
 		Session:   config.SessionConfig{Backend: "tmux", ScrollbackLimit: 5000},
 		Heartbeat: config.HeartbeatConfig{IntervalSeconds: heartbeat},
+		// Written out with its explanation rather than left absent. An absent block would
+		// behave identically (it defaults to "do not veto"), but the owner's only veto would
+		// then live in a file that does not mention it — and the same omission would leave
+		// them looking for the provider credential here, where it deliberately is not.
+		Tunnel: config.TunnelConfig{
+			Enabled:        &tunnelEnabledByDefault,
+			KnownHostsPath: config.DefaultKnownHostsPath,
+		},
 	}
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("generated config is invalid: %w", err)
@@ -138,6 +146,32 @@ cannot turn it back on.
 The shell grants nothing agentd does not already have: its ceiling is this
 service's own execution identity, which is why agentd must not run as root.`
 
+// tunnelEnabledByDefault is addressable so the generated config can carry an explicit
+// `enabled: true` rather than an absent key. Same value either way; the difference is
+// whether the file tells its reader that the switch exists.
+var tunnelEnabledByDefault = true
+
+// tunnelComment is written above the tunnel block of a generated config.yaml. Same
+// reasoning as shellRuntimeComment: the node's owner holds the only veto the platform
+// cannot override, and a veto whose location nobody knows is not a control. This one has an
+// extra job — telling the reader that the provider credential is *not* in this file, so
+// they do not go looking for a field that no longer exists.
+const tunnelComment = `Port forwarding (FR-TUNNEL-001, ADR 0022): the Cliora console can expose a port
+on this machine through a third-party tunnel provider, so a web app running here
+can be opened from a browser elsewhere.
+Two things are worth knowing before leaving this enabled:
+  * The provider terminates TLS and can see the unencrypted HTTP content of
+    whatever is forwarded. This is for previewing work in progress, not for
+    anything holding real data.
+  * The provider credential is NOT in this file. It is held by the platform and
+    sent with each request, so nothing about it is stored on this machine.
+The platform decides whether the feature exists at all and which nodes take part.
+This block is this machine's refusal: set "enabled: false" and restart agentd, and
+no request from Central can turn it back on. "allowed_ports" narrows what may be
+forwarded; ports below 1024 are never forwarded whatever it says.
+Like the shell, a tunnel grants nothing agentd does not already have — its ceiling
+is this service's own execution identity, which is why agentd must not run as root.`
+
 // MarshalConfig serializes a config for writing to config.yaml (0600). It goes
 // through a yaml.Node rather than straight to bytes so the shell block can carry
 // its explanation into the file; struct marshalling cannot emit comments.
@@ -151,6 +185,9 @@ func MarshalConfig(cfg *config.Config) ([]byte, error) {
 	// worse than none.
 	if key := mappingKey(mappingValue(&doc, "runtime"), config.ShellRuntimeID); key != nil {
 		key.HeadComment = shellRuntimeComment
+	}
+	if key := mappingKey(&doc, "tunnel"); key != nil {
+		key.HeadComment = tunnelComment
 	}
 	return yaml.Marshal(&doc)
 }

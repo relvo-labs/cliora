@@ -32,6 +32,8 @@ PUBLISHED_BUDGETS = [
     ("session_list_timeout_seconds", 15, "FR-CONN-006.AC-06"),
     ("session_stop_timeout_seconds", 20, "FR-CONN-006.AC-07"),
     ("update_request_timeout_seconds", 180, "FR-CONN-006.AC-08"),
+    ("tunnel_open_timeout_seconds", 20, "FR-CONN-006.AC-09"),
+    ("tunnel_close_timeout_seconds", 10, "FR-CONN-006.AC-10"),
 ]
 
 

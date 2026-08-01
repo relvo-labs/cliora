@@ -1,0 +1,1 @@
+{"version":1,"type":"tunnel.opened","request_id":"01K0TN00000000000000000008","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-08-01T09:00:00Z","success":true,"payload":{"tunnel_id":"00000000-0000-4000-8000-0000000000a1","url":"http://abcde.run.pinggy-free.link","provider":"pinggy"}}

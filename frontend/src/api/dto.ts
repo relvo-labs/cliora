@@ -471,6 +471,15 @@ export const AUDIT_ACTIONS = [
   "user.login",
   "user.login_failed",
   "user.logout",
+  // 埠轉發整合（ADR 0022）。整合層與隧道層是不同的問題：「誰決定本組織使用這個服務、
+  // 用誰的帳號」與「誰把哪台機器的哪個 port 對外」；隧道層的動作與 TunnelService 一起落地。
+  "integration.enable",
+  "integration.disable",
+  "integration.credential_set",
+  "integration.node_settings_updated",
+  "tunnel.create",
+  "tunnel.close",
+  "tunnel.public_acknowledged",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -503,6 +512,145 @@ export interface RecentWorkspace {
   node_enabled: boolean;
 }
 
+// --- P11 port forwarding through a third-party provider (ADR 0022) ---
+
+// What the browser may know about the stored provider credential. There is no field for
+// the token because the server never sends one: a "reveal" control could not be built
+// here even if somebody asked for it (D19).
+export interface TunnelCredential {
+  configured: boolean;
+  // sha256 of the token, first 8 hex. Enough to answer "is this the one I rotated last
+  // week", not enough to reconstruct anything.
+  fingerprint: string | null;
+  updated_at: string | null;
+  updated_by: string | null;
+}
+
+export interface TunnelIntegration {
+  enabled: boolean;
+  provider: string;
+  plan_tier: "free" | "pro";
+  credential: TunnelCredential;
+  // Fleet-wide: how many tunnels the provider plan allows at once. Checked as a global
+  // count, never folded into a node's cap.
+  concurrent_budget: number;
+  default_protection: TunnelProtection;
+  default_ttl_seconds: number;
+  allowed_ports: string[] | null;
+  acknowledged_at: string | null;
+  // False when the deployment has no encryption key, in which case a credential cannot be
+  // stored at all — said before the form is filled in, not after saving.
+  secret_key_available: boolean;
+  // Disabling does not close what is running; this is how the page can say how much.
+  active_tunnel_count: number;
+}
+
+export interface UpdateTunnelIntegrationInput {
+  enabled?: boolean;
+  plan_tier?: "free" | "pro";
+  concurrent_budget?: number;
+  default_protection?: TunnelProtection;
+  default_ttl_seconds?: number;
+  allowed_ports?: string[];
+  clear_allowed_ports?: boolean;
+  acknowledge?: boolean;
+}
+
+export type TunnelProtection = "basic" | "ipallow" | "public";
+
+// Derived by the server from closed_at/expires_at/state_error_code and whether the node is
+// connected. There is no stored status, so there is nothing here that can disagree with it.
+export type TunnelState =
+  | "opening"
+  | "running"
+  | "unavailable"
+  | "failed"
+  | "expired"
+  | "closed";
+
+export interface TunnelCapabilities {
+  can_close: boolean;
+  can_rotate: boolean;
+}
+
+export interface TunnelSummary {
+  id: string;
+  node_id: string;
+  node_name: string | null;
+  port: number;
+  label: string | null;
+  url: string | null;
+  url_updated_at: string | null;
+  // How often the provider reassigned the URL. On the free tier this grows by one every
+  // reconnect, which is why the UI warns that a copied link is short-lived.
+  url_change_count: number;
+  state: TunnelState;
+  protection: TunnelProtection;
+  basic_auth_user: string | null;
+  provider: string;
+  upstream_expires_at: string | null;
+  expires_at: string;
+  created_by_username: string | null;
+  created_at: string;
+  capabilities: TunnelCapabilities;
+  state_error_code: string | null;
+}
+
+export interface TunnelDetail extends TunnelSummary {
+  allowed_ips: string[] | null;
+  rewrite_host: boolean;
+  // Present only on the create and rotate responses. Only the hash is stored, so there is
+  // no later request that could return it.
+  basic_auth_password: string | null;
+}
+
+export interface CreateTunnelInput {
+  node_id: string;
+  port: number;
+  protection?: TunnelProtection;
+  allowed_ips?: string[];
+  label?: string;
+  ttl_seconds?: number;
+  rewrite_host?: boolean;
+  acknowledge_third_party?: boolean;
+  acknowledge_public?: boolean;
+}
+
+// Which configuration layer refused. Three layers mean three different remedies, and the
+// page has to name the one the user can actually act on.
+export type TunnelBlockedBy = "integration" | "node_settings" | "node_local";
+
+export interface NodeTunnelPolicy {
+  node_id: string;
+  enabled: boolean;
+  blocked_by: TunnelBlockedBy | null;
+  allowed_ports: string[];
+  max_tunnels: number;
+  live_tunnel_count: number;
+  node_enabled: boolean;
+  node_allowed_ports: string[] | null;
+  node_max_tunnels: number | null;
+  local_veto: boolean;
+  prereq_ok: boolean;
+  prereq_detail: Record<string, boolean> | null;
+  local_allowed_ports: string[] | null;
+  local_max_tunnels: number | null;
+  // Null when the node has never reported: "we do not know" is a different state from
+  // "not ready", and only one of them means "upgrade the daemon".
+  reported_at: string | null;
+  plan_tier: "free" | "pro";
+  default_protection: TunnelProtection;
+  default_ttl_seconds: number;
+}
+
+export interface UpdateNodeTunnelSettingsInput {
+  enabled?: boolean;
+  allowed_ports?: string[];
+  clear_allowed_ports?: boolean;
+  max_tunnels?: number;
+  clear_max_tunnels?: boolean;
+}
+
 // Stable RBAC action keys (backend/app/services/rbac.py). Used to gate UI.
 export const ACTION_NODE_VIEW = "node.view";
 export const ACTION_NODE_MANAGE = "node.manage";
@@ -515,3 +663,6 @@ export const ACTION_TERMINAL_TAKEOVER = "terminal.takeover";
 export const ACTION_TERMINAL_SHELL = "terminal.shell";
 export const ACTION_FILE_BROWSE = "file.browse";
 export const ACTION_AUDIT_VIEW = "audit.view";
+export const ACTION_TUNNEL_VIEW = "tunnel.view";
+export const ACTION_TUNNEL_MANAGE = "tunnel.manage";
+export const ACTION_INTEGRATION_MANAGE = "integration.manage";

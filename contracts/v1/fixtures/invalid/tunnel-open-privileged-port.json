@@ -1,0 +1,1 @@
+{"version":1,"type":"tunnel.open","request_id":"01K0TN00000000000000000005","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-08-01T09:00:00Z","payload":{"tunnel_id":"00000000-0000-4000-8000-0000000000a1","port":22,"protection":"public","ttl_seconds":3600}}

@@ -321,6 +321,69 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "等待進行中的更新回報結果。",
     retryable: true,
   },
+  // 埠轉發（ADR 0022）。流量不經過平台，因此這些狀態都是「連不上服務商」或
+  // 「設定不允許」，而不是傳輸中的錯誤。
+  SECRET_KEY_MISSING: {
+    cause:
+      "服務商憑證只能加密保存，而此部署未設定加密金鑰。" +
+      "平台選擇拒絕而不是先存明文——已經寫下的明文無法收回。",
+    nextStep: "請部署管理員設定 CLIORA_SECRET_ENCRYPTION_KEY，然後再啟用整合。",
+    retryable: false,
+  },
+  TUNNEL_INTEGRATION_DISABLED: {
+    cause:
+      "此部署的埠轉發整合尚未啟用；啟用的同時也要指定它要用哪一個服務商帳號。",
+    nextStep: "請管理員在「系統整合設定」啟用埠轉發，並填入服務商憑證。",
+    retryable: false,
+  },
+  TUNNEL_NODE_DISABLED: {
+    cause:
+      "此 Node 未參與埠轉發：可能是平台側的 per-node 設定關閉，也可能是 Node 本機設定否決。" +
+      "兩者的處置不同，因此錯誤訊息會指出是哪一層。",
+    nextStep:
+      "若是平台設定，可在此 Node 的埠轉發頁開啟；" +
+      "若是本機否決，需由該 Node 的擁有者在該機器的 agentd 設定檔把 tunnel.enabled 改回來——平台無法覆寫。",
+    retryable: false,
+  },
+  TUNNEL_PROVIDER_NOT_CONFIGURED: {
+    cause:
+      "此 Node 尚不具備埠轉發的先決條件：ssh 用戶端、對外連線或已釘選的主機金鑰。",
+    nextStep: "在該 Node 執行 `agentd doctor`，它會指出缺少哪一項。",
+    retryable: false,
+  },
+  TUNNEL_PROVIDER_UNAVAILABLE: {
+    cause:
+      "Node 無法建立到隧道服務商的對外連線；這通常是網路路徑問題，而不是平台故障。",
+    nextStep: "稍後重試；若持續發生，確認該 Node 可連線到服務商的 443 埠。",
+    retryable: true,
+  },
+  TUNNEL_PROVIDER_UNAUTHORIZED: {
+    cause:
+      "服務商不接受已儲存的憑證。它的回應方式是靜默降級為匿名、有時限的隧道，" +
+      "因此平台選擇中止而不是把它當成你要的那一條交出去。",
+    nextStep: "請管理員在「整合設定」更新服務商憑證。",
+    retryable: false,
+  },
+  TUNNEL_PROVIDER_UNTRUSTED: {
+    cause:
+      "服務商出示的主機金鑰與 Node 上釘選的不符，連線已中止。" +
+      "這既是對外連線被攔截的樣子，也是服務商正常輪替金鑰的樣子。",
+    nextStep: "請聯繫管理員。不要以停用金鑰驗證的方式繞過。",
+    retryable: false,
+  },
+  TUNNEL_PORT_NOT_ALLOWED: {
+    cause:
+      "1024 以下的 port 一律不轉發，而此 Node 的允許範圍可能更窄；" +
+      "平台、Node 與本機設定取最窄的那一個。",
+    nextStep: "改用 1024 以上、且在此 Node 埠轉發頁所顯示範圍內的 port。",
+    retryable: false,
+  },
+  TUNNEL_LIMIT_REACHED: {
+    cause:
+      "三個上限之一已滿：平台的整體併發預算、此 Node 的上限，或你自己的上限。",
+    nextStep: "關閉不再需要的隧道，或請管理員把預算調整為與服務商方案一致。",
+    retryable: false,
+  },
 };
 
 // A code with no entry still gets guidance rather than a blank panel: an unknown code

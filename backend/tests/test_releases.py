@@ -227,13 +227,32 @@ def test_find_answers_per_version_and_architecture(tmp_path: Path) -> None:
 
 def test_publishing_a_release_is_picked_up_without_a_restart(tmp_path: Path) -> None:
     """The cache is keyed on mtime, not on process lifetime: an operator who
-    publishes a release should not have to restart Central for it to appear."""
+    publishes a release should not have to restart Central for it to appear.
+
+    The two publishes are separated by an explicit mtime bump because the assertion is about
+    the *cache key*, not about filesystem timestamp granularity. Two writes inside one mtime
+    tick produce the same key, so without this the test failed about two runs in three — a
+    flake that made `make check` randomly red and hid real failures behind it.
+    """
     publish(tmp_path, "1.0.0")
     releases_service = service(tmp_path)
     assert releases_service.manifest().latest == "1.0.0"
 
     publish(tmp_path, "1.1.0")
+    _age_by_a_tick(tmp_path)
     assert releases_service.manifest().latest == "1.1.0"
+
+
+def _age_by_a_tick(root: Path) -> None:
+    """Move the directory and checksum mtimes a second into the future.
+
+    Forward rather than backward: the cache key is compared for equality, so either direction
+    invalidates it, and forward is what a real second publish would look like.
+    """
+    for path in (root, root / "checksums.txt"):
+        if path.exists():
+            stamp = path.stat().st_mtime + 1
+            os.utime(path, (stamp, stamp))
 
 
 def test_editing_checksums_in_place_invalidates_the_cache(tmp_path: Path) -> None:

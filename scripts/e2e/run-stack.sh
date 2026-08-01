@@ -12,9 +12,19 @@
 # exit code. With no command it prints connection details and waits (Ctrl-C to
 # stop) for interactive local use.
 #
+# Port forwarding (plan/11) is included the same way the terminal path is: with a
+# stand-in. `faketunnelapp` is the application being forwarded and
+# `faketunnelprovider` stands in for the provider's ssh client, so the browser suite
+# exercises Central, the protocol, the supervisor and both pages **without reaching
+# the real provider** — no account, no outbound network, and no CI that goes red
+# when somebody else has an outage. The URL the fake announces is on
+# `.example.invalid` (RFC 2606: never resolves), so the suite can assert that a URL
+# is shown and can never accidentally open it.
+#
 # Requires: uv, go, tmux, and a migrated-or-migratable PostgreSQL at
 # CLIORA_DATABASE_URL. Honours E2E_ADMIN_USER / E2E_ADMIN_PASSWORD /
-# CLIORA_ADMIN_PASSWORD, CENTRAL_PORT (default 8000).
+# CLIORA_ADMIN_PASSWORD, CENTRAL_PORT (default 8000), E2E_TUNNEL_APP_PORT
+# (default 5199).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -28,6 +38,12 @@ ADMIN_PASS="${E2E_ADMIN_PASSWORD:-e2e-admin-pw}"
 export CLIORA_ADMIN_PASSWORD="${CLIORA_ADMIN_PASSWORD:-$ADMIN_PASS}"
 PORT="${CENTRAL_PORT:-8000}"
 BASE="http://127.0.0.1:${PORT}"
+TUNNEL_APP_PORT="${E2E_TUNNEL_APP_PORT:-5199}"
+# Without this Central refuses to enable the port-forwarding integration at all
+# (SECRET_KEY_MISSING) rather than storing a credential in plain text, so the stack
+# has to supply one. A fixed value: it is a throwaway database and a fake provider,
+# and a random key would make a failure impossible to reproduce.
+export CLIORA_SECRET_ENCRYPTION_KEY="${CLIORA_SECRET_ENCRYPTION_KEY:-Y2xpb3JhLWUyZS1zdGFjay1rZXktMzItYnl0ZXMhISE=}"
 
 WORK="$(mktemp -d)"
 BIN="$WORK/bin"
@@ -64,11 +80,17 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "==> building daemon helpers (agentd, fakecli, enroll-dev)"
+echo "==> building daemon helpers (agentd, fakecli, faketunnelapp, faketunnelprovider, enroll-dev)"
 export PATH="$PATH:/usr/local/go/bin"
 ( cd daemon && go build -o "$BIN/agentd" ./cmd/agentd \
   && go build -o "$BIN/fakecli" ./cmd/fakecli \
+  && go build -o "$BIN/faketunnelapp" ./cmd/faketunnelapp \
+  && go build -o "$BIN/faketunnelprovider" ./cmd/faketunnelprovider \
   && go build -o "$BIN/enroll-dev" ./cmd/enroll-dev )
+
+echo "==> starting the app to forward on :$TUNNEL_APP_PORT"
+setsid "$BIN/faketunnelapp" --addr "127.0.0.1:$TUNNEL_APP_PORT" >"$WORK/faketunnelapp.log" 2>&1 &
+PIDS+=($!)
 
 echo "==> migrating + seeding admin"
 ( cd backend && uv run --project . alembic upgrade head \
@@ -96,8 +118,15 @@ echo "==> enrolling a node (runtime claude -> fakecli)"
   --workspace-root "$WORKSPACE" --runtime-binary "$BIN/fakecli" \
   --config "$WORK/config.yaml" --credentials "$WORK/credentials.yaml" --allow-insecure
 
-echo "==> starting daemon"
-setsid "$BIN/agentd" run --config "$WORK/config.yaml" --credentials "$WORK/credentials.yaml" \
+# The generated config points at /etc/agentd/pinggy_known_hosts, which a rootless stack
+# cannot write. Point it at the repository's copy instead: an empty or missing file is
+# refused by the daemon (never treated as "skip verification"), so this is what lets the
+# node report its prerequisites as met.
+sed -i "s|known_hosts_path:.*|known_hosts_path: $ROOT/deploy/pinggy_known_hosts|" "$WORK/config.yaml"
+
+echo "==> starting daemon (port forwarding via the stand-in provider)"
+setsid env CLIORA_TUNNEL_PROVIDER_COMMAND_FOR_TESTS="$BIN/faketunnelprovider" \
+  "$BIN/agentd" run --config "$WORK/config.yaml" --credentials "$WORK/credentials.yaml" \
   >"$WORK/agentd.log" 2>&1 &
 PIDS+=($!)
 
@@ -119,9 +148,12 @@ if [ -z "$online" ]; then
 fi
 echo "==> node online; workspace root: $WORKSPACE"
 
+export E2E_TUNNEL_APP_PORT="$TUNNEL_APP_PORT"
+
 if [ "$#" -gt 0 ]; then
   "$@"
 else
-  echo "Stack ready at $BASE (admin: $ADMIN_USER / $ADMIN_PASS). Ctrl-C to stop."
+  echo "Stack ready at $BASE (admin: $ADMIN_USER / $ADMIN_PASS)."
+  echo "App to forward: http://127.0.0.1:$TUNNEL_APP_PORT (port $TUNNEL_APP_PORT). Ctrl-C to stop."
   wait
 fi

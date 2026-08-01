@@ -3,6 +3,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["name", "hostname", "os", "os_version", "architecture", "daemon_version", "run_user", "runtimes", "workspace_roots"],
   "properties": {
+    "tunnel": {"$ref": "node-tunnel-report.schema.json"},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
     "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
     "os": {"type": "string", "minLength": 1, "maxLength": 64},

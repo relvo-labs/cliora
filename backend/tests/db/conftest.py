@@ -28,6 +28,12 @@ TEST_DB_URL = os.environ.get("CLIORA_TEST_DATABASE_URL")
 _CLEANUP_TABLES = (
     "audit_logs",
     "workspace_favorites",
+    # Port forwarding (P11). All three hold FKs to `users`, so a leftover row here makes the
+    # `users` delete below fail with a foreign-key violation — which then surfaces as an
+    # unrelated test failing on a duplicate username, several tests later.
+    "node_tunnels",
+    "node_tunnel_settings",
+    "tunnel_integration",
     "session_connections",
     "terminal_sessions",
     "node_metric_samples",

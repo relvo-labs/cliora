@@ -26,6 +26,17 @@ const LABELS: Record<string, string> = {
   "session.failed": "Session 失敗",
   "file.sensitive_read_denied": "敏感檔讀取被拒",
   "authz.denied": "授權被拒",
+  // 埠轉發（ADR 0022）。整合層與隧道層分開記，因為它們回答的是不同的問題：
+  // 「誰決定本組織使用這個服務、用誰的帳號」與「誰把哪台機器的哪個 port 對外」。
+  "integration.enable": "啟用埠轉發整合",
+  "integration.disable": "停用埠轉發整合",
+  "integration.credential_set": "設定服務商憑證",
+  "integration.node_settings_updated": "變更 Node 埠轉發設定",
+  "tunnel.create": "建立埠轉發",
+  "tunnel.close": "關閉埠轉發",
+  // 單獨一個動作而不是 tunnel.create 的一個欄位：「誰同意這個 port 對任何拿到網址的人開放」
+  // 是事後會被問到的問題，而藏在別的動作裡的欄位無法被篩選。
+  "tunnel.public_acknowledged": "確認開放無保護預覽",
   "daemon.update_started": "觸發 Daemon 更新",
   "daemon.update_result": "Daemon 更新結果",
 };
@@ -67,6 +78,18 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "session.takeover",
       "session.terminate",
       "session.failed",
+    ],
+  },
+  {
+    title: "埠轉發整合 / Port forwarding",
+    actions: [
+      "integration.enable",
+      "integration.disable",
+      "integration.credential_set",
+      "integration.node_settings_updated",
+      "tunnel.create",
+      "tunnel.close",
+      "tunnel.public_acknowledged",
     ],
   },
   {

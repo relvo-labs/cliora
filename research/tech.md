@@ -586,6 +586,22 @@ Daemon WebSocket 斷開時，可立即標示為 Offline，但仍保存 `last_see
 
 # 8. Go Daemon 設計
 
+## 8.0 埠轉發子行程（ADR 0022）
+
+除了對 Central 的控制連線之外，Daemon 會為每一條啟用的隧道監管一個 `ssh -R` 子行程，
+連往第三方隧道服務。這條路徑的設計約束：
+
+| 面向 | 規則 |
+|---|---|
+| 方向 | 仍然只出不進；Node 上不新增任何監聽埠 |
+| 目的地 | `-R 0:localhost:<port>`，port ≥ 1024 且在三層設定的交集內；服務商主機由 Daemon 端常數決定，**Central 不得指定** |
+| 認證 | provider 憑證隨 `tunnel.open` 抵達，僅存於記憶體與子行程 argv，**不寫磁碟** |
+| 主機金鑰 | `StrictHostKeyChecking=yes` ＋ 釘選檔；缺檔或不符一律不建立隧道 |
+| PTY | **不得配置**。要求 PTY 會使服務端改送全螢幕 ANSI 介面，網址無法解析（PG-01 實測） |
+| 網址 | 由服務商在 stdout 印出，可能隨每次重連而變；以後綴白名單解析，僅接受 https |
+| 憑證無效 | 服務商**不會拒絕**，而是靜默降級為匿名隧道；Daemon 須以 stdout 橫幅判定並主動中止（PG-01 實測） |
+| 孤兒 | 每條隧道寫 `/run/agentd/tunnels/<id>.pid`；Daemon 啟動時回收上一代殘留的子行程 |
+
 ## 8.1 Daemon 執行模式
 
 Daemon 啟動：
@@ -1421,6 +1437,26 @@ daemon.doctor_result
 daemon.update
 daemon.update_result
 ```
+
+### Tunnel（埠轉發，contract v1.6.0、ADR 0022）
+
+```text
+tunnel.open        Central → Daemon（相關聯；payload 含 provider 憑證）
+tunnel.opened      Daemon → Central（相關聯；回傳服務商指派的 https 網址）
+tunnel.close       Central → Daemon（相關聯）
+tunnel.closed      Daemon → Central（相關聯）
+tunnel.status      Daemon → Central（主動事件，非相關聯；state ∈ running|reconnecting|failed|closed）
+```
+
+三件與其他訊息型別不同的性質：
+
+1. **`tunnel.open` 是唯一攜帶秘密的型別**（`credential`）。它不得被記錄，golden fixture 內的值必須
+   明顯是假的。憑證字元集限 `^[A-Za-z0-9]{8,128}$` —— 它會被組進 `ssh` 的 `<token>@<host>`，而
+   `+` 與 `@` 在該處是分隔符，放寬即等於允許改寫隧道型別與連線目的地。
+2. **沒有對應的 binary frame**。埠轉發的資料流不經過 Central，因此 kind 白名單與 `MAX_PAYLOAD`
+   都不變（對照 P3 的 filesystem 曾為此放寬到 8 MiB）。
+3. **`tunnel.status` 是主動事件**，處理位置與 `terminal.gap`／`terminal.exited` 相同：必須在
+   request 相關聯查表之前分派，否則會被當成未匹配訊息丟棄。
 
 ---
 
