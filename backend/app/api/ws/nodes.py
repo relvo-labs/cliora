@@ -30,11 +30,13 @@ from app.services.nodes import (
     NodeRegistrationService,
     RegisterNodeInput,
     RuntimeInput,
+    TunnelReportInput,
     WorkspaceRootInput,
 )
 from app.services.registry import get_node_registry
 from app.services.sessions import SessionService
 from app.services.terminal_relay import get_terminal_relay
+from app.services.tunnels import TunnelService
 from app.settings import get_settings
 
 # Daemon terminal events (fresh ULID, not correlated responses) fanned out to
@@ -98,6 +100,10 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
             )
             for w in payload.get("workspace_roots", [])
         ],
+        # Absent on an agentd older than P11, which is why it is `None` rather than a set of
+        # falses: "this node cannot forward ports" and "this node has not said" are different
+        # answers and only one of them tells the user to upgrade the daemon.
+        tunnel=TunnelReportInput.from_payload(payload.get("tunnel")),
     )
 
 
@@ -214,7 +220,9 @@ async def node_gateway(
                 await session.commit()
             elif message.type == "node.runtime_status":
                 await service.update_runtime_status(
-                    node_id, _runtime_inputs(message.payload.get("runtimes", []))
+                    node_id,
+                    _runtime_inputs(message.payload.get("runtimes", [])),
+                    TunnelReportInput.from_payload(message.payload.get("tunnel")),
                 )
                 await session.commit()
             elif message.type == "node.shutdown":
@@ -241,6 +249,14 @@ async def node_gateway(
                         node_id, outcome_from_payload(message.payload)
                     )
                     await session.commit()
+            elif message.type == "tunnel.status":
+                # Unsolicited, like the terminal events: it carries a fresh ULID and matches
+                # no pending request, so it has to be handled *before* the correlation
+                # lookup below or it is discarded as an unmatched message. On the free tier
+                # the provider issues a new URL on every reconnect, so this branch is the
+                # only thing keeping the platform's copy of the URL true.
+                await TunnelService(session).apply_status(node_id, message.payload)
+                await session.commit()
             elif message.type in _TERMINAL_EVENTS:
                 sid = message.payload.get("session_id")
                 if isinstance(sid, str):

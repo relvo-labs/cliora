@@ -244,6 +244,24 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("DELETE", "/api/workspaces/favorites/{favorite_id}"): rbac.SESSION_CREATE,
     ("GET", "/api/workspaces/recent"): rbac.SESSION_CREATE,
     ("GET", "/api/audit"): rbac.AUDIT_VIEW,
+    # Port forwarding (ADR 0022). Viewer holds neither tunnel action: reading a URL is
+    # reaching the application behind it, and "read-only platform role" does not compose with
+    # "may open the preview".
+    ("GET", "/api/tunnels"): rbac.TUNNEL_VIEW,
+    ("POST", "/api/tunnels"): rbac.TUNNEL_MANAGE,
+    ("DELETE", "/api/tunnels/{tunnel_id}"): rbac.TUNNEL_MANAGE,
+    ("POST", "/api/tunnels/{tunnel_id}/extend"): rbac.TUNNEL_MANAGE,
+    ("POST", "/api/tunnels/{tunnel_id}/rotate-password"): rbac.TUNNEL_MANAGE,
+    ("GET", "/api/nodes/{node_id}/tunnel-policy"): rbac.TUNNEL_VIEW,
+    # `tunnel.manage`, not `integration.manage`: which ports one machine may forward is
+    # day-to-day work, while whose provider account the organisation uses is not.
+    ("PUT", "/api/nodes/{node_id}/tunnel-settings"): rbac.TUNNEL_MANAGE,
+    # Admin-only: supplying the organisation's third-party credential and deciding that
+    # traffic may leave for a third party at all.
+    ("GET", "/api/integrations/tunnel"): rbac.INTEGRATION_MANAGE,
+    ("PUT", "/api/integrations/tunnel"): rbac.INTEGRATION_MANAGE,
+    ("PUT", "/api/integrations/tunnel/credential"): rbac.INTEGRATION_MANAGE,
+    ("DELETE", "/api/integrations/tunnel/credential"): rbac.INTEGRATION_MANAGE,
     # All three roles hold node.view: the Dashboard is the landing page and every
     # role has a legitimate view of fleet health. Actor identity inside recent
     # activity is what `audit.view` gates (services/dashboard.project_for).

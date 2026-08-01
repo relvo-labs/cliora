@@ -26,19 +26,31 @@ function testRouter(): Router {
       { path: "/sessions", name: "sessions", component: blank },
       { path: "/enrollment", name: "enrollment", component: blank },
       { path: "/audit", name: "audit", component: blank },
+      {
+        path: "/settings/integrations",
+        name: "integrations",
+        component: blank,
+      },
       { path: "/login", name: "login", component: blank },
     ],
   });
 }
 
-async function render(props: { fill?: boolean } = {}) {
+async function render(
+  props: { fill?: boolean } = {},
+  permissions: string[] = [
+    "enrollment.manage",
+    "audit.view",
+    "integration.manage",
+  ],
+) {
   const store = useAuthStore();
   store.user = {
     id: "u",
     username: "u",
     display_name: "U",
     role: "Admin",
-    permissions: ["enrollment.manage", "audit.view"],
+    permissions,
   };
   const router = testRouter();
   await router.push("/dashboard");
@@ -78,5 +90,16 @@ describe("AppLayout", () => {
   it("marks main as a fill surface when a view owns the whole viewport", async () => {
     const wrapper = await render({ fill: true });
     expect(wrapper.get("main").attributes("data-fill")).toBe("");
+  });
+
+  it("offers Integrations only to a holder of integration.manage", async () => {
+    // Hiding the entry is a courtesy, not authorization — the server refuses the request
+    // either way (ADR 0016). What it buys is a rail that does not offer a Developer a page
+    // whose every route answers 403.
+    const admin = await render({}, ["integration.manage"]);
+    expect(admin.get("nav").text()).toContain("Integrations");
+
+    const developer = await render({}, ["tunnel.view", "tunnel.manage"]);
+    expect(developer.get("nav").text()).not.toContain("Integrations");
   });
 });

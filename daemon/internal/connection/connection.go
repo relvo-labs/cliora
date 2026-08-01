@@ -28,6 +28,7 @@ import (
 	"github.com/cliora/cliora/daemon/internal/session"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
 	ctmux "github.com/cliora/cliora/daemon/internal/tmux"
+	"github.com/cliora/cliora/daemon/internal/tunnel"
 	"github.com/cliora/cliora/daemon/internal/update"
 	"github.com/cliora/cliora/daemon/internal/workspace"
 )
@@ -56,6 +57,19 @@ type Manager struct {
 	// confined to a session's workspace via the workspace guard (ADR 0014).
 	files *files.Service
 
+	// P11 port forwarding (ADR 0022). The supervisor owns the ssh child processes; this
+	// manager only translates between it and the protocol. `tunnelSend` is set for the life
+	// of a connection so unsolicited tunnel.status frames have somewhere to go — a tunnel
+	// outlives any single request, and the free tier changes its URL roughly hourly.
+	tunnels   *tunnel.Supervisor
+	tunnelMu  sync.Mutex
+	tunnelOut func([]byte) error
+	// Cached provider reachability. Guarded by tunnelMu; refreshed off the hot path so a
+	// five-second dial never sits in front of the control connection's handshake.
+	egressOK        bool
+	egressCheckedAt time.Time
+	egressProbing   bool
+
 	// P4 self-update. `configPath` is needed because the post-restart health check
 	// runs `agentd doctor --config <path>`; `newUpdaterFn` is a test seam so the
 	// update handler can be exercised without systemd or a real binary swap.
@@ -70,7 +84,7 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 	if len(cfg.Workspace.AllowedRoots) > 0 {
 		diskPath = cfg.Workspace.AllowedRoots[0]
 	}
-	return &Manager{
+	m := &Manager{
 		cfg:           cfg,
 		creds:         creds,
 		registry:      reg,
@@ -85,6 +99,15 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		files:         files.NewService(cfg, time.Now),
 		configPath:    config.DefaultConfigPath,
 	}
+	m.tunnels = tunnel.NewSupervisor(tunnel.NewPinggyProvider(), m)
+	// Anything left by a previous daemon generation is still serving traffic, with nothing
+	// in any log to say so. Central is the authority on which tunnels should exist and
+	// re-opens them after reconnecting, so the old generation is always the wrong one to
+	// keep (ADR 0022).
+	if reaped := m.tunnels.ReapOrphans(); reaped > 0 {
+		slog.Warn("reaped port-forwarding tunnels left by a previous run", "count", reaped)
+	}
+	return m
 }
 
 // SetConfigPath records where this daemon's config lives. The post-restart health
@@ -158,6 +181,17 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 		return conn.WriteMessage(websocket.BinaryMessage, frame)
 	}
 
+	// Unsolicited tunnel status frames (URL changes, failures) travel on whichever
+	// connection is current. Registered before anything can produce one.
+	m.tunnelMu.Lock()
+	m.tunnelOut = send
+	m.tunnelMu.Unlock()
+	defer func() {
+		m.tunnelMu.Lock()
+		m.tunnelOut = nil
+		m.tunnelMu.Unlock()
+	}()
+
 	if err := m.authenticate(conn, write); err != nil {
 		return err
 	}
@@ -191,7 +225,10 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 
 	select {
 	case <-ctx.Done():
-		// Graceful shutdown: best-effort deregister, then tear down.
+		// Graceful shutdown: best-effort deregister, then tear down. Tunnels are closed
+		// explicitly rather than left to the process dying, so nothing keeps serving after
+		// the daemon is gone.
+		m.tunnels.CloseAll()
 		_ = write("node.shutdown", protocol.NewID(), map[string]any{"reason": "shutdown"})
 		_ = conn.Close()
 		<-readErr
@@ -308,6 +345,7 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		hostname = m.cfg.Node.Name
 	}
 	return map[string]any{
+		"tunnel":          m.tunnelReport(),
 		"name":            m.cfg.Node.Name,
 		"hostname":        hostname,
 		"os":              m.info.OS,
@@ -416,6 +454,10 @@ func (m *Manager) dispatch(
 			m.handleFsSearch(ctx, env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
+		case "tunnel.open":
+			m.handleTunnelOpen(ctx, env, data, send)
+		case "tunnel.close":
+			m.handleTunnelClose(env, send)
 		}
 	}
 }

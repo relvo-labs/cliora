@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -92,6 +93,46 @@ type SessionConfig struct {
 	ScrollbackLimit int    `yaml:"scrollback_limit"`
 }
 
+// TunnelConfig is this node's veto and narrowing over the platform's port-forwarding
+// settings (P11, ADR 0022). The platform decides whether the integration exists at all
+// and holds the provider credential; this file decides whether THIS machine takes part
+// and, if so, within which bounds. Every field here can only make the platform's settings
+// narrower, never wider.
+//
+// There is deliberately no token field. The credential is held by the platform and arrives
+// with each tunnel.open, so it never touches this machine's disk. A config that still
+// carries a `token:` key from an earlier design is accepted with a warning rather than
+// refused — refusing would stop the daemon from starting over a key that no longer means
+// anything.
+type TunnelConfig struct {
+	// Enabled false is an absolute veto the platform cannot override. A pointer, not a
+	// bool, because "absent" and "explicitly false" are different answers: with a plain
+	// bool every existing node would read as vetoed after an upgrade, and nobody would
+	// remember vetoing anything.
+	Enabled *bool `yaml:"enabled"`
+	// AllowedPorts narrows the platform's list ("3000-3999", "5173"). Empty means no extra
+	// narrowing. Ports below 1024 are refused whatever any layer says.
+	AllowedPorts []string `yaml:"allowed_ports"`
+	// MaxTunnels narrows the platform's per-node cap. Zero means no extra narrowing.
+	MaxTunnels int `yaml:"max_tunnels"`
+	// KnownHostsPath pins the provider's SSH host keys. Empty uses the packaged default.
+	// Host key checking is never disabled; see ADR 0022 and PG-01 for where the pinned
+	// keys came from and what to do when the provider rotates them.
+	KnownHostsPath string `yaml:"known_hosts_path"`
+	// Token is only here so that a config written under the earlier design (where the
+	// node held the credential) still parses. It is never read, never sent and never
+	// logged. Load warns and clears it.
+	Token string `yaml:"token"`
+}
+
+// DefaultKnownHostsPath is where the installer places the provider's pinned host keys.
+const DefaultKnownHostsPath = "/etc/agentd/pinggy_known_hosts"
+
+// MinTunnelPort is a floor no configuration can lower. Below it live system services —
+// sshd, and on many machines a database — and the cost of getting this wrong is
+// publishing one of them to the internet.
+const MinTunnelPort = 1024
+
 type HeartbeatConfig struct {
 	IntervalSeconds int `yaml:"interval_seconds"`
 }
@@ -104,10 +145,16 @@ type Config struct {
 	Filesystem FilesystemConfig         `yaml:"filesystem"`
 	Session    SessionConfig            `yaml:"session"`
 	Heartbeat  HeartbeatConfig          `yaml:"heartbeat"`
+	Tunnel     TunnelConfig             `yaml:"tunnel"`
 
 	// ShellFromDefault reports that runtime.shell was absent and defaulted to
 	// enabled, rather than being written by an operator. Never serialised.
 	ShellFromDefault bool `yaml:"-"`
+
+	// LegacyTunnelToken records that the config carried a `tunnel.token` key, which the
+	// platform now holds instead. Surfaced at startup so the node owner learns the key is
+	// dead rather than assuming it is in use. Never serialised.
+	LegacyTunnelToken bool `yaml:"-"`
 }
 
 // AllowedRuntimeIDs is the closed allowlist; no other runtime id may appear.
@@ -139,6 +186,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.applyFilesystemDefaults()
 	cfg.applyRuntimeDefaults()
+	cfg.applyTunnelDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -198,6 +246,84 @@ func (c *Config) applyFilesystemDefaults() {
 	}
 }
 
+// applyTunnelDefaults fills in what an absent `tunnel:` block means. Absent is "do not
+// veto and do not narrow", because the gate for this capability is the platform's own
+// integration switch (ADR 0022): an administrator has to enable it and supply a credential
+// before any node can forward anything. Requiring a second per-machine edit on top would
+// be form rather than substance on a node that already grants the platform a shell runtime
+// (ADR 0021) — and it would silently exclude every node that upgraded.
+//
+// An explicit `enabled: false` is never touched. That veto has to survive every future
+// change to this function.
+func (c *Config) applyTunnelDefaults() {
+	if c.Tunnel.Token != "" {
+		c.LegacyTunnelToken = true
+		c.Tunnel.Token = ""
+	}
+	if c.Tunnel.Enabled == nil {
+		enabled := true
+		c.Tunnel.Enabled = &enabled
+	}
+	if c.Tunnel.KnownHostsPath == "" {
+		c.Tunnel.KnownHostsPath = DefaultKnownHostsPath
+	}
+}
+
+// TunnelEnabled reports whether this node takes part in port forwarding. False is the
+// node owner's veto, and nothing in the protocol can override it.
+func (c *Config) TunnelEnabled() bool {
+	return c.Tunnel.Enabled == nil || *c.Tunnel.Enabled
+}
+
+// TunnelPortAllowed applies this node's own port policy: the hard floor first, then the
+// local allowlist if one is configured. An empty allowlist means "do not narrow further",
+// which is different from a list that excludes everything.
+func (c *Config) TunnelPortAllowed(port int) bool {
+	if port < MinTunnelPort || port > 65535 {
+		return false
+	}
+	if len(c.Tunnel.AllowedPorts) == 0 {
+		return true
+	}
+	for _, spec := range c.Tunnel.AllowedPorts {
+		low, high, err := parsePortSpec(spec)
+		if err != nil {
+			// A malformed entry narrows rather than widens: it is skipped, so it can never
+			// accidentally allow a port. Validate() rejects such a config at startup
+			// anyway; this is the behaviour if one ever gets past that.
+			continue
+		}
+		if port >= low && port <= high {
+			return true
+		}
+	}
+	return false
+}
+
+// parsePortSpec accepts "5173" or "3000-3999".
+func parsePortSpec(spec string) (int, int, error) {
+	trimmed := strings.TrimSpace(spec)
+	if trimmed == "" {
+		return 0, 0, errors.New("empty port spec")
+	}
+	low, high, found := strings.Cut(trimmed, "-")
+	start, err := strconv.Atoi(strings.TrimSpace(low))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid port %q", low)
+	}
+	if !found {
+		return start, start, nil
+	}
+	end, err := strconv.Atoi(strings.TrimSpace(high))
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid port %q", high)
+	}
+	if end < start {
+		return 0, 0, fmt.Errorf("range %q is inverted", trimmed)
+	}
+	return start, end, nil
+}
+
 func (c *Config) Validate() error {
 	if c.Server.URL == "" {
 		return errors.New("server.url is required")
@@ -220,6 +346,23 @@ func (c *Config) Validate() error {
 		if rc.Enabled && rc.Binary == "" {
 			return fmt.Errorf("runtime %q is enabled but has no binary", id)
 		}
+	}
+	for _, spec := range c.Tunnel.AllowedPorts {
+		low, high, err := parsePortSpec(spec)
+		if err != nil {
+			return fmt.Errorf("tunnel allowed_ports %q: %w", spec, err)
+		}
+		if low < MinTunnelPort {
+			return fmt.Errorf(
+				"tunnel allowed_ports %q includes a port below %d; ports below that are "+
+					"never forwarded", spec, MinTunnelPort)
+		}
+		if high > 65535 {
+			return fmt.Errorf("tunnel allowed_ports %q exceeds 65535", spec)
+		}
+	}
+	if c.Tunnel.MaxTunnels < 0 {
+		return errors.New("tunnel.max_tunnels must not be negative")
 	}
 	for _, root := range c.Workspace.AllowedRoots {
 		if !filepath.IsAbs(root) {

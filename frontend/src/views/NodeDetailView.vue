@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
-import { ACTION_NODE_MANAGE } from "../api/dto";
+import { ACTION_INTEGRATION_MANAGE, ACTION_NODE_MANAGE } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import AsyncState from "../components/common/AsyncState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
@@ -12,7 +12,7 @@ import {
   deriveNodeState,
   useAsyncResource,
 } from "../composables/useAsyncResource";
-import { useAuthStore } from "../stores/auth";
+import { api, useAuthStore } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
 import { formatDuration, formatInstant } from "../utils/time";
 
@@ -23,6 +23,9 @@ const nodes = useNodesStore();
 const router = useRouter();
 
 const canManage = computed(() => auth.hasPermission(ACTION_NODE_MANAGE));
+const canManageIntegration = computed(() =>
+  auth.hasPermission(ACTION_INTEGRATION_MANAGE),
+);
 const resource = useAsyncResource(() => nodes.fetchNode(props.id));
 const node = computed(() => nodes.current);
 
@@ -82,8 +85,35 @@ function updateStateLabel(status: string): string {
   return UPDATE_STATE_LABELS[status] ?? status;
 }
 
+// --- Port forwarding summary (P11). The full page is /nodes/:id/tunnels. ---
+// `disabled` is a first-class outcome, not a failure: with the integration off the routes
+// answer 404, and the section says so rather than showing an error nobody can act on.
+const tunnelSummary = ref<
+  "loading" | "ok" | "disabled" | "forbidden" | "error"
+>("loading");
+const tunnelCount = ref(0);
+
+async function loadTunnelSummary(): Promise<void> {
+  try {
+    tunnelCount.value = (await api().listTunnels({ node_id: props.id })).length;
+    tunnelSummary.value = "ok";
+  } catch (caught) {
+    if (
+      caught instanceof ApiError &&
+      caught.code === "TUNNEL_INTEGRATION_DISABLED"
+    ) {
+      tunnelSummary.value = "disabled";
+    } else if (caught instanceof ApiError && caught.status === 403) {
+      tunnelSummary.value = "forbidden";
+    } else {
+      tunnelSummary.value = "error";
+    }
+  }
+}
+
 onMounted(async () => {
   await resource.run();
+  await loadTunnelSummary();
   // Best-effort: a Central without published releases still renders the page, it
   // just has nothing to offer in the picker.
   try {
@@ -408,6 +438,43 @@ const confirmMessage = computed(() => {
               >
             </p>
           </div>
+        </section>
+
+        <!-- Port forwarding: a summary and a link, with the settings, list and create form on
+             their own page (plan/11 PG-11). Shown even when the integration is off, because
+             "why is this feature missing" is a question the page should answer rather than
+             leave to a support conversation. -->
+        <section class="panel">
+          <h2>埠轉發</h2>
+          <AsyncState v-if="tunnelSummary === 'disabled'" state="empty">
+            埠轉發整合尚未啟用。
+            <RouterLink
+              v-if="canManageIntegration"
+              :to="{ name: 'integrations' }"
+            >
+              前往整合設定
+            </RouterLink>
+          </AsyncState>
+          <AsyncState
+            v-else-if="tunnelSummary === 'forbidden'"
+            state="forbidden"
+          >
+            你沒有檢視埠轉發的權限。
+          </AsyncState>
+          <template v-else>
+            <dl>
+              <div>
+                <dt>目前的隧道</dt>
+                <dd>{{ tunnelCount }}</dd>
+              </div>
+            </dl>
+            <RouterLink
+              class="link"
+              :to="{ name: 'node-tunnels', params: { id: props.id } }"
+            >
+              管理埠轉發 →
+            </RouterLink>
+          </template>
         </section>
 
         <section class="panel">

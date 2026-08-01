@@ -31,7 +31,7 @@ var LargeFrameTypes = map[string]bool{
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -164,6 +164,7 @@ type registerFields struct {
 	RunUser        string          `json:"run_user"`
 	Runtimes       []runtimeItem   `json:"runtimes"`
 	WorkspaceRoots []workspaceRoot `json:"workspace_roots"`
+	Tunnel         *tunnelReport   `json:"tunnel"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -179,7 +180,74 @@ type hbResources struct {
 }
 type runtimeStatusFields struct {
 	Runtimes []runtimeItem `json:"runtimes"`
+	Tunnel   *tunnelReport `json:"tunnel"`
 }
+
+// tunnelReport is a node's port-forwarding prerequisites (P11, ADR 0022). Optional, so a
+// daemon that predates the capability still registers; a missing object means "this node
+// cannot forward ports", which is also the correct reading of an old daemon.
+//
+// Note what is not here: a credential, or any field about one. The provider credential is
+// the platform's, delivered per request, so this direction of the protocol has nothing to
+// say about it — and a field that does not exist cannot leak.
+type tunnelReport struct {
+	Veto                 *bool    `json:"veto"`
+	SSHAvailable         *bool    `json:"ssh_available"`
+	EgressOK             *bool    `json:"egress_ok"`
+	KnownHostsOK         *bool    `json:"known_hosts_ok"`
+	DaemonSupportsTunnel *bool    `json:"daemon_supports_tunnel"`
+	AllowedPorts         []string `json:"allowed_ports"`
+	MaxTunnels           int      `json:"max_tunnels"`
+}
+
+// validTunnelReport mirrors node-tunnel-report.schema.json.
+func validTunnelReport(report *tunnelReport) bool {
+	if report == nil {
+		return true
+	}
+	if report.Veto == nil || report.SSHAvailable == nil || report.EgressOK == nil ||
+		report.KnownHostsOK == nil || report.DaemonSupportsTunnel == nil {
+		return false
+	}
+	if len(report.AllowedPorts) > 64 {
+		return false
+	}
+	for _, spec := range report.AllowedPorts {
+		if !validPortSpec(spec) {
+			return false
+		}
+	}
+	return report.MaxTunnels >= 0 && report.MaxTunnels <= 100
+}
+
+// validPortSpec accepts "5173" and "3000-3999" and nothing else — in particular nothing
+// that could carry a separator into the provider's comma-separated options.
+func validPortSpec(spec string) bool {
+	if spec == "" || len(spec) > 16 {
+		return false
+	}
+	low, high, found := strings.Cut(spec, "-")
+	if !validPortNumber(low) {
+		return false
+	}
+	if found && !validPortNumber(high) {
+		return false
+	}
+	return true
+}
+
+func validPortNumber(value string) bool {
+	if value == "" || len(value) > 5 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 type systemInfoFields struct {
 	OS           string  `json:"os"`
 	OSVersion    string  `json:"os_version"`
@@ -241,6 +309,112 @@ func validKeyword(s string) bool {
 }
 
 // UpdateStages and UpdateStatuses are the stable vocabularies from
+// Tunnel payload fields (P11, ADR 0022). Mirrors
+// contracts/v1/schemas/messages/tunnel-*.schema.json.
+//
+// validCredential is the load-bearing one. The credential is concatenated into
+// ssh's "<token>@<host>" argument, and the provider separates modifiers with '+'
+// and the host with '@' — so a value carrying either would change the tunnel type
+// or the destination. Central's schema already rejects those, and this rejects them
+// again: the daemon must not depend on its caller having validated anything.
+type tunnelOpenFields struct {
+	TunnelID   uuid.UUID `json:"tunnel_id"`
+	Port       int       `json:"port"`
+	Protection string    `json:"protection"`
+	Credential string    `json:"credential"`
+	BasicAuth  *struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	} `json:"basic_auth"`
+	AllowedIPs  []string `json:"allowed_ips"`
+	RewriteHost bool     `json:"rewrite_host"`
+	TTLSeconds  int      `json:"ttl_seconds"`
+}
+
+type tunnelOpenedFields struct {
+	TunnelID          uuid.UUID `json:"tunnel_id"`
+	URL               string    `json:"url"`
+	Provider          string    `json:"provider"`
+	UpstreamExpiresAt string    `json:"upstream_expires_at"`
+	Authenticated     bool      `json:"authenticated"`
+}
+
+type tunnelIDFields struct {
+	TunnelID uuid.UUID `json:"tunnel_id"`
+}
+
+type tunnelClosedFields struct {
+	TunnelID uuid.UUID `json:"tunnel_id"`
+	Reason   string    `json:"reason"`
+}
+
+type tunnelStatusFields struct {
+	TunnelID          uuid.UUID `json:"tunnel_id"`
+	State             string    `json:"state"`
+	URL               string    `json:"url"`
+	UpstreamExpiresAt string    `json:"upstream_expires_at"`
+	ErrorCode         string    `json:"error_code"`
+}
+
+var (
+	tunnelProtectionSet = map[string]bool{"basic": true, "ipallow": true, "public": true}
+	tunnelReasonSet     = map[string]bool{"requested": true, "expired": true, "provider_failed": true, "shutdown": true}
+	tunnelStateSet      = map[string]bool{"running": true, "reconnecting": true, "failed": true, "closed": true}
+	tunnelErrorCodeSet  = map[string]bool{
+		"TUNNEL_PROVIDER_UNAVAILABLE":  true,
+		"TUNNEL_PROVIDER_UNAUTHORIZED": true,
+		"TUNNEL_PROVIDER_UNTRUSTED":    true,
+		"TUNNEL_PORT_NOT_ALLOWED":      true,
+		"INTERNAL_ERROR":               true,
+	}
+)
+
+// ValidCredential reports whether a provider credential is safe to place in the
+// ssh destination argument. Exported because the tunnel supervisor checks it again
+// at the point of use, not only at decode time.
+func ValidCredential(value string) bool {
+	if len(value) < 8 || len(value) > 128 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if !(c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+			return false
+		}
+	}
+	return true
+}
+
+// validBasicAuthPart rejects ':' (the provider option's own separator) and anything
+// outside printable ASCII.
+func validBasicAuthPart(value string, minLen int) bool {
+	if len(value) < minLen || len(value) > 64 {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		c := value[i]
+		if c <= 0x20 || c >= 0x7f || c == ':' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidTunnelURL enforces https-only, bounded, control-character-free URLs. The URL
+// is external input: the daemon parsed it out of the provider's stdout, so it is
+// checked before it can travel to Central and from there to a browser.
+func ValidTunnelURL(value string) bool {
+	if len(value) == 0 || len(value) > 2048 || !strings.HasPrefix(value, "https://") {
+		return false
+	}
+	for i := 0; i < len(value); i++ {
+		if value[i] <= 0x20 || value[i] == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
 // contracts/v1/schemas/messages/daemon-update-result.schema.json. Exported so
 // internal/update reports a stage the schema accepts rather than free text.
 var UpdateStages = []string{"manifest", "download", "checksum", "swap", "restart", "healthcheck"}
@@ -345,6 +519,45 @@ func ValidateControl(raw []byte) error {
 			p.MaxResults < 0 || p.MaxResults > 200 {
 			return errors.New("INVALID_MESSAGE")
 		}
+	case "tunnel.open":
+		var p tunnelOpenFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.TunnelID == uuid.Nil ||
+			p.Port < 1024 || p.Port > 65535 || !tunnelProtectionSet[p.Protection] ||
+			p.TTLSeconds < 60 || p.TTLSeconds > 86400 ||
+			(p.Credential != "" && !ValidCredential(p.Credential)) ||
+			(p.Protection == "basic" && (p.BasicAuth == nil ||
+				!validBasicAuthPart(p.BasicAuth.Username, 1) ||
+				!validBasicAuthPart(p.BasicAuth.Password, 8))) ||
+			(p.Protection == "ipallow" && len(p.AllowedIPs) == 0) ||
+			len(p.AllowedIPs) > 32 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "tunnel.opened":
+		var p tunnelOpenedFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.TunnelID == uuid.Nil ||
+			!ValidTunnelURL(p.URL) || p.Provider != "pinggy" {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "tunnel.close":
+		var p tunnelIDFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.TunnelID == uuid.Nil {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "tunnel.closed":
+		var p tunnelClosedFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.TunnelID == uuid.Nil ||
+			!tunnelReasonSet[p.Reason] {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "tunnel.status":
+		var p tunnelStatusFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.TunnelID == uuid.Nil ||
+			!tunnelStateSet[p.State] ||
+			(p.URL != "" && !ValidTunnelURL(p.URL)) ||
+			(p.ErrorCode != "" && !tunnelErrorCodeSet[p.ErrorCode]) ||
+			(p.State == "failed" && p.ErrorCode == "") {
+			return errors.New("INVALID_MESSAGE")
+		}
 	case "daemon.update":
 		var p daemonUpdateFields
 		if strictUnmarshal(env.Payload, &p) != nil || !ValidTargetVersion(p.TargetVersion) {
@@ -363,7 +576,7 @@ func ValidateControl(raw []byte) error {
 		if strictUnmarshal(env.Payload, &p) != nil ||
 			p.Name == "" || p.Hostname == "" || p.OS == "" || p.OSVersion == "" ||
 			p.DaemonVersion == "" || p.RunUser == "" || !validArch(p.Architecture) ||
-			!validRuntimes(p.Runtimes) {
+			!validRuntimes(p.Runtimes) || !validTunnelReport(p.Tunnel) {
 			return errors.New("INVALID_MESSAGE")
 		}
 		for _, w := range p.WorkspaceRoots {
@@ -379,7 +592,8 @@ func ValidateControl(raw []byte) error {
 		}
 	case "node.runtime_status":
 		var p runtimeStatusFields
-		if strictUnmarshal(env.Payload, &p) != nil || !validRuntimes(p.Runtimes) {
+		if strictUnmarshal(env.Payload, &p) != nil || !validRuntimes(p.Runtimes) ||
+			!validTunnelReport(p.Tunnel) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "node.system_info":

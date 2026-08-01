@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/cliora/cliora/daemon/internal/config"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
+	"github.com/cliora/cliora/daemon/internal/tunnel"
 	"github.com/cliora/cliora/daemon/internal/update"
 )
 
@@ -126,6 +128,10 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 				}
 			}
 
+			if cfgErr == nil {
+				reportTunnelReadiness(out, cfg, report, note)
+			}
+
 			if !ok {
 				return fmt.Errorf("doctor found problems")
 			}
@@ -191,5 +197,63 @@ func checkReadableDir(path string) error {
 		return fmt.Errorf("not readable")
 	}
 	_ = f.Close()
+	return nil
+}
+
+// reportTunnelReadiness answers the four questions port forwarding fails on (P11, ADR 0022).
+// Without them, all four look identical from the platform: "could not open a tunnel".
+//
+// There is deliberately no credential check. The provider credential is held by the platform
+// and delivered with each request, so this node has nothing to inspect — and saying so here
+// is better than leaving a reader to wonder which check is missing.
+func reportTunnelReadiness(
+	out io.Writer,
+	cfg *config.Config,
+	report func(string, error),
+	note func(string, string),
+) {
+	if !cfg.TunnelEnabled() {
+		// A veto is a valid configuration, not a fault: it must not fail doctor.
+		note("tunnel", "disabled on this node (tunnel.enabled: false); the platform cannot override this")
+		return
+	}
+	if _, err := exec.LookPath("ssh"); err != nil {
+		report("tunnel:ssh-client", fmt.Errorf("ssh not found on PATH (install openssh-client)"))
+	} else {
+		report("tunnel:ssh-client", nil)
+	}
+
+	path := cfg.Tunnel.KnownHostsPath
+	switch info, err := os.Stat(path); {
+	case err != nil:
+		report("tunnel:host-key", fmt.Errorf("%s is missing; tunnels are refused without it", path))
+	case info.Size() == 0:
+		report("tunnel:host-key", fmt.Errorf("%s is empty; tunnels are refused without a pinned key", path))
+	default:
+		report("tunnel:host-key", nil)
+	}
+
+	if err := dialProvider(); err != nil {
+		report("tunnel:provider-reachable", err)
+	} else {
+		report("tunnel:provider-reachable", nil)
+	}
+
+	if len(cfg.Tunnel.AllowedPorts) > 0 {
+		fmt.Fprintf(out, "[info] tunnel allowed ports on this node: %s\n",
+			strings.Join(cfg.Tunnel.AllowedPorts, ", "))
+	}
+	fmt.Fprintf(out, "[info] tunnel credential is held by the platform, not this node\n")
+}
+
+// dialProvider tests outbound reachability to the provider's SSH endpoint. A plain TCP
+// connect: enough to tell a blocked egress from a broken tunnel, and it authenticates
+// nothing and sends nothing.
+func dialProvider() error {
+	conn, err := net.DialTimeout("tcp", tunnel.ProviderDialAddress(), 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("cannot reach %s (check firewall or proxy)", tunnel.ProviderDialAddress())
+	}
+	_ = conn.Close()
 	return nil
 }

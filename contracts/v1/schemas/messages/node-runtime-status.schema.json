@@ -3,6 +3,7 @@
   "type": "object", "additionalProperties": false,
   "required": ["runtimes"],
   "properties": {
+    "tunnel": {"$ref": "node-tunnel-report.schema.json"},
     "runtimes": {
       "type": "array", "maxItems": 16,
       "items": {"$ref": "runtime-item.schema.json"}

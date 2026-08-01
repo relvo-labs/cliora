@@ -11,9 +11,11 @@ from app.services.audit_query import AuditItem, AuditPage
 from app.services.dashboard import Summary
 from app.services.enrollment import token_status
 from app.services.favorites import Usability
+from app.services.integrations import IntegrationView
 from app.services.nodes import RegisterNodeInput, RuntimeInput, WorkspaceRootInput
 from app.services.rbac import role_actions
 from app.services.releases import Manifest
+from app.services.tunnels import TunnelView
 
 
 class LoginRequest(BaseModel):
@@ -559,3 +561,237 @@ class AuditPageDTO(BaseModel):
             items=[AuditItemDTO.from_item(item) for item in page.items],
             next_cursor=page.next_cursor,
         )
+
+
+# --- P11 port forwarding through a third-party provider (ADR 0022) ---
+#
+# The one rule that shapes every DTO below: no response type has a field the provider
+# credential or a tunnel password could travel in. `TunnelCredentialDTO` carries the
+# fingerprint and nothing else, and `basic_auth_password` exists only on `TunnelDetail`,
+# which is returned by exactly two routes. Both are asserted by test, because "we do not put
+# it in the response" is a property of the type, not of the intention.
+
+
+class TunnelCredentialDTO(BaseModel):
+    """What an interface may know about the stored provider credential (D19).
+
+    There is no "reveal" affordance to design for: the browser never receives the token, so
+    a show-password control could not be built even if someone asked for one. The fingerprint
+    answers the only question an administrator actually has — "is this the one I rotated
+    last week".
+    """
+
+    configured: bool
+    fingerprint: str | None
+    updated_at: datetime | None
+    updated_by: uuid.UUID | None
+
+
+class TunnelIntegrationDTO(BaseModel):
+    enabled: bool
+    provider: str
+    plan_tier: str
+    credential: TunnelCredentialDTO
+    concurrent_budget: int
+    default_protection: str
+    default_ttl_seconds: int
+    allowed_ports: list[str] | None
+    acknowledged_at: datetime | None
+    # Reported by the server so the settings page can say "this environment cannot store a
+    # credential" before an administrator types one, rather than after pressing save.
+    secret_key_available: bool
+    # Reported alongside because disabling does not close what is already running: the
+    # consequence has to be visible before the switch is thrown, not explained afterwards.
+    active_tunnel_count: int
+
+    @classmethod
+    def from_view(cls, view: IntegrationView, *, active_tunnel_count: int) -> TunnelIntegrationDTO:
+        return cls(
+            enabled=view.enabled,
+            provider=view.provider,
+            plan_tier=view.plan_tier,
+            credential=TunnelCredentialDTO(
+                configured=view.credential.configured,
+                fingerprint=view.credential.fingerprint,
+                updated_at=view.credential.updated_at,
+                updated_by=view.credential.updated_by,
+            ),
+            concurrent_budget=view.concurrent_budget,
+            default_protection=view.default_protection,
+            default_ttl_seconds=view.default_ttl_seconds,
+            allowed_ports=view.allowed_ports,
+            acknowledged_at=view.acknowledged_at,
+            secret_key_available=view.secret_key_available,
+            active_tunnel_count=active_tunnel_count,
+        )
+
+
+class UpdateTunnelIntegrationRequest(BaseModel):
+    enabled: bool | None = None
+    plan_tier: Literal["free", "pro"] | None = None
+    concurrent_budget: int | None = Field(default=None, ge=1, le=100)
+    default_protection: Literal["basic", "ipallow", "public"] | None = None
+    default_ttl_seconds: int | None = Field(default=None, ge=60, le=86400)
+    allowed_ports: list[str] | None = Field(default=None, max_length=64)
+    # Separate from `allowed_ports: null`, which means "leave it alone": an empty list forbids
+    # every port and NULL removes the platform-wide narrowing, and those are opposite
+    # intentions that must not share an encoding.
+    clear_allowed_ports: bool = False
+    # The administrator's one-time acknowledgement that forwarded traffic leaves for a third
+    # party (D14). Never defaulted to true anywhere on the server.
+    acknowledge: bool = False
+
+
+class SetTunnelCredentialRequest(BaseModel):
+    """The pattern is a security control, not tidiness.
+
+    This value is concatenated into ssh's `<token>@<host>` argument on the node, where the
+    provider separates modifiers with `+` and the host with `@`. A token containing `+tcp`
+    would change the tunnel type; one containing `@evil.host` would change where the node
+    connects. Validated here, on the wire, and again in the service.
+    """
+
+    token: str = Field(min_length=8, max_length=128, pattern=r"^[A-Za-z0-9]+$")
+    plan_tier: Literal["free", "pro"] | None = None
+
+
+class TunnelCapabilities(BaseModel):
+    can_close: bool
+    can_rotate: bool
+
+
+class TunnelSummary(BaseModel):
+    id: uuid.UUID
+    node_id: uuid.UUID
+    node_name: str | None
+    port: int
+    label: str | None
+    # Assigned by the provider seconds after creation, and reassigned on every reconnect on
+    # the free tier — which is why `url_updated_at` and `url_change_count` travel with it.
+    url: str | None
+    url_updated_at: datetime | None
+    url_change_count: int
+    # Derived per response from closed_at/expires_at/state_error_code and whether the node is
+    # connected. There is no stored status to disagree with (ADR 0022).
+    state: str
+    protection: str
+    basic_auth_user: str | None
+    provider: str
+    # The provider's own deadline, kept apart from ours: "we ended it" and "they ended it"
+    # need different explanations.
+    upstream_expires_at: datetime | None
+    expires_at: datetime
+    created_by_username: str | None
+    created_at: datetime
+    capabilities: TunnelCapabilities
+    state_error_code: str | None
+
+    @classmethod
+    def from_view(cls, view: TunnelView) -> TunnelSummary:
+        tunnel = view.tunnel
+        return cls(
+            id=tunnel.id,
+            node_id=tunnel.node_id,
+            node_name=view.node_name,
+            port=tunnel.port,
+            label=tunnel.label,
+            url=tunnel.url,
+            url_updated_at=tunnel.url_updated_at,
+            url_change_count=tunnel.url_change_count,
+            state=view.state,
+            protection=tunnel.protection,
+            basic_auth_user=tunnel.basic_auth_user,
+            provider=tunnel.provider,
+            upstream_expires_at=tunnel.upstream_expires_at,
+            expires_at=tunnel.expires_at,
+            created_by_username=view.created_by_username,
+            created_at=tunnel.created_at,
+            capabilities=TunnelCapabilities(can_close=view.can_close, can_rotate=view.can_rotate),
+            state_error_code=tunnel.state_error_code,
+        )
+
+
+class TunnelDetail(TunnelSummary):
+    """The creation and rotation response, and the only DTO with a password field.
+
+    `basic_auth_password` is populated on those two paths and nowhere else, because only the
+    Argon2 hash is stored: there is no later request that could return it. Rotating means
+    closing and reopening the tunnel, so the URL may change — the field pair
+    (`url`, `url_updated_at`) is how the caller sees that it did.
+    """
+
+    allowed_ips: list[str] | None = None
+    rewrite_host: bool = False
+    basic_auth_password: str | None = None
+
+    @classmethod
+    def from_view(cls, view: TunnelView) -> TunnelDetail:
+        base = TunnelSummary.from_view(view)
+        return cls(
+            **base.model_dump(),
+            allowed_ips=view.tunnel.allowed_ips,
+            rewrite_host=view.tunnel.rewrite_host,
+            basic_auth_password=view.basic_auth_password,
+        )
+
+
+class CreateTunnelRequest(BaseModel):
+    """There is deliberately no `url`, `host`, `provider_options` or `ssh_options` field.
+
+    Central must not become the source of what a node runs (SEC-002): the provider host is a
+    daemon-side constant and the target is always the node's own loopback.
+    """
+
+    node_id: uuid.UUID
+    port: int = Field(ge=1024, le=65535)
+    protection: Literal["basic", "ipallow", "public"] | None = None
+    allowed_ips: list[str] | None = Field(default=None, max_length=32)
+    label: str | None = Field(default=None, max_length=128)
+    ttl_seconds: int | None = Field(default=None, ge=60, le=86400)
+    # Off by default: rewriting Host makes a dev server's own absolute URLs point at
+    # loopback, which is worse than the allowlist refusal it works around (PG-01 #11).
+    rewrite_host: bool = False
+    acknowledge_third_party: bool = False
+    acknowledge_public: bool = False
+
+
+class NodeTunnelPolicyDTO(BaseModel):
+    """The effective policy for one node, and what each layer contributed to it.
+
+    The per-layer detail is the point rather than decoration: with three layers, "you cannot
+    forward this port" has three possible causes and three different people who can fix it.
+    A page that shows only the outcome makes the user change settings at random.
+    """
+
+    node_id: uuid.UUID
+    enabled: bool
+    # `integration` / `node_settings` / `node_local`, or null when nothing refuses.
+    blocked_by: str | None
+    allowed_ports: list[str]
+    max_tunnels: int
+    live_tunnel_count: int
+    # The platform's per-node settings, which this page edits.
+    node_enabled: bool
+    node_allowed_ports: list[str] | None
+    node_max_tunnels: int | None
+    # The node's own last report. `reported_at` is null when it has never spoken, which is a
+    # different state from "not ready" and the reason both are shown.
+    local_veto: bool
+    prereq_ok: bool
+    prereq_detail: dict[str, Any] | None
+    local_allowed_ports: list[str] | None
+    local_max_tunnels: int | None
+    reported_at: datetime | None
+    # From the integration row, so the page can explain the free tier's hourly URL change and
+    # the public IP embedded in its hostnames without hardcoding a plan.
+    plan_tier: str
+    default_protection: str
+    default_ttl_seconds: int
+
+
+class UpdateNodeTunnelSettingsRequest(BaseModel):
+    enabled: bool | None = None
+    allowed_ports: list[str] | None = Field(default=None, max_length=64)
+    clear_allowed_ports: bool = False
+    max_tunnels: int | None = Field(default=None, ge=1, le=100)
+    clear_max_tunnels: bool = False

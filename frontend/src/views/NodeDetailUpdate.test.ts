@@ -78,6 +78,17 @@ function testRouter(): Router {
     routes: [
       { path: "/nodes", name: "nodes", component: { template: "<div/>" } },
       { path: "/nodes/:id", name: "node-detail", component: NodeDetailView },
+      // The port-forwarding summary section links to these (P11).
+      {
+        path: "/nodes/:id/tunnels",
+        name: "node-tunnels",
+        component: { template: "<div/>" },
+      },
+      {
+        path: "/settings/integrations",
+        name: "integrations",
+        component: { template: "<div/>" },
+      },
     ],
   });
 }

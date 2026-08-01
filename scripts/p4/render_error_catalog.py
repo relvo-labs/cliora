@@ -76,6 +76,20 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
     ),
     ("Enrollment", ("ENROLLMENT_TOKEN_INVALID",)),
     (
+        "Port forwarding",
+        (
+            "SECRET_KEY_MISSING",
+            "TUNNEL_INTEGRATION_DISABLED",
+            "TUNNEL_NODE_DISABLED",
+            "TUNNEL_PROVIDER_NOT_CONFIGURED",
+            "TUNNEL_PROVIDER_UNAVAILABLE",
+            "TUNNEL_PROVIDER_UNAUTHORIZED",
+            "TUNNEL_PROVIDER_UNTRUSTED",
+            "TUNNEL_PORT_NOT_ALLOWED",
+            "TUNNEL_LIMIT_REACHED",
+        ),
+    ),
+    (
         "Node and relay",
         (
             "NODE_NOT_FOUND",

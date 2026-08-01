@@ -157,3 +157,46 @@ def test_scope_012_the_vm_filesystem_is_not_mounted_on_central() -> None:
     sources = "\n".join(path.read_text(encoding="utf-8") for path in app_root.rglob("*.py"))
     for phrase in ("mount -t", "sshfs ", "mount.nfs", "os.system"):
         assert phrase not in sources, f"Central appears to mount a filesystem: {phrase}"
+
+
+def test_scope_013_central_does_not_proxy_to_a_node_http_service() -> None:
+    """Port forwarding is an integration, not a reverse proxy (ADR 0022).
+
+    This is the mechanical half of the scope guard. The self-hosted design (plan/10, withdrawn)
+    would have needed three things Central must not grow: a catch-all route that accepts an
+    arbitrary path, an HTTP client aimed at a node, and a streaming relay between the two. The
+    tunnel service sends a control frame and stores what comes back; nothing more.
+
+    The reason to test rather than to trust the plan: a proxy is the obvious answer to the next
+    request that arrives ("can I open the preview inside the console?"), and it would arrive as
+    a small, reasonable-looking diff.
+    """
+    app_root = Path(__file__).resolve().parents[1] / "app"
+    sources = {path: path.read_text(encoding="utf-8") for path in app_root.rglob("*.py")}
+    blob = "\n".join(sources.values())
+
+    # A catch-all path parameter is how a proxy route is spelled in FastAPI.
+    for pattern in ("{path:path}", "{full_path:path}", "{proxy_path:path}"):
+        assert pattern not in blob, f"a catch-all route appeared in Central: {pattern}"
+
+    # No outbound HTTP client library: Central talks to nodes over the authenticated
+    # WebSocket and to nothing else. (`httpx` is a test dependency; the app does not import it.)
+    imported: set[str] = set()
+    for path, text in sources.items():
+        tree = ast.parse(text, filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                imported.add(node.module.split(".")[0])
+    assert not imported & {"httpx", "requests", "aiohttp", "urllib3"}, (
+        "Central imports an HTTP client; the port-forwarding path must not route traffic"
+    )
+
+    # And the tunnel surface carries no field that could name where to connect: the provider
+    # host is a daemon-side constant and the target is always the node's own loopback (SEC-002).
+    schema = json.loads((MESSAGE_SCHEMAS / "tunnel-open.schema.json").read_text())
+    assert schema["additionalProperties"] is False
+    assert not {"host", "hostname", "url", "scheme", "ssh_options", "provider_options"} & set(
+        schema["properties"]
+    )

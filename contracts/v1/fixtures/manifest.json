@@ -61,7 +61,18 @@
     {"path":"invalid/daemon-update-missing-version.json","accept":false,"code":"INVALID_MESSAGE"},
     {"path":"invalid/daemon-update-result-bad-status.json","accept":false,"code":"INVALID_MESSAGE"},
     {"path":"invalid/daemon-update-result-bad-stage.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-result-bad-error-code.json","accept":false,"code":"INVALID_MESSAGE"}
+    {"path":"invalid/daemon-update-result-bad-error-code.json","accept":false,"code":"INVALID_MESSAGE"},
+    {"path":"valid/tunnel-open-basic.json","accept":true,"type":"tunnel.open"},
+    {"path":"valid/tunnel-open-free-public.json","accept":true,"type":"tunnel.open"},
+    {"path":"valid/tunnel-opened.json","accept":true,"type":"tunnel.opened"},
+    {"path":"valid/tunnel-status-url-changed.json","accept":true,"type":"tunnel.status"},
+    {"path":"invalid/tunnel-open-credential-with-plus.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
+    {"path":"invalid/tunnel-open-privileged-port.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
+    {"path":"invalid/tunnel-open-colon-in-password.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
+    {"path":"invalid/tunnel-open-with-host-field.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
+    {"path":"invalid/tunnel-opened-http-url.json","accept":false,"type":"tunnel.opened","code":"INVALID_MESSAGE"},
+    {"path":"valid/node-register-with-tunnel.json","accept":true,"type":"node.register"},
+    {"path":"invalid/node-register-tunnel-unknown-field.json","accept":false,"type":"node.register","code":"INVALID_MESSAGE"}
   ],
   "binary": [
     {"name":"valid-output","accept":true,"version":1,"kind":2,"session_id":"00000000-0000-4000-8000-000000000002","payload_hex":"1b5b33316de4b8ade69687"},

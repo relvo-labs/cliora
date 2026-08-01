@@ -1,3 +1,5 @@
+import base64
+import binascii
 from functools import lru_cache
 from typing import Literal
 
@@ -166,6 +168,60 @@ class Settings(BaseSettings):
     # "no answer yet", not "failed": the node's state stays `in_progress` until its
     # own report or its next registration settles it.
     update_request_timeout_seconds: float = 180
+
+    # --- P11 third-party tunnel integration (ADR 0022) ---
+    # Whether the integration is *on* is not here: it lives in the `tunnel_integration`
+    # table, because an administrator turns it on in the UI and supplies the provider
+    # credential in the same action. What stays in the environment is the key that makes
+    # storing that credential possible, plus the bounds and timeouts.
+    #
+    # Unset means this deployment cannot store an integration credential, and enabling the
+    # integration is refused (SECRET_KEY_MISSING) rather than falling back to plain text.
+    # 32 bytes, base64: `openssl rand -base64 32`.
+    secret_encryption_key: str = ""
+    tunnel_max_ttl_seconds: int = 24 * 3600
+    # Per-node ceiling. The fleet-wide budget is a provider-plan fact and lives in the
+    # integration row; the two are separate checks, never one minimum (ADR 0022 D17b).
+    tunnels_per_node_max: int = 3
+    tunnels_per_user_max: int = 5
+    # Covers the ssh handshake, the provider assigning a URL, and the daemon parsing it.
+    # The middle step is entirely outside our control, which is why this is generous and
+    # why the daemon's own wait (15 s) is deliberately shorter: whoever gives up first
+    # decides what the user is told, and "the node timed out" is more useful than
+    # "Central timed out" when the node is the one that knows.
+    tunnel_open_timeout_seconds: float = 20
+    # Closing is local work on the node — signal the child, reap it — and touches the
+    # provider not at all, which is why it is the shortest tunnel budget. Our own row is
+    # already settled when this is sent, so exceeding it costs nothing: the daemon stops the
+    # child at its TTL and reaps orphans on restart either way.
+    tunnel_close_timeout_seconds: float = 10
+    tunnel_basic_password_length: int = 24
+    # How often a node re-tests its egress to the provider. Per heartbeat would mean a TCP
+    # connection to a third party every ten seconds per node, which looks like scanning.
+    tunnel_node_prereq_interval_seconds: int = 300
+
+    @model_validator(mode="after")
+    def secret_encryption_key_must_be_32_bytes(self) -> "Settings":
+        """Fail at startup rather than when an administrator presses save.
+
+        A wrong-length key is not detectable until the first encryption, and that first
+        encryption happens while somebody is typing a credential into a form.
+        """
+        raw = self.secret_encryption_key.strip()
+        if not raw:
+            return self
+        try:
+            decoded = base64.b64decode(raw, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise ValueError(
+                "secret_encryption_key must be base64 (openssl rand -base64 32)"
+            ) from exc
+        if len(decoded) != 32:
+            raise ValueError(
+                "secret_encryption_key must decode to exactly 32 bytes "
+                f"(got {len(decoded)}); generate one with `openssl rand -base64 32`"
+            )
+        return self
 
     @model_validator(mode="after")
     def require_a_scrape_token_when_metrics_are_enabled(self) -> "Settings":
