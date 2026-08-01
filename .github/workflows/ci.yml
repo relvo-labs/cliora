@@ -19,6 +19,14 @@ jobs:
       - run: uv run --project backend ruff check backend
       - run: uv run --project backend mypy backend/app
       - run: uv run --project backend pytest backend/tests -q
+      # Nothing writes the provider credential somewhere it could be read back (plan/11
+      # PG-14, ADR 0022 D19). It lives in the baseline gate rather than a phase workflow for
+      # the same reason as the layout gates below: it is a permanent rule, and the change it
+      # prevents is a single line added while debugging. The behavioural half of the same
+      # rule (responses, DOM, audit metadata) is asserted by the test suites above; this
+      # covers what a test cannot reach — fixtures, templates and log call sites.
+      - name: no credential leak paths
+        run: scripts/pg/check-no-token-leak.sh
   daemon:
     runs-on: ubuntu-24.04
     steps:

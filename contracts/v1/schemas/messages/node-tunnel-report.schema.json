@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A node's port-forwarding prerequisites (P11, ADR 0022). Prerequisites, not a credential: the provider credential is held by the platform and delivered per request, so a node has nothing to report about it. These four booleans exist so the platform can distinguish the four ways port forwarding fails before a user presses anything - without them every one of them reaches the UI as \"could not open a tunnel\". `veto` is the node owner's refusal and the platform must never override it.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "veto": {
+      "type": "boolean"
+    },
+    "ssh_available": {
+      "type": "boolean"
+    },
+    "egress_ok": {
+      "type": "boolean"
+    },
+    "known_hosts_ok": {
+      "type": "boolean"
+    },
+    "daemon_supports_tunnel": {
+      "type": "boolean"
+    },
+    "allowed_ports": {
+      "type": "array",
+      "maxItems": 64,
+      "items": {
+        "type": "string",
+        "maxLength": 16,
+        "pattern": "^[0-9]{1,5}(-[0-9]{1,5})?$"
+      }
+    },
+    "max_tunnels": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    }
+  },
+  "required": [
+    "veto",
+    "ssh_available",
+    "egress_ok",
+    "known_hosts_ok",
+    "daemon_supports_tunnel"
+  ]
+}

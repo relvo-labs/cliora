@@ -50,6 +50,15 @@ const TYPES = new Set([
   "daemon.doctor_result",
   "daemon.update",
   "daemon.update_result",
+  // Tunnel control types (v1.6.0, ADR 0022). The browser never receives these — port
+  // forwarding is managed over HTTP and its data path does not involve Central at all —
+  // but the envelope type vocabulary is shared across all three consumers, so the
+  // manifest-driven contract test validates them here too.
+  "tunnel.open",
+  "tunnel.opened",
+  "tunnel.close",
+  "tunnel.closed",
+  "tunnel.status",
   "error",
 ]);
 const ENVELOPE_KEYS = new Set([
@@ -173,7 +182,61 @@ function validateRuntimeItem(item: unknown): void {
     reject("INVALID_MESSAGE", "runtime.available must be boolean");
 }
 
+// A node's port-forwarding prerequisites. Optional, so a daemon that predates the capability
+// still registers; a missing object reads as "this node cannot forward ports", which is also
+// the right reading of an old daemon. Note what cannot appear here: anything about a
+// credential — that is the platform's, and a field that does not exist cannot leak.
+function validateTunnelReport(value: unknown): void {
+  if (!isPlainObject(value))
+    reject("INVALID_MESSAGE", "tunnel must be an object");
+  requireKeys(
+    value,
+    new Set([
+      "veto",
+      "ssh_available",
+      "egress_ok",
+      "known_hosts_ok",
+      "daemon_supports_tunnel",
+      "allowed_ports",
+      "max_tunnels",
+    ]),
+    [
+      "veto",
+      "ssh_available",
+      "egress_ok",
+      "known_hosts_ok",
+      "daemon_supports_tunnel",
+    ],
+  );
+  for (const flag of [
+    "veto",
+    "ssh_available",
+    "egress_ok",
+    "known_hosts_ok",
+    "daemon_supports_tunnel",
+  ]) {
+    if (typeof value[flag] !== "boolean")
+      reject("INVALID_MESSAGE", `tunnel.${flag} must be boolean`);
+  }
+  if (value.allowed_ports !== undefined) {
+    if (!Array.isArray(value.allowed_ports) || value.allowed_ports.length > 64)
+      reject("INVALID_MESSAGE", "Invalid tunnel allowed_ports");
+    for (const spec of value.allowed_ports)
+      if (typeof spec !== "string" || !/^[0-9]{1,5}(-[0-9]{1,5})?$/.test(spec))
+        reject("INVALID_MESSAGE", "Invalid tunnel port spec");
+  }
+  if (
+    value.max_tunnels !== undefined &&
+    (typeof value.max_tunnels !== "number" ||
+      !Number.isInteger(value.max_tunnels) ||
+      value.max_tunnels < 1 ||
+      value.max_tunnels > 100)
+  )
+    reject("INVALID_MESSAGE", "Invalid tunnel max_tunnels");
+}
+
 function validateRegisterPayload(payload: Record<string, unknown>): void {
+  if (payload.tunnel !== undefined) validateTunnelReport(payload.tunnel);
   requireKeys(
     payload,
     new Set([
@@ -186,6 +249,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "run_user",
       "runtimes",
       "workspace_roots",
+      "tunnel",
     ]),
     [
       "name",
@@ -250,7 +314,8 @@ function validateHeartbeatPayload(payload: Record<string, unknown>): void {
 }
 
 function validateRuntimeStatusPayload(payload: Record<string, unknown>): void {
-  requireKeys(payload, new Set(["runtimes"]), ["runtimes"]);
+  if (payload.tunnel !== undefined) validateTunnelReport(payload.tunnel);
+  requireKeys(payload, new Set(["runtimes", "tunnel"]), ["runtimes"]);
   if (!Array.isArray(payload.runtimes))
     reject("INVALID_MESSAGE", "runtimes must be an array");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
@@ -365,6 +430,209 @@ const UPDATE_ERROR_CODES = new Set([
   "UPDATE_IN_PROGRESS",
 ]);
 
+// --- Tunnel payloads (v1.6.0, ADR 0022) ---
+//
+// The browser is not a producer or consumer of these frames: port forwarding is driven
+// over HTTP and its data path never touches Central. They are validated here because the
+// contract is cross-language by construction — one manifest, three consumers — and a type
+// this consumer accepts without checking is a type it would happily forward malformed.
+const TUNNEL_CREDENTIAL = /^[A-Za-z0-9]{8,128}$/;
+const TUNNEL_URL =
+  /^https:\/\/[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?(\/[^\s]*)?$/;
+const TUNNEL_PROTECTION = new Set(["basic", "ipallow", "public"]);
+const TUNNEL_STATE = new Set(["running", "reconnecting", "failed", "closed"]);
+const TUNNEL_REASON = new Set([
+  "requested",
+  "expired",
+  "provider_failed",
+  "shutdown",
+]);
+const TUNNEL_ERROR_CODE = new Set([
+  "TUNNEL_PROVIDER_UNAVAILABLE",
+  "TUNNEL_PROVIDER_UNAUTHORIZED",
+  "TUNNEL_PROVIDER_UNTRUSTED",
+  "TUNNEL_PORT_NOT_ALLOWED",
+  "INTERNAL_ERROR",
+]);
+
+// Basic-auth parts may not contain ':' — that is the provider option's own separator, so a
+// colon would silently create a second credential pair or an unintended option.
+function validBasicAuthPart(value: unknown, minLength: number): boolean {
+  if (typeof value !== "string") return false;
+  if (value.length < minLength || value.length > 64) return false;
+  for (const ch of value) {
+    const code = ch.charCodeAt(0);
+    if (code <= 0x20 || code >= 0x7f || ch === ":") return false;
+  }
+  return true;
+}
+
+function validateTunnelOpenPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set([
+      "tunnel_id",
+      "port",
+      "protection",
+      "credential",
+      "basic_auth",
+      "allowed_ips",
+      "rewrite_host",
+      "ttl_seconds",
+    ]),
+    ["tunnel_id", "port", "protection", "ttl_seconds"],
+  );
+  if (typeof payload.tunnel_id !== "string" || !UUID.test(payload.tunnel_id))
+    reject("INVALID_MESSAGE", "Invalid tunnel id");
+  if (
+    typeof payload.port !== "number" ||
+    !Number.isInteger(payload.port) ||
+    payload.port < 1024 ||
+    payload.port > 65535
+  )
+    reject("INVALID_MESSAGE", "Invalid tunnel port");
+  if (
+    typeof payload.protection !== "string" ||
+    !TUNNEL_PROTECTION.has(payload.protection)
+  )
+    reject("INVALID_MESSAGE", "Invalid protection mode");
+  // The credential lands in ssh's "<token>@<host>" argument, where '+' selects a tunnel
+  // type and '@' selects the host. Widening this character set widens what a credential
+  // value can redirect.
+  if (
+    payload.credential !== undefined &&
+    (typeof payload.credential !== "string" ||
+      !TUNNEL_CREDENTIAL.test(payload.credential))
+  )
+    reject("INVALID_MESSAGE", "Invalid credential");
+  if (payload.basic_auth !== undefined) {
+    if (!isPlainObject(payload.basic_auth))
+      reject("INVALID_MESSAGE", "basic_auth must be an object");
+    requireKeys(payload.basic_auth, new Set(["username", "password"]), [
+      "username",
+      "password",
+    ]);
+    if (
+      !validBasicAuthPart(payload.basic_auth.username, 1) ||
+      !validBasicAuthPart(payload.basic_auth.password, 8)
+    )
+      reject("INVALID_MESSAGE", "Invalid basic auth credentials");
+  }
+  if (payload.allowed_ips !== undefined) {
+    if (!Array.isArray(payload.allowed_ips) || payload.allowed_ips.length > 32)
+      reject("INVALID_MESSAGE", "Invalid allowed_ips");
+    for (const ip of payload.allowed_ips)
+      if (typeof ip !== "string" || !/^[0-9a-fA-F:.]+(\/[0-9]{1,3})?$/.test(ip))
+        reject("INVALID_MESSAGE", "Invalid allowed_ips entry");
+  }
+  if (
+    payload.rewrite_host !== undefined &&
+    typeof payload.rewrite_host !== "boolean"
+  )
+    reject("INVALID_MESSAGE", "rewrite_host must be boolean");
+  if (
+    typeof payload.ttl_seconds !== "number" ||
+    !Number.isInteger(payload.ttl_seconds) ||
+    payload.ttl_seconds < 60 ||
+    payload.ttl_seconds > 86400
+  )
+    reject("INVALID_MESSAGE", "Invalid ttl_seconds");
+  if (payload.protection === "basic" && payload.basic_auth === undefined)
+    reject("INVALID_MESSAGE", "basic protection requires basic_auth");
+  if (
+    payload.protection === "ipallow" &&
+    (!Array.isArray(payload.allowed_ips) || payload.allowed_ips.length === 0)
+  )
+    reject("INVALID_MESSAGE", "ipallow protection requires allowed_ips");
+}
+
+function validateTunnelOpenedPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set([
+      "tunnel_id",
+      "url",
+      "provider",
+      "upstream_expires_at",
+      "authenticated",
+    ]),
+    ["tunnel_id", "url", "provider"],
+  );
+  if (typeof payload.tunnel_id !== "string" || !UUID.test(payload.tunnel_id))
+    reject("INVALID_MESSAGE", "Invalid tunnel id");
+  // https only: the daemon parsed this out of the provider's stdout, so it is external
+  // input all the way to the browser's address bar.
+  if (
+    typeof payload.url !== "string" ||
+    payload.url.length > 2048 ||
+    !TUNNEL_URL.test(payload.url)
+  )
+    reject("INVALID_MESSAGE", "Invalid tunnel url");
+  if (payload.provider !== "pinggy")
+    reject("INVALID_MESSAGE", "Unknown tunnel provider");
+  if (
+    payload.upstream_expires_at !== undefined &&
+    (typeof payload.upstream_expires_at !== "string" ||
+      !TIMESTAMP.test(payload.upstream_expires_at))
+  )
+    reject("INVALID_MESSAGE", "Invalid upstream expiry");
+  if (
+    payload.authenticated !== undefined &&
+    typeof payload.authenticated !== "boolean"
+  )
+    reject("INVALID_MESSAGE", "authenticated must be boolean");
+}
+
+function validateTunnelIdPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["tunnel_id"]), ["tunnel_id"]);
+  if (typeof payload.tunnel_id !== "string" || !UUID.test(payload.tunnel_id))
+    reject("INVALID_MESSAGE", "Invalid tunnel id");
+}
+
+function validateTunnelClosedPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["tunnel_id", "reason"]), [
+    "tunnel_id",
+    "reason",
+  ]);
+  if (typeof payload.tunnel_id !== "string" || !UUID.test(payload.tunnel_id))
+    reject("INVALID_MESSAGE", "Invalid tunnel id");
+  if (typeof payload.reason !== "string" || !TUNNEL_REASON.has(payload.reason))
+    reject("INVALID_MESSAGE", "Invalid close reason");
+}
+
+function validateTunnelStatusPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set(["tunnel_id", "state", "url", "upstream_expires_at", "error_code"]),
+    ["tunnel_id", "state"],
+  );
+  if (typeof payload.tunnel_id !== "string" || !UUID.test(payload.tunnel_id))
+    reject("INVALID_MESSAGE", "Invalid tunnel id");
+  if (typeof payload.state !== "string" || !TUNNEL_STATE.has(payload.state))
+    reject("INVALID_MESSAGE", "Invalid tunnel state");
+  if (
+    payload.url !== undefined &&
+    (typeof payload.url !== "string" ||
+      payload.url.length > 2048 ||
+      !TUNNEL_URL.test(payload.url))
+  )
+    reject("INVALID_MESSAGE", "Invalid tunnel url");
+  if (
+    payload.upstream_expires_at !== undefined &&
+    (typeof payload.upstream_expires_at !== "string" ||
+      !TIMESTAMP.test(payload.upstream_expires_at))
+  )
+    reject("INVALID_MESSAGE", "Invalid upstream expiry");
+  if (
+    payload.error_code !== undefined &&
+    (typeof payload.error_code !== "string" ||
+      !TUNNEL_ERROR_CODE.has(payload.error_code))
+  )
+    reject("INVALID_MESSAGE", "Invalid tunnel error code");
+  if (payload.state === "failed" && payload.error_code === undefined)
+    reject("INVALID_MESSAGE", "failed state requires an error code");
+}
+
 function validateDaemonUpdatePayload(payload: Record<string, unknown>): void {
   requireKeys(payload, new Set(["target_version", "allow_downgrade"]), [
     "target_version",
@@ -472,6 +740,11 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
   if (data.type === "daemon.update") validateDaemonUpdatePayload(data.payload);
   if (data.type === "daemon.update_result")
     validateDaemonUpdateResultPayload(data.payload);
+  if (data.type === "tunnel.open") validateTunnelOpenPayload(data.payload);
+  if (data.type === "tunnel.opened") validateTunnelOpenedPayload(data.payload);
+  if (data.type === "tunnel.close") validateTunnelIdPayload(data.payload);
+  if (data.type === "tunnel.closed") validateTunnelClosedPayload(data.payload);
+  if (data.type === "tunnel.status") validateTunnelStatusPayload(data.payload);
   return data as unknown as DecodedControl;
 }
 

@@ -165,6 +165,44 @@ fleet gained a capability.
 - [ ] `docs/runbooks/system-terminal.md` is reachable by whoever is on call. §6 is
       the part that matters at 3am.
 
+## 4.6 Port forwarding (plan/11, ADR 0022)
+
+Skip this section entirely if you are not enabling the integration — the capability ships
+switched off, and an upgrade exposes nothing. If you *are* enabling it, none of these are
+optional, and only the first two are commands.
+
+- [ ] **`scripts/tunnel/verify-provider.sh` has been run against the real provider** on this
+      release, and its output is in the evidence pack. Three of its twelve checks need a paid
+      token (60-minute behaviour observed to completion, persistent-subdomain hostname, the
+      plan's real concurrency limit); if you have one, run them and record the answers.
+- [ ] **`CLIORA_SECRET_ENCRYPTION_KEY` is set and backed up** (`openssl rand -base64 32`).
+      Losing it does not corrupt anything, but the stored provider credential becomes
+      unreadable and has to be entered again. `curl -s <central>/readyz | jq
+      .tunnel_integration` must say `available`.
+- [ ] **`deploy/pinggy_known_hosts` is deployed to every node** and its fingerprint matches
+      what the provider publishes. Without it a node refuses to open a tunnel — which is the
+      correct behaviour, and the reason the check belongs here rather than in an incident.
+- [ ] **`agentd` does not run as root** (already §4.5, restated because it is load-bearing
+      again: a process with the same uid can read the credential out of the `ssh` process's
+      arguments while a tunnel is open).
+- [ ] **`docs/release-note-tunnel.md` has been sent to node owners** before the upgrade, and
+      they know that `tunnel.enabled: false` is an absolute veto the platform cannot override.
+- [ ] **`concurrent_budget` matches the provider plan.** The default is 8. Exceeding a plan
+      does not queue — it evicts somebody else's tunnel.
+- [ ] **A named person owns renewing the provider subscription.** Write the name here:
+      `________`. A lapsed subscription does not surface as an expiry: the provider silently
+      issues anonymous free tunnels, and the platform reports
+      `TUNNEL_PROVIDER_UNAUTHORIZED` instead.
+- [ ] Accepted that **the provider can read the unencrypted HTTP it relays**, including
+      `Cookie` and `Authorization`, and that this is why the capability is scoped to previewing
+      applications under development. Enabling it in the console requires acknowledging exactly
+      this, and the acknowledgement is recorded with the administrator's identity.
+- [ ] Accepted that **there is no access log for a preview**: the traffic never reaches the
+      platform, so "who opened this URL" is unanswerable. If an auditor needs it, this feature
+      cannot satisfy them and nothing can be backfilled.
+- [ ] `docs/runbooks/tunnel-pinggy.md` is reachable by whoever is on call. §1 splits the five
+      distinguishable failures; §2 is the credential half.
+
 ## 5. Accepted-and-unexercised (tick only if you accept each)
 
 These cannot be closed on a normal host. Ticking means you accept them for this release.

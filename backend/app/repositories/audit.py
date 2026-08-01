@@ -84,6 +84,24 @@ class AuditRepository:
             for entry, username, display_name, node_name in result.all()
         ]
 
+    async def exists(
+        self, action: str, *, user_id: uuid.UUID, node_id: uuid.UUID | None = None
+    ) -> bool:
+        """Whether this actor has ever performed this action (on this node).
+
+        Used by the first-time acknowledgement in `TunnelService.create`: "has this person
+        already been told that traffic leaves for a third party from this node" is a question
+        the trail already answers, and a dedicated `acknowledgements` table would be a second
+        truth to keep in step with it.
+        """
+        statement = select(AuditLog.id).where(
+            AuditLog.action == action, AuditLog.user_id == user_id
+        )
+        if node_id is not None:
+            statement = statement.where(AuditLog.node_id == node_id)
+        result = await self._session.execute(statement.limit(1))
+        return result.scalars().first() is not None
+
     async def add(
         self,
         action: str,

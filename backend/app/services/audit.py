@@ -72,6 +72,27 @@ DAEMON_UPDATE_RESULT = "daemon.update_result"
 # read 403s and validation 422s are deliberately *not* audited: they are frequent,
 # uninteresting, and would bury the signal (ADR 0016).
 AUTHZ_DENIED = "authz.denied"
+# --- P11: port forwarding through a third-party provider (ADR 0022) ---
+# The integration actions are separate from the tunnel actions because they answer different
+# questions: "who decided this organisation would use this service, and with whose account"
+# versus "who exposed which port on which machine". A single action would make the first
+# unanswerable, and it is the one with the longer consequences.
+INTEGRATION_ENABLE = "integration.enable"
+INTEGRATION_DISABLE = "integration.disable"
+# Records the credential's *fingerprint*, never the credential. That is what lets a later
+# investigation say which credential a given tunnel was opened with.
+INTEGRATION_CREDENTIAL_SET = "integration.credential_set"
+INTEGRATION_NODE_SETTINGS_UPDATED = "integration.node_settings_updated"
+# The tunnel-level actions. `url` is deliberately absent from all three: it is assigned by
+# the provider and it *is* part of the access credential (under `public` protection it is the
+# whole of it), so writing it into a table every `audit.view` holder may read would hand each
+# of them access to the preview after the fact.
+TUNNEL_CREATE = "tunnel.create"
+TUNNEL_CLOSE = "tunnel.close"
+# A separate action rather than a flag on `tunnel.create`: "who decided this port would be
+# reachable by anyone holding the link" is the question that gets asked later, and a metadata
+# field inside another action cannot be filtered on.
+TUNNEL_PUBLIC_ACKNOWLEDGED = "tunnel.public_acknowledged"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -98,6 +119,13 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         DAEMON_UPDATE_STARTED,
         DAEMON_UPDATE_RESULT,
         AUTHZ_DENIED,
+        INTEGRATION_ENABLE,
+        INTEGRATION_DISABLE,
+        INTEGRATION_CREDENTIAL_SET,
+        INTEGRATION_NODE_SETTINGS_UPDATED,
+        TUNNEL_CREATE,
+        TUNNEL_CLOSE,
+        TUNNEL_PUBLIC_ACKNOWLEDGED,
     }
 )
 

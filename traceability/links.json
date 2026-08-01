@@ -23224,6 +23224,2335 @@
         "mvp"
       ],
       "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_every_tunnel_route_is_absent_until_the_integration_is_enabled"
+      },
+      "role": "primary",
+      "assertion": "Port forwarding exists only while an administrator has enabled the integration, and a node's own configuration vetoes it with no platform path to override.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_node_that_vetoes_locally_cannot_be_overridden_by_the_platform"
+      },
+      "role": "primary",
+      "assertion": "Port forwarding exists only while an administrator has enabled the integration, and a node's own configuration vetoes it with no platform path to override.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_tunnel_policy.py::test_the_nodes_veto_survives_everything_the_platform_says"
+      },
+      "role": "primary",
+      "assertion": "Port forwarding exists only while an administrator has enabled the integration, and a node's own configuration vetoes it with no platform path to override.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-01-VERIFIED-04",
+      "from": "FR-TUNNEL-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/config#TestAnExplicitFalseIsAnAbsoluteVeto"
+      },
+      "role": "primary",
+      "assertion": "Port forwarding exists only while an administrator has enabled the integration, and a node's own configuration vetoes it with no platform path to override.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_creating_returns_the_url_and_the_only_copy_of_the_password"
+      },
+      "role": "primary",
+      "assertion": "A `tunnel.manage` holder opens a tunnel on a port and the platform shows the URL the provider assigned.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestOpenReturnsTheURLAndTracksTheTunnel"
+      },
+      "role": "primary",
+      "assertion": "A `tunnel.manage` holder opens a tunnel on a port and the platform shows the URL the provider assigned.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/02-contract-and-data-model.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_privileged_port_is_refused_before_it_reaches_the_node"
+      },
+      "role": "primary",
+      "assertion": "The target is always the node's own loopback, and the port must be >=1024 and inside the effective allowlist — enforced at the wire, the database, Central and the daemon.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_effective_port_range_is_the_intersection_of_all_three_layers"
+      },
+      "role": "primary",
+      "assertion": "The target is always the node's own loopback, and the port must be >=1024 and inside the effective allowlist — enforced at the wire, the database, Central and the daemon.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnel_schema.py::test_a_port_below_the_floor_cannot_be_stored_at_all"
+      },
+      "role": "primary",
+      "assertion": "The target is always the node's own loopback, and the port must be >=1024 and inside the effective allowlist — enforced at the wire, the database, Central and the daemon.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-03-VERIFIED-04",
+      "from": "FR-TUNNEL-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestArgsRejectPrivilegedPorts"
+      },
+      "role": "primary",
+      "assertion": "The target is always the node's own loopback, and the port must be >=1024 and inside the effective allowlist — enforced at the wire, the database, Central and the daemon.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-04-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/03-daemon-supervisor.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-04-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tunnel/pinggy.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-04-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_013_central_does_not_proxy_to_a_node_http_service"
+      },
+      "role": "primary",
+      "assertion": "The node opens no inbound listener: the only connection is the daemon's own outbound one, and the frame has no field that could name a different destination.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-04-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestArgsSendCredentialToTheProHostAndNothingElseChoosesTheHost"
+      },
+      "role": "primary",
+      "assertion": "The node opens no inbound listener: the only connection is the daemon's own outbound one, and the frame has no field that could name a different destination.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_closing_writes_the_row_and_tells_the_node"
+      },
+      "role": "primary",
+      "assertion": "A tunnel has a bounded lifetime, can be closed explicitly, and the platform stops showing its URL once it is closed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_extending_moves_our_deadline_and_not_the_providers"
+      },
+      "role": "primary",
+      "assertion": "A tunnel has a bounded lifetime, can be closed explicitly, and the platform stops showing its URL once it is closed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestTheTTLEndsTheTunnelWithoutCentral"
+      },
+      "role": "primary",
+      "assertion": "A tunnel has a bounded lifetime, can be closed explicitly, and the platform stops showing its URL once it is closed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_new_url_from_the_node_replaces_the_old_one_and_is_counted"
+      },
+      "role": "primary",
+      "assertion": "The provider reassigns the URL on reconnect; the platform takes the new one and the page shows when it changed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestAReconnectReportsTheNewURL"
+      },
+      "role": "primary",
+      "assertion": "The provider reassigns the URL on reconnect; the platform takes the new one and the page shows when it changed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-06-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#opens the URL in a new window with noopener and says it may change"
+      },
+      "role": "primary",
+      "assertion": "The provider reassigns the URL on reconnect; the platform takes the new one and the page shows when it changed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_closing_writes_the_row_and_tells_the_node"
+      },
+      "role": "primary",
+      "assertion": "Creation and closure are audited; the URL and the traffic never are, because the traffic does not pass through the platform and the URL is part of the access credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_paid_tier_sends_the_decrypted_credential_and_records_its_fingerprint"
+      },
+      "role": "primary",
+      "assertion": "Creation and closure are audited; the URL and the traffic never are, because the traffic does not pass through the platform and the URL is part of the access credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-07-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_audit_redaction.py::test_every_audit_action_has_a_write_site"
+      },
+      "role": "primary",
+      "assertion": "Creation and closure are audited; the URL and the traffic never are, because the traffic does not pass through the platform and the URL is part of the access credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-PLANNED-BY",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/03-daemon-supervisor.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-SPECIFIED-BY",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tunnel/supervisor.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-VERIFIED-01",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestCloseStopsTheProcessAndReports"
+      },
+      "role": "primary",
+      "assertion": "No process from a closed tunnel survives, including across a daemon restart.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-VERIFIED-02",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestReapOrphansKillsAPreviousGenerationsTunnel"
+      },
+      "role": "primary",
+      "assertion": "No process from a closed tunnel survives, including across a daemon restart.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestReapOrphansLeavesUnrelatedProcessesAlone"
+      },
+      "role": "primary",
+      "assertion": "No process from a closed tunnel survives, including across a daemon restart.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-PLANNED-BY",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-SPECIFIED-BY",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-VERIFIED-01",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_creating_returns_the_url_and_the_only_copy_of_the_password"
+      },
+      "role": "primary",
+      "assertion": "Protection is a closed choice of password, source-IP allowlist or public; there is no unnamed default.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-VERIFIED-02",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_an_unprotected_tunnel_requires_its_own_acknowledgement_and_is_audited"
+      },
+      "role": "primary",
+      "assertion": "Protection is a closed choice of password, source-IP allowlist or public; there is no unnamed default.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-01-VERIFIED-03",
+      "from": "FR-TUNNEL-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestArgsCarryProtectionAndHostRewrite"
+      },
+      "role": "primary",
+      "assertion": "Protection is a closed choice of password, source-IP allowlist or public; there is no unnamed default.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-PLANNED-BY",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-SPECIFIED-BY",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-VERIFIED-01",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_creating_returns_the_url_and_the_only_copy_of_the_password"
+      },
+      "role": "primary",
+      "assertion": "The password is generated by the platform, appears in one response, and is stored only as an Argon2 hash.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-VERIFIED-02",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_rotating_the_password_reopens_the_tunnel_with_a_new_one"
+      },
+      "role": "primary",
+      "assertion": "The password is generated by the platform, appears in one response, and is stored only as an Argon2 hash.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-VERIFIED-03",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_tunnel_policy.py::test_the_generated_password_never_contains_the_providers_separator"
+      },
+      "role": "primary",
+      "assertion": "The password is generated by the platform, appears in one response, and is stored only as an Argon2 hash.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-02-VERIFIED-04",
+      "from": "FR-TUNNEL-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#shows the one-time password in the creation dialog and nowhere else"
+      },
+      "role": "primary",
+      "assertion": "The password is generated by the platform, appears in one response, and is stored only as an Argon2 hash.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-03-PLANNED-BY",
+      "from": "FR-TUNNEL-002.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-03-SPECIFIED-BY",
+      "from": "FR-TUNNEL-002.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-002.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-03-VERIFIED-01",
+      "from": "FR-TUNNEL-002.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_an_unprotected_tunnel_requires_its_own_acknowledgement_and_is_audited"
+      },
+      "role": "primary",
+      "assertion": "An unprotected tunnel requires one explicit confirmation and is recorded as its own audit action.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-03-VERIFIED-02",
+      "from": "FR-TUNNEL-002.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#asks for the public acknowledgement every time that mode is chosen"
+      },
+      "role": "primary",
+      "assertion": "An unprotected tunnel requires one explicit confirmation and is recorded as its own audit action.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-04-PLANNED-BY",
+      "from": "FR-TUNNEL-002.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-04-SPECIFIED-BY",
+      "from": "FR-TUNNEL-002.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-002.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-04-VERIFIED-01",
+      "from": "FR-TUNNEL-002.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_viewer_holds_neither_tunnel_action"
+      },
+      "role": "primary",
+      "assertion": "Only `tunnel.view` holders see a tunnel URL; a read-only role holds neither tunnel action, because reading the URL is reaching the application behind it.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-04-VERIFIED-02",
+      "from": "FR-TUNNEL-002.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_developer_cannot_close_someone_elses_tunnel_but_an_admin_can"
+      },
+      "role": "primary",
+      "assertion": "Only `tunnel.view` holders see a tunnel URL; a read-only role holds neither tunnel action, because reading the URL is reaching the application behind it.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-05-PLANNED-BY",
+      "from": "FR-TUNNEL-002.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-05-SPECIFIED-BY",
+      "from": "FR-TUNNEL-002.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-002.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-05-VERIFIED-01",
+      "from": "FR-TUNNEL-002.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_first_tunnel_on_a_node_requires_the_third_party_acknowledgement"
+      },
+      "role": "primary",
+      "assertion": "The first tunnel a user opens on a node requires acknowledging that traffic is relayed by a third party; the answer comes from the audit trail rather than a new column.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-002-AC-05-VERIFIED-02",
+      "from": "FR-TUNNEL-002.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#shows the four third-party statements when the server asks for them"
+      },
+      "role": "primary",
+      "assertion": "The first tunnel a user opens on a node requires acknowledging that traffic is relayed by a third party; the answer comes from the audit trail rather than a new column.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-PLANNED-BY",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/03-daemon-supervisor.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-SPECIFIED-BY",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tunnel/pinggy.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-VERIFIED-01",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestArgsPinTheHostKeyAndRefuseToSkipIt"
+      },
+      "role": "primary",
+      "assertion": "The provider's host key is pinned and verification cannot be disabled anywhere in the tree — the failure mode is silent interception of every forwarded byte.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-VERIFIED-02",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestArgsRefuseAnEmptyKnownHostsPath"
+      },
+      "role": "primary",
+      "assertion": "The provider's host key is pinned and verification cannot be disabled anywhere in the tree — the failure mode is silent interception of every forwarded byte.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-VERIFIED-03",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestStartRefusesWhenTheHostKeyDoesNotMatch"
+      },
+      "role": "primary",
+      "assertion": "The provider's host key is pinned and verification cannot be disabled anywhere in the tree — the failure mode is silent interception of every forwarded byte.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-01-VERIFIED-04",
+      "from": "FR-TUNNEL-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_security.py::test_no_source_disables_provider_host_key_verification"
+      },
+      "role": "primary",
+      "assertion": "The provider's host key is pinned and verification cannot be disabled anywhere in the tree — the failure mode is silent interception of every forwarded byte.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-SECURITY"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-PLANNED-BY",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/02-contract-and-data-model.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-SPECIFIED-BY",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tunnel/pinggy.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-VERIFIED-01",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestExtractURLAcceptsTheMeasuredSuffixes"
+      },
+      "role": "primary",
+      "assertion": "Only an https URL is accepted, on the wire and in the daemon's own parser: the URL is external input parsed out of the provider's stdout.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-VERIFIED-02",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestExtractURLIgnoresTheDashboardLink"
+      },
+      "role": "primary",
+      "assertion": "Only an https URL is accepted, on the wire and in the daemon's own parser: the URL is external input parsed out of the provider's stdout.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-02-VERIFIED-03",
+      "from": "FR-TUNNEL-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/contract/test_contract.py::test_json_manifest"
+      },
+      "role": "primary",
+      "assertion": "Only an https URL is accepted, on the wire and in the daemon's own parser: the URL is external input parsed out of the provider's stdout.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-CONTRACT-CROSS-LANGUAGE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-PLANNED-BY",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/03-daemon-supervisor.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-SPECIFIED-BY",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tunnel/pinggy.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-VERIFIED-01",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestClassifyStderrSeparatesInterceptionFromUnavailability"
+      },
+      "role": "primary",
+      "assertion": "Provider unavailable, credential rejected and host key mismatch are distinguishable states, each with its own stable code and remedy.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-VERIFIED-02",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestStartTearsDownWhenTheProviderDowngradesAPaidTunnel"
+      },
+      "role": "primary",
+      "assertion": "Provider unavailable, credential rejected and host key mismatch are distinguishable states, each with its own stable code and remedy.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-VERIFIED-03",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_silently_anonymous_tunnel_is_rejected_rather_than_handed_over"
+      },
+      "role": "primary",
+      "assertion": "Provider unavailable, credential rejected and host key mismatch are distinguishable states, each with its own stable code and remedy.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-VERIFIED-04",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#explains a failed tunnel through the shared error catalog"
+      },
+      "role": "primary",
+      "assertion": "Provider unavailable, credential rejected and host key mismatch are distinguishable states, each with its own stable code and remedy.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-PLANNED-BY",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/03-daemon-supervisor.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-SPECIFIED-BY",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/config/config.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-VERIFIED-01",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_node_missing_a_prerequisite_is_refused_immediately_with_the_reason"
+      },
+      "role": "primary",
+      "assertion": "A node can answer for itself whether it can forward a port: client present, egress reachable, host key deployed, not locally vetoed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-VERIFIED-02",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_a_node_that_has_never_reported_is_treated_as_unsupported_not_ready"
+      },
+      "role": "primary",
+      "assertion": "A node can answer for itself whether it can forward a port: client present, egress reachable, host key deployed, not locally vetoed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-04-VERIFIED-03",
+      "from": "FR-TUNNEL-003.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#shows the four prerequisites with the time they were reported"
+      },
+      "role": "primary",
+      "assertion": "A node can answer for itself whether it can forward a port: client present, egress reachable, host key deployed, not locally vetoed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/integrations.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_every_tunnel_route_is_absent_until_the_integration_is_enabled"
+      },
+      "role": "primary",
+      "assertion": "The capability is switched on by an administrator in integration settings, and with it off no tunnel can be created — the switch is a database row, not an environment value.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_enabling_without_the_acknowledgement_is_refused"
+      },
+      "role": "primary",
+      "assertion": "The capability is switched on by an administrator in integration settings, and with it off no tunnel can be created — the switch is a database row, not an environment value.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-VERIFIED-03",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/IntegrationsView.test.ts#requires the four-point acknowledgement before the first enable"
+      },
+      "role": "primary",
+      "assertion": "The capability is switched on by an administrator in integration settings, and with it off no tunnel can be created — the switch is a database row, not an environment value.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-02-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-02-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/integrations.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-02-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_paid_tier_is_refused_without_a_credential"
+      },
+      "role": "primary",
+      "assertion": "The subscription is the user's own: the platform stores one credential they supply and calls no provider management or billing interface.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-02-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_013_central_does_not_proxy_to_a_node_http_service"
+      },
+      "role": "primary",
+      "assertion": "The subscription is the user's own: the platform stores one credential they supply and calls no provider management or billing interface.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/security/secret_box.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_integration_response_never_carries_the_token"
+      },
+      "role": "primary",
+      "assertion": "The credential is encrypted at rest and returned by no interface; only an eight-hex fingerprint is ever shown, and the audit trail records the same.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_stored_token_is_ciphertext_in_the_database"
+      },
+      "role": "primary",
+      "assertion": "The credential is encrypted at rest and returned by no interface; only an eight-hex fingerprint is ever shown, and the audit trail records the same.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-03",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_credential_audit_records_the_fingerprint_and_nothing_else"
+      },
+      "role": "primary",
+      "assertion": "The credential is encrypted at rest and returned by no interface; only an eight-hex fingerprint is ever shown, and the audit trail records the same.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-04",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_secret_box.py::test_the_fingerprint_discloses_no_credential_characters"
+      },
+      "role": "primary",
+      "assertion": "The credential is encrypted at rest and returned by no interface; only an eight-hex fingerprint is ever shown, and the audit trail records the same.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-05",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/IntegrationsView.test.ts#shows only the fingerprint for a stored credential, never the token"
+      },
+      "role": "primary",
+      "assertion": "The credential is encrypted at rest and returned by no interface; only an eight-hex fingerprint is ever shown, and the audit trail records the same.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/security/secret_box.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_secret_box.py::test_without_a_key_encryption_refuses_rather_than_storing_plaintext"
+      },
+      "role": "primary",
+      "assertion": "With no encryption key the integration cannot be enabled and no credential is stored — storing plaintext 'for now' is refused, because what is written cannot be un-disclosed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_secret_box.py::test_settings_rejects_a_key_of_the_wrong_length"
+      },
+      "role": "primary",
+      "assertion": "With no encryption key the integration cannot be enabled and no credential is stored — storing plaintext 'for now' is refused, because what is written cannot be un-disclosed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-04-VERIFIED-03",
+      "from": "FR-TUNNEL-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/IntegrationsView.test.ts#replaces the whole form when the deployment has no encryption key"
+      },
+      "role": "primary",
+      "assertion": "With no encryption key the integration cannot be enabled and no credential is stored — storing plaintext 'for now' is refused, because what is written cannot be un-disclosed.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tunnels.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_tunnel_policy.py::test_three_port_lists_intersect_instead_of_the_last_one_winning"
+      },
+      "role": "primary",
+      "assertion": "Each node has its own settings; the platform's layers and the node's own intersect, and the node's refusal is final.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_tunnel_policy.py::test_a_refusal_names_the_layer_that_refused"
+      },
+      "role": "primary",
+      "assertion": "Each node has its own settings; the platform's layers and the node's own intersect, and the node's refusal is final.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-VERIFIED-03",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_turning_a_node_off_in_its_platform_settings_names_that_layer"
+      },
+      "role": "primary",
+      "assertion": "Each node has its own settings; the platform's layers and the node's own intersect, and the node's refusal is final.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-VERIFIED-04",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/config#TestAConfiguredAllowlistCanOnlyNarrow"
+      },
+      "role": "primary",
+      "assertion": "Each node has its own settings; the platform's layers and the node's own intersect, and the node's refusal is final.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-05-VERIFIED-05",
+      "from": "FR-TUNNEL-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeTunnelsView.test.ts#states that a local veto cannot be overridden by the platform"
+      },
+      "role": "primary",
+      "assertion": "Each node has its own settings; the platform's layers and the node's own intersect, and the node's refusal is final.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-PLANNED-BY",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/04-central-and-api.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-SPECIFIED-BY",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Specification constraining this functional criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/integrations.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-VERIFIED-01",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_the_credential_audit_records_the_fingerprint_and_nothing_else"
+      },
+      "role": "primary",
+      "assertion": "Enabling, disabling, setting the credential and changing a node's settings are all audited, and no record contains the credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-VERIFIED-02",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tunnels_api.py::test_turning_a_node_off_in_its_platform_settings_names_that_layer"
+      },
+      "role": "primary",
+      "assertion": "Enabling, disabling, setting the credential and changing a node's settings are all audited, and no record contains the credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-06-VERIFIED-03",
+      "from": "FR-TUNNEL-004.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_audit_redaction.py::test_all_actions_is_complete"
+      },
+      "role": "primary",
+      "assertion": "Enabling, disabling, setting the credential and changing a node's settings are all audited, and no record contains the credential.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-013-AC-01-GUARDS-SCOPE",
+      "from": "SCOPE-013.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/11/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Reviewed MVP non-goal and scope guard.",
+      "owner": "product",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SCOPE-013-AC-01-GUARDS-EXEC",
+      "from": "SCOPE-013.AC-01",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py::test_scope_013_central_does_not_proxy_to_a_node_http_service"
+      },
+      "role": "primary",
+      "assertion": "Central holds no catch-all route, no HTTP client and no field naming a destination; the tunnel path carries no traffic.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-SCOPE-013-AC-01-SPECIFIED-BY",
+      "from": "SCOPE-013.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0022-third-party-tunnel-integration.md"
+      },
+      "role": "primary",
+      "assertion": "The decision record for delivering port forwarding as a third-party integration.",
+      "owner": "product",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TUNNEL-003-AC-03-VERIFIED-05",
+      "from": "FR-TUNNEL-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "scenario",
+        "locator": "scripts/tunnel/verify-provider.sh"
+      },
+      "role": "supporting",
+      "assertion": "Measured against the real provider: unavailable, rejected credential and host key mismatch are distinguishable, and an invalid credential is silently downgraded rather than refused (PG-01 #10). Requires a provider account, so it is release-triggered and staging-gated.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-TUNNEL-PROVIDER"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-02-VERIFIED-03",
+      "from": "FR-TUNNEL-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/tunnel.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "A browser opens a tunnel on a real node through a stand-in provider and the assigned URL is shown; the link is never opened, because the hostname is under the reserved .invalid TLD.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-05-VERIFIED-04",
+      "from": "FR-TUNNEL-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "scenario",
+        "locator": "scripts/pg/tunnel-stack-check.sh"
+      },
+      "role": "primary",
+      "assertion": "Against a running stack: closing answers 204, the tunnel leaves the live list, and no provider process survives it.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-001-AC-08-VERIFIED-04",
+      "from": "FR-TUNNEL-001.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tunnel#TestTheCredentialIsNeverWrittenToDiskOrLogged"
+      },
+      "role": "supporting",
+      "assertion": "The run directory holds pid files and nothing else: walked file by file after a successful open, with the credential and the tunnel password absent from every one.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-01-VERIFIED-04",
+      "from": "FR-TUNNEL-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "scenario",
+        "locator": "scripts/pg/tunnel-stack-check.sh"
+      },
+      "role": "primary",
+      "assertion": "Against a running stack: the tunnel routes answer 404 until an administrator enables the integration, and enabling without the acknowledgement is refused.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-TUNNEL-004-AC-03-VERIFIED-06",
+      "from": "FR-TUNNEL-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/tunnel.spec.ts"
+      },
+      "role": "supporting",
+      "assertion": "A real browser stores a credential and the rendered page never contains it, only the fingerprint.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
     }
   ]
 }

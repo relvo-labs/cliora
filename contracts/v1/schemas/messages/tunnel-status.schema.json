@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Daemon -> Central unsolicited tunnel state change (P11, ADR 0022). Not correlated to a request: it carries a fresh ULID and must be dispatched before the request-correlation lookup, or it is discarded as an unmatched message. `url` appears only when the provider assigned a new one (which happens on every reconnect on the free tier).",
+  "type": "object", "additionalProperties": false,
+  "required": ["tunnel_id", "state"],
+  "properties": {
+    "tunnel_id": {"type": "string", "format": "uuid"},
+    "state": {"enum": ["running", "reconnecting", "failed", "closed"]},
+    "url": {"type": "string", "maxLength": 2048, "pattern": "^https://[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?(/[^\\s]*)?$"},
+    "upstream_expires_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"},
+    "error_code": {"enum": ["TUNNEL_PROVIDER_UNAVAILABLE", "TUNNEL_PROVIDER_UNAUTHORIZED", "TUNNEL_PROVIDER_UNTRUSTED", "TUNNEL_PORT_NOT_ALLOWED", "INTERNAL_ERROR"]}
+  },
+  "allOf": [
+    {"if": {"properties": {"state": {"const": "failed"}}, "required": ["state"]}, "then": {"required": ["error_code"]}}
+  ]
+}

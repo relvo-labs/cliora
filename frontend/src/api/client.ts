@@ -15,14 +15,21 @@ import type {
   FileSearchResult,
   FileTreePage,
   LoginResponse,
+  CreateTunnelInput,
   NodeDetail,
   NodeSummary,
+  NodeTunnelPolicy,
   RecentWorkspace,
   ReleaseManifest,
   SessionDetail,
   SessionSummary,
   TokenPair,
+  TunnelDetail,
+  TunnelIntegration,
+  TunnelSummary,
   UpdateNodeInput,
+  UpdateNodeTunnelSettingsInput,
+  UpdateTunnelIntegrationInput,
   User,
   WorkspaceFavorite,
 } from "./dto";
@@ -31,18 +38,25 @@ export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
   readonly requestId?: string;
+  // The server's non-sensitive `error.details`, when it sent any. Kept as data rather than
+  // left for callers to re-read out of the message: a 422 that asks for an acknowledgement
+  // says which one in `details.requires_acknowledgement`, and matching on the prose instead
+  // would break the first time the wording is improved.
+  readonly details?: Record<string, unknown>;
 
   constructor(
     code: string,
     message: string,
     status: number,
     requestId?: string,
+    details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
     this.requestId = requestId;
+    this.details = details;
   }
 }
 
@@ -249,6 +263,88 @@ export class ApiClient {
     return this.request("POST", `/api/sessions/${id}/shell`, size);
   }
 
+  // --- P11 port forwarding (ADR 0022) ---
+  //
+  // Every one of these answers 404 while the integration is disabled, which is a state the
+  // caller has to render rather than treat as an error: the capability does not exist on this
+  // deployment until an administrator enables it.
+
+  listTunnels(params?: {
+    node_id?: string;
+    mine?: boolean;
+    include_ended?: boolean;
+  }): Promise<TunnelSummary[]> {
+    const query = new URLSearchParams();
+    if (params?.node_id) query.set("node_id", params.node_id);
+    if (params?.mine) query.set("mine", "true");
+    if (params?.include_ended) query.set("include_ended", "true");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.request("GET", `/api/tunnels${suffix}`);
+  }
+
+  // The one response that carries `basic_auth_password`. Whatever the caller does not show
+  // the user here is gone: only the hash is stored.
+  createTunnel(input: CreateTunnelInput): Promise<TunnelDetail> {
+    return this.request("POST", "/api/tunnels", input);
+  }
+
+  closeTunnel(id: string): Promise<void> {
+    return this.request("DELETE", `/api/tunnels/${id}`);
+  }
+
+  extendTunnel(id: string): Promise<TunnelSummary> {
+    return this.request("POST", `/api/tunnels/${id}/extend`);
+  }
+
+  // Closes and reopens the tunnel, because the provider fixes its options when the
+  // connection is made. **The URL in the response may differ from the old one** — callers
+  // must show the new one rather than assume the old link still works.
+  rotateTunnelPassword(id: string): Promise<TunnelDetail> {
+    return this.request("POST", `/api/tunnels/${id}/rotate-password`);
+  }
+
+  getNodeTunnelPolicy(
+    nodeId: string,
+    options?: RequestOptions,
+  ): Promise<NodeTunnelPolicy> {
+    return this.request(
+      "GET",
+      `/api/nodes/${nodeId}/tunnel-policy`,
+      undefined,
+      options,
+    );
+  }
+
+  updateNodeTunnelSettings(
+    nodeId: string,
+    input: UpdateNodeTunnelSettingsInput,
+  ): Promise<NodeTunnelPolicy> {
+    return this.request("PUT", `/api/nodes/${nodeId}/tunnel-settings`, input);
+  }
+
+  getTunnelIntegration(options?: RequestOptions): Promise<TunnelIntegration> {
+    return this.request("GET", "/api/integrations/tunnel", undefined, options);
+  }
+
+  updateTunnelIntegration(
+    input: UpdateTunnelIntegrationInput,
+  ): Promise<TunnelIntegration> {
+    return this.request("PUT", "/api/integrations/tunnel", input);
+  }
+
+  // Write-only: the response is the same settings object every read returns, so there is no
+  // shape in which this could echo the token back.
+  setTunnelCredential(input: {
+    token: string;
+    plan_tier?: "free" | "pro";
+  }): Promise<TunnelIntegration> {
+    return this.request("PUT", "/api/integrations/tunnel/credential", input);
+  }
+
+  clearTunnelCredential(): Promise<TunnelIntegration> {
+    return this.request("DELETE", "/api/integrations/tunnel/credential");
+  }
+
   // --- P3 workspace files (read-only) ---
   // Every filesystem call takes an AbortSignal: the file tree cancels an
   // in-flight expand/search when the user switches directory, keyword, or
@@ -418,13 +514,21 @@ export class ApiClient {
     const data = text ? (JSON.parse(text) as unknown) : undefined;
     if (!res.ok) {
       const errBody = data as
-        | { error?: { code?: string; message?: string }; request_id?: string }
+        | {
+            error?: {
+              code?: string;
+              message?: string;
+              details?: Record<string, unknown>;
+            };
+            request_id?: string;
+          }
         | undefined;
       throw new ApiError(
         errBody?.error?.code ?? "HTTP_ERROR",
         errBody?.error?.message ?? res.statusText,
         res.status,
         errBody?.request_id,
+        errBody?.error?.details,
       );
     }
     return data;

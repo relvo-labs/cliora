@@ -29,10 +29,12 @@ from app.api.http.downloads import router as downloads_router
 from app.api.http.enrollment import router as enrollment_router
 from app.api.http.favorites import router as favorites_router
 from app.api.http.files import router as files_router
+from app.api.http.integrations import router as integrations_router
 from app.api.http.metrics import router as metrics_router
 from app.api.http.nodes import router as nodes_router
 from app.api.http.releases import router as releases_router
 from app.api.http.sessions import router as sessions_router
+from app.api.http.tunnels import router as tunnels_router
 from app.api.middleware import (
     AuthzDenialAuditMiddleware,
     HttpMetricsMiddleware,
@@ -42,6 +44,7 @@ from app.api.ws.nodes import router as node_ws_router
 from app.api.ws.terminal import router as terminal_ws_router
 from app.db.engine import get_database, reset_database
 from app.logging import configure_logging, get_logger
+from app.security import secret_box
 from app.services.registry import get_node_registry
 from app.services.shell_reaper import get_shell_reaper
 from app.services.terminal_relay import get_terminal_relay
@@ -145,6 +148,8 @@ app.include_router(auth_router)
 app.include_router(enrollment_router)
 app.include_router(nodes_router)
 app.include_router(sessions_router)
+app.include_router(tunnels_router)
+app.include_router(integrations_router)
 app.include_router(files_router)
 app.include_router(favorites_router)
 app.include_router(audit_router)
@@ -220,6 +225,14 @@ async def ready(response: Response) -> dict[str, object]:
     return {
         "status": "ready" if ready_ok else "degraded",
         "database": database_ok,
+        # A *feature* being unavailable is not a replica being unready (P11 §2.5). Without an
+        # encryption key the port-forwarding integration cannot store a provider credential,
+        # and most deployments do not use it — making that a startup failure would force
+        # every one of them to generate a key they never use. It is reported here instead, so
+        # an operator finds out from readiness rather than from an administrator's 503.
+        "tunnel_integration": (
+            "available" if secret_box.is_available() else "unavailable: no encryption key"
+        ),
         # Counted from the authenticated daemon registry, which is now the only one.
         # It used to report the P0 relay's registry, so a real fleet of enrolled nodes
         # showed `daemon_connected: false` while the dev relay showed true.

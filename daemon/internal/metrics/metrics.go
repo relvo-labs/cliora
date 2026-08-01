@@ -36,8 +36,16 @@ const (
 	DaemonReconnectTotal    = "daemon_reconnect_total"
 	DaemonHeartbeatSent     = "daemon_heartbeat_sent_total"
 	DaemonSessionStartTotal = "daemon_session_start_total"
-	DaemonActiveSessions    = "daemon_active_sessions"
-	DaemonUptimeSeconds     = "daemon_uptime_seconds"
+	// Port forwarding (P11, ADR 0022). Labels are coarse on purpose: no port, no URL, no
+	// tunnel id and no credential — a metric label is the easiest place for an identifier to
+	// escape into a scrape target, and none of these questions need one.
+	DaemonTunnelStartTotal        = "daemon_tunnel_start_total"
+	DaemonTunnelReconnectTotal    = "daemon_tunnel_reconnect_total"
+	DaemonTunnelURLChangedTotal   = "daemon_tunnel_url_changed_total"
+	DaemonTunnelOrphanReapedTotal = "daemon_tunnel_orphan_reaped_total"
+	DaemonTunnelActive            = "daemon_tunnel_active"
+	DaemonActiveSessions          = "daemon_active_sessions"
+	DaemonUptimeSeconds           = "daemon_uptime_seconds"
 )
 
 // The label keys this registry accepts, mirroring the backend's allowlist

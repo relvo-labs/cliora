@@ -88,9 +88,14 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # the height it was given, measured, and the page not scrolling because of a
     # second height formula. Both were true-by-intention before and asserted by
     # nothing, which is how the CLI panel spent three phases at half height.
+    # 2026-08-01: +24 for port forwarding (plan/11, ADR 0022) — FR-TUNNEL-001 (8),
+    # FR-TUNNEL-002 (5), FR-TUNNEL-003 (4), FR-TUNNEL-004 (6) and SCOPE-013.AC-01. All 24
+    # are `verifiable`: every one of them has an automated assertion, which for this phase
+    # is the point — the credential, the host key and the three-layer policy are the parts
+    # that cannot be reviewed into correctness.
     assert result["summary"] == {
-        "total": 381,
-        "verifiable": 250,
+        "total": 405,
+        "verifiable": 274,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

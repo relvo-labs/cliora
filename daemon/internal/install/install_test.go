@@ -371,3 +371,50 @@ func TestGeneratedConfigOmitsTheCommentWithoutAShell(t *testing.T) {
 		t.Errorf("commented a shell block that was never written:\n%s", out)
 	}
 }
+
+func TestGeneratedConfigExplainsThePortForwardingVeto(t *testing.T) {
+	// The node owner holds the only veto the platform cannot override, so it has to be
+	// findable in the file they would actually open. The comment also has to say the provider
+	// credential is not here: without that, its absence reads as a missing setting and the
+	// owner goes looking for a field that deliberately does not exist.
+	cfg, err := BuildConfig(Params{
+		Server:         "https://central.example.com",
+		NodeName:       "dev-1",
+		WorkspaceRoots: []string{"/home/dev"},
+		HeartbeatSecs:  10,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := MarshalConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	for _, phrase := range []string{
+		"enabled: false",
+		"credential is NOT in this file",
+		"below 1024 are never forwarded",
+		"must not run as root",
+	} {
+		if !strings.Contains(text, phrase) {
+			t.Errorf("the generated config should explain %q:\n%s", phrase, text)
+		}
+	}
+	// And it must load back through the strict decoder, comments and all: a file the daemon
+	// writes but cannot read is worse than no file.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("the generated config must load back: %v", err)
+	}
+	if !reloaded.TunnelEnabled() {
+		t.Error("the generated config should not veto port forwarding")
+	}
+	if reloaded.Tunnel.KnownHostsPath != config.DefaultKnownHostsPath {
+		t.Errorf("the pinned key path should be written out, got %q", reloaded.Tunnel.KnownHostsPath)
+	}
+}

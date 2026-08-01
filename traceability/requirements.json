@@ -5198,6 +5198,235 @@
           "risk": "high"
         }
       ]
+    },
+    {
+      "id": "FR-TUNNEL-001",
+      "kind": "functional",
+      "title": "埠轉發隧道",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-tunnel-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TUNNEL-001.AC-01",
+          "source_anchor": "fr-tunnel-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-02",
+          "source_anchor": "fr-tunnel-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-03",
+          "source_anchor": "fr-tunnel-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-04",
+          "source_anchor": "fr-tunnel-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-05",
+          "source_anchor": "fr-tunnel-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-06",
+          "source_anchor": "fr-tunnel-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-07",
+          "source_anchor": "fr-tunnel-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-001.AC-08",
+          "source_anchor": "fr-tunnel-001-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TUNNEL-002",
+      "kind": "functional",
+      "title": "隧道保護",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-tunnel-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TUNNEL-002.AC-01",
+          "source_anchor": "fr-tunnel-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-002.AC-02",
+          "source_anchor": "fr-tunnel-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-002.AC-03",
+          "source_anchor": "fr-tunnel-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-002.AC-04",
+          "source_anchor": "fr-tunnel-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-002.AC-05",
+          "source_anchor": "fr-tunnel-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TUNNEL-003",
+      "kind": "functional",
+      "title": "傳輸與依賴",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-tunnel-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TUNNEL-003.AC-01",
+          "source_anchor": "fr-tunnel-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-003.AC-02",
+          "source_anchor": "fr-tunnel-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-003.AC-03",
+          "source_anchor": "fr-tunnel-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-003.AC-04",
+          "source_anchor": "fr-tunnel-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TUNNEL-004",
+      "kind": "functional",
+      "title": "整合設定與憑證保管",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-tunnel-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TUNNEL-004.AC-01",
+          "source_anchor": "fr-tunnel-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-004.AC-02",
+          "source_anchor": "fr-tunnel-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TUNNEL-004.AC-03",
+          "source_anchor": "fr-tunnel-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-004.AC-04",
+          "source_anchor": "fr-tunnel-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-004.AC-05",
+          "source_anchor": "fr-tunnel-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TUNNEL-004.AC-06",
+          "source_anchor": "fr-tunnel-004-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-013",
+      "kind": "scope",
+      "title": "不由平台自建對外反向代理；埠轉發以第三方整合交付。",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-013"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-013.AC-01",
+          "source_anchor": "scope-013-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
     }
   ]
 }

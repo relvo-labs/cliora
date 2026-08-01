@@ -18,6 +18,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    LargeBinary,
     String,
     Text,
     UniqueConstraint,
@@ -92,6 +93,23 @@ class Node(Base):
     # daemon error string — those stay in the log (ADR 0017).
     update_last_result: Mapped[str | None] = mapped_column(String(64), nullable=True)
     update_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # --- Port-forwarding prerequisites, as last reported by the daemon (P11, ADR 0022) ---
+    # Reported rather than inferred: whether a node *can* forward a port depends on three
+    # things Central cannot see (an ssh client, egress to the provider, the pinned host key)
+    # plus one it must never override (the node owner's veto). Stored so the answer survives
+    # the node going offline — "we do not know" and "it was not ready" are different states,
+    # and `tunnel_reported_at` is what tells them apart.
+    tunnel_veto: Mapped[bool] = mapped_column(Boolean, default=False)
+    tunnel_prereq_ok: Mapped[bool] = mapped_column(Boolean, default=False)
+    tunnel_prereq_detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # A list of port specs ("5173", "3000-3999"), matching the platform-side columns: the
+    # narrowing layers all speak the same shape so the intersection has nothing to convert.
+    tunnel_local_allowed_ports: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    tunnel_local_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tunnel_reported_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -270,6 +288,126 @@ class NodeMetricSample(Base):
     disk_usage: Mapped[float | None] = mapped_column(Float, nullable=True)
     daemon_uptime: Mapped[float | None] = mapped_column(Float, nullable=True)
     active_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class NodeTunnel(Base):
+    """One port-forwarding tunnel on a node (P11, FR-TUNNEL-001, ADR 0022).
+
+    The tunnel itself lives on the node as a supervised `ssh -R` child process, and the
+    traffic never passes through Central. What is durable here is the platform's view:
+    who opened it, on which port, under which protection, until when, and the URL the
+    provider most recently assigned.
+
+    There is deliberately no `status` column. State is derived from `closed_at`,
+    `expires_at`, `state_error_code` and whether the node is currently connected — a
+    stored status would be a second answer to a question that already has one, and it
+    would be the stale one (same reasoning as `Node.status`, ADR 0010).
+
+    `url` is nullable and mutable: it arrives seconds after creation, and on the free
+    tier the provider issues a new one on every reconnect (measured in PG-01), which is
+    why `url_updated_at` exists — the UI has to be able to say "changed 3 minutes ago".
+
+    The basic-auth password is never stored: only its Argon2 hash, and the plaintext
+    appears in exactly one API response (the creation), following the enrollment-token
+    discipline.
+    """
+
+    __tablename__ = "node_tunnels"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    port: Mapped[int] = mapped_column(Integer)
+    provider: Mapped[str] = mapped_column(String(32), default="pinggy")
+    protection: Mapped[str] = mapped_column(String(16))
+    basic_auth_user: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    basic_auth_hash: Mapped[str | None] = mapped_column(Text, nullable=True)
+    allowed_ips: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    rewrite_host: Mapped[bool] = mapped_column(Boolean, default=False)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    url_change_count: Mapped[int] = mapped_column(Integer, default=0)
+    # The stable TUNNEL_* code from the last status report, never a provider string.
+    state_error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # The platform's own deadline. Kept apart from the provider's, because "we ended it"
+    # and "they ended it" need different explanations in the UI.
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    upstream_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class TunnelIntegration(Base):
+    """The platform-level port-forwarding integration, as a single row (P11, FR-TUNNEL-004).
+
+    This is the only place in the platform that holds a third-party credential, and it
+    holds it encrypted: ciphertext plus a per-write nonce, with a short fingerprint of the
+    plaintext kept alongside so a person can answer "is this the token I rotated last
+    week" without any interface ever returning a character of it.
+
+    `singleton` with a unique constraint is what makes "one row" a database property
+    rather than a convention. Reading "the first row" would silently pick one if a second
+    ever appeared.
+
+    `concurrent_budget` is fleet-wide — the number of tunnels the provider plan allows at
+    once — and is enforced as a global count, never folded into the per-node cap.
+    """
+
+    __tablename__ = "tunnel_integration"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    singleton: Mapped[bool] = mapped_column(Boolean, default=True, unique=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    provider: Mapped[str] = mapped_column(String(32), default="pinggy")
+    plan_tier: Mapped[str] = mapped_column(String(16), default="free")
+    token_ciphertext: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    token_nonce: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    token_fingerprint: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    concurrent_budget: Mapped[int] = mapped_column(Integer, default=8)
+    default_protection: Mapped[str] = mapped_column(String(16), default="basic")
+    default_ttl_seconds: Mapped[int] = mapped_column(Integer, default=4 * 3600)
+    # A list of port specs ("5173", "3000-3999"), not a mapping: an empty list means "forbid
+    # everything" and NULL means "do not narrow", and those are different settings.
+    allowed_ports: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    # The administrator's one-time acknowledgement that traffic leaves for a third party.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+
+
+class NodeTunnelSettings(Base):
+    """Per-node port-forwarding settings, decided in the platform (P11, FR-TUNNEL-004.AC-05).
+
+    The middle of three layers: the integration decides whether the capability exists at
+    all, this decides whether a given machine takes part and within which bounds, and the
+    node's own config file holds an absolute veto the platform cannot override. Effective
+    policy is the intersection; every layer may only narrow.
+
+    `enabled` defaults to true because the platform-level switch is the real gate — a node
+    that has been enrolled already grants the platform a shell runtime (ADR 0021), so
+    requiring a second opt-in per machine would be form rather than substance. Turning a
+    single machine off is a one-click platform action; vetoing it outright stays with its
+    owner.
+
+    NULL for `allowed_ports`/`max_tunnels` means "do not narrow further", which is a
+    different statement from an empty list (forbid everything).
+    """
+
+    __tablename__ = "node_tunnel_settings"
+
+    node_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True
+    )
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    allowed_ports: Mapped[list[str] | None] = mapped_column(JSONB, nullable=True)
+    max_tunnels: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), nullable=True)
 
 
 class AuditLog(Base):

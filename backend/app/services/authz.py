@@ -28,16 +28,19 @@ from fastapi import status
 from app import metrics
 from app.api.errors import ApiError
 from app.api.middleware import denial_var
-from app.db.models import TerminalSession, User
+from app.db.models import NodeTunnel, TerminalSession, User
 from app.services.rbac import (
     AUDIT_VIEW,
     FILE_BROWSE,
+    INTEGRATION_MANAGE,
     NODE_MANAGE,
     SESSION_TERMINATE,
     SESSION_VIEW,
     TERMINAL_OPERATE,
     TERMINAL_SHELL,
     TERMINAL_TAKEOVER,
+    TUNNEL_MANAGE,
+    TUNNEL_VIEW,
     has_action,
 )
 from app.services.sessions import SHELL_RUNTIME, TERMINAL_STATES
@@ -220,6 +223,52 @@ def may_view_audit(user: User) -> bool:
     `test_authorization_logic_is_confined_to_two_modules` enforces that.
     """
     return has_action(user, AUDIT_VIEW)
+
+
+# --- Port forwarding (P11, ADR 0022) ---
+#
+# The three-layer configuration policy (integration / per-node / the node's own veto) is
+# *not* authorization and deliberately does not live here: it answers "may this port be
+# forwarded from this machine at all", which is the same answer for every user. It belongs to
+# `services/tunnels.effective_policy`, where it can be unit-tested against its four inputs.
+# What is here is the part that depends on who is asking.
+
+
+def may_view_tunnel(user: User) -> bool:
+    """Seeing a tunnel's URL is being able to reach the preview behind it, so this is
+    `tunnel.view` and Viewer does not hold it: a read-only platform role says nothing about
+    what the forwarded application does with a request (ADR 0022)."""
+    return has_action(user, TUNNEL_VIEW)
+
+
+def may_close_tunnel(user: User, tunnel: NodeTunnel) -> bool:
+    """Requires `tunnel.manage` and either ownership or Admin (`node.manage`).
+
+    Same shape as terminating a session: a Developer may end what they exposed, and an
+    administrator may end anything, because an unwanted exposure is exactly the thing that
+    must be closeable by someone other than whoever left for the day.
+    """
+    if not has_action(user, TUNNEL_MANAGE):
+        return False
+    return tunnel.created_by == user.id or has_action(user, NODE_MANAGE)
+
+
+def authorize_tunnel_close(user: User, tunnel: NodeTunnel) -> None:
+    if not has_action(user, TUNNEL_MANAGE):
+        raise _forbidden(TUNNEL_MANAGE, user, REASON_ACTION)
+    if not may_close_tunnel(user, tunnel):
+        raise _forbidden(TUNNEL_MANAGE, user, REASON_SCOPE)
+
+
+def authorize_integration_manage(user: User) -> None:
+    """The integration settings are a single global object, so there is no resource scope.
+
+    Admin-only (`integration.manage`): it covers supplying the organisation's third-party
+    credential and deciding that traffic may leave for a third party at all. A Developer may
+    open tunnels; they may not decide whose service and whose account.
+    """
+    if not has_action(user, INTEGRATION_MANAGE):
+        raise _forbidden(INTEGRATION_MANAGE, user, REASON_ACTION)
 
 
 def authorize_node_manage(user: User) -> None:

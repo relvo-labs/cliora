@@ -2,7 +2,11 @@
 import { computed } from "vue";
 import { RouterLink, useRouter } from "vue-router";
 
-import { ACTION_AUDIT_VIEW, ACTION_ENROLLMENT_MANAGE } from "../../api/dto";
+import {
+  ACTION_AUDIT_VIEW,
+  ACTION_ENROLLMENT_MANAGE,
+  ACTION_INTEGRATION_MANAGE,
+} from "../../api/dto";
 import { useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
 
@@ -23,6 +27,11 @@ const canManageEnrollment = computed(() =>
 // Hiding the entry is a courtesy for roles that cannot use it; the server refuses
 // the request regardless (ADR 0016).
 const canViewAudit = computed(() => auth.hasPermission(ACTION_AUDIT_VIEW));
+// Platform-level third-party settings: Admin only, and hidden for everyone else so the rail
+// does not offer a page that answers 403 (ADR 0022).
+const canManageIntegrations = computed(() =>
+  auth.hasPermission(ACTION_INTEGRATION_MANAGE),
+);
 
 async function logout(): Promise<void> {
   await auth.logout();
@@ -61,6 +70,9 @@ async function logout(): Promise<void> {
         </RouterLink>
         <RouterLink v-if="canViewAudit" :to="{ name: 'audit' }">
           ☰ <span>Audit</span>
+        </RouterLink>
+        <RouterLink v-if="canManageIntegrations" :to="{ name: 'integrations' }">
+          ⇄ <span>Integrations</span>
         </RouterLink>
       </nav>
     </aside>

@@ -72,6 +72,21 @@ Rotation is not symmetric, and the difference matters:
 | `CLIORA_JWT_SECRET` | Every live session is invalidated; users log in again. Routine. |
 | `CLIORA_TOKEN_PEPPER` | Every enrollment token **and every node credential** stops verifying. **Every node must re-enroll.** Treat as a one-way door, not a rotation. |
 
+## Port forwarding (optional, ADR 0022)
+
+Off unless an administrator enables it in the console, and it needs two things from the
+deployment before they can:
+
+| Requirement | Why |
+|---|---|
+| `CLIORA_SECRET_ENCRYPTION_KEY` (32 bytes, base64) | The provider credential is the one secret Cliora must be able to read back, so it is encrypted rather than hashed. Unset means enabling the integration is **refused** (`SECRET_KEY_MISSING`) rather than degrading to plaintext storage; `/readyz` reports `tunnel_integration: "unavailable: no encryption key"` while staying ready, because one feature being unavailable is not a replica being unhealthy. A wrong-length value fails at startup, not at the moment somebody presses save. |
+| Outbound **TCP 443 from each node** to the provider | The tunnel is an `ssh -R` child process on the node connecting outward; Central is not on the data path and needs no new egress of its own. A node answers for itself with `agentd doctor`. |
+
+Rotation, added to the table above: rotating `CLIORA_SECRET_ENCRYPTION_KEY` makes the stored
+provider credential unreadable — the remedy is to enter the token again, and existing tunnels
+keep running because the credential is only read when a new one is opened. There is no
+decrypt-and-re-encrypt path. See `docs/runbooks/tunnel-pinggy.md` §2.
+
 ## TLS and WebSockets
 
 `deploy/nginx/nginx.conf` terminates TLS, redirects HTTP with 301, and proxies `/api` and

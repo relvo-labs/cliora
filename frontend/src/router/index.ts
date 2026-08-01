@@ -33,10 +33,26 @@ export const routes: RouteRecordRaw[] = [
     component: () => import("../views/NodeDetailView.vue"),
     props: true,
   },
+  // A separate page rather than a seventh section on the node detail view: this one holds
+  // settings, a list and a create form, which would make that page two things (plan/11 §2.1).
+  {
+    path: "/nodes/:id/tunnels",
+    name: "node-tunnels",
+    component: () => import("../views/NodeTunnelsView.vue"),
+    props: true,
+  },
   {
     path: "/enrollment",
     name: "enrollment",
     component: () => import("../views/EnrollmentView.vue"),
+  },
+  // No permission guard, for the same reason as /audit below: a client-side guard decides
+  // what renders, not what is allowed. Reaching this without `integration.manage` shows the
+  // forbidden state from the server's own 403.
+  {
+    path: "/settings/integrations",
+    name: "integrations",
+    component: () => import("../views/IntegrationsView.vue"),
   },
 ];
 
