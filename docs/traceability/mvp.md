@@ -175,7 +175,11 @@
 | FR-RUNTIME-002.AC-05 | functional | verifiable | — |
 | FR-RUNTIME-002.AC-06 | functional | verifiable | — |
 | FR-RUNTIME-003.AC-01 | functional | verifiable | — |
+| FR-RUNTIME-003.AC-02 | functional | verifiable | — |
 | FR-RUNTIME-004.AC-01 | functional | verifiable | — |
+| FR-RUNTIME-004.AC-02 | functional | verifiable | — |
+| FR-RUNTIME-004.AC-03 | functional | verifiable | — |
+| FR-RUNTIME-004.AC-04 | functional | verifiable | — |
 | FR-SESSION-001.AC-01 | functional | verifiable | — |
 | FR-SESSION-001.AC-02 | functional | covered-by-parent | — |
 | FR-SESSION-001.AC-03 | functional | covered-by-parent | — |
@@ -240,6 +244,8 @@
 | FR-TERM-004.AC-02 | functional | verifiable | — |
 | FR-TERM-004.AC-04 | functional | verifiable | — |
 | FR-TERM-004.AC-05 | functional | verifiable | — |
+| FR-TERM-004.AC-06 | functional | verifiable | — |
+| FR-TERM-004.AC-07 | functional | verifiable | — |
 | FR-TERM-005.AC-01 | functional | verifiable | — |
 | FR-TERM-005.AC-02 | functional | covered-by-parent | — |
 | FR-TERM-005.AC-03 | functional | covered-by-parent | — |
@@ -283,6 +289,7 @@
 | FR-SHELL-001.AC-06 | functional | verifiable | — |
 | FR-SHELL-001.AC-07 | functional | verifiable | — |
 | FR-SHELL-001.AC-08 | functional | verifiable | — |
+| FR-SHELL-001.AC-09 | functional | verifiable | — |
 | MVP-AC-01.AC-01 | mvp | verifiable | — |
 | MVP-AC-02.AC-01 | mvp | verifiable | — |
 | MVP-AC-03.AC-01 | mvp | verifiable | — |
@@ -361,6 +368,8 @@
 | SEC-006.AC-08 | security | verifiable | — |
 | SEC-006.AC-09 | security | verifiable | — |
 | SEC-007.AC-01 | security | verifiable | — |
+| SEC-007.AC-02 | security | verifiable | — |
+| SEC-007.AC-03 | security | verifiable | — |
 | TECH-SEC-01.AC-01 | tech_security | verifiable | — |
 | TECH-SEC-02.AC-01 | tech_security | verifiable | — |
 | TECH-SEC-03.AC-01 | tech_security | verifiable | — |

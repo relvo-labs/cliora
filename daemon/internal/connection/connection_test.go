@@ -451,7 +451,9 @@ func TestSessionStartWorkspaceEscapeRepliesError(t *testing.T) {
 	creds := &config.Credentials{NodeID: nodeID, PrivateKey: base64.StdEncoding.EncodeToString(private)}
 	manager := New(cfg, creds, runtime.NewRegistry(cfg.Runtime), systeminfo.Gather(), "1.0.0")
 	// Make the "fake" runtime resolvable so the workspace guard is the gate.
-	manager.resolveBinary = func(string) (string, error) { return "/bin/true", nil }
+	manager.resolveLaunch = func(string) (runtime.LaunchSpec, error) {
+		return runtime.LaunchSpec{Path: "/bin/true"}, nil
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

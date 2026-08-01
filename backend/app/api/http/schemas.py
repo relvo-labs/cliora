@@ -221,6 +221,8 @@ class RuntimeItemDTO(BaseModel):
     version: str | None = Field(default=None, max_length=128)
     binary_path: str | None = Field(default=None, max_length=4096)
     checked_at: datetime | None = None
+    # Optional on the wire (contract 1.7.0): absent means the sandbox is enforced.
+    sandbox_bypass: bool = False
 
     def to_input(self) -> RuntimeInput:
         return RuntimeInput(
@@ -229,6 +231,7 @@ class RuntimeItemDTO(BaseModel):
             version=self.version,
             binary_path=self.binary_path,
             checked_at=self.checked_at,
+            sandbox_bypass=self.sandbox_bypass,
         )
 
 
@@ -253,6 +256,9 @@ class RegisterNodeRequest(BaseModel):
     daemon_version: str = Field(min_length=1, max_length=64)
     run_user: str = Field(min_length=1, max_length=64)
     public_key: str = Field(min_length=43, max_length=44)
+    # The installer reports the posture it just created (ADR 0023). Report-only: this
+    # is the enrollment call, so there is no later API that can set it.
+    privileged_terminal: bool = False
     runtimes: list[RuntimeItemDTO] = Field(default_factory=list, max_length=16)
     workspace_roots: list[WorkspaceRootDTO] = Field(default_factory=list, max_length=64)
 
@@ -266,6 +272,7 @@ class RegisterNodeRequest(BaseModel):
             daemon_version=self.daemon_version,
             run_user=self.run_user,
             public_key=self.public_key,
+            privileged_terminal=self.privileged_terminal,
             runtimes=[r.to_input() for r in self.runtimes],
             workspace_roots=[w.to_input() for w in self.workspace_roots],
         )
@@ -282,6 +289,10 @@ class NodeRuntimeDTO(BaseModel):
     version: str | None
     binary_path: str | None
     checked_at: datetime | None
+    # True when this runtime is launched with its sandbox and approval prompts off
+    # (ADR 0023). The console shows it next to the runtime, because the person about
+    # to start a session is the one who needs to know.
+    sandbox_bypass: bool = False
 
 
 class NodeWorkspaceRootDTO(BaseModel):
@@ -338,6 +349,9 @@ class NodeDetail(NodeSummary):
     os_version: str | None
     daemon_version: str | None
     run_user: str | None
+    # Posture, as reported by the node. Shown in the console and not settable here:
+    # there is deliberately no endpoint that writes it (ADR 0023 D11).
+    privileged_terminal: bool
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]

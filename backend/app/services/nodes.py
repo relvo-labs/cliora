@@ -78,6 +78,10 @@ class RuntimeInput:
     version: str | None = None
     binary_path: str | None = None
     checked_at: datetime | None = None
+    # What the node measured, not what its config asked for (ADR 0023 D3). Defaults to
+    # False so an older daemon — which sends no such field — reads as "sandboxed",
+    # never as "unknown".
+    sandbox_bypass: bool = False
 
 
 @dataclass(slots=True)
@@ -143,6 +147,10 @@ class RegisterNodeInput:
     runtimes: list[RuntimeInput] = field(default_factory=list)
     workspace_roots: list[WorkspaceRootInput] = field(default_factory=list)
     tunnel: TunnelReportInput | None = None
+    # The node's own report that its system terminal can reach root through sudo
+    # (ADR 0023). False for a daemon that predates the field, which is the correct
+    # reading: a posture nobody has claimed is not one the console may imply.
+    privileged_terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,6 +190,7 @@ class NodeRegistrationService:
                 version=r.version,
                 binary_path=r.binary_path,
                 checked_at=r.checked_at,
+                sandbox_bypass=r.sandbox_bypass,
             )
             for r in data.runtimes
         ]
@@ -246,6 +255,7 @@ class NodeRegistrationService:
                 version=r.version,
                 binary_path=r.binary_path,
                 checked_at=r.checked_at,
+                sandbox_bypass=r.sandbox_bypass,
             )
             for r in data.runtimes
         ]
@@ -254,9 +264,25 @@ class NodeRegistrationService:
             for w in data.workspace_roots
         ]
         apply_tunnel_report(node, data.tunnel)
+        # Only a *change* is audited. Every reconnect re-registers, so recording the
+        # posture each time would bury the announce that matters under one row per
+        # reconnect — and "when did this node become able to reach root" is the
+        # question an incident review starts from (ADR 0023 §2.5).
+        posture_changed = node.privileged_terminal != data.privileged_terminal
+        previous_posture = node.privileged_terminal
+        node.privileged_terminal = data.privileged_terminal
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
+        if posture_changed:
+            await self._audit.record(
+                audit.NODE_POSTURE_CHANGED,
+                node_id=node.id,
+                metadata={
+                    "privileged_terminal": data.privileged_terminal,
+                    "previous": previous_posture,
+                },
+            )
         return node
 
     async def update_system_info(
@@ -297,6 +323,7 @@ class NodeRegistrationService:
                 version=r.version,
                 binary_path=r.binary_path,
                 checked_at=r.checked_at,
+                sandbox_bypass=r.sandbox_bypass,
             )
             for r in runtimes
         ]

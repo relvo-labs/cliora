@@ -56,6 +56,10 @@ var allowedLabels = map[string]bool{
 	"op": true, "type": true, "code": true, "reason": true, "runtime": true,
 	"status": true, "stage": true, "result": true, "state": true, "kind": true,
 	"direction": true, "channel": true,
+	// "sandbox" is bypassed|enforced on daemon_session_start_total (ADR 0023). Two
+	// values, neither identifying, and it answers a question that gets asked after the
+	// fact: were the sessions on this node running without a sandbox?
+	"sandbox": true,
 }
 
 // LabelNotAllowed names a rejected label key. Recording panics rather than silently

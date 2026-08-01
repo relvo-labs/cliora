@@ -17,6 +17,9 @@ const LABELS: Record<string, string> = {
   "node.disable": "停用 Node",
   "node.enable": "啟用 Node",
   "node.remove": "移除 Node",
+  // 這台機器的系統終端機變成（或不再是）可經 sudo 取得 root。變更發生在機器上，
+  // 平台是唯一會把它記下來的地方（ADR 0023）。
+  "node.posture_changed": "Node 提權姿態變更",
   "credential.revoke": "撤銷憑證",
   "credential.rotate": "輪替憑證",
   "session.create": "建立 Session",
@@ -64,6 +67,7 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "node.enable",
       "node.disable",
       "node.remove",
+      "node.posture_changed",
       "credential.revoke",
       "credential.rotate",
       "daemon.update_started",

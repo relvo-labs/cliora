@@ -148,6 +148,10 @@ type runtimeItem struct {
 	Version    *string `json:"version,omitempty"`
 	BinaryPath *string `json:"binary_path,omitempty"`
 	CheckedAt  *string `json:"checked_at,omitempty"`
+	// SandboxBypass is the measured posture of this runtime on this node
+	// (contract 1.7.0, ADR 0023). Optional: an older daemon does not send it, and
+	// absent means "no bypass", never "unknown".
+	SandboxBypass *bool `json:"sandbox_bypass,omitempty"`
 }
 type workspaceRoot struct {
 	Path        string  `json:"path"`
@@ -165,6 +169,10 @@ type registerFields struct {
 	Runtimes       []runtimeItem   `json:"runtimes"`
 	WorkspaceRoots []workspaceRoot `json:"workspace_roots"`
 	Tunnel         *tunnelReport   `json:"tunnel"`
+	// PrivilegedTerminal reports that this node's system terminal can reach root
+	// through sudo (contract 1.7.0, ADR 0023). Report-only: there is deliberately
+	// no message in either direction that lets Central *set* it.
+	PrivilegedTerminal *bool `json:"privileged_terminal,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`

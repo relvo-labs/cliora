@@ -27,6 +27,10 @@ func NewRegistry(cfg map[string]config.RuntimeConfig) *Registry {
 			enabled: ok && rc.Enabled,
 			binary:  rc.Binary,
 			timeout: defaultDetectTimeout,
+			// Absent sandbox_bypass means enabled (ADR 0023 D2). config.Load fills the
+			// key in, but hand-built maps (installer detection, doctor) come through
+			// here too and must get the same default.
+			bypassRequested: ok && rc.BypassSandbox(),
 		}
 	}
 	return reg
@@ -37,23 +41,34 @@ func (r *Registry) Get(id string) (Runtime, bool) {
 	return rt, ok
 }
 
-// ResolveBinary returns the absolute launch binary for an allowlisted runtime,
-// or a stable RUNTIME_* error code. The renderer never supplies a command; this
-// is the only source of the launch argv[0] (SEC-002).
-func (r *Registry) ResolveBinary(id string) (string, error) {
+// LaunchSpec is the complete launch description for an allowlisted runtime: the
+// absolute binary plus the daemon's own arguments. Args never contains a string a
+// caller, protocol message or config file supplied (SEC-002, ADR 0023 §2.4) — the
+// node's only say is a boolean that turns an entry of the daemon's table off.
+type LaunchSpec struct {
+	Path string
+	Args []string
+}
+
+// ResolveLaunch returns the launch spec for an allowlisted runtime, or a stable
+// RUNTIME_* error code. The renderer never supplies a command; this is the only
+// source of a session's argv (SEC-002). It replaces the earlier ResolveBinary
+// rather than sitting beside it: two entry points would be two answers to "what
+// gets launched", and one of them would have no arguments.
+func (r *Registry) ResolveLaunch(id string) (LaunchSpec, error) {
 	rt, ok := r.runtimes[id]
 	if !ok {
-		return "", errors.New(ReasonNotFound)
+		return LaunchSpec{}, errors.New(ReasonNotFound)
 	}
 	binary := rt.Binary()
 	if binary == "" {
-		return "", errors.New(ReasonDisabled)
+		return LaunchSpec{}, errors.New(ReasonDisabled)
 	}
 	path, err := exec.LookPath(binary)
 	if err != nil {
-		return "", errors.New(ReasonNotFound)
+		return LaunchSpec{}, errors.New(ReasonNotFound)
 	}
-	return path, nil
+	return LaunchSpec{Path: path, Args: rt.LaunchArgs()}, nil
 }
 
 // DetectAll probes every allowlisted runtime and returns results ordered by id.

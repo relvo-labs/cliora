@@ -68,15 +68,18 @@ func (m *Manager) WithStopGrace(grace time.Duration) *Manager {
 // about. Every production path calls StartSession with an explicitly allowlisted
 // runtime and a guard-canonicalised workspace.
 func (m *Manager) Start(ctx context.Context, id uuid.UUID, rows, columns uint16) error {
-	return m.StartSession(ctx, id, "fake", m.workspace, m.binary, rows, columns)
+	return m.StartSession(ctx, id, "fake", m.workspace, m.binary, nil, rows, columns)
 }
 
 // StartSession launches a session with an explicit allowlisted runtime, an
-// already-canonicalised workspace, and the resolved binary (P2-07). The daemon
-// never receives a command string; the caller resolves the binary from the
-// runtime allowlist and validates the workspace via the workspace guard.
+// already-canonicalised workspace, and the resolved launch spec (P2-07, ADR 0023).
+// The daemon never receives a command string: the caller resolves both the binary
+// and the args from the runtime allowlist (runtime.Registry.ResolveLaunch) and
+// validates the workspace via the workspace guard. `args` therefore always comes
+// from the daemon's own table, never from a protocol message.
 func (m *Manager) StartSession(
-	ctx context.Context, id uuid.UUID, runtimeID, workspace, binary string, rows, columns uint16,
+	ctx context.Context, id uuid.UUID, runtimeID, workspace, binary string, args []string,
+	rows, columns uint16,
 ) error {
 	m.mu.Lock()
 	if _, exists := m.sessions[id]; exists {
@@ -90,6 +93,7 @@ func (m *Manager) StartSession(
 		RuntimeID: runtimeID,
 		Workspace: workspace,
 		Binary:    binary,
+		Args:      args,
 		Size:      ctmux.Size{Rows: rows, Columns: columns},
 	})
 	m.mu.Lock()
@@ -113,10 +117,9 @@ func (m *Manager) Attach(ctx context.Context, id uuid.UUID, rows, columns uint16
 		return ctmux.Snapshot{}, err
 	}
 	name, _ := ctmux.Name(id)
-	args := []string{"attach-session", "-d", "-t", name}
-	if m.tmux.Socket != "" {
-		args = append([]string{"-L", m.tmux.Socket}, args...)
-	}
+	// Built by the client so the attach lands on the same server the session was
+	// created on, config file included.
+	args := m.tmux.AttachArgs(name)
 	m.mu.Lock()
 	currentBeforeAttach := m.sessions[id]
 	var previousBeforeAttach *terminal.Process

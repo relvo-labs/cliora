@@ -281,3 +281,123 @@ async def test_ws_heartbeat_resources_reach_registry(api: tuple) -> None:
     async with maker() as session:
         await node_gateway(ws, node_id, session)
     assert ws.captured == {"cpu_usage": 5.0, "daemon_uptime": 120.0}
+
+
+# --- Privileged node posture (ADR 0023, PV-07) ---------------------------------
+
+
+def _privileged_register_payload() -> dict:
+    payload = _register_payload()
+    payload["privileged_terminal"] = True
+    payload["runtimes"] = [
+        {"runtime": "codex", "available": True, "version": "codex 1.2.3", "sandbox_bypass": True},
+        {"runtime": "claude", "available": True},
+    ]
+    return payload
+
+
+async def _register_via_ws(maker, node_id, private, payload) -> None:
+    ws = FakeWebSocket(node_id, private, [_frame("node.register", node_id, payload)])
+    async with maker() as session:
+        await node_gateway(ws, node_id, session)
+
+
+async def _posture_audit_rows(maker) -> list:
+    from app.db.models import AuditLog
+
+    async with maker() as session:
+        rows = (
+            await session.execute(
+                sa.select(AuditLog).where(AuditLog.action == "node.posture_changed")
+            )
+        ).scalars()
+        return list(rows)
+
+
+async def test_a_daemon_that_says_nothing_is_not_privileged(api: tuple) -> None:
+    """Absent must read as unprivileged. An older daemon sends neither field, and a
+    console that inferred "privileged" from silence would describe a posture nobody
+    claimed."""
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    await _register_via_ws(maker, node_id, private, _register_payload())
+    async with maker() as session:
+        node = await NodeRepository(session).get(node_id)
+        assert node is not None and node.privileged_terminal is False
+        assert all(r.sandbox_bypass is False for r in node.runtimes)
+    assert await _posture_audit_rows(maker) == []
+
+
+async def test_the_reported_posture_is_persisted_and_audited(api: tuple) -> None:
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    await _register_via_ws(maker, node_id, private, _privileged_register_payload())
+    async with maker() as session:
+        node = await NodeRepository(session).get(node_id)
+        assert node is not None and node.privileged_terminal is True
+        codex = next(r for r in node.runtimes if r.runtime == "codex")
+        claude = next(r for r in node.runtimes if r.runtime == "claude")
+        assert codex.sandbox_bypass is True
+        # Only the runtime that reported it: a bypass is not a node-wide property.
+        assert claude.sandbox_bypass is False
+    rows = await _posture_audit_rows(maker)
+    assert len(rows) == 1
+    assert rows[0].audit_metadata["privileged_terminal"] is True
+    assert rows[0].audit_metadata["previous"] is False
+
+
+async def test_reconnecting_in_the_same_posture_writes_no_audit_row(api: tuple) -> None:
+    """A reconnect is not a change. One row per reconnect would bury the announce that
+    matters — which is the only reason this action is worth having."""
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    await _register_via_ws(maker, node_id, private, _privileged_register_payload())
+    await _register_via_ws(maker, node_id, private, _privileged_register_payload())
+    assert len(await _posture_audit_rows(maker)) == 1
+
+
+async def test_revoking_the_posture_is_audited_too(api: tuple) -> None:
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    await _register_via_ws(maker, node_id, private, _privileged_register_payload())
+    await _register_via_ws(maker, node_id, private, _register_payload())
+    async with maker() as session:
+        node = await NodeRepository(session).get(node_id)
+        assert node is not None and node.privileged_terminal is False
+    rows = sorted(await _posture_audit_rows(maker), key=lambda r: r.created_at)
+    assert len(rows) == 2
+    assert rows[1].audit_metadata["privileged_terminal"] is False
+    assert rows[1].audit_metadata["previous"] is True
+
+
+async def test_runtime_status_refresh_updates_the_sandbox_posture(api: tuple) -> None:
+    """A codex upgrade that drops the flag has to be visible without a re-register:
+    the daemon re-detects and pushes node.runtime_status."""
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    await _register_via_ws(maker, node_id, private, _privileged_register_payload())
+    ws = FakeWebSocket(
+        node_id,
+        private,
+        [
+            _frame(
+                "node.runtime_status",
+                node_id,
+                {
+                    "runtimes": [
+                        {"runtime": "codex", "available": True, "sandbox_bypass": False},
+                    ]
+                },
+            )
+        ],
+    )
+    async with maker() as session:
+        await node_gateway(ws, node_id, session)
+    async with maker() as session:
+        node = await NodeRepository(session).get(node_id)
+        assert node is not None
+        codex = next(r for r in node.runtimes if r.runtime == "codex")
+        assert codex.sandbox_bypass is False
+        # The terminal posture is not touched by a runtime refresh: it changes only
+        # when the machine's unit and sudoers change, which requires a restart.
+        assert node.privileged_terminal is True

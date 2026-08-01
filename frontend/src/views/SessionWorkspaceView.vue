@@ -11,7 +11,7 @@ import {
 import { useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
-import type { SessionDetail } from "../api/dto";
+import type { NodeDetail, SessionDetail } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import AsyncState from "../components/common/AsyncState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
@@ -27,11 +27,13 @@ const PreviewPane = defineAsyncComponent(
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useTerminalSession } from "../composables/useTerminalSession";
 import { api } from "../stores/auth";
+import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
 const sessions = useSessionsStore();
+const nodes = useNodesStore();
 
 // Capabilities come from the session payload, computed server-side from the role
 // *and* ownership (ADR 0016) — a Developer may see a colleague's session but not
@@ -245,9 +247,13 @@ const terminateOpen = ref(false);
 const actionError = ref("");
 const busy = ref(false);
 
-const resource = useAsyncResource<SessionDetail>(() =>
-  sessions.fetchSession(props.id),
-);
+const resource = useAsyncResource<SessionDetail>(async () => {
+  const detail = await sessions.fetchSession(props.id);
+  // Posture is fetched alongside, not awaited into the critical path's failure
+  // modes: a node read that fails must not make the workspace unopenable.
+  void loadNodePosture(detail.node_id);
+  return detail;
+});
 
 // The composable owns the xterm + socket; it mints a fresh single-use ws-ticket
 // on every (re)connect via the API client.
@@ -258,6 +264,30 @@ const terminal = useTerminalSession((sessionId) =>
 );
 
 const session = computed(() => sessions.current);
+
+// 這台 Node 的執行姿態（ADR 0023）。使用者按下 Enter 之前，資訊要在他眼前 —— 不是藏在
+// Node 詳情頁裡。額外一次請求、且失敗不影響工作區：拿不到姿態時什麼都不顯示，
+// 因為顯示一個猜的姿態比不顯示更糟。Viewer 也持有 node.view，所以每個能開這個工作區的
+// 人都拿得到。
+const nodePosture = ref<NodeDetail | null>(null);
+async function loadNodePosture(nodeId: string): Promise<void> {
+  try {
+    nodePosture.value = await nodes.fetchNode(nodeId);
+  } catch {
+    nodePosture.value = null;
+  }
+}
+const sandboxBypassed = computed(() => {
+  const runtime = session.value?.runtime;
+  if (!runtime || !nodePosture.value) return false;
+  return (
+    nodePosture.value.runtimes.find((rt) => rt.runtime === runtime)
+      ?.sandbox_bypass === true
+  );
+});
+const privilegedNode = computed(
+  () => nodePosture.value?.privileged_terminal === true,
+);
 
 // Mounting follows the host element, not the lifecycle hook. `onMounted` fires
 // once, so any render that replaced the host — a failed load followed by Retry,
@@ -332,6 +362,14 @@ async function confirmTerminate(): Promise<void> {
           <span class="role" :data-role="terminal.role.value">{{
             terminal.role.value === "writer" ? "Writer" : "Viewer (read-only)"
           }}</span>
+          <!-- 姿態要在使用者按下 Enter 之前就在眼前（ADR 0023 D10）。只在確實取得
+               Node 回報時顯示：猜一個姿態比不顯示更糟。 -->
+          <span v-if="sandboxBypassed" class="posture" title="ADR 0023"
+            >沙箱：已停用</span
+          >
+          <span v-if="privilegedNode" class="posture" title="ADR 0023"
+            >此 Node 可提權（sudo）</span
+          >
         </div>
         <div class="actions">
           <button
@@ -411,13 +449,20 @@ async function confirmTerminate(): Promise<void> {
             <p class="shell-notice" role="note">
               系統終端機：直接操作此 Node 的 shell，<strong
                 >不受 workspace 路徑限制</strong
-              >。指令內容不會被記錄。
+              >。指令內容不會被記錄。<template v-if="privilegedNode">
+                此 Node <strong>可經 sudo 取得 root</strong>（ADR
+                0023）。</template
+              >
             </p>
             <div
               ref="shellHost"
               class="terminal-host"
               aria-label="System terminal"
             />
+            <p class="terminal-hint">
+              滾輪可往上檢視先前輸出（按 <kbd>q</kbd> 回到即時輸出）·
+              選取文字請按住 <kbd>Shift</kbd> 拖曳
+            </p>
             <p
               v-if="shellState === 'starting'"
               class="shell-status"
@@ -625,10 +670,38 @@ async function confirmTerminate(): Promise<void> {
   border-radius: var(--radius-md);
   overflow: hidden;
 }
-/* Both are `v-if`: present or not, they must not affect who gets the slack. */
+/* All three are conditional or short: present or not, they must not affect who
+   gets the slack. */
 .shell-notice,
-.shell-status {
+.shell-status,
+.terminal-hint {
   flex: 0 0 auto;
+}
+/* Scrolling and selecting both changed behaviour with the tmux mouse mode that
+   made scrolling work at all (ADR 0023): the wheel now drives tmux copy mode, and
+   drag-select belongs to tmux unless Shift is held. Neither is discoverable, so
+   the two sentences live under the terminal rather than in a release note nobody
+   re-reads. Note it is Shift+*drag*, not Shift+wheel — xterm.js ignores a wheel
+   event with Shift held. */
+.terminal-hint {
+  margin: 0;
+  padding: 4px 10px 6px;
+  color: #7c8695;
+  font-size: 11px;
+}
+.terminal-hint kbd {
+  padding: 0 3px;
+  border: 1px solid #333a45;
+  border-radius: 3px;
+  font-family: inherit;
+}
+/* 不是裝飾：使用者要能分辨自己在哪一種邊界裡（ADR 0021 §4、ADR 0023 D10）。 */
+.posture {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: #3a2f1b;
+  color: #f0d9a8;
+  font-size: 11px;
 }
 /* Not decoration: the user has to be able to tell which security boundary they
    are inside (ADR 0021 §4). */

@@ -111,6 +111,21 @@ def _require_runtime(node: Node, runtime: str) -> None:
         )
 
 
+def _sandbox_posture(node: Node, runtime: str) -> str:
+    """How this runtime is sandboxed on this node, for the audit trail (ADR 0023).
+
+    Three values, not two. `n/a` is for the system terminal and the dev runtime: they
+    have no sandbox to bypass, and recording `enforced` for them would be a false
+    claim in a record whose whole purpose is to be trusted later.
+    """
+    if runtime in {SHELL_RUNTIME, "fake"}:
+        return "n/a"
+    match = next((r for r in node.runtimes if r.runtime == runtime), None)
+    if match is not None and match.sandbox_bypass:
+        return "bypassed"
+    return "enforced"
+
+
 def _payload_int(payload: dict[str, object], key: str) -> int | None:
     value = payload.get(key)
     return value if isinstance(value, int) else None
@@ -219,7 +234,15 @@ class SessionService:
             user_id=actor_id,
             node_id=node_id,
             session_id=session.id,
-            metadata={"runtime": runtime},
+            metadata={
+                "runtime": runtime,
+                # The posture this session actually started under, snapshotted here
+                # (ADR 0023 D10). A later question — "was that machine privileged when
+                # this ran?" — cannot be answered from the node's current state, because
+                # the machine may have been rebuilt or reconfigured since.
+                "sandbox": _sandbox_posture(node, runtime),
+                "privileged": node.privileged_terminal,
+            },
         )
 
         try:

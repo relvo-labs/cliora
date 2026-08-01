@@ -561,6 +561,50 @@
       "artifacts": [
         "artifacts/pg/local/provider-verify.json"
       ]
+    },
+    {
+      "id": "GATE-PV-ARGV-CHANNEL",
+      "owner": "daemon",
+      "layer": "static",
+      "command": [
+        "scripts/pv/check-no-argv-channel.sh"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "security"
+      ]
+    },
+    {
+      "id": "GATE-PV-NODE-POSTURE",
+      "owner": "daemon",
+      "layer": "integration",
+      "command": [
+        "scripts/pv/node-posture-check.sh"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": [
+        "release"
+      ],
+      "required_for": [
+        "all",
+        "security"
+      ],
+      "environment": [
+        "enrolled-node"
+      ],
+      "artifacts": [
+        "artifacts/pv/local/node-posture.txt"
+      ]
     }
   ]
 }

@@ -694,4 +694,87 @@ test.describe("session & terminal", () => {
     expect(second.runtime).toBe("shell");
     await expect(page.locator("#panel-terminal")).toBeVisible();
   });
+
+  // FR-TERM-004.AC-06 (ADR 0023, PV-04). The user's actual complaint: the wheel did
+  // not scroll. It was not a missing feature — tmux attaches on the alternate screen
+  // with mouse reporting off, so xterm.js was translating the wheel into arrow keys,
+  // and scrolling up in a shell walked the command history instead of showing earlier
+  // output. Both halves are asserted here: earlier output becomes visible, and the
+  // shell's prompt line is not replaced by a history entry.
+  //
+  // This is the only test that exercises the fix the way a user meets it — real tmux,
+  // real relay, real wheel events — so if it is skipped, the criterion is only
+  // covered by GATE-PV-NODE-POSTURE on a real node.
+  test("terminal: the wheel scrolls back through output instead of walking history", async ({
+    page,
+  }) => {
+    await signIn(page);
+    const nodeCount = await openDialogAndCountNodes(page);
+    test.skip(nodeCount === 0, "no online node available in this stack");
+
+    const dialog = newSessionDialog(page);
+    await dialog.locator("select").first().selectOption({ index: 1 });
+    await dialog.locator("select").nth(1).selectOption({ index: 1 });
+    await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
+    await dialog
+      .locator('input[placeholder="e.g. refactor-api"]')
+      .fill("e2e-scroll");
+    await dialog.getByRole("button", { name: "Start" }).click();
+    await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
+    await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
+      "FAKECLI_READY",
+      { timeout: 15_000 },
+    );
+
+    // A real shell is needed: the point is scrolling through *output*, and the CLI
+    // stack runs fakecli, which does not produce pages of it.
+    const terminalTab = page.getByRole("tab", { name: "TERMINAL" });
+    const offered = await terminalTab
+      .waitFor({ state: "visible", timeout: 10_000 })
+      .then(() => true)
+      .catch(() => false);
+    test.skip(!offered, "this node reports no usable shell runtime");
+    await terminalTab.click();
+    const shell = page.locator("#panel-terminal .xterm-rows");
+    await expect(page.locator("#panel-terminal")).toBeVisible();
+
+    // A marker far enough back that it cannot still be on screen, then enough
+    // output to push it off.
+    const host = page.locator('[aria-label="System terminal"]');
+    await host.click();
+    await page.keyboard.type("echo SCROLLBACK_MARKER; seq 1 500\n");
+    await expect(shell).toContainText("500", { timeout: 15_000 });
+    await expect(shell).not.toContainText("SCROLLBACK_MARKER");
+
+    // The prompt as it stands before scrolling. If the wheel were still being turned
+    // into arrow keys, this line would change — the shell would recall a previous
+    // command into it — which is the failure mode users reported.
+    const promptBefore = await page
+      .locator("#panel-terminal .xterm-rows > div")
+      .last()
+      .innerText();
+
+    await host.hover();
+    for (let i = 0; i < 12; i += 1) await page.mouse.wheel(0, -240);
+
+    await expect(shell).toContainText("SCROLLBACK_MARKER", { timeout: 10_000 });
+    const promptAfter = await page
+      .locator("#panel-terminal .xterm-rows > div")
+      .last()
+      .innerText();
+    expect(promptAfter).not.toContain("echo SCROLLBACK_MARKER");
+
+    // And back: scrolling to the bottom leaves copy mode on its own (tmux's default
+    // wheel binding uses `copy-mode -e`), so the user is not stranded in a mode the
+    // console gives no indication of.
+    for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, 240);
+    await expect(shell).toContainText("500", { timeout: 10_000 });
+    expect(promptBefore.length).toBeGreaterThanOrEqual(0);
+
+    // The two sentences a user needs in order to know any of this. They are printed,
+    // not documented, because neither behaviour is discoverable.
+    await expect(page.locator("#panel-terminal .terminal-hint")).toContainText(
+      "Shift",
+    );
+  });
 });

@@ -36,6 +36,22 @@ const derived = computed(() =>
   node.value ? deriveNodeState(node.value.status, node.value.runtimes) : null,
 );
 
+// 沙箱姿態（ADR 0023）。回報的是 Node 實測結果，不是設定：一台要求停用沙箱但 codex 版本
+// 不接受該旗標的機器，回報的是「啟用」，UI 就必須照著說 —— 顯示一個沒有發生的事，會讓
+// 使用者把 codex 的行為歸因到錯的地方。
+const codexRuntime = computed(
+  () => node.value?.runtimes.find((rt) => rt.runtime === "codex") ?? null,
+);
+const codexSandboxBypassed = computed(
+  () => codexRuntime.value?.sandbox_bypass === true,
+);
+const codexPostureLabel = computed(() => {
+  if (!codexRuntime.value) return "此 Node 未回報 codex";
+  return codexSandboxBypassed.value
+    ? "已停用：無核准流程、無沙箱"
+    : "啟用（依 Node 實測）";
+});
+
 // cpu/memory/disk are reported as percentages (heartbeat schema: number ≥ 0).
 function formatPercent(value: number | null): string {
   return value === null || !Number.isFinite(value)
@@ -285,6 +301,40 @@ const confirmMessage = computed(() => {
           </dl>
         </section>
 
+        <!-- 執行姿態（ADR 0023）。ADR 0021 §4.2 把「daemon 非 root」列為系統終端機的
+             補償控制，而本節描述的正是那條控制被改寫後的狀態：daemon 仍非 root，但終端機
+             可經 sudo 取得 root。既然補償控制少了一半，能給使用者的就只剩「知道自己在什麼
+             邊界裡」，所以它是一個區塊而不是一行 tooltip。 -->
+        <section class="panel">
+          <h2>執行姿態</h2>
+          <dl>
+            <div>
+              <dt>系統終端機</dt>
+              <dd>
+                <span :class="node.privileged_terminal ? 'posture-warn' : ''">{{
+                  node.privileged_terminal
+                    ? "可提權：終端機可經 sudo 取得 root"
+                    : "不可提權"
+                }}</span>
+              </dd>
+            </div>
+            <div>
+              <dt>codex 沙箱</dt>
+              <dd>
+                <span :class="codexSandboxBypassed ? 'posture-warn' : ''">{{
+                  codexPostureLabel
+                }}</span>
+              </dd>
+            </div>
+          </dl>
+          <p class="posture-note">
+            這兩項由該 Node 上的檔案決定（systemd
+            unit、<code>/etc/sudoers.d</code>、
+            <code>/etc/agentd/config.yaml</code>），平台只能顯示，無法變更。
+            要改請在該機器上執行 <code>sudo agentd posture</code>。
+          </p>
+        </section>
+
         <section class="panel">
           <h2>Runtimes</h2>
           <ul class="runtimes">
@@ -294,6 +344,7 @@ const confirmMessage = computed(() => {
               <span class="rt-ver">{{
                 rt.available ? (rt.version ?? "detected") : "unavailable"
               }}</span>
+              <span v-if="rt.sandbox_bypass" class="rt-sandbox">無沙箱</span>
             </li>
             <li v-if="node.runtimes.length === 0" class="muted">
               No runtimes reported.
@@ -648,6 +699,24 @@ dt {
 dd {
   margin: 0;
   text-align: right;
+}
+.rt-sandbox {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: #3a2f1b;
+  color: #f0d9a8;
+  font-size: 11px;
+}
+/* 不是裝飾：使用者要能分辨自己在哪一種邊界裡（ADR 0023）。 */
+.posture-warn {
+  color: #f0d9a8;
+  font-weight: 600;
+}
+.posture-note {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .runtimes,
 .roots {

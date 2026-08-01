@@ -6,6 +6,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -27,11 +28,39 @@ type ServerConfig struct {
 
 type NodeConfig struct {
 	Name string `yaml:"name"`
+	// PrivilegedTerminal reports that this machine's system terminal can reach root
+	// through sudo (ADR 0023). It is a *report*, not an authorization: the grant is
+	// the sudoers drop-in plus the absence of NoNewPrivileges in the systemd unit,
+	// and setting this to false does not take sudo away. It exists so the daemon can
+	// tell Central what posture this machine is in without parsing systemd state at
+	// runtime; `agentd posture` keeps the two in sync and `agentd doctor` reports
+	// when they disagree.
+	PrivilegedTerminal bool `yaml:"privileged_terminal"`
 }
 
 type RuntimeConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Binary  string `yaml:"binary"`
+	// SandboxBypass turns off the runtime's own approval prompts and OS sandbox by
+	// adding the daemon's fixed flag set for that runtime (runtime/launch.go).
+	// Absent → enabled, the same way runtime.shell defaults (ADR 0021/0023): an
+	// upgraded node takes the posture without an operator editing a file, which is
+	// a capability change, which is why Load records where the value came from.
+	//
+	// Only the runtimes in SandboxBypassRuntimeIDs accept this key; Validate
+	// refuses it elsewhere rather than ignoring it, because a silently ignored
+	// setting reads exactly like a setting that worked.
+	//
+	// There is deliberately no args/flags field here. The node decides whether the
+	// daemon's fixed flags apply, never what they are (SEC-002, ADR 0023 §2.4).
+	SandboxBypass *bool `yaml:"sandbox_bypass"`
+}
+
+// BypassSandbox reports the effective sandbox_bypass value: absent means enabled
+// (ADR 0023 D2). Callers that hand-build a RuntimeConfig (installer detection,
+// doctor) get the same default as a config file that omits the key.
+func (r RuntimeConfig) BypassSandbox() bool {
+	return r.SandboxBypass == nil || *r.SandboxBypass
 }
 
 type WorkspaceConfig struct {
@@ -153,6 +182,13 @@ type Config struct {
 	// enabled, rather than being written by an operator. Never serialised.
 	ShellFromDefault bool `yaml:"-"`
 
+	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
+	// absent and defaulted to enabled rather than being chosen. Surfaced in the
+	// startup log because "the operator asked for this" and "an upgrade did this"
+	// are different facts about a machine that now runs a CLI without a sandbox.
+	// Never serialised.
+	SandboxBypassFromDefault map[string]bool `yaml:"-"`
+
 	// LegacyTunnelToken records that the config carried a `tunnel.token` key, which the
 	// platform now holds instead. Surfaced at startup so the node owner learns the key is
 	// dead rather than assuming it is in use. Never serialised.
@@ -174,6 +210,23 @@ const ShellRuntimeID = "shell"
 // would be the beginning of letting a caller name a command (SEC-002).
 const DefaultShellBinary = "bash"
 
+// SandboxBypassRuntimeIDs are the runtimes for which sandbox_bypass means
+// something. It is deliberately not "every CLI runtime": claude's approval model
+// is different and was not part of the ADR 0023 decision, and the shell is the
+// operator's own shell, which has no sandbox to speak of. A runtime with no entry
+// in the daemon's flag table (runtime/launch.go) must not accept the key either —
+// runtime's tests assert the two stay in step.
+var SandboxBypassRuntimeIDs = map[string]bool{"codex": true}
+
+// Scrollback bounds for the tmux history the browser can scroll through
+// (FR-TERM-004.AC-04 requires at least 5000 lines). The floor is applied rather
+// than enforced by an error: an existing node with a smaller value must still
+// start, and the requirement is the platform's promise, not the operator's.
+const (
+	MinScrollbackLimit = 5000
+	MaxScrollbackLimit = 200000
+)
+
 // Load reads, permission-checks, strictly parses, and validates a config file.
 func Load(path string) (*Config, error) {
 	data, err := readSecureFile(path)
@@ -188,6 +241,7 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.applyFilesystemDefaults()
 	cfg.applyRuntimeDefaults()
+	cfg.applySessionDefaults()
 	cfg.applyTunnelDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -199,14 +253,53 @@ func Load(path string) (*Config, error) {
 // about it. An explicit `enabled: false` is left alone — the node operator's veto
 // must survive every future default change, so this only ever fills an absent key.
 func (c *Config) applyRuntimeDefaults() {
-	if _, ok := c.Runtime[ShellRuntimeID]; ok {
-		return
-	}
 	if c.Runtime == nil {
 		c.Runtime = map[string]RuntimeConfig{}
 	}
-	c.Runtime[ShellRuntimeID] = RuntimeConfig{Enabled: true, Binary: DefaultShellBinary}
-	c.ShellFromDefault = true
+	if _, ok := c.Runtime[ShellRuntimeID]; !ok {
+		c.Runtime[ShellRuntimeID] = RuntimeConfig{Enabled: true, Binary: DefaultShellBinary}
+		c.ShellFromDefault = true
+	}
+	// Same rule for sandbox_bypass, and for the same reason: an absent key means
+	// enabled (ADR 0023 D2), and an explicit `false` is an operator decision that
+	// no future default change may overwrite. Only a runtime that is actually
+	// present gets the key filled in — writing it onto a runtime the node does not
+	// have would put a setting in memory for a binary that will never launch.
+	for id := range SandboxBypassRuntimeIDs {
+		rc, ok := c.Runtime[id]
+		if !ok || rc.SandboxBypass != nil {
+			continue
+		}
+		enabled := true
+		rc.SandboxBypass = &enabled
+		c.Runtime[id] = rc
+		if c.SandboxBypassFromDefault == nil {
+			c.SandboxBypassFromDefault = map[string]bool{}
+		}
+		c.SandboxBypassFromDefault[id] = true
+	}
+}
+
+// applySessionDefaults brings the tmux scrollback into the range the product
+// promises. This value used to be written into every generated config and read by
+// nothing: tmux's own default is 2000 lines, so FR-TERM-004.AC-04 ("at least 5000
+// lines") was not met on any node until PV-04 wired it to the tmux config file.
+func (c *Config) applySessionDefaults() {
+	switch {
+	case c.Session.ScrollbackLimit < MinScrollbackLimit:
+		if c.Session.ScrollbackLimit > 0 {
+			slog.Warn("session.scrollback_limit raised to the required minimum",
+				"configured", c.Session.ScrollbackLimit, "using", MinScrollbackLimit)
+		}
+		c.Session.ScrollbackLimit = MinScrollbackLimit
+	case c.Session.ScrollbackLimit > MaxScrollbackLimit:
+		// A misplaced zero here costs memory in every pane on the machine, and the
+		// symptom (a node that slowly runs out of memory) points nowhere near this
+		// file. Clamp and say so.
+		slog.Warn("session.scrollback_limit clamped",
+			"configured", c.Session.ScrollbackLimit, "using", MaxScrollbackLimit)
+		c.Session.ScrollbackLimit = MaxScrollbackLimit
+	}
 }
 
 // applyFilesystemDefaults fills omitted P3 filesystem/workspace fields with the
@@ -347,6 +440,11 @@ func (c *Config) Validate() error {
 		}
 		if rc.Enabled && rc.Binary == "" {
 			return fmt.Errorf("runtime %q is enabled but has no binary", id)
+		}
+		if rc.SandboxBypass != nil && !SandboxBypassRuntimeIDs[id] {
+			return fmt.Errorf(
+				"runtime %q does not support sandbox_bypass (only codex); remove the key "+
+					"rather than expecting it to be ignored", id)
 		}
 	}
 	for _, spec := range c.Tunnel.AllowedPorts {
