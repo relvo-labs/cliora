@@ -210,9 +210,10 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: true,
   },
   SHELL_ALREADY_OPEN: {
-    cause: "此 Session 已經開著一個系統終端機（每個 Session 同時只能有一個）。",
+    cause:
+      "每個 Session 同時只能有一個系統終端機，而目前有另一個分頁或視窗正連著它。",
     nextStep:
-      "回到持有它的分頁，或關閉後再重新開啟；閒置一段時間後也會自動回收。",
+      "回到持有它的分頁，或在那裡關閉它；沒有人連著的終端機不會被拒絕，下次開啟就會取代它。",
     retryable: false,
   },
   INVALID_TERMINAL_SIZE: {

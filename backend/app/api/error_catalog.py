@@ -391,10 +391,10 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "SHELL_ALREADY_OPEN",
             status.HTTP_409_CONFLICT,
             "This session already has a system terminal",
-            "One live system terminal per CLI session (ADR 0021): the existing one is "
-            "still open somewhere, or a previous tab did not close cleanly.",
-            "Return to the tab holding it, or close it and open a new one. An "
-            "abandoned terminal is also reaped by the idle timeout.",
+            "One live system terminal per CLI session (ADR 0021), and another tab or "
+            "window is attached to the existing one right now.",
+            "Return to the tab holding it, or close it there. A terminal nobody is "
+            "attached to is not a refusal: the next open replaces it.",
             # Central-side: the parent is resolved here and the node never sees the
             # request, so no daemon origin.
         ),

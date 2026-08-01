@@ -45,6 +45,21 @@ jobs:
         working-directory: frontend
       - run: npm run format:check && npm run lint && npm run typecheck && npm run test:unit -- --run && npm run build
         working-directory: frontend
+      # Three layout invariants (plan/09). They live in the baseline gate rather
+      # than a phase workflow because they are permanent rules, and because the
+      # thing they protect against is invisible to every other gate here: jsdom
+      # has no layout, so a panel collapsing to half its height keeps 343 unit
+      # tests green. The measuring assertion needs a browser and a full stack and
+      # runs in wt.yml; these three are the cheap half that runs on every push.
+      # The gates themselves live in scripts/ly/layout-gates.sh so this workflow and
+      # scripts/ly/evidence.sh cannot drift apart — if they did, both would still be
+      # green, which is the failure mode this whole phase is about.
+      - name: the page height has exactly one source
+        run: scripts/ly/layout-gates.sh height
+      - name: panels do not size themselves by counting children
+        run: scripts/ly/layout-gates.sh panels
+      - name: the sidebar width in style.md matches the token
+        run: scripts/ly/layout-gates.sh sidebar
   # Deployment configuration, checked without a platform account. It belongs in the baseline
   # gate rather than a phase workflow because the two edge
   # configurations can be made to disagree by a change to either one of them, and the

@@ -214,6 +214,26 @@ export class ApiClient {
     return this.request("POST", `/api/sessions/${id}/terminate`);
   }
 
+  // Terminate fired from a page-unload handler — a reload, a closed tab, a
+  // navigation out of the app. `keepalive` is the entire point: an ordinary fetch
+  // is cancelled with the document, which is exactly the case that used to leave a
+  // system terminal running with nobody watching it (FR-SHELL-001.AC-08).
+  //
+  // No 401 refresh and no response handling: during unload there is time for one
+  // request and nobody left to tell about the outcome. A lost one is not silent
+  // loss either — the server treats an unwatched terminal as replaceable on the
+  // next open, and the idle reaper still collects it.
+  terminateSessionOnUnload(id: string): void {
+    void this.raw(
+      "POST",
+      `/api/sessions/${id}/terminate`,
+      undefined,
+      true,
+      undefined,
+      true,
+    ).catch(() => undefined);
+  }
+
   // Mint the single-use ticket the terminal WebSocket consumes.
   attachSession(id: string): Promise<AttachTicket> {
     return this.request("POST", `/api/sessions/${id}/attach`);
@@ -369,6 +389,7 @@ export class ApiClient {
     body: unknown,
     auth: boolean,
     signal?: AbortSignal,
+    keepalive = false,
   ): Promise<Response> {
     const headers: Record<string, string> = {};
     if (body !== undefined) {
@@ -385,6 +406,7 @@ export class ApiClient {
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
       signal,
+      keepalive,
     });
   }
 

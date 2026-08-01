@@ -8,7 +8,13 @@ const { terminals } = vi.hoisted(() => ({
   >,
 }));
 
-const { fits } = vi.hoisted(() => ({ fits: [] as ReturnType<typeof vi.fn>[] }));
+const { fits, proposals } = vi.hoisted(() => ({
+  fits: [] as ReturnType<typeof vi.fn>[],
+  // FitAddon.proposeDimensions() is what "what size should a new session open
+  // at" reads; a test can hand back an oversized or degenerate proposal to
+  // exercise the clamping and the floor.
+  proposals: [] as ReturnType<typeof vi.fn>[],
+}));
 
 vi.mock("@xterm/xterm", () => {
   class MockTerminal {
@@ -32,8 +38,10 @@ vi.mock("@xterm/xterm", () => {
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: vi.fn(() => {
     const fit = vi.fn();
+    const proposeDimensions = vi.fn(() => ({ rows: 43, cols: 110 }));
     fits.push(fit);
-    return { fit };
+    proposals.push(proposeDimensions);
+    return { fit, proposeDimensions };
   }),
 }));
 vi.mock("@xterm/addon-search", () => ({ SearchAddon: vi.fn(() => ({})) }));
@@ -107,6 +115,7 @@ beforeEach(() => {
   sockets.length = 0;
   observers.length = 0;
   fits.length = 0;
+  proposals.length = 0;
   scope = effectScope();
 });
 
@@ -209,6 +218,41 @@ describe("useTerminalSession", () => {
     // Same measurement twice must not put a second resize on the wire.
     s.fit();
     expect(sockets[0].sent).toHaveLength(afterFirst);
+  });
+
+  // proposeSize(): what a *new* session should be opened at (plan/09 LY-04). The
+  // shell used to be created at a hardcoded 24×80 and resized a moment later,
+  // which the user sees as the prompt redrawing at a different width.
+  it("proposes the measured size for a session that has not started yet", () => {
+    const s = newSession();
+    s.mount(host({ visible: true }));
+    expect(s.proposeSize()).toEqual({ rows: 43, columns: 110 });
+  });
+
+  it("proposes nothing while the host is hidden, rather than guessing", () => {
+    const s = newSession();
+    s.mount(host()); // jsdom: 0×0
+    expect(s.proposeSize()).toBeNull();
+    // Not even asked: a measurement taken from a hidden container is not a
+    // measurement, and the caller must fall back to the server default.
+    expect(proposals[0]).not.toHaveBeenCalled();
+  });
+
+  it("proposes nothing when the measurement is degenerate", () => {
+    const s = newSession();
+    s.mount(host({ visible: true }));
+    proposals[0].mockReturnValueOnce({ rows: 1, cols: 80 });
+    expect(s.proposeSize()).toBeNull();
+  });
+
+  // A wide enough window really can propose more than the contract's 500
+  // columns, and Central answers an out-of-range size with a 422 — the terminal
+  // would just fail to open.
+  it("clamps the proposal to the wire contract's bounds", () => {
+    const s = newSession();
+    s.mount(host({ visible: true }));
+    proposals[0].mockReturnValueOnce({ rows: 900, cols: 620 });
+    expect(s.proposeSize()).toEqual({ rows: 300, columns: 500 });
   });
 
   it("mount after dispose creates nothing", () => {

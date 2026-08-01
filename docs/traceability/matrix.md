@@ -224,7 +224,7 @@
 | FR-SHELL-001 | [FR-SHELL-001.AC-05](../../research/prd.md#fr-shell-001-ac-05) | 其他使用者（含 Admin）不得連線至他人的系統終端機。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/authz.py | pytest:backend/tests/test_authz.py::test_nobody_but_the_owner_can_watch_a_shell |
 | FR-SHELL-001 | [FR-SHELL-001.AC-06](../../research/prd.md#fr-shell-001-ac-06) | 系統終端機的建立、連線與終止須留下稽核紀錄；終端機內容不得寫入資料庫或 Log。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py |
 | FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
-| FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts |
+| FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py<br>code:frontend/src/views/SessionWorkspaceView.vue | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path<br>pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused |
 | FR-TERM-001 | [FR-TERM-001.AC-01](../../research/prd.md#fr-term-001-ac-01) | 前端使用 xterm.js 顯示完整 ANSI Terminal。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons<br>playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate |
 | FR-TERM-001 | [FR-TERM-001.AC-02](../../research/prd.md#fr-term-001-ac-02) | ANSI 色彩 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-03](../../research/prd.md#fr-term-001-ac-03) | Cursor | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -237,6 +237,8 @@
 | FR-TERM-001 | [FR-TERM-001.AC-10](../../research/prd.md#fr-term-001-ac-10) | 方向鍵 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-11](../../research/prd.md#fr-term-001-ac-11) | Page Up／Page Down | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-12](../../research/prd.md#fr-term-001-ac-12) | CLI 原生審批選單 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
+| FR-TERM-001 | [FR-TERM-001.AC-13](../../research/prd.md#fr-term-001-ac-13) | Terminal 面板必須填滿中央工作區的可用高度：終端機畫面高度不低於面板可用高度的 | plan:plan/09/02-panel-fill.md<br>source:research/tech.md | code:frontend/src/views/SessionWorkspaceView.vue | playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll |
+| FR-TERM-001 | [FR-TERM-001.AC-14](../../research/prd.md#fr-term-001-ac-14) | Session 工作區不得因版面高度計算而產生整頁滾動；Terminal 的可用高度必須來自 | plan:plan/09/01-app-shell-and-height.md<br>source:research/tech.md | code:frontend/src/components/layout/AppLayout.vue | playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll |
 | FR-TERM-002 | [FR-TERM-002.AC-01](../../research/prd.md#fr-term-002-ac-01) | 前端輸入應以低延遲 WebSocket 傳送至中央平台，再轉送至 Daemon PTY。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket<br>gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit |
 | FR-TERM-003 | [FR-TERM-003.AC-01](../../research/prd.md#fr-term-003-ac-01) | 瀏覽器尺寸變更時，前端需通知 Daemon： | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket<br>gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit |
 | FR-TERM-003 | [FR-TERM-003.AC-02](../../research/prd.md#fr-term-003-ac-02) | Rows | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -700,6 +702,7 @@
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-007.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `MVP-AC-18.AC-01` (validated_by)
+- `pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused` ← `FR-SHELL-001.AC-08` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `FR-SHELL-001.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet` ← `TECH-SEC-14.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_bad_runtime_rejected_422` ← `FR-RUNTIME-002.AC-01` (verified_by)
@@ -1124,6 +1127,7 @@
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-04` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-04` (verified_by)
+- `code:frontend/src/components/layout/AppLayout.vue` ← `FR-TERM-001.AC-14` (implemented_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
@@ -1181,6 +1185,10 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-06` (implemented_by)
 - `vitest:frontend/src/protocol/v1.test.ts#preserves UTF-8 and binary input bytes` ← `FR-TERM-001.AC-06` (verified_by)
 - `vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone` ← `FR-TERM-005.AC-01` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-TERM-001.AC-13` (implemented_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-02` (verified_by)
@@ -1236,6 +1244,8 @@
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `MVP-AC-14.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `MVP-AC-19.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate` ← `FR-TERM-001.AC-01` (verified_by)
+- `playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll` ← `FR-TERM-001.AC-13` (verified_by)
+- `playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll` ← `FR-TERM-001.AC-14` (verified_by)
 - `manual:live-cli-approval` ← `MVP-AC-11.AC-01` (validated_by)
 - `manual:live-cli-approval` ← `MVP-AC-12.AC-01` (validated_by)
 - `plan:plan/02/02-auth-rbac.md` ← `FR-AUTH-001.AC-01` (planned_by)
@@ -1532,6 +1542,8 @@
 - `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-06` (planned_by)
 - `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-07` (planned_by)
 - `plan:plan/08/03-system-terminal-implementation.md` ← `FR-SHELL-001.AC-08` (planned_by)
+- `plan:plan/09/01-app-shell-and-height.md` ← `FR-TERM-001.AC-14` (planned_by)
+- `plan:plan/09/02-panel-fill.md` ← `FR-TERM-001.AC-13` (planned_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)
@@ -1765,6 +1777,8 @@
 - `source:research/tech.md` ← `FR-TERM-001.AC-10` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-001.AC-11` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-001.AC-12` (specified_by)
+- `source:research/tech.md` ← `FR-TERM-001.AC-13` (specified_by)
+- `source:research/tech.md` ← `FR-TERM-001.AC-14` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-002.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-003.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-TERM-003.AC-02` (specified_by)

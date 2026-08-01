@@ -83,6 +83,23 @@ class SessionRepository:
         )
         return result.scalars().first()
 
+    async def live_sessions_for_runtime(self, runtime: str) -> Sequence[TerminalSession]:
+        """Every session of one runtime that has not ended, fleet-wide.
+
+        Exists for the shell reaper's startup reconciliation: its timers live in
+        one process's memory and are dropped on shutdown, so a restart used to
+        leave a detached terminal with nothing left to collect it. The runtime is
+        a parameter rather than a hardcoded `"shell"` so this layer keeps knowing
+        nothing about which runtime is special — the caller owns that.
+        """
+        result = await self._session.execute(
+            select(TerminalSession).where(
+                TerminalSession.runtime == runtime,
+                TerminalSession.status.in_(ACTIVE_STATES),
+            )
+        )
+        return result.scalars().all()
+
     async def live_children(self, parent_id: uuid.UUID) -> Sequence[TerminalSession]:
         """Every live child of a session, for the terminate cascade."""
         result = await self._session.execute(

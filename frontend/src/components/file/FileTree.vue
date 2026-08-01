@@ -161,9 +161,13 @@ const currentDirLabel = computed(() => {
 </template>
 
 <style scoped>
+/* Column, not a four-row template (plan/09 LY-03). The template happened to be
+ * correct — heading, search, toolbar, tree is exactly four children — but it was
+ * correct by coincidence: one more line of copy above the tree and the tree
+ * would have lost its `1fr`, with no test able to see it. */
 .tree-panel {
-  display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 8px;
   min-height: 0;
   height: 100%;
@@ -176,6 +180,7 @@ h2 {
   color: var(--text-muted);
 }
 .tree {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
 }

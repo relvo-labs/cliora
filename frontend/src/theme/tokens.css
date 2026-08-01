@@ -28,7 +28,14 @@
   --terminal-selection: #78aaff40;
   --terminal-cursor: #fff;
   --layout-header: 56px;
-  --layout-sidebar: 280px;
+  /* 208px, narrowed from style.md's original 280px in plan/09 LY-05 and synced
+   * back into style.md §9/§22. Five nav items of 13px text need ~144px including
+   * the icon and the rail's own padding; the remaining ~136px was empty space
+   * taken from the centre workspace, which style.md §12 says the terminal should
+   * have the largest share of. */
+  --layout-sidebar: 208px;
+  /* Not in use: the Status Bar in style.md §9/§12 has never been implemented.
+   * Kept so the spec's layout list still maps onto a token (plan/09 D7). */
   --layout-status: 28px;
   --radius-sm: 4px;
   --radius-md: 8px;

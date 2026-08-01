@@ -494,11 +494,11 @@ Danger
 
 Sidebar
 
-280px
+208px
 
 Inspector
 
-360px
+300px
 
 Header
 
@@ -507,6 +507,15 @@ Header
 Status Bar
 
 28px
+
+---
+
+高度只有一個來源：App Shell 佔滿視窗高度，Main Workspace 是唯一的滾動容器。
+頁面不得自行以 `100vh` 推導可用高度。
+
+Session Workspace 這類「頁面本身就是固定版面」的畫面，Main Workspace 改用
+`12px 16px` 內距且不整頁滾動——滾動發生在面板內部（Terminal viewport、
+Monaco、File Tree）。
 
 ---
 
@@ -604,6 +613,8 @@ Disk
 Terminal
 
 佔最大比例。
+
+選中的面板填滿整個中央工作區的可用高度與寬度，不得在面板內留下未使用的空白。
 
 Tab
 
@@ -827,8 +838,8 @@ font:
 
 layout:
   header: 56
-  sidebar: 280
-  inspector: 360
+  sidebar: 208
+  inspector: 300
   statusbar: 28
 
 terminal:

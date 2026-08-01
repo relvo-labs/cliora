@@ -19,6 +19,13 @@ const { term } = vi.hoisted(() => ({
     dispose: vi.fn(),
     fit: vi.fn(),
     focus: vi.fn(),
+    // What a not-yet-started session should be opened at (plan/09 LY-04). The
+    // return type is written out so a test can hand back the "cannot measure"
+    // answer without TypeScript narrowing it away.
+    proposeSize: vi.fn((): { rows: number; columns: number } | null => ({
+      rows: 43,
+      columns: 110,
+    })),
     status: { value: "connected" },
     role: { value: "writer" },
     gap: { value: undefined },
@@ -113,6 +120,7 @@ function testRouter(): Router {
 const shellApi = {
   openShell: vi.fn(),
   terminateSession: vi.fn(async () => ({})),
+  terminateSessionOnUnload: vi.fn(),
 };
 
 async function render(getSession: ReturnType<typeof vi.fn>) {
@@ -121,6 +129,7 @@ async function render(getSession: ReturnType<typeof vi.fn>) {
     attachSession: vi.fn(async () => ({ ticket: "t" })),
     openShell: shellApi.openShell,
     terminateSession: shellApi.terminateSession,
+    terminateSessionOnUnload: shellApi.terminateSessionOnUnload,
   } as never);
   const router = testRouter();
   router.push(`/sessions/${ID}`);
@@ -146,6 +155,7 @@ beforeEach(() => {
   });
   shellApi.terminateSession.mockReset();
   shellApi.terminateSession.mockResolvedValue({});
+  shellApi.terminateSessionOnUnload.mockReset();
   Object.values(term).forEach((value) => {
     if (typeof value === "function")
       (value as ReturnType<typeof vi.fn>).mockClear();
@@ -313,6 +323,30 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     expect(panel.text()).toContain("不受 workspace");
   });
 
+  // plan/09 LY-04: the shell used to be created at a hardcoded 24×80 and
+  // corrected by the first fit, so the very first thing the user saw was bash
+  // redrawing its prompt at a different width.
+  it("opens the shell at the size the panel actually has", async () => {
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+    expect(shellApi.openShell.mock.calls[0][1]).toEqual({
+      rows: 43,
+      columns: 110,
+    });
+  });
+
+  it("falls back to the server default when the panel cannot be measured", async () => {
+    term.proposeSize.mockReturnValueOnce(null);
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+    expect(shellApi.openShell.mock.calls[0][1]).toEqual({
+      rows: 24,
+      columns: 80,
+    });
+  });
+
   it("does not open a second shell when the tab is activated again", async () => {
     const wrapper = await render(withShell());
     const tabs = wrapper.findAll('[role="tab"]');
@@ -356,5 +390,54 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     await wrapper.get("#panel-terminal").get("button.link").trigger("click");
     await flushPromises();
     expect(wrapper.get("#panel-terminal").text()).not.toContain("already open");
+  });
+
+  // AC-08 is two halves — "closing the terminal **or leaving the Session
+  // workspace**" — and each way out needs its own hook, because no single one of
+  // them fires for the other two. A shell that survives any of them is a shell
+  // nobody is watching, and the next visit cannot even see it to close it: the
+  // close affordance keys off local state that the exit just discarded.
+  it("ends the shell when the workspace is left by navigating away", async () => {
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+
+    wrapper.unmount();
+    await flushPromises();
+
+    expect(shellApi.terminateSession).toHaveBeenCalledWith(SHELL_ID);
+  });
+
+  it("ends the shell when the page is unloaded, over the keepalive path", async () => {
+    // A reload runs no unmount, and a plain fetch dies with the document — which is
+    // exactly the case that used to leave the terminal live and the next open
+    // refused with SHELL_ALREADY_OPEN.
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+
+    window.dispatchEvent(new Event("pagehide"));
+
+    expect(shellApi.terminateSessionOnUnload).toHaveBeenCalledWith(SHELL_ID);
+    expect(shellApi.terminateSession).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("ends the previous session's shell when switching sessions in place", async () => {
+    // The route param changes and this component is reused, so neither unmount nor
+    // pagehide fires. Leaving the old shell open would also leave its id in local
+    // state — the TERMINAL tab would then show the terminal of the session the user
+    // just left.
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+
+    await wrapper.setProps({ id: "66666666-6666-4666-8666-666666666666" });
+    await flushPromises();
+
+    expect(shellApi.terminateSession).toHaveBeenCalledWith(SHELL_ID);
+    expect(wrapper.findAll('[role="tab"]')[0].attributes("aria-selected")).toBe(
+      "true",
+    );
   });
 });

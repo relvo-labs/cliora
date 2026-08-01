@@ -7,7 +7,8 @@ offline path uses the real (empty) registry so NODE_OFFLINE is exercised too.
 from __future__ import annotations
 
 import uuid
-from contextlib import contextmanager
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, contextmanager
 
 import pytest
 import sqlalchemy as sa
@@ -15,10 +16,13 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.http.sessions import get_registry
-from app.db.models import Node, NodeRuntime, NodeWorkspaceRoot, Role, User
+from app.db.models import AuditLog, Node, NodeRuntime, NodeWorkspaceRoot, Role, User
 from app.main import app
 from app.protocol import ControlMessage
 from app.security.passwords import hash_password
+from app.services import audit
+from app.services.terminal_queue import BrowserChannel
+from app.services.terminal_relay import get_terminal_relay
 
 pytestmark = pytest.mark.asyncio
 
@@ -56,6 +60,25 @@ def use_registry(fake: FakeRegistry):
         yield
     finally:
         app.dependency_overrides.pop(get_registry, None)
+
+
+@asynccontextmanager
+async def _watching(session_id: uuid.UUID) -> AsyncIterator[None]:
+    """A live browser subscriber on the real relay.
+
+    Whether a second `POST /shell` is a refusal or a replacement is decided by the
+    relay's subscriber list, so a test about that decision has to state which side of
+    it the world is on. Subscribing directly rather than opening a WebSocket keeps
+    that fact explicit instead of implied by a connection's side effects.
+    """
+    relay = get_terminal_relay()
+    await relay.subscribe(
+        session_id, "watcher", uuid.uuid4(), BrowserChannel(1024, 8), can_write=True
+    )
+    try:
+        yield
+    finally:
+        await relay.unsubscribe(session_id, "watcher")
 
 
 def _body(node_id: uuid.UUID, **over: object) -> dict:
@@ -339,7 +362,41 @@ async def test_the_system_terminal_is_hidden_from_the_session_list(api: tuple) -
     assert shell.json()["id"] not in ids
 
 
-async def test_a_second_terminal_for_the_same_session_is_refused(api: tuple) -> None:
+async def test_a_second_terminal_is_refused_while_someone_is_watching_the_first(
+    api: tuple,
+) -> None:
+    """One live shell per CLI session (ADR 0021 §4.3) — and a subscriber is what makes
+    the refusal meaningful, because `SHELL_ALREADY_OPEN` tells the user to go back to
+    the tab holding it. That instruction is only true when such a tab exists."""
+    client, maker = api
+    headers = await _login(client, maker, role_name="Developer")
+    node_id = await _make_shell_node(maker)
+
+    with use_registry(FakeRegistry()):
+        parent = await _parent(client, node_id, headers)
+        first = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
+        assert first.status_code == 201
+        async with _watching(uuid.UUID(first.json()["id"])):
+            second = await client.post(
+                f"/api/sessions/{parent['id']}/shell", json={}, headers=headers
+            )
+
+    assert second.status_code == 409
+    assert second.json()["error"]["code"] == "SHELL_ALREADY_OPEN"
+
+
+async def test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused(
+    api: tuple,
+) -> None:
+    """The reload case (FR-SHELL-001.AC-08).
+
+    The browser is supposed to end its terminal when it leaves the workspace, but a
+    reload, a crashed tab or a dropped tunnel reports nothing, so the row outlives the
+    only thing that was watching it. Refusing the owner's next open then locked them
+    out for up to `shell_idle_terminate_seconds` with no tab left to close — the front
+    end had forgotten the terminal existed. With no subscriber there is nothing to
+    return to, so the idle reaper's work happens now instead.
+    """
     client, maker = api
     headers = await _login(client, maker, role_name="Developer")
     node_id = await _make_shell_node(maker)
@@ -350,8 +407,33 @@ async def test_a_second_terminal_for_the_same_session_is_refused(api: tuple) -> 
         assert first.status_code == 201
         second = await client.post(f"/api/sessions/{parent['id']}/shell", json={}, headers=headers)
 
-    assert second.status_code == 409
-    assert second.json()["error"]["code"] == "SHELL_ALREADY_OPEN"
+    assert second.status_code == 201, second.text
+    abandoned, fresh = first.json()["id"], second.json()["id"]
+    assert fresh != abandoned
+
+    # The invariant is not weakened, only the answer: the old row is ended, so there
+    # is still exactly one live shell on this parent.
+    old = await client.get(f"/api/sessions/{abandoned}", headers=headers)
+    assert old.json()["status"] == "terminated"
+    new = await client.get(f"/api/sessions/{fresh}", headers=headers)
+    assert new.json()["status"] == "running"
+
+    # An audited event, not a silent swap: whoever reads the trail has to be able to
+    # tell "the user closed it" from "nobody was watching it" (ADR 0021 §4.4).
+    async with maker() as session:
+        reasons = (
+            (
+                await session.execute(
+                    sa.select(AuditLog.audit_metadata).where(
+                        AuditLog.session_id == uuid.UUID(abandoned),
+                        AuditLog.action == audit.SESSION_TERMINATE,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert [row["reason"] for row in reasons] == ["abandoned"]
 
 
 async def test_viewer_is_refused_at_the_action_layer(api: tuple) -> None:

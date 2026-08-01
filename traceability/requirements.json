@@ -2846,6 +2846,18 @@
             "rationale": "Key sequence carried by the raw byte channel of AC-01.",
             "approved": false
           }
+        },
+        {
+          "id": "FR-TERM-001.AC-13",
+          "source_anchor": "fr-term-001-ac-13",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-001.AC-14",
+          "source_anchor": "fr-term-001-ac-14",
+          "verification_profile": "automated",
+          "risk": "medium"
         }
       ]
     },
