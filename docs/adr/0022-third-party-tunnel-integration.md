@@ -119,8 +119,17 @@ is pinned: `-o StrictHostKeyChecking=yes -o UserKnownHostsFile=/etc/agentd/pingg
 read every byte of every preview, and the symptom would be "it works".
 
 `StrictHostKeyChecking=no` and `UserKnownHostsFile=/dev/null` are forbidden, with a CI grep gate
-behind the rule. A missing or empty pinned file refuses to start the tunnel; it never degrades
-to trust-on-first-use.
+behind the rule. There is no path that degrades to trust-on-first-use.
+
+**Amendment (2026-08-01): the keys ship inside the binary.** Pinning them to a file the
+installer was supposed to place was a step nobody wrote, so the file was absent on every node —
+and because `agentd doctor` is also the update health check, the missing file rolled back every
+update from a pre-tunnel release rather than merely disabling tunnels. The keys are release
+content, so they now travel as release content: `daemon/internal/tunnel/pinggy_known_hosts` is
+embedded at build time and covered by the artifact digest the updater already verifies.
+`/etc/agentd/pinggy_known_hosts` (or a configured `tunnel.known_hosts_path`) still wins when it
+exists, which is what keeps an out-of-band rotation possible between releases. Neither branch
+starts an unpinned tunnel.
 
 ## What was measured, and what it changed
 

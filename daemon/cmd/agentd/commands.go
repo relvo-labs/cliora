@@ -223,14 +223,21 @@ func reportTunnelReadiness(
 		report("tunnel:ssh-client", nil)
 	}
 
-	path := cfg.Tunnel.KnownHostsPath
-	switch info, err := os.Stat(path); {
+	// A missing node-local file is not a fault: the binary carries the provider's keys,
+	// and reporting otherwise is what used to roll back every update — doctor is the
+	// update health check, so a hard failure here fails the upgrade of a node whose
+	// tunnels would have worked fine (P4-10 × P11).
+	resolved, err := tunnel.ResolveKnownHosts(cfg.Tunnel.KnownHostsPath)
+	switch {
 	case err != nil:
-		report("tunnel:host-key", fmt.Errorf("%s is missing; tunnels are refused without it", path))
-	case info.Size() == 0:
-		report("tunnel:host-key", fmt.Errorf("%s is empty; tunnels are refused without a pinned key", path))
+		report("tunnel:host-key", err)
+	case resolved.FromBuild():
+		report("tunnel:host-key", nil)
+		fmt.Fprintf(out, "[info] tunnel host keys pinned by this build (no %s on this node)\n",
+			cfg.Tunnel.KnownHostsPath)
 	default:
 		report("tunnel:host-key", nil)
+		fmt.Fprintf(out, "[info] tunnel host keys pinned by %s\n", resolved.Path)
 	}
 
 	if err := dialProvider(); err != nil {

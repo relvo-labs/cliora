@@ -324,23 +324,91 @@ func TestStartRefusesWhenTheHostKeyDoesNotMatch(t *testing.T) {
 	}
 }
 
-func TestStartRefusesWithoutAPinnedKeyFile(t *testing.T) {
-	p := &PinggyProvider{SSHPath: writeFake(t)}
-	opts := baseOptions(t)
-	opts.KnownHostsPath = filepath.Join(t.TempDir(), "absent")
-	if _, _, err := p.Start(context.Background(), opts); err == nil {
-		t.Fatal("a missing pinned key file must refuse, never fall back to trusting one")
-	}
-	// And an empty file is the same answer: an operator who truncated it has not opted out
-	// of verification.
+// A node with no pinned key file of its own is still pinned — to the keys embedded in this
+// binary — and the ssh it runs still verifies. This is the case that used to refuse, and
+// refusing was not the safe answer it looked like: nothing ever wrote the file, so it took
+// down tunnels on every node and, through doctor, every update as well.
+func TestStartFallsBackToTheEmbeddedKeysNotToTrustingAnyKey(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	t.Setenv("FAKE_ARGS_FILE", argsFile)
+	t.Setenv("FAKE_LIFETIME", "1")
+
+	absent := filepath.Join(t.TempDir(), "absent")
 	empty := filepath.Join(t.TempDir(), "empty")
 	if err := os.WriteFile(empty, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	opts.KnownHostsPath = empty
-	if _, _, err := p.Start(context.Background(), opts); err == nil {
-		t.Fatal("an empty pinned key file must refuse")
+	// An operator who truncated the file has not opted out of verification either: it
+	// falls back exactly like an absent one.
+	for name, configured := range map[string]string{"absent": absent, "empty": empty, "unset": ""} {
+		t.Run(name, func(t *testing.T) {
+			p := &PinggyProvider{SSHPath: writeFake(t)}
+			opts := baseOptions(t)
+			opts.KnownHostsPath = configured
+			_, handle, err := p.Start(context.Background(), opts)
+			if err != nil {
+				t.Fatalf("expected the embedded keys to be used, got %v", err)
+			}
+			defer handle.Stop()
+
+			raw, err := os.ReadFile(argsFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			args := string(raw)
+			if !strings.Contains(args, "StrictHostKeyChecking=yes") ||
+				strings.Contains(args, "UserKnownHostsFile=/dev/null") {
+				t.Fatalf("verification must stay on with the fallback: %q", args)
+			}
+			path := knownHostsArg(t, args)
+			if path == configured {
+				t.Fatalf("an unusable %q must not be handed to ssh", configured)
+			}
+			pinned, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("the materialized file must be readable: %v", err)
+			}
+			if !strings.Contains(string(pinned), "pinggy.io]:443 ssh-") {
+				t.Fatalf("the fallback file carries no host key: %q", pinned)
+			}
+		})
 	}
+}
+
+// The node's own file wins when it is usable: that is the out-of-band rotation path, and a
+// release cannot be allowed to quietly override a key an operator pinned by hand.
+func TestStartPrefersTheNodesOwnPinnedFile(t *testing.T) {
+	argsFile := filepath.Join(t.TempDir(), "args")
+	t.Setenv("FAKE_ARGS_FILE", argsFile)
+	t.Setenv("FAKE_LIFETIME", "1")
+
+	p := &PinggyProvider{SSHPath: writeFake(t)}
+	opts := baseOptions(t)
+	_, handle, err := p.Start(context.Background(), opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer handle.Stop()
+
+	raw, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path := knownHostsArg(t, string(raw)); path != opts.KnownHostsPath {
+		t.Fatalf("expected the node's file %q, got %q", opts.KnownHostsPath, path)
+	}
+}
+
+func knownHostsArg(t *testing.T, args string) string {
+	t.Helper()
+	const prefix = "UserKnownHostsFile="
+	for _, field := range strings.Fields(args) {
+		if rest, ok := strings.CutPrefix(field, prefix); ok {
+			return rest
+		}
+	}
+	t.Fatalf("no %s in %q", prefix, args)
+	return ""
 }
 
 func TestStartGivesUpWhenNoURLArrives(t *testing.T) {

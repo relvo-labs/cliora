@@ -68,7 +68,39 @@ installed binary.
 | `checksum` | `UPDATE_CHECKSUM_MISMATCH` | The downloaded file does not match the manifest digest. **Nothing was extracted or installed.** | Treat as potentially serious — see §6. |
 | `swap` | `UPDATE_NOT_ALLOWED` | The archive did not contain `agentd`, the staged binary would not execute (wrong architecture?), or it reported a different version than its filename claims. The installed binary is untouched. | Re-publish the release; check the build. |
 | `restart` | `UPDATE_ROLLED_BACK` | The new binary was installed but `systemctl restart` failed. | See §4; then `journalctl -u agentd`. |
-| `healthcheck` | `UPDATE_HEALTHCHECK_FAILED` | The service restarted but did not become healthy within 30 s (`doctor` failed, or the unit was not active). | The new version has a real problem in this environment. Capture `agentd doctor` output and report it. |
+| `healthcheck` | `UPDATE_HEALTHCHECK_FAILED` | The service restarted but did not become healthy within 30 s (`doctor` failed, or the unit was not active). | The new version has a real problem in this environment. The message names the checks that failed — see §3.1. |
+
+### 3.1 Reading a healthcheck failure
+
+The health check runs the **new** binary's `doctor`, as the unit's `User=`, and the
+message quotes the `[FAIL]` lines it printed:
+
+```
+[FAIL] update failed at the healthcheck stage (UPDATE_HEALTHCHECK_FAILED) and was rolled back to 0.3.0
+       not healthy within 30s: doctor failed: tunnel:host-key: /etc/agentd/... is missing
+```
+
+The binary that produced those lines has already been removed by the rollback, so
+the message is the diagnosis; `agentd doctor` on the node afterwards runs the *old*
+version and will often pass. To see the new one's view directly, rehearse with
+`sudo agentd update --version <x.y.z> --dry-run`, or unpack the release by hand and
+run `./agentd doctor --config /etc/agentd/config.yaml` as the service user.
+
+A rollback whose message reads `doctor failed: [ OK ] non-root` is a daemon older
+than this fix: it reported the first line of doctor's output rather than the failing
+one, so the real reason is not in the message at all. Reproduce it the way described
+above.
+
+The failure to expect after a long-deferred upgrade is an environment check the old
+version did not have. One is already known: releases that added port forwarding also
+added a `tunnel:host-key` check for `/etc/agentd/pinggy_known_hosts`, a file no
+installer ever wrote — every node failed it, and every update rolled back. Fixed by
+embedding the keys in the binary (ADR 0022 amendment); a node stuck on a release
+between the two needs the file written by hand:
+
+```sh
+sudo install -m 0644 daemon/internal/tunnel/pinggy_known_hosts /etc/agentd/pinggy_known_hosts
+```
 
 ---
 
@@ -94,9 +126,11 @@ would lose them.
 
 ---
 
-## 5. "UPDATE_NOT_ALLOWED" from the console button
+## 5. "UPDATE_NOT_ALLOWED" from the console button, or from `agentd update` without sudo
 
-Expected, and not a bug. Replacing `/usr/local/bin/agentd` and restarting the unit
+Expected in both cases, and not a bug. `manifest` is the stage it is refused at
+because privilege is checked before anything is downloaded: an update that cannot be
+installed should cost nothing. Replacing `/usr/local/bin/agentd` and restarting the unit
 require root, and the long-running daemon runs as an unprivileged user on purpose
 (SEC-007). It is not given a way to escalate, so it refuses and says so rather than
 half-performing the update.
