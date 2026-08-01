@@ -93,6 +93,14 @@ TUNNEL_CLOSE = "tunnel.close"
 # reachable by anyone holding the link" is the question that gets asked later, and a metadata
 # field inside another action cannot be filtered on.
 TUNNEL_PUBLIC_ACKNOWLEDGED = "tunnel.public_acknowledged"
+# --- Privileged node posture (ADR 0023) ---
+# Recorded when a node's reported posture changes: its system terminal became able to
+# reach root through sudo, or stopped being able to. The change happens on the machine
+# (systemd unit + sudoers), so the platform is the only place it is written down at
+# all — and "when did this node become privileged, and who was working on it then" is
+# the question an incident review starts from. Not recorded on every register: a
+# reconnect is not a change, and a row per heartbeat would bury the ones that matter.
+NODE_POSTURE_CHANGED = "node.posture_changed"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -126,6 +134,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         TUNNEL_CREATE,
         TUNNEL_CLOSE,
         TUNNEL_PUBLIC_ACKNOWLEDGED,
+        NODE_POSTURE_CHANGED,
     }
 )
 

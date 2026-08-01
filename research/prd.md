@@ -110,6 +110,8 @@
     協定上不存在 Command／Binary／Argv／Env／Entrypoint 欄位。
     （範圍變更 2026-07-31，ADR 0021：互動式系統終端機改由 FR-SHELL-001 明文規範並限定條件開放，
     本條原先的「完全不提供任意 Shell」已由 FR-SHELL-001.AC-03 取代。）
+    （2026-08-01，ADR 0023：本期**未再削減**本條。Daemon 雖新增自有的固定啟動參數，
+    前端與 Central 仍不得指定命令、參數、環境變數或 Entrypoint；見 FR-RUNTIME-003.AC-02。）
 <a id="scope-012"></a>
 <a id="scope-012-ac-01"></a>
 12. 不將 VM 檔案系統直接掛載至中央伺服器。
@@ -641,6 +643,11 @@ codex
 
 Daemon 根據 Runtime ID 產生實際執行命令。
 
+<a id="fr-runtime-003-ac-02"></a>
+Runtime 的啟動參數由 Daemon 端固定決定；前端、Central 與協定訊息均不得指定參數、
+旗標、環境變數或 Entrypoint。Node 僅能以布林開關既定的參數集，不得指定其內容。
+（範圍變更 2026-08-01，ADR 0023。）
+
 <a id="fr-runtime-004"></a>
 ## FR-RUNTIME-004 Runtime 設定
 
@@ -656,7 +663,19 @@ runtime:
   codex:
     enabled: true
     binary: /usr/local/bin/codex
+    sandbox_bypass: true
 ```
+
+<a id="fr-runtime-004-ac-02"></a>
+`codex` Runtime 於 Node 上預設在停用核准流程與沙箱的狀態下執行
+（`sandbox_bypass` 缺項即為啟用）。此為可丟棄之隔離 VM 的預期姿態（ADR 0023）。
+
+<a id="fr-runtime-004-ac-03"></a>
+Node 得以 `sandbox_bypass: false` 關閉此預設；平台無任何路徑可覆寫該設定。
+
+<a id="fr-runtime-004-ac-04"></a>
+Runtime 的實際沙箱狀態須回報平台並於介面顯示。若 Node 要求停用而已安裝的 CLI
+不接受該參數，回報與顯示均須為「沙箱啟用」，不得顯示未實際發生的狀態。
 
 ---
 
@@ -784,6 +803,11 @@ Node 可停用系統終端機；停用後該 Node 上不得開啟。
 
 <a id="fr-shell-001-ac-08"></a>
 關閉終端機或離開 Session 工作區時，系統終端機即終止。
+
+<a id="fr-shell-001-ac-09"></a>
+系統終端機可經 sudo 取得 root 時，介面須明示該 Node 的提權姿態。
+（新增 2026-08-01，ADR 0023：ADR 0021 §4.2 以「Daemon 非 root」為補償控制，
+該條在提權姿態下不再成立，可見性即為其替代。）
 
 ---
 
@@ -1009,6 +1033,15 @@ MVP 採用 tmux Scrollback：
 
 <a id="fr-term-004-ac-03"></a>
 * ~~Daemon 保存 2 MB 至 10 MB Ring Buffer。~~（已作廢：未採用的替代方案。實際保證見上列以行數與快照上限表述的條件。）
+
+<a id="fr-term-004-ac-06"></a>
+* 使用者須能於瀏覽器中向上檢視終端機的既有輸出，並可回到即時輸出。
+  （新增 2026-08-01，ADR 0023：在此之前 tmux 預設 `history-limit` 為 2000 行，
+  且滑鼠滾輪被轉譯為方向鍵，因此 AC-04 實際上並未成立。）
+
+<a id="fr-term-004-ac-07"></a>
+* 重新連線快照為連續性機制，不作為使用者檢視歷史輸出的途徑；
+  使用者可檢視的 Scrollback 為 Daemon 端 tmux 的 History。
 
 <a id="fr-term-005"></a>
 ## FR-TERM-005 Terminal 連線狀態
@@ -2012,6 +2045,16 @@ Group=neil
 ```
 
 安裝步驟需明確提示該 Daemon 將具備此 Linux 使用者的權限。
+
+<a id="sec-007-ac-02"></a>
+安裝步驟須明確提示：該 Node 的系統終端機可經 sudo 取得 root 權限，
+且 codex 將在停用沙箱與核准流程下執行。此姿態須可於安裝時關閉。
+（新增 2026-08-01，ADR 0023。AC-01「不應預設以 root 長期執行」不變且仍生效：
+提權發生於終端機使用者執行 sudo 時，而非服務的執行身分。）
+
+<a id="sec-007-ac-03"></a>
+Node 的提權姿態與 Runtime 沙箱狀態須回報平台並於介面顯示；
+平台不得以任何 API 或協定訊息變更之。
 
 <a id="sec-008"></a>
 ## SEC-008 第三方隧道邊界

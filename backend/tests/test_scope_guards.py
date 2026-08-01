@@ -130,10 +130,67 @@ def test_scope_010_no_cross_runtime_behaviour_model() -> None:
 
 def test_scope_011_the_front_end_cannot_name_a_command() -> None:
     """The load-bearing one (SEC-002, TECH-SEC-07). Session start accepts a
-    runtime id and a workspace; there is no field a command could travel in."""
+    runtime id and a workspace; there is no field a command could travel in.
+
+    ADR 0023 widened what has to be true here. The daemon now adds a launch flag of
+    its own (codex's sandbox bypass), so the property being defended is no longer just
+    "no command string": nobody outside the node may name a flag, *or ask for a
+    posture*. Both are asserted, because the second is the shape the next request for
+    this will take — "let the user pick --model", "let Central turn the sandbox on for
+    this one session" — and neither would be caught by the first assertion alone.
+    """
     start = json.loads((MESSAGE_SCHEMAS / "session-start.schema.json").read_text())
     assert start["additionalProperties"] is False
-    assert not {"command", "args", "argv", "shell", "env", "entrypoint"} & set(start["properties"])
+    forbidden = {
+        "command",
+        "args",
+        "argv",
+        "shell",
+        "env",
+        "entrypoint",
+        "flags",
+        "sandbox",
+        "sandbox_bypass",
+        "sudo",
+        "privileged",
+    }
+    assert not forbidden & set(start["properties"])
+    # The five fields are the whole contract; a sixth is the thing this test exists
+    # to notice.
+    assert set(start["properties"]) == {
+        "session_id",
+        "runtime",
+        "workspace",
+        "rows",
+        "columns",
+    }
+
+
+def test_scope_011_the_posture_fields_are_report_only() -> None:
+    """A node reports its posture; nothing may set it (ADR 0023 D11).
+
+    `sandbox_bypass` and `privileged_terminal` exist on the *node → Central*
+    announces only. If either appeared on a message Central sends, or on an inbound
+    HTTP body other than enrollment, the platform could grant itself root on a node.
+    """
+    inbound = json.loads((MESSAGE_SCHEMAS / "session-start.schema.json").read_text())
+    assert "sandbox_bypass" not in inbound["properties"]
+
+    register = json.loads((MESSAGE_SCHEMAS / "node-register.schema.json").read_text())
+    assert register["properties"]["privileged_terminal"] == {"type": "boolean"}
+
+    item = json.loads((MESSAGE_SCHEMAS / "runtime-item.schema.json").read_text())
+    assert item["properties"]["sandbox_bypass"] == {"type": "boolean"}
+    assert item["additionalProperties"] is False
+
+    # No Central-authored message carries either field. The daemon-bound schemas are
+    # the ones Central produces; a posture field in any of them would be an
+    # instruction rather than a report.
+    for name in ("session-start", "daemon-update", "tunnel-open", "terminal-size"):
+        schema = json.loads((MESSAGE_SCHEMAS / f"{name}.schema.json").read_text())
+        assert not {"privileged_terminal", "sandbox_bypass", "sandbox", "flags", "args"} & set(
+            schema["properties"]
+        ), f"{name} carries a posture or argv field"
 
 
 def test_scope_012_the_vm_filesystem_is_not_mounted_on_central() -> None:

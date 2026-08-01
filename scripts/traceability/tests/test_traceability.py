@@ -93,9 +93,18 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # are `verifiable`: every one of them has an automated assertion, which for this phase
     # is the point — the credential, the host key and the three-layer policy are the parts
     # that cannot be reviewed into correctness.
+    # 2026-08-01: +9 for the privileged node posture (plan/12, ADR 0023) —
+    # SEC-007.AC-02/AC-03, FR-RUNTIME-003.AC-02, FR-RUNTIME-004.AC-02/03/04,
+    # FR-SHELL-001.AC-09 and FR-TERM-004.AC-06/AC-07. Two of the nine are not
+    # `automated`: the installer's disclosure is `inspection` and browser scrolling is
+    # `measurement`, because both are claims about a real machine — and FR-TERM-004.AC-04
+    # ("at least 5000 lines") is the reason that distinction matters here. It had been
+    # marked covered since P1 while tmux's default of 2000 lines quietly failed it, so
+    # this phase treats "a number in a config file" and "the behaviour on a node" as
+    # different things on purpose.
     assert result["summary"] == {
-        "total": 405,
-        "verifiable": 274,
+        "total": 414,
+        "verifiable": 283,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

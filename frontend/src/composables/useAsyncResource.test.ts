@@ -10,6 +10,7 @@ function runtime(available: boolean): NodeRuntime {
     version: available ? "1.0" : null,
     binary_path: null,
     checked_at: null,
+    sandbox_bypass: false,
   };
 }
 

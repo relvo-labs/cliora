@@ -12,6 +12,10 @@ import (
 	"golang.org/x/term"
 )
 
+// sandboxBypassFlag mirrors runtime.SandboxBypassFlag. Duplicated rather than
+// imported: fakecli is a standalone test binary and must not pull in daemon packages.
+const sandboxBypassFlag = "--dangerously-bypass-approvals-and-sandbox"
+
 func main() {
 	// `--version` lets the daemon's runtime detector treat fakecli as an
 	// allowlisted CLI (claude/codex) in dev/e2e without a real binary: it prints
@@ -20,8 +24,23 @@ func main() {
 		fmt.Println("fakecli 1.0.0")
 		return
 	}
+	// The daemon decides whether a runtime runs sandboxed by probing `--help` for the
+	// flag and then passing it (ADR 0023). fakecli answers both halves so the e2e stack
+	// can exercise the whole path — daemon argv, node report, console badge — on a
+	// machine with no real codex installed.
+	if len(os.Args) > 1 && os.Args[1] == "--help" {
+		fmt.Println("usage: fakecli [--version] [--help]")
+		fmt.Println("  " + sandboxBypassFlag + "  run without approvals or a sandbox")
+		return
+	}
+	sandbox := "enforced"
+	for _, arg := range os.Args[1:] {
+		if arg == sandboxBypassFlag {
+			sandbox = "bypassed"
+		}
+	}
 	rows, cols := size()
-	fmt.Printf("FAKECLI_READY v1 rows=%d cols=%d\r\n", rows, cols)
+	fmt.Printf("FAKECLI_READY v1 rows=%d cols=%d sandbox=%s\r\n", rows, cols, sandbox)
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGWINCH)
 	go func() {

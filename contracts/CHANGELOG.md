@@ -1,5 +1,15 @@
 # Contract changelog
 
+## 1.7.0 — 2026-08-01 (compatible)
+
+- **Two additive report-only fields** (`version` stays `1`): `runtime-item.sandbox_bypass` and `node-register.privileged_terminal`. Both describe the *posture of a node* — a CLI launched with its sandbox and approval prompts disabled, and a system terminal that can reach root through sudo. See ADR 0023 and `plan/12`.
+- **The design rule is report-only, and it is the whole point.** A node tells Central what posture it is in; there is no field, in either direction, that lets Central *choose* one. That is the same shape as 1.4.0 (`daemon.update` carries a version and nothing else) and 1.6.0 (`tunnel.open` has no host field), for the same reason: a message that could set the posture would be a message that could grant root on a node.
+- **Deliberately absent, and now pinned by fixtures:** `args`, `argv`, `flags`, `command`, `sandbox`, `sudo`, `env`, `tmux_options`. `session.start` keeps its five fields and `additionalProperties: false`, so the console still cannot name a command, argument, environment variable or entrypoint (SEC-002; the half of `SCOPE-011` that ADR 0021 §1 kept). `invalid/session-start-with-args.json` and `invalid/session-start-with-sandbox-request.json` assert that both a launch flag *and* a request for a posture are rejected identically by Python, Go and TypeScript. Without them, the boundary would be defended only by a comment — the same gap ADR 0021 §Context records from last time.
+- **`sandbox_bypass` is a measurement, not a setting.** It reports what the runtime will actually be launched with. A node whose config asks for the bypass but whose installed CLI does not accept the flag reports `false`, because that is what will happen when a session starts (ADR 0023 D3). Reporting the request instead would make the console claim a posture the machine is not in.
+- **Both fields are optional and absent means "no".** An older daemon sends neither; `privileged_terminal` absent reads as unprivileged and `sandbox_bypass` absent as enforced. Absent is never "unknown" — a posture nobody has reported is not one the console may imply.
+- `sandbox_bypass` is only ever sent for a runtime the daemon has flags for (`codex` today). The schema does not encode that restriction — an `if/then` would triple the size of a very small file — so the daemon owns it and `TestOnlyCodexHasLaunchFlags` keeps it true.
+- **No new error codes.** A CLI that does not accept the flag is not an error (the session starts), and a node that cannot sudo is not an error (that is a posture). Both are expressed by the report fields. Adding a code would force callers to treat a posture as a failure.
+
 ## 1.6.0 — 2026-08-01 (compatible)
 
 - **Additive port-forwarding control frames** (`version` stays `1`). New types: `tunnel.open`, `tunnel.opened`, `tunnel.close`, `tunnel.closed`, `tunnel.status`. Port forwarding is delivered by integrating a third-party tunnel provider (Pinggy) rather than by a Central-side reverse proxy — see ADR 0022 and `plan/11` (the self-hosted design is `plan/10`, rejected on cost).

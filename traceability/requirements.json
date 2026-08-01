@@ -2075,6 +2075,12 @@
           "source_anchor": "fr-runtime-003-ac-01",
           "verification_profile": "automated",
           "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-003.AC-02",
+          "source_anchor": "fr-runtime-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
         }
       ]
     },
@@ -2098,6 +2104,24 @@
           "source_anchor": "fr-runtime-004-ac-01",
           "verification_profile": "automated",
           "risk": "medium"
+        },
+        {
+          "id": "FR-RUNTIME-004.AC-02",
+          "source_anchor": "fr-runtime-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNTIME-004.AC-03",
+          "source_anchor": "fr-runtime-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNTIME-004.AC-04",
+          "source_anchor": "fr-runtime-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
         }
       ]
     },
@@ -2986,6 +3010,18 @@
           "source_anchor": "fr-term-004-ac-05",
           "verification_profile": "automated",
           "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-004.AC-06",
+          "source_anchor": "fr-term-004-ac-06",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-004.AC-07",
+          "source_anchor": "fr-term-004-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
         }
       ]
     },
@@ -3524,6 +3560,12 @@
           "source_anchor": "fr-shell-001-ac-08",
           "verification_profile": "automated",
           "risk": "high"
+        },
+        {
+          "id": "FR-SHELL-001.AC-09",
+          "source_anchor": "fr-shell-001-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium"
         }
       ]
     },
@@ -4849,6 +4891,18 @@
         {
           "id": "SEC-007.AC-01",
           "source_anchor": "sec-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-007.AC-02",
+          "source_anchor": "sec-007-ac-02",
+          "verification_profile": "inspection",
+          "risk": "high"
+        },
+        {
+          "id": "SEC-007.AC-03",
+          "source_anchor": "sec-007-ac-03",
           "verification_profile": "automated",
           "risk": "high"
         }

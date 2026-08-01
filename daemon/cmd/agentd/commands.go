@@ -16,6 +16,7 @@ import (
 	"github.com/cliora/cliora/daemon/internal/config"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
+	ctmux "github.com/cliora/cliora/daemon/internal/tmux"
 	"github.com/cliora/cliora/daemon/internal/tunnel"
 	"github.com/cliora/cliora/daemon/internal/update"
 )
@@ -125,8 +126,16 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 					} else {
 						fmt.Fprintf(out, "[warn] runtime:%s unavailable (%s)\n", r.Runtime, r.Reason)
 					}
+					reportSandboxPosture(out, r)
 				}
+				reportTmuxPosture(ctx, out, cfg)
 			}
+
+			// The privileged posture is not a fault in either direction, so neither
+			// branch fails doctor. What *is* worth flagging is a machine whose config
+			// reports one posture and whose kernel is in the other — the console shows
+			// the config's answer, so a mismatch means the console is lying.
+			reportPrivilegePosture(out, cfg, cfgErr, note)
 
 			if cfgErr == nil {
 				reportTunnelReadiness(out, cfg, report, note)
@@ -140,6 +149,69 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&credentialsPath, "credentials", config.DefaultCredentialsPath, "path to credentials.yaml")
 	return cmd
+}
+
+// reportSandboxPosture prints what a runtime will actually launch with. The
+// requested-but-unsupported case is the only one that warrants a warning: the node
+// asked for the sandbox to be off, the installed CLI does not know the flag, and the
+// console will show "enforced". Without this line the operator would have to diff
+// the process argv against their config to find that out (ADR 0023 D3).
+func reportSandboxPosture(out io.Writer, r runtime.DetectResult) {
+	if !r.SandboxBypassRequested && !r.SandboxBypass {
+		return
+	}
+	switch {
+	case r.SandboxBypass:
+		fmt.Fprintf(out, "[info] runtime:%s sandbox=bypassed flag=%s\n",
+			r.Runtime, runtime.SandboxBypassFlag)
+	case r.SandboxNote == runtime.ReasonSandboxFlagUnsupported:
+		fmt.Fprintf(out, "[warn] runtime:%s sandbox=enforced: this build of %s does not accept "+
+			"%s (version %s). The console will show the sandbox as enforced.\n",
+			r.Runtime, r.Runtime, runtime.SandboxBypassFlag, r.Version)
+	default:
+		fmt.Fprintf(out, "[info] runtime:%s sandbox=enforced\n", r.Runtime)
+	}
+}
+
+// reportTmuxPosture prints the scrollback depth the terminal actually has. Read from
+// the live tmux server, not from config: the server outlives the daemon, and a pane
+// keeps the history-limit it was created with, so the two can disagree after a
+// config change (see tmux.Client.applySessionOptions).
+func reportTmuxPosture(ctx context.Context, out io.Writer, cfg *config.Config) {
+	fmt.Fprintf(out, "[info] tmux socket=%s scrollback_configured=%d\n",
+		ctmux.DefaultSocket, cfg.Session.ScrollbackLimit)
+	if legacy := ctmux.LegacySessionNames(ctx); len(legacy) > 0 {
+		fmt.Fprintf(out, "[warn] %d cliora session(s) remain on tmux's default socket and are "+
+			"no longer served; see docs/runbooks/privileged-node-posture.md\n", len(legacy))
+	}
+}
+
+// reportPrivilegePosture prints the sudo posture and, when config and kernel
+// disagree, says which one the console believes.
+func reportPrivilegePosture(out io.Writer, cfg *config.Config, cfgErr error, note func(string, string)) {
+	noNewPrivs, known := noNewPrivsSet()
+	switch {
+	case !known:
+		fmt.Fprintln(out, "[info] no-new-privs=unknown (no /proc/self/status)")
+	case noNewPrivs:
+		fmt.Fprintln(out, "[info] no-new-privs=1 (sudo cannot escalate from this process)")
+	default:
+		fmt.Fprintln(out, "[info] no-new-privs=0 (escalation allowed)")
+	}
+	sudo := sudoAvailable()
+	fmt.Fprintf(out, "[info] sudo=%s\n", map[bool]string{true: "available", false: "unavailable"}[sudo])
+	if cfgErr != nil || cfg == nil {
+		return
+	}
+	fmt.Fprintf(out, "[info] privileged-terminal reported to Central: %t\n", cfg.Node.PrivilegedTerminal)
+	if cfg.Node.PrivilegedTerminal != sudo {
+		note("posture", fmt.Sprintf(
+			"config reports privileged_terminal: %t but sudo %s here; run "+
+				"`sudo agentd posture` to see what is installed and "+
+				"`sudo agentd posture --privileged-terminal=%t` to make them agree",
+			cfg.Node.PrivilegedTerminal, map[bool]string{true: "succeeds", false: "fails"}[sudo],
+			cfg.Node.PrivilegedTerminal))
+	}
 }
 
 // tmuxVersion returns the `tmux -V` version string (e.g. "tmux 3.4"), bounded by

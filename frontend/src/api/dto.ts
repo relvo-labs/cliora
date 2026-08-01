@@ -35,6 +35,10 @@ export interface NodeRuntime {
   version: string | null;
   binary_path: string | null;
   checked_at: string | null;
+  // True when this runtime is launched on the node with its sandbox and approval
+  // prompts disabled (ADR 0023). Measured on the node, not requested from here —
+  // the console has no way to ask for either posture.
+  sandbox_bypass: boolean;
 }
 
 export interface NodeWorkspaceRoot {
@@ -125,6 +129,9 @@ export interface NodeDetail extends NodeSummary {
   os_version: string | null;
   daemon_version: string | null;
   run_user: string | null;
+  // True when this node's system terminal can reach root through sudo (ADR 0023).
+  // Reported by the node; there is no endpoint that sets it.
+  privileged_terminal: boolean;
   is_enabled: boolean;
   registered_at: string;
   runtimes: NodeRuntime[];
@@ -480,6 +487,7 @@ export const AUDIT_ACTIONS = [
   "tunnel.create",
   "tunnel.close",
   "tunnel.public_acknowledged",
+  "node.posture_changed",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---

@@ -16,6 +16,10 @@ TOKEN=""
 NAME=""
 RUN_USER=""
 ALLOW_INSECURE=0
+# Default on: Cliora nodes are disposable isolated VMs and the posture was asked for
+# explicitly (ADR 0023). --no-privileged-terminal is for a machine you would not
+# rebuild; `agentd install` prints which posture it is creating either way.
+PRIVILEGED_TERMINAL=1
 WORKSPACE_ROOTS=()
 
 die() { echo "error: $*" >&2; exit 1; }
@@ -25,6 +29,13 @@ usage() {
   cat >&2 <<'EOF'
 Usage: install.sh --server URL --token TOKEN --name NAME --user USER
                   [--workspace-root PATH]... [--allow-insecure]
+                  [--no-privileged-terminal]
+
+  --no-privileged-terminal
+      Keep NoNewPrivileges set and install no sudoers rule, so the system terminal
+      cannot reach root on this machine (ADR 0023). Use this on any node you would
+      not simply rebuild. codex still runs without a sandbox unless you also set
+      runtime.codex.sandbox_bypass: false in /etc/agentd/config.yaml.
 EOF
   exit 2
 }
@@ -37,6 +48,8 @@ while [ $# -gt 0 ]; do
     --user) RUN_USER="${2:-}"; shift 2 ;;
     --workspace-root) WORKSPACE_ROOTS+=("${2:-}"); shift 2 ;;
     --allow-insecure) ALLOW_INSECURE=1; shift ;;
+    --privileged-terminal) PRIVILEGED_TERMINAL=1; shift ;;
+    --no-privileged-terminal) PRIVILEGED_TERMINAL=0; shift ;;
     -h | --help) usage ;;
     *) die "unknown argument: $1" ;;
   esac
@@ -106,6 +119,13 @@ for root in "${WORKSPACE_ROOTS[@]:-}"; do
   [ -n "$root" ] && install_args+=(--workspace-root "$root")
 done
 [ "$ALLOW_INSECURE" -eq 1 ] && install_args+=(--allow-insecure)
+# Passed explicitly in both directions: the binary's own default could change, and an
+# operator reading this script should see which posture their command produces.
+if [ "$PRIVILEGED_TERMINAL" -eq 1 ]; then
+  install_args+=(--privileged-terminal=true)
+else
+  install_args+=(--privileged-terminal=false)
+fi
 
 echo "Running agentd install…"
 exec "$bin" "${install_args[@]}"

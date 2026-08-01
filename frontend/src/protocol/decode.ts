@@ -173,13 +173,25 @@ function validateRuntimeItem(item: unknown): void {
   const obj = item as Record<string, unknown>;
   requireKeys(
     obj,
-    new Set(["runtime", "available", "version", "binary_path", "checked_at"]),
+    new Set([
+      "runtime",
+      "available",
+      "version",
+      "binary_path",
+      "checked_at",
+      "sandbox_bypass",
+    ]),
     ["runtime", "available"],
   );
   if (!RUNTIME_IDS.has(obj.runtime as string))
     reject("INVALID_MESSAGE", "Unknown runtime");
   if (typeof obj.available !== "boolean")
     reject("INVALID_MESSAGE", "runtime.available must be boolean");
+  // Optional (contract 1.7.0, ADR 0023): an older daemon omits it, and absent means
+  // the sandbox is enforced. The string "false" is rejected rather than coerced —
+  // three languages read that truthiness three different ways.
+  if ("sandbox_bypass" in obj && typeof obj.sandbox_bypass !== "boolean")
+    reject("INVALID_MESSAGE", "sandbox_bypass must be boolean");
 }
 
 // A node's port-forwarding prerequisites. Optional, so a daemon that predates the capability
@@ -250,6 +262,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "runtimes",
       "workspace_roots",
       "tunnel",
+      "privileged_terminal",
     ]),
     [
       "name",
@@ -280,6 +293,12 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
     !Array.isArray(payload.workspace_roots)
   )
     reject("INVALID_MESSAGE", "runtimes/workspace_roots must be arrays");
+  // Report-only, and optional: a node that says nothing is not privileged.
+  if (
+    "privileged_terminal" in payload &&
+    typeof payload.privileged_terminal !== "boolean"
+  )
+    reject("INVALID_MESSAGE", "privileged_terminal must be boolean");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
   for (const root of payload.workspace_roots as unknown[]) {
     if (!isPlainObject(root))
