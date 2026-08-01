@@ -228,20 +228,56 @@ func (m *Manager) tunnelReport() map[string]any {
 	return report
 }
 
+// rememberRuntimes records what was last told to Central so a tunnel-report refresh can
+// reproduce it. See Manager.lastRuntimes for why the refresh cannot omit them.
+func (m *Manager) rememberRuntimes(items []map[string]any) {
+	m.tunnelMu.Lock()
+	m.lastRuntimes = items
+	m.tunnelMu.Unlock()
+}
+
+// publishTunnelReport pushes a fresh node.runtime_status so a corrected prerequisite reaches
+// Central without waiting for a reconnect.
+//
+// This is what closes the gap the egress probe opens. The report that goes out with
+// node.register is "we have not checked" by construction — the probe is deliberately not in
+// the handshake path — so without a push, a node whose egress is fine reads as blocked in the
+// UI until its control connection happens to drop, and `agentd doctor` on that node
+// contradicts the UI because doctor dials synchronously.
+func (m *Manager) publishTunnelReport() {
+	m.tunnelMu.Lock()
+	out := m.tunnelOut
+	runtimes := m.lastRuntimes
+	m.tunnelMu.Unlock()
+	// Between connections, or before the first register. The next node.register carries the
+	// refreshed value anyway, and a frame with no runtimes would clear them at Central.
+	if out == nil || runtimes == nil {
+		return
+	}
+	// tunnelReport takes tunnelMu, so it is called with the lock released.
+	payload := map[string]any{"runtimes": runtimes, "tunnel": m.tunnelReport()}
+	frame, err := protocol.BuildControl(
+		"node.runtime_status", m.creds.NodeID, protocol.NewID(), payload, m.now(),
+	)
+	if err != nil {
+		slog.Warn("could not build a tunnel prerequisite refresh frame")
+		return
+	}
+	_ = out(frame)
+}
+
 // egressProbeInterval bounds how often this node opens a TCP connection to the provider
 // just to see whether it can. Per heartbeat would be every ten seconds per node, which
 // looks like scanning from the other end; per registration would put a five-second dial in
 // front of the control connection's handshake.
 const egressProbeInterval = 5 * time.Minute
 
-// tunnelEgressOK reports the last known reachability of the provider, refreshing it in the
-// background when the value is stale.
+// tunnelEgressOK reports the last known reachability of the provider. A pure read: building
+// a report has no side effect, so it cannot race the refresh that publishes one.
 //
-// Never blocking. The first registration after start therefore reports `false` — "we have
-// not checked" — and the platform pairs it with `tunnel_reported_at` so the UI can say the
-// difference between "not ready" and "not known yet". A five-second dial in the handshake
-// path would be the alternative, and it would delay every reconnect on every node for a
-// value that is stale by construction anyway.
+// The first registration after start therefore reports `false` — "we have not checked" — and
+// the platform pairs it with `tunnel_reported_at` so the UI can tell "not ready" from "not
+// known yet". That is what refreshEgress exists to correct.
 func (m *Manager) tunnelEgressOK() bool {
 	// A stand-in provider is local, so probing the real provider would be both irrelevant and
 	// the one thing the end-to-end stack must not do: the whole point of the fake is that the
@@ -252,28 +288,63 @@ func (m *Manager) tunnelEgressOK() bool {
 		return true
 	}
 	m.tunnelMu.Lock()
-	fresh := m.now().Sub(m.egressCheckedAt) < egressProbeInterval
-	value := m.egressOK
-	probing := m.egressProbing
-	if !fresh && !probing {
-		m.egressProbing = true
+	defer m.tunnelMu.Unlock()
+	return m.egressOK
+}
+
+// refreshEgress re-probes the provider when the cached answer is stale and publishes the
+// result when it differs from what Central was last told.
+//
+// Never blocking, and deliberately not in the handshake path: the alternative is a
+// five-second dial in front of every reconnect on every node, for a value that is stale by
+// construction anyway. The cost of that choice is that node.register always says "we have not
+// checked", which is precisely why this publishes rather than waiting to be asked — otherwise
+// a node with working egress reads as blocked in the UI until its connection happens to drop,
+// while `agentd doctor` on the same node says it is reachable because doctor dials
+// synchronously.
+//
+// This is the only caller of the probe, and it runs on the heartbeat tick — after the
+// handshake frames are on the wire, so a correction can never overtake the report it corrects.
+func (m *Manager) refreshEgress() {
+	if tunnel.TestProviderCommandInUse() {
+		return
 	}
+	m.tunnelMu.Lock()
+	fresh := m.now().Sub(m.egressCheckedAt) < egressProbeInterval
+	probing := m.egressProbing
+	previous := m.egressOK
+	everChecked := !m.egressCheckedAt.IsZero()
+	if fresh || probing {
+		m.tunnelMu.Unlock()
+		return
+	}
+	m.egressProbing = true
 	m.tunnelMu.Unlock()
 
-	if fresh || probing {
-		return value
-	}
 	go func() {
-		reachable := false
-		if conn, err := net.DialTimeout("tcp", tunnel.ProviderDialAddress(), 5*time.Second); err == nil {
-			reachable = true
-			_ = conn.Close()
-		}
+		reachable := m.probeEgress()
 		m.tunnelMu.Lock()
 		m.egressOK = reachable
 		m.egressCheckedAt = m.now()
 		m.egressProbing = false
 		m.tunnelMu.Unlock()
+		// Central holds the pre-probe value, so the first probe always has news: it replaces
+		// "we have not checked" with an answer. After that, only a change is worth a frame.
+		if !everChecked || reachable != previous {
+			m.publishTunnelReport()
+		}
 	}()
-	return value
+}
+
+// dialProvider reports whether the provider's SSH endpoint accepts a TCP connection. A plain
+// connect: enough to tell a blocked egress from a broken tunnel, authenticating nothing and
+// sending nothing. Held in a field on the Manager so tests can exercise the refresh without a
+// network or an account.
+func dialProvider() bool {
+	conn, err := net.DialTimeout("tcp", tunnel.ProviderDialAddress(), 5*time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
 }
