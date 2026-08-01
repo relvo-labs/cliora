@@ -115,9 +115,11 @@ type TunnelConfig struct {
 	AllowedPorts []string `yaml:"allowed_ports"`
 	// MaxTunnels narrows the platform's per-node cap. Zero means no extra narrowing.
 	MaxTunnels int `yaml:"max_tunnels"`
-	// KnownHostsPath pins the provider's SSH host keys. Empty uses the packaged default.
-	// Host key checking is never disabled; see ADR 0022 and PG-01 for where the pinned
-	// keys came from and what to do when the provider rotates them.
+	// KnownHostsPath is this node's own pinned host key file, and it overrides the keys
+	// embedded in the binary. It exists for one job: pinning a rotated key out of band,
+	// before a release carrying it exists. A node without the file is still pinned — see
+	// daemon/internal/tunnel/knownhosts.go — so leaving this unset is the normal case.
+	// Host key checking is never disabled; see ADR 0022 and PG-01.
 	KnownHostsPath string `yaml:"known_hosts_path"`
 	// Token is only here so that a config written under the earlier design (where the
 	// node held the credential) still parses. It is never read, never sent and never

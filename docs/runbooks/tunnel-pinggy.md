@@ -85,12 +85,18 @@ Rotation procedure:
 ```bash
 # 1. Get the current key over a path you trust, and compare with the deployed one.
 ssh-keyscan -p 443 -t rsa free.pinggy.io 2>/dev/null | ssh-keygen -lf -
-ssh-keygen -lf deploy/pinggy_known_hosts
+ssh-keygen -lf daemon/internal/tunnel/pinggy_known_hosts
 # 2. Confirm the new fingerprint against the provider's published value out of band.
 #    As measured in PG-01, free/pro/a.pinggy.io share one RSA 4096 key.
-# 3. Update deploy/pinggy_known_hosts (keep the old line commented with the date) and
-#    redeploy it to the nodes; then on one node:
-agentd doctor
+# 3a. Out of band, ahead of a release: write the new key to /etc/agentd/pinggy_known_hosts
+#     on the affected nodes. A node's own file overrides the keys built into the binary,
+#     which is what makes a rotation fixable without shipping one.
+# 3b. In the repository, for every node that follows: update
+#     daemon/internal/tunnel/pinggy_known_hosts (keep the old line commented with the
+#     date). It is embedded at build time, so the next release carries it and the
+#     per-node files can be removed again.
+# Then on one node:
+agentd doctor   # prints which of the two is in effect
 ```
 
 ### 1.5 `TUNNEL_PROVIDER_UNAVAILABLE` (502) — the provider could not be reached

@@ -119,10 +119,10 @@ echo "==> enrolling a node (runtime claude -> fakecli)"
   --config "$WORK/config.yaml" --credentials "$WORK/credentials.yaml" --allow-insecure
 
 # The generated config points at /etc/agentd/pinggy_known_hosts, which a rootless stack
-# cannot write. Point it at the repository's copy instead: an empty or missing file is
-# refused by the daemon (never treated as "skip verification"), so this is what lets the
-# node report its prerequisites as met.
-sed -i "s|known_hosts_path:.*|known_hosts_path: $ROOT/deploy/pinggy_known_hosts|" "$WORK/config.yaml"
+# cannot write. Point it at the repository's copy instead. The daemon would fall back to the
+# keys embedded in the binary anyway; naming the file keeps this stack exercising the
+# node's-own-file branch, which is the one an operator uses to rotate a key.
+sed -i "s|known_hosts_path:.*|known_hosts_path: $ROOT/daemon/internal/tunnel/pinggy_known_hosts|" "$WORK/config.yaml"
 
 echo "==> starting daemon (port forwarding via the stand-in provider)"
 setsid env CLIORA_TUNNEL_PROVIDER_COMMAND_FOR_TESTS="$BIN/faketunnelprovider" \
