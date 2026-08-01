@@ -20,6 +20,7 @@ import (
 	"github.com/cliora/cliora/daemon/internal/protocol"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
+	"github.com/cliora/cliora/daemon/internal/tunnel"
 )
 
 type received struct {
@@ -498,6 +499,99 @@ func TestSessionAuthFailureStops(t *testing.T) {
 	case <-rx.register:
 		t.Fatal("register must not be sent after auth failure")
 	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+// tunnelEgressReport pulls the `tunnel.egress_ok` a frame carries, failing if the frame does
+// not validate or carries no report at all.
+func tunnelEgressReport(t *testing.T, raw []byte) bool {
+	t.Helper()
+	if err := protocol.ValidateControl(raw); err != nil {
+		t.Fatalf("frame failed contract validation: %v", err)
+	}
+	env, err := protocol.DecodeControl(raw)
+	if err != nil {
+		t.Fatalf("decode frame: %v", err)
+	}
+	var p struct {
+		Tunnel *struct {
+			EgressOK *bool `json:"egress_ok"`
+		} `json:"tunnel"`
+	}
+	if err := json.Unmarshal(env.Payload, &p); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+	if p.Tunnel == nil || p.Tunnel.EgressOK == nil {
+		t.Fatalf("frame %q carried no tunnel report", env.Type)
+	}
+	return *p.Tunnel.EgressOK
+}
+
+// TestEgressRefreshPublishesCorrectedTunnelReport covers the gap between what a node knows
+// about its own port-forwarding prerequisites and what Central has been told (P11, ADR 0022).
+//
+// The egress probe is deliberately kept out of the handshake path, so node.register always
+// reports "we have not checked". Nothing then re-sent the corrected value, so a node with
+// working egress read as blocked in the UI until its control connection happened to drop —
+// while `agentd doctor` on that same node reported the provider reachable, because doctor
+// dials synchronously. The refresh has to publish the answer itself.
+func TestEgressRefreshPublishesCorrectedTunnelReport(t *testing.T) {
+	t.Setenv(tunnel.TestProviderCommandEnv, "")
+	nodeID := uuid.New()
+	rx := newReceived()
+	server := fakeCentral(t, nodeID, true, rx)
+	defer server.Close()
+
+	cfg := &config.Config{
+		Server:    config.ServerConfig{URL: strings.Replace(server.URL, "http", "ws", 1) + "/ws/nodes"},
+		Node:      config.NodeConfig{Name: "vm-test"},
+		Runtime:   map[string]config.RuntimeConfig{"claude": {Enabled: false}},
+		Workspace: config.WorkspaceConfig{AllowedRoots: []string{"/"}},
+		Heartbeat: config.HeartbeatConfig{IntervalSeconds: 1},
+	}
+	_, private, _ := ed25519.GenerateKey(rand.Reader)
+	creds := &config.Credentials{NodeID: nodeID, PrivateKey: base64.StdEncoding.EncodeToString(private)}
+	manager := New(cfg, creds, runtime.NewRegistry(cfg.Runtime), systeminfo.Gather(), "1.0.0")
+	// A reachable provider, without a network or an account.
+	manager.probeEgress = func() bool { return true }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() { _ = manager.Run(ctx) }()
+
+	// The register-time report is the pre-probe value by construction: no dial has run yet.
+	if tunnelEgressReport(t, collectFrame(t, rx, "node.register", 3*time.Second)) {
+		t.Error("node.register reported egress_ok before anything had probed the provider")
+	}
+
+	// The correction arrives on the heartbeat tick. Loop, because the handshake has already
+	// sent one node.runtime_status carrying the same pre-probe value.
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case f := <-rx.frames:
+			if f.typ != "node.runtime_status" || !tunnelEgressReport(t, f.raw) {
+				continue
+			}
+			env, err := protocol.DecodeControl(f.raw)
+			if err != nil {
+				t.Fatalf("decode runtime_status: %v", err)
+			}
+			var p struct {
+				Runtimes []any `json:"runtimes"`
+			}
+			if err := json.Unmarshal(env.Payload, &p); err != nil {
+				t.Fatalf("unmarshal runtime_status: %v", err)
+			}
+			// Central clears and re-inserts a node's runtime rows from this frame, so a
+			// tunnel-only push would silently erase them.
+			if len(p.Runtimes) == 0 {
+				t.Fatal("the corrected report carried no runtimes; Central would erase them")
+			}
+			return
+		case <-deadline:
+			t.Fatal("the egress refresh never published a corrected tunnel report")
+		}
 	}
 }
 

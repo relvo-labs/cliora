@@ -69,6 +69,11 @@ type Manager struct {
 	egressOK        bool
 	egressCheckedAt time.Time
 	egressProbing   bool
+	probeEgress     func() bool
+	// The runtime items last sent to Central, guarded by tunnelMu. Kept because a refreshed
+	// tunnel report travels on node.runtime_status, and Central replaces a node's runtime
+	// rows wholesale from that frame — a tunnel-only push with an empty list would erase them.
+	lastRuntimes []map[string]any
 
 	// P4 self-update. `configPath` is needed because the post-restart health check
 	// runs `agentd doctor --config <path>`; `newUpdaterFn` is a test seam so the
@@ -97,6 +102,7 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		guard:         workspace.New(cfg.Workspace.AllowedRoots),
 		resolveBinary: reg.ResolveBinary,
 		files:         files.NewService(cfg, time.Now),
+		probeEgress:   dialProvider,
 		configPath:    config.DefaultConfigPath,
 	}
 	m.tunnels = tunnel.NewSupervisor(tunnel.NewPinggyProvider(), m)
@@ -198,6 +204,8 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 	// Detect runtimes once and reuse the result for both node.register and the
 	// dedicated node.runtime_status frame (avoids a second round of --version).
 	detected := m.registry.DetectAll(ctx, m.now())
+	runtimes := runtimeItems(detected)
+	m.rememberRuntimes(runtimes)
 	if err := write("node.register", protocol.NewID(), m.registerPayload(detected)); err != nil {
 		return err
 	}
@@ -207,7 +215,13 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 	if err := write("node.system_info", protocol.NewID(), m.systemInfoPayload()); err != nil {
 		return err
 	}
-	if err := write("node.runtime_status", protocol.NewID(), map[string]any{"runtimes": runtimeItems(detected)}); err != nil {
+	// The tunnel report rides along, as the contract has always allowed: this frame is the
+	// only channel that can correct a prerequisite without a reconnect, and the background
+	// egress probe publishes through it.
+	if err := write("node.runtime_status", protocol.NewID(), map[string]any{
+		"runtimes": runtimes,
+		"tunnel":   m.tunnelReport(),
+	}); err != nil {
 		return err
 	}
 
@@ -310,6 +324,14 @@ func (m *Manager) heartbeatLoop(ctx context.Context, write func(string, string, 
 			metrics.SetGauge(metrics.DaemonActiveSessions, float64(active), nil)
 			if sample.DaemonUptime != nil {
 				metrics.SetGauge(metrics.DaemonUptimeSeconds, *sample.DaemonUptime, nil)
+			}
+			// What actually gives the egress probe its five-minute cadence. Nothing else asks
+			// for the value, so without this tick it would run once per daemon start and the
+			// answer Central holds could never change. The call is non-blocking and
+			// rate-limits itself to egressProbeInterval, so a one-second heartbeat does not
+			// become a one-second dial.
+			if m.cfg.TunnelEnabled() {
+				m.refreshEgress()
 			}
 		}
 	}
