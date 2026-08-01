@@ -27,7 +27,7 @@ set -uo pipefail
 
 PORT="${PORT:-18899}"
 OUT_DIR="${OUT_DIR:-artifacts/pg/local}"
-KNOWN_HOSTS="${KNOWN_HOSTS:-deploy/pinggy_known_hosts}"
+KNOWN_HOSTS="${KNOWN_HOSTS:-daemon/internal/tunnel/pinggy_known_hosts}"
 FREE_HOST="${FREE_HOST:-free.pinggy.io}"
 PRO_HOST="${PRO_HOST:-pro.pinggy.io}"
 WAIT_SECONDS="${WAIT_SECONDS:-20}"

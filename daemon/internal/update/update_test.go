@@ -1251,3 +1251,52 @@ func TestEveryStageIsInTheProtocolVocabulary(t *testing.T) {
 		t.Errorf("the protocol declares %d stages; this package implements 6", len(allowed))
 	}
 }
+
+// The message an operator gets when an update rolls back is the whole of their diagnosis:
+// the new binary is already gone, so it cannot be re-run to ask again. Reporting the first
+// line of doctor's output made every rollback read `doctor failed: [ OK ] non-root`, which
+// names a check that passed.
+func TestTheRollbackMessageNamesTheChecksThatFailed(t *testing.T) {
+	const output = `[ OK ] non-root
+[ OK ] config
+[warn] update-backup: no backup binary yet
+[FAIL] tunnel:host-key: /etc/agentd/pinggy_known_hosts is missing
+[ OK ] central-reachable
+Error: doctor found problems
+`
+	summary := doctorFailureSummary(output)
+	if !strings.Contains(summary, "tunnel:host-key") {
+		t.Errorf("the failing check is missing from %q", summary)
+	}
+	if strings.Contains(summary, "[ OK ]") || strings.Contains(summary, "non-root") {
+		t.Errorf("a passing check must not be reported as the failure: %q", summary)
+	}
+}
+
+func TestTheRollbackMessageKeepsEveryFailureAndCapsTheList(t *testing.T) {
+	summary := doctorFailureSummary("[FAIL] a: one\n[FAIL] b: two\n")
+	if !strings.Contains(summary, "a: one") || !strings.Contains(summary, "b: two") {
+		t.Errorf("both failures must survive: %q", summary)
+	}
+
+	var many strings.Builder
+	for i := 0; i < 9; i++ {
+		fmt.Fprintf(&many, "[FAIL] check%d: broken\n", i)
+	}
+	capped := doctorFailureSummary(many.String())
+	if !strings.Contains(capped, "and 5 more failed checks") {
+		t.Errorf("a long list must be summarized, got %q", capped)
+	}
+}
+
+// Doctor can also fail without printing a check at all — it panicked, or the freshly
+// installed binary does not run on this box. "no output" is useless; the last thing it
+// said is not.
+func TestTheRollbackMessageFallsBackToTheLastLine(t *testing.T) {
+	if got := doctorFailureSummary("panic: runtime error\n\ngoroutine 1 [running]:\n"); got != "goroutine 1 [running]:" {
+		t.Errorf("got %q", got)
+	}
+	if got := doctorFailureSummary("   \n"); got != "no output" {
+		t.Errorf("got %q", got)
+	}
+}

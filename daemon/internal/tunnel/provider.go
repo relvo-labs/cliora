@@ -62,8 +62,10 @@ type Options struct {
 	// RewriteHost asks the provider to present the loopback address to the local app
 	// instead of the tunnel hostname, so that dev servers with host allowlists answer.
 	RewriteHost bool
-	// KnownHostsPath pins the provider's host keys. Empty is refused, never treated as
-	// "skip verification".
+	// KnownHostsPath is the node's own pinned host key file. Empty — or a path that does
+	// not exist — falls back to the keys embedded in this binary (see knownhosts.go), so
+	// a node is pinned whether or not anyone deployed a file to it. What no value here
+	// can produce is an unpinned tunnel: "skip verification" is not one of the outcomes.
 	KnownHostsPath string
 }
 
@@ -115,7 +117,11 @@ type Exit struct {
 // be up, so the supervisor tears it down rather than leaving a URL-less process running.
 var ErrNoURL = errors.New("provider did not announce a url")
 
-// ErrKnownHostsMissing is returned when the pinned host key file is absent or empty. It is
-// fatal by design: without the pinned key the only alternatives are to trust whatever key
-// is presented (which is the attack this prevents) or to refuse. It refuses.
-var ErrKnownHostsMissing = errors.New("pinned provider host key file is missing or empty")
+// ErrKnownHostsMissing is returned when no pinned host key can be produced at all — the
+// node has no file and the embedded keys could not be written to disk. It is fatal by
+// design: without a pinned key the only alternatives are to trust whatever key is
+// presented (which is the attack this prevents) or to refuse. It refuses.
+//
+// A merely absent /etc/agentd/pinggy_known_hosts is no longer this error: the binary
+// carries the keys, so that case resolves instead of failing.
+var ErrKnownHostsMissing = errors.New("no pinned provider host key is available")

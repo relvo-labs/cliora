@@ -131,9 +131,49 @@ func (c DoctorHealthChecker) Check(ctx context.Context) error {
 		cmd.Env = env
 	}
 	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("doctor failed: %s", firstLine(string(out)))
+		return fmt.Errorf("doctor failed: %s", doctorFailureSummary(string(out)))
 	}
 	return nil
+}
+
+// doctorFailureSummary extracts the checks that actually failed.
+//
+// It exists because the obvious implementation — the first line of the output — is
+// wrong in a way that costs an operator the whole diagnosis: doctor prints its
+// checks in order, the first is nearly always a passing one, so a rolled-back
+// update reported `doctor failed: [ OK ] non-root`. That reads like the health
+// check itself is broken, and it hid a real, unrelated failure several lines down.
+//
+// Every [FAIL] line is kept rather than just the first: several checks failing at
+// once is the common shape (a node that cannot reach Central usually cannot reach
+// anything), and the second one is often the one that explains the first.
+func doctorFailureSummary(out string) string {
+	const maxFailures = 4
+	var failures []string
+	lastLine := ""
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lastLine = line
+		if rest, ok := strings.CutPrefix(line, "[FAIL]"); ok {
+			failures = append(failures, strings.TrimSpace(rest))
+		}
+	}
+	switch {
+	case len(failures) > maxFailures:
+		return fmt.Sprintf("%s; and %d more failed checks",
+			strings.Join(failures[:maxFailures], "; "), len(failures)-maxFailures)
+	case len(failures) > 0:
+		return strings.Join(failures, "; ")
+	case lastLine != "":
+		// Doctor exited non-zero without a [FAIL] line: it crashed, or the binary is
+		// not runnable at all. The last line is the closest thing to a reason.
+		return lastLine
+	default:
+		return "no output"
+	}
 }
 
 // doctorIdentity decides who the doctor child runs as. A nil credential means "run

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"os"
 	"os/exec"
 	"time"
 
@@ -207,10 +206,11 @@ func (m *Manager) tunnelReport() map[string]any {
 	if _, err := exec.LookPath("ssh"); err == nil {
 		sshAvailable = true
 	}
-	knownHostsOK := false
-	if info, err := os.Stat(m.cfg.Tunnel.KnownHostsPath); err == nil && info.Size() > 0 {
-		knownHostsOK = true
-	}
+	// Asked of the resolver, not of the filesystem: the keys ship inside the binary, so a
+	// node with no /etc/agentd/pinggy_known_hosts is still pinned and must not report to
+	// Central that it cannot forward a port.
+	_, knownHostsErr := tunnel.ResolveKnownHosts(m.cfg.Tunnel.KnownHostsPath)
+	knownHostsOK := knownHostsErr == nil
 	egressOK := m.tunnelEgressOK()
 	report := map[string]any{
 		"veto":                   !m.cfg.TunnelEnabled(),

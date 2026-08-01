@@ -31,9 +31,9 @@ is a decision with consequences that are stated on the settings page rather than
    than storing the token in plain text "for now". Check with
    `curl -s <central>/readyz | jq .tunnel_integration`.
 
-2. **Nodes need outbound TCP 443 to the provider**, and the pinned provider host key must be
-   deployed with the daemon (`deploy/pinggy_known_hosts`). A node answers for itself with
-   `agentd doctor`.
+2. **Nodes need outbound TCP 443 to the provider.** The pinned provider host key travels
+   inside the daemon binary, so there is nothing to deploy alongside it; a node answers for
+   itself with `agentd doctor`, which prints which key file is in effect.
 
 3. **The subscription is yours.** Cliora does not resell, hold an account, or call the
    provider's management or billing API. You obtain a token from the provider and paste it into

@@ -179,9 +179,11 @@ optional, and only the first two are commands.
       Losing it does not corrupt anything, but the stored provider credential becomes
       unreadable and has to be entered again. `curl -s <central>/readyz | jq
       .tunnel_integration` must say `available`.
-- [ ] **`deploy/pinggy_known_hosts` is deployed to every node** and its fingerprint matches
-      what the provider publishes. Without it a node refuses to open a tunnel — which is the
-      correct behaviour, and the reason the check belongs here rather than in an incident.
+- [ ] **`daemon/internal/tunnel/pinggy_known_hosts` matches the fingerprint the provider
+      publishes.** It is embedded in the binary, so this is a build-time check, not a
+      per-node deployment step — but a stale key here refuses every tunnel on every node
+      that installs the release, which is the correct behaviour and the reason the check
+      belongs in this list rather than in an incident.
 - [ ] **`agentd` does not run as root** (already §4.5, restated because it is load-bearing
       again: a process with the same uid can read the credential out of the `ssh` process's
       arguments while a tunnel is open).

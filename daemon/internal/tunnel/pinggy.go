@@ -217,19 +217,18 @@ func validBasicPart(value string, minLen int) bool {
 	return true
 }
 
-// knownHostsUsable reports whether the pinned file exists and has content. An empty file
-// would make every connection fail with "no host key is known", which is the safe direction
-// but a confusing message; checking here lets the daemon say what is actually wrong.
-func knownHostsUsable(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && !info.IsDir() && info.Size() > 0
-}
-
 // Start launches the client and waits for the URL banner.
 func (p *PinggyProvider) Start(ctx context.Context, opts Options) (Result, ProcessHandle, error) {
-	if !knownHostsUsable(opts.KnownHostsPath) {
-		return Result{}, nil, ErrKnownHostsMissing
+	// Resolution happens here rather than in the caller so a reconnect hours later
+	// re-checks the file: the node's own pinned file can appear (an operator rotating
+	// a key) or a materialized one can be swept out of the temp directory, and neither
+	// should be decided once at startup.
+	resolved, err := ResolveKnownHosts(opts.KnownHostsPath)
+	if err != nil {
+		return Result{}, nil, err
 	}
+	opts.KnownHostsPath = resolved.Path
+
 	args, err := p.Args(opts)
 	if err != nil {
 		return Result{}, nil, err
@@ -252,7 +251,7 @@ func (p *PinggyProvider) Start(ctx context.Context, opts Options) (Result, Proce
 		return Result{}, nil, fmt.Errorf("start provider client: %w", err)
 	}
 
-	handle := &sshHandle{cmd: cmd}
+	handle := &sshHandle{cmd: cmd, stderrDone: make(chan struct{})}
 	// stderr is drained in the background and kept only as a bounded tail for
 	// classification. It is never forwarded: it can echo the destination argument, which
 	// carries the credential.
@@ -322,6 +321,7 @@ func (p *PinggyProvider) readBanner(
 	case got := <-done:
 		if got.err != nil {
 			// The process may have died for a classifiable reason; prefer that over "no URL".
+			handle.awaitStderr()
 			if code := classifyStderr(handle.stderrTail()); code != "" {
 				return Result{}, &ProviderError{Code: code}
 			}
@@ -390,6 +390,9 @@ type sshHandle struct {
 	waitOnce sync.Once
 	exit     Exit
 	waited   chan struct{}
+	// Closed when drainStderr reaches EOF, so a classification can wait for the whole
+	// message instead of racing it.
+	stderrDone chan struct{}
 }
 
 func (h *sshHandle) PID() int {
@@ -402,11 +405,28 @@ func (h *sshHandle) PID() int {
 // drainStderr keeps a bounded tail for classification. The full text stays on the node and
 // is never sent anywhere: the destination argument it may echo contains the credential.
 func (h *sshHandle) drainStderr(r io.Reader) {
+	defer close(h.stderrDone)
 	scanner := bufio.NewScanner(r)
 	for scanner.Scan() {
 		h.mu.Lock()
 		h.tail = truncateTail(h.tail + scanner.Text() + "\n")
 		h.mu.Unlock()
+	}
+}
+
+// awaitStderr waits for the drain to reach EOF, so a classification decision is made on
+// the whole of what ssh said rather than on however much of it happened to be copied.
+//
+// Without this, "Host key verification failed." — the one message the pinning exists to
+// produce — races the stdout EOF that prompts the lookup, and loses often enough to be
+// seen: the operator gets TUNNEL_NO_URL, which points at the provider instead of at a key
+// that no longer matches. The wait is bounded because it is only ever reached after the
+// child's stdout has closed; a stderr that stays open past that is a hung process, not a
+// slow one, and it must not hold up the refusal.
+func (h *sshHandle) awaitStderr() {
+	select {
+	case <-h.stderrDone:
+	case <-time.After(2 * time.Second):
 	}
 }
 
