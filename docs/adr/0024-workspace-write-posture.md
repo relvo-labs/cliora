@@ -12,6 +12,7 @@
 - Requirements: `NFR-005.AC-142` (withdrawn by this ADR), `NFR-005.AC-109` (partially
   delivered), `FR-FILE-008`, `FR-FILE-009`, `FR-FILE-004`
 - Contract: v1.8.0
+- Ships in: `agentd` 0.6.0 (migrations `0018`, `0019`)
 - Plan: `plan/13/`
 
 ## Context

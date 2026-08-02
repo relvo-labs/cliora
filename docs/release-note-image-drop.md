@@ -1,4 +1,4 @@
-# Release note — image drop, and a fix to what counts as text
+# Release note — image drop, and a fix to what counts as text (agentd 0.6.0)
 
 Two changes ship together (`plan/13`, ADR 0024). One is new, one repairs something that has
 been wrong since P3. They are unrelated in code and share only the file subsystem.

@@ -1,6 +1,12 @@
 # Security review — plan/13: workspace write posture and text classification
 
-Reviewed 2026-08-01 against `plan/13/06-verification-and-exit.md` §5. Eight questions, each
+- Date: 2026-08-01
+- Scope: `agentd` 0.6.0, contract v1.8.0, migrations `0018` and `0019`
+- Change under review: the workspace read-only posture is withdrawn and one write path
+  (image drop) is built against its replacement rules; text/binary classification is
+  rewritten
+
+Reviewed against `plan/13/06-verification-and-exit.md` §5. Eight questions, each
 answered with evidence that can be re-run rather than with an assurance.
 
 **What changed, in one sentence:** the workspace stopped being read-only, and exactly one
