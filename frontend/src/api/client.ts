@@ -12,6 +12,7 @@ import type {
   EnrollmentToken,
   EnrollmentTokenCreated,
   FileContent,
+  FileUploadResult,
   FileSearchResult,
   FileTreePage,
   LoginResponse,
@@ -434,6 +435,96 @@ export class ApiClient {
     if (query.cursor) params.set("cursor", query.cursor);
     const suffix = params.toString() ? `?${params}` : "";
     return this.request("GET", `/api/audit${suffix}`, undefined, options);
+  }
+
+  // Drop one image into the session workspace (ADR 0024). Separate from
+  // `request` for two reasons: the body is raw bytes rather than JSON, and this
+  // is the one call where progress is worth showing, which `fetch` cannot report
+  // for an upload. Hence XMLHttpRequest, and hence the 401 refresh handled here
+  // rather than inherited.
+  async uploadImage(
+    sessionId: string,
+    file: Blob,
+    options: {
+      signal?: AbortSignal;
+      onProgress?: (fraction: number) => void;
+    } = {},
+  ): Promise<FileUploadResult> {
+    try {
+      return await this.uploadOnce(sessionId, file, options);
+    } catch (error) {
+      if (
+        error instanceof ApiError &&
+        error.status === 401 &&
+        (await this.refresh())
+      ) {
+        return this.uploadOnce(sessionId, file, options);
+      }
+      throw error;
+    }
+  }
+
+  private uploadOnce(
+    sessionId: string,
+    file: Blob,
+    options: { signal?: AbortSignal; onProgress?: (fraction: number) => void },
+  ): Promise<FileUploadResult> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/files/images`;
+    return new Promise<FileUploadResult>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `${BASE}${path}`);
+      // The image's own type; the server accepts four and re-checks the bytes.
+      xhr.setRequestHeader("Content-Type", file.type);
+      const token = this.tokens.accessToken();
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+
+      const onAbort = () => xhr.abort();
+      options.signal?.addEventListener("abort", onAbort);
+      const done = () => options.signal?.removeEventListener("abort", onAbort);
+
+      if (options.onProgress) {
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            options.onProgress?.(event.loaded / event.total);
+          }
+        };
+      }
+      xhr.onerror = () => {
+        done();
+        reject(
+          new ApiError("NETWORK_ERROR", "The upload could not be sent", 0),
+        );
+      };
+      xhr.onabort = () => {
+        done();
+        reject(new ApiError("CANCELLED", "The upload was cancelled", 0));
+      };
+      xhr.onload = () => {
+        done();
+        let body: {
+          error?: { code?: string; message?: string };
+          request_id?: string;
+        } & Partial<FileUploadResult> = {};
+        try {
+          body = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+        } catch {
+          // A non-JSON body from a proxy (a 413 page, say) still has a status.
+        }
+        if (xhr.status >= 200 && xhr.status < 300 && body.path) {
+          resolve(body as FileUploadResult);
+          return;
+        }
+        reject(
+          new ApiError(
+            body.error?.code ?? "HTTP_ERROR",
+            body.error?.message ?? xhr.statusText,
+            xhr.status,
+            body.request_id,
+          ),
+        );
+      };
+      xhr.send(file);
+    });
   }
 
   private async request<T>(

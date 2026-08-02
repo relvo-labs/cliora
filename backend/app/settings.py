@@ -98,6 +98,10 @@ class Settings(BaseSettings):
     # --- P3 filesystem relay (ADR 0015); measured, not hard-coded ---
     file_list_timeout_seconds: float = 15
     file_read_timeout_seconds: float = 15
+    # Longer than a read: the node writes to disk and fsyncs before replying
+    # (ADR 0024). Still bounded, so a wedged node surfaces as REQUEST_TIMEOUT
+    # rather than a browser that waits forever.
+    file_upload_timeout_seconds: float = 20
     file_search_timeout_seconds: float = 15
 
     # --- P4 audit retention (ADR 0016) ---

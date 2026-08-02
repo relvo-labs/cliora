@@ -2,6 +2,7 @@ package connection
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"time"
@@ -130,6 +131,71 @@ func (m *Manager) handleFsRead(env protocol.Envelope, data []byte, send func([]b
 	_ = send(frame)
 }
 
+// handleFsUpload writes one image into the session workspace (FR-FILE-009).
+// This is the only handler in the daemon that writes to a workspace; it follows
+// the same shape as handleFsRead so the two are read side by side.
+func (m *Manager) handleFsUpload(env protocol.Envelope, data []byte, send func([]byte) error) {
+	if protocol.ValidateControl(data) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	var p fsUploadPayload
+	if json.Unmarshal(env.Payload, &p) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	// Strict base64: the permissive decoder accepts trailing garbage, and the
+	// wire schema already restricts the alphabet, so anything else is malformed
+	// rather than merely unusual.
+	raw, decodeErr := base64.StdEncoding.Strict().DecodeString(p.Data)
+	if decodeErr != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	root, code, ok := m.openSessionWorkspace(p.SessionID)
+	if !ok {
+		m.replyError(send, env.RequestID, orSessionNotFound(code))
+		return
+	}
+	defer root.Close()
+
+	started := time.Now()
+	res, err := m.files.SaveImage(root, raw, m.now())
+	if err != nil {
+		code := workspaceCode(err)
+		metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "upload", "code": code})
+		m.replyError(send, env.RequestID, code)
+		return
+	}
+	if res.Denied {
+		metrics.Increment(metrics.FilesystemRequestTotal,
+			map[string]string{"op": "upload", "code": res.Code})
+		m.replyError(send, env.RequestID, res.Code)
+		return
+	}
+	metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "upload", "code": "OK"})
+	metrics.Observe(metrics.FilesystemUploadBytes, float64(res.Size), map[string]string{"mime": res.Mime})
+	// The relative path is the platform's own invention, so logging it leaks
+	// nothing about the node's existing tree. The bytes are never logged.
+	slog.Info("filesystem upload",
+		"event", "filesystem.upload", "request_id", env.RequestID,
+		"session_id", p.SessionID.String(), "mime", res.Mime, "bytes", res.Size,
+		"rel_path", res.RelPath, "duration_ms", time.Since(started).Milliseconds())
+
+	frame, buildErr := protocol.BuildResponse("filesystem.uploaded", m.creds.NodeID, env.RequestID,
+		true, map[string]any{
+			"path":        res.RelPath,
+			"mime":        res.Mime,
+			"size":        res.Size,
+			"modified_at": res.ModifiedAt.UTC().Format(time.RFC3339),
+		}, m.now())
+	if buildErr != nil {
+		m.replyError(send, env.RequestID, "FRAME_TOO_LARGE")
+		return
+	}
+	_ = send(frame)
+}
+
 // denialReason is the coarse classification for a denial metric, defaulting to
 // the code when the policy did not attach one (binary/oversize).
 func denialReason(res files.ReadResult) string {
@@ -230,6 +296,16 @@ type fsSearchPayload struct {
 	Keyword    string    `json:"keyword"`
 	Root       string    `json:"root"`
 	MaxResults int       `json:"max_results"`
+}
+
+// fsUploadPayload is two fields, and that is the whole design (ADR 0024 §3).
+// There is no filename, path, directory, extension or mime here, and the wire
+// schema sets additionalProperties:false, so the sender cannot name the file it
+// is creating. Adding a field to this struct means changing the contract, three
+// consumers and an ADR — which is the intended cost.
+type fsUploadPayload struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Data      string    `json:"data"`
 }
 
 func entryMap(e files.Entry) map[string]any {

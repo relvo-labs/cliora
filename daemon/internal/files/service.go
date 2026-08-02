@@ -17,6 +17,7 @@ type Service struct {
 	policy       *Policy
 	excludedDirs map[string]bool
 	search       config.SearchConfig
+	upload       config.UploadConfig
 	maxPreview   int64
 	entryLimit   int
 	now          func() time.Time
@@ -35,6 +36,7 @@ func NewService(cfg *config.Config, now func() time.Time) *Service {
 		policy:       NewPolicy(cfg.Filesystem),
 		excludedDirs: excluded,
 		search:       cfg.Filesystem.Search,
+		upload:       cfg.Filesystem.Upload,
 		maxPreview:   cfg.Filesystem.MaxPreviewSize,
 		entryLimit:   DefaultEntryLimit,
 		now:          now,

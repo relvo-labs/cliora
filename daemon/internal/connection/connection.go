@@ -396,15 +396,18 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		// settable from Central: a message that could turn this on would be a message
 		// that could grant root (ADR 0023 D11).
 		"privileged_terminal": m.cfg.Node.PrivilegedTerminal,
-		"name":                m.cfg.Node.Name,
-		"hostname":            hostname,
-		"os":                  m.info.OS,
-		"os_version":          m.info.OSVersion,
-		"architecture":        m.info.Architecture,
-		"daemon_version":      m.version,
-		"run_user":            m.info.RunUser,
-		"runtimes":            runtimeItems(detected),
-		"workspace_roots":     roots,
+		// Likewise report-only: whether this machine's workspaces may be written
+		// to is decided by its config file, never by Central (ADR 0024 W4).
+		"image_upload":    m.files.UploadEnabled(),
+		"name":            m.cfg.Node.Name,
+		"hostname":        hostname,
+		"os":              m.info.OS,
+		"os_version":      m.info.OSVersion,
+		"architecture":    m.info.Architecture,
+		"daemon_version":  m.version,
+		"run_user":        m.info.RunUser,
+		"runtimes":        runtimeItems(detected),
+		"workspace_roots": roots,
 	}
 }
 
@@ -502,6 +505,8 @@ func (m *Manager) dispatch(
 			m.handleFsRead(env, data, send)
 		case "filesystem.search":
 			m.handleFsSearch(ctx, env, data, send)
+		case "filesystem.upload":
+			m.handleFsUpload(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
@@ -561,12 +566,31 @@ func (m *Manager) handleStart(
 	}
 	metrics.Increment(metrics.DaemonSessionStartTotal,
 		map[string]string{"runtime": p.Runtime, "result": "started", "sandbox": sandbox})
+	// Expire old dropped images for this workspace (FR-FILE-009.AC-09). Off the
+	// hot path deliberately: a directory walk must never delay the reply that
+	// tells the browser its terminal is ready.
+	go m.pruneWorkspaceUploads(resolved)
 	frame, _ := protocol.BuildResponse(
 		"session.started", m.creds.NodeID, env.RequestID, true,
 		map[string]any{"session_id": p.SessionID.String(), "runtime": p.Runtime, "workspace": resolved},
 		m.now(),
 	)
 	_ = send(frame)
+}
+
+// pruneWorkspaceUploads removes expired dropped images from one workspace. Best
+// effort throughout: retention is housekeeping, and failing a session start
+// because a stale PNG could not be unlinked would be the wrong trade.
+func (m *Manager) pruneWorkspaceUploads(workspacePath string) {
+	root, err := m.guard.OpenWorkspace(workspacePath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	if removed, freed := m.files.PruneUploads(root, m.now()); removed > 0 {
+		slog.Info("pruned expired workspace uploads",
+			"event", "filesystem.upload_prune", "removed", removed, "freed_bytes", freed)
+	}
 }
 
 // terminalChunk keeps each binary frame within the 64 KiB control/binary cap;

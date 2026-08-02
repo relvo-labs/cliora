@@ -60,6 +60,13 @@ SESSION_FAILED = "session.failed"
 # extension only — never the rel_path, filename stem, absolute path or content
 # (ADR 0014). ---
 FILE_SENSITIVE_READ_DENIED = "file.sensitive_read_denied"
+# --- P13: an image was dropped into a session workspace (ADR 0024 W3). The
+# relative path IS recorded, unlike everywhere else in the filesystem relay: the
+# platform invented that name, so it leaks nothing about the node's existing
+# tree, and without it "who put what on this machine" degrades to a counter.
+# Content is never recorded, and neither is the client's original filename —
+# that string never enters the system at all.
+FILE_UPLOAD = "file.upload"
 # --- P4: daemon update (SEC-006 item 8, ADR 0017) ---
 # Two actions, not one with a `phase` field: the request and the outcome can be
 # minutes apart and can be separated by a Central restart, so a filter for "which
@@ -124,6 +131,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         SESSION_TERMINATE,
         SESSION_FAILED,
         FILE_SENSITIVE_READ_DENIED,
+        FILE_UPLOAD,
         DAEMON_UPDATE_STARTED,
         DAEMON_UPDATE_RESULT,
         AUTHZ_DENIED,

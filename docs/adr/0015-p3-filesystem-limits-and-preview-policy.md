@@ -2,12 +2,20 @@
 
 Status: accepted (2026-07-25). Governs Phase 3 (Workspace Files); confirmed defaults per product decision (see `plan/04`).
 
+Amended 2026-08-01 by ADR 0024 (the read-only premise is withdrawn) and by `plan/13` (the
+text/binary classification is rewritten). Both amendments are recorded below; everything not
+mentioned in them stands.
+
 ## Limits (configurable; measured, not hard-coded)
 
 | Item | Initial | On breach |
 |---|---:|---|
 | `filesystem.max_preview_size` | 2 MiB (`DefaultMaxPreviewSize`) | `FILE_TOO_LARGE` + size, no content read |
-| Binary sniff window | first 8 KiB | null byte / invalid UTF-8 / high control-char ratio → `FILE_BINARY` + mime |
+| Text/binary classification (amended 2026-08-01) | whole read buffer (≤ `max_preview_size`) | null byte anywhere → `FILE_BINARY`; not UTF-8 → `FILE_BINARY` + `reason=unsupported_encoding`; control-char ratio > 10% of runes → `FILE_BINARY` |
+| `filesystem.upload.max_bytes` (new 2026-08-01) | 4 MiB / image | `FILE_UPLOAD_TOO_LARGE`, nothing written |
+| `filesystem.upload.max_session_bytes` | 64 MiB | `FILE_UPLOAD_QUOTA_EXCEEDED` |
+| `filesystem.upload.max_files_per_day` | 200 | `FILE_UPLOAD_QUOTA_EXCEEDED` |
+| `filesystem.upload.retention_days` | 7 | pruned at session start and every 6 h |
 | Directory entries per response | 2000 | `truncated=true` + `next_cursor` (offset cursor) |
 | `filesystem.search.max_depth` | 10 | stop descending, `partial=true`, `stopped_reason="depth"` |
 | `filesystem.search.max_results` | 200 | stop, `partial`, `stopped_reason="results"` |
@@ -41,6 +49,50 @@ hang. Rejected alternatives: raising the global control bound (weakens the DoS
 limit for every frame type), chunking content across frames (P3 explicitly
 returns a bounded body, not a stream), and shrinking the preview cap
 (contradicts FR-FILE-003). See `contracts/CHANGELOG.md` 1.3.1.
+
+### Amendment (2026-08-01): the 8 KiB sniff window was the bug, not the budget
+
+Measured on the repository itself (`plan/13/08-measurements.md`): of 878 files that are
+**entirely valid UTF-8**, 20 could not be previewed — 8.7% of those over 8 KiB containing
+multi-byte runes. Every one had the same cause: `sample[:8192]` cuts inside a multi-byte
+rune, `utf8.Valid` fails on the truncated window, and the file is reported as
+`application/octet-stream`. For pure CJK content the cut lands mid-rune 2 times in 3.
+
+The same window failed in the other direction: a binary file whose first 8 KiB are printable
+ASCII was served as text, so `FR-FILE-004.AC-02` did not hold either.
+
+Decision: classify over the **whole read buffer** (already bounded by `max_preview_size`),
+validate UTF-8 on rune boundaries, treat `ESC`/`FF`/`VT` as text rather than control
+characters (an ANSI-coloured build log is a text file — three colour pairs per line tripped
+the old rule), and take the control-char ratio as runes over runes rather than runes over
+bytes. "The window is for performance" does not survive measurement: a 2 MiB file classifies
+in 2.66 ms against this ADR's own 3 s preview budget — 0.09% of it.
+
+A file that is text but not UTF-8 (Big5, GBK, Latin-1, UTF-16) is now reported as
+`FILE_BINARY` with `reason=unsupported_encoding` and mime `text/plain; charset=unknown`,
+because "we cannot read this encoding" and "this is not text" call for different next steps
+from the user. Transcoding is deliberately **not** added: measurement showed none of the
+false verdicts came from encodings, and guessing an encoding fails by rendering plausible
+mojibake. See `plan/13` D15 for the condition that would reopen it.
+
+Accuracy is pinned by a classification corpus (`daemon/internal/files/testdata/classify/`)
+and by `FR-FILE-008`, because the opposite of "too strict" is not "correct" — it is
+"too loose", and only a corpus can tell the difference.
+
+### Amendment (2026-08-01, ADR 0024): the read-only premise is withdrawn
+
+This ADR was written on the premise that the workspace is read-only, and its scope line said
+`Out of P3: editing/upload/download`. That premise no longer holds — see ADR 0024. Replace
+the scope line's reading with: **still not built** are editing, download, delete, rename and
+general file upload; the one write path that exists is image drop; and any future path must
+satisfy ADR 0024's W1–W4 (confined by `workspace.Root`, bounded by quota and retention,
+audited per write, refusable by the node). The wording matters — "not built yet" rather than
+"not allowed".
+
+The RBAC section below gains one action: `file.upload`, held by Admin and Developer.
+Its sentence "Viewer read-only, consistent with P2's read-only viewer attach" still holds
+**for Viewer** — Viewer has no write capability at all — but it no longer describes the
+posture of the system.
 
 ## Sensitive file policy — **balanced** (confirmed)
 

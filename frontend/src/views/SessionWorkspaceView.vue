@@ -25,6 +25,7 @@ const PreviewPane = defineAsyncComponent(
   () => import("../components/file/PreviewPane.vue"),
 );
 import { useAsyncResource } from "../composables/useAsyncResource";
+import { useImageDrop } from "../composables/useImageDrop";
 import { useTerminalSession } from "../composables/useTerminalSession";
 import { api } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
@@ -293,6 +294,63 @@ const privilegedNode = computed(
 // once, so any render that replaced the host — a failed load followed by Retry,
 // or a tab panel being rebuilt — left xterm attached to a detached node with
 // nobody to put it back (WT-02).
+// --- Image drop (WF-07, ADR 0024) -----------------------------------------
+
+const imageDrop = useImageDrop((file, onProgress, signal) =>
+  api().uploadImage(props.id, file, { onProgress, signal }),
+);
+const dragActive = ref(false);
+const pickerInput = ref<HTMLInputElement | null>(null);
+
+// Three conditions, all server-derived except the last. `can_upload_files`
+// already combines the action with ownership; `image_upload` is the node's own
+// report (ADR 0024 W4) — without it the console would offer a button that always
+// fails. The writer condition is separate because it is *temporary*.
+const canUploadImages = computed(
+  () =>
+    capabilities.value?.can_upload_files === true &&
+    nodePosture.value?.image_upload === true,
+);
+const isWriter = computed(() => terminal.role.value === "writer");
+
+async function dropImage(file: File): Promise<void> {
+  if (!canUploadImages.value) return;
+  const storedPath = await imageDrop.submit(file);
+  if (!storedPath) return;
+  // Type the path, with a trailing space and no Enter: the user usually still
+  // has something to say about the image (ADR 0024 sec 2).
+  if (terminal.typeText(`${storedPath} `)) {
+    activeTab.value = "cli";
+    terminal.focus();
+  }
+}
+
+function onTerminalPaste(event: ClipboardEvent): void {
+  const file = imageDrop.handlePaste(event);
+  if (file) void dropImage(file);
+}
+
+function onTerminalDrop(event: DragEvent): void {
+  dragActive.value = false;
+  const file = imageDrop.handleDrop(event);
+  if (file) void dropImage(file);
+}
+
+function onDragOver(event: DragEvent): void {
+  if (!canUploadImages.value || !isWriter.value) return;
+  // Without preventDefault the browser never fires `drop`.
+  event.preventDefault();
+  dragActive.value = true;
+}
+
+function onPicked(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  // Reset first, so choosing the same file twice in a row still fires change.
+  input.value = "";
+  if (file) void dropImage(file);
+}
+
 watch(
   host,
   (element) => {
@@ -428,11 +486,73 @@ async function confirmTerminate(): Promise<void> {
             class="pane terminal-pane"
             role="tabpanel"
             aria-labelledby="tab-cli"
+            :data-drag="dragActive || undefined"
+            @dragover="onDragOver"
+            @dragleave="dragActive = false"
+            @drop="onTerminalDrop"
           >
+            <!-- Image drop bar. Only rendered when the permission AND the node
+                 both allow it: a control that can never work is worse than no
+                 control, because the user spends time guessing why (ADR 0024). -->
+            <div v-if="canUploadImages" class="drop-bar">
+              <button
+                type="button"
+                class="ghost"
+                :disabled="!isWriter || imageDrop.state.value === 'uploading'"
+                :title="
+                  isWriter
+                    ? '將 PNG／JPEG／GIF／WebP 圖片交給 CLI（也可直接貼上或拖放）'
+                    : '取得寫入權後可投放圖片'
+                "
+                @click="pickerInput?.click()"
+              >
+                投放圖片
+              </button>
+              <input
+                ref="pickerInput"
+                type="file"
+                class="visually-hidden"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                @change="onPicked"
+              />
+              <span
+                v-if="imageDrop.state.value === 'uploading'"
+                class="drop-status"
+                role="status"
+              >
+                上傳中 {{ Math.round(imageDrop.progress.value * 100) }}%
+              </span>
+              <template v-else-if="imageDrop.state.value === 'done'">
+                <img
+                  v-if="imageDrop.current.value"
+                  :src="imageDrop.current.value.previewUrl"
+                  class="thumb"
+                  alt=""
+                />
+                <span class="drop-status" role="status">
+                  已加入 {{ imageDrop.current.value?.label }} →
+                  <code>{{ imageDrop.current.value?.storedPath }}</code>
+                </span>
+                <button type="button" class="link" @click="imageDrop.clear()">
+                  收起
+                </button>
+              </template>
+              <span
+                v-else-if="imageDrop.state.value === 'error'"
+                class="drop-status bad"
+                role="alert"
+              >
+                {{ imageDrop.errorMessage.value }}
+              </span>
+              <span v-else class="drop-hint">
+                可貼上（Ctrl+V）、拖放，或按上方按鈕選檔
+              </span>
+            </div>
             <div
               ref="host"
               class="terminal-host"
               aria-label="Interactive CLI terminal"
+              @paste.capture="onTerminalPaste"
             />
           </section>
 
@@ -734,6 +854,46 @@ async function confirmTerminate(): Promise<void> {
  * would decide the outcome. `flex: 1` says the one true thing — take what is
  * left. `min-height: 0` lets it shrink below xterm's rendered height, without
  * which the pane, not the host, would be what overflows. */
+.drop-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.drop-bar .thumb {
+  height: 24px;
+  width: auto;
+  max-width: 48px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+.drop-status code {
+  font-family:
+    JetBrains Mono,
+    ui-monospace,
+    monospace;
+}
+.drop-status.bad {
+  color: var(--status-error);
+}
+.drop-hint {
+  color: var(--text-muted);
+}
+.terminal-pane[data-drag] {
+  outline: 2px dashed var(--action-primary);
+  outline-offset: -4px;
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 .terminal-host {
   flex: 1 1 auto;
   min-height: 0;

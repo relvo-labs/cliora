@@ -44,6 +44,7 @@ function nodeDetail(overrides: Partial<NodeDetail> = {}): NodeDetail {
     daemon_version: "0.5.0",
     run_user: "neil",
     privileged_terminal: false,
+    image_upload: false,
     is_enabled: true,
     registered_at: "2026-07-01T00:00:00Z",
     runtimes: [runtime()],

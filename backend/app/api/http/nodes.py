@@ -87,6 +87,7 @@ def _detail(node: Node, registry: NodeConnectionRegistry, settings: Settings) ->
         daemon_version=node.daemon_version,
         run_user=node.run_user,
         privileged_terminal=node.privileged_terminal,
+        image_upload=node.image_upload,
         is_enabled=node.is_enabled,
         registered_at=node.registered_at,
         runtimes=[

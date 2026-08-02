@@ -29,6 +29,7 @@ const REASONS: Record<string, string> = {
   unresolved: "無法確認實際檔案位置",
   invalid: "路徑格式無效",
   not_found: "檔案不存在",
+  unsupported_encoding: "不是 UTF-8 編碼（例如 Big5、GBK、UTF-16）",
 };
 
 function formatBytes(size: number | undefined): string {
@@ -50,17 +51,31 @@ const view = computed(() => {
         detail: `檔案大小 ${formatBytes(d.size)}，預覽上限 2 MiB。`,
         next: "請在 Node 上以終端機檢視此檔案；MVP 不提供完整載入或下載。",
       };
-    case "FILE_BINARY":
+    case "FILE_BINARY": {
+      const meta = `大小 ${formatBytes(d.size)}${
+        d.modifiedAt
+          ? `，修改時間 ${new Date(d.modifiedAt).toLocaleString()}`
+          : ""
+      }`;
+      // Two different facts arrive under one wire code, and they call for
+      // different actions: "this is not text, stop looking" versus "this is
+      // text we cannot decode, convert it". Saying "binary" about a Big5 source
+      // file is simply wrong, and it was part of what users were reporting.
+      if (d.reason === "unsupported_encoding") {
+        return {
+          icon: FileQuestion,
+          title: "無法以 UTF-8 顯示此檔案",
+          detail: `檔案看起來是文字，但不是 UTF-8 編碼（例如 Big5、GBK、Shift-JIS 或 UTF-16）。${meta}。`,
+          next: "請在 Node 上以 iconv 轉為 UTF-8，或直接以終端機檢視。",
+        };
+      }
       return {
         icon: Ban,
         title: "不支援預覽此檔案",
-        detail: `偵測為二進位內容（${d.mime ?? "application/octet-stream"}），大小 ${formatBytes(d.size)}${
-          d.modifiedAt
-            ? `，修改時間 ${new Date(d.modifiedAt).toLocaleString()}`
-            : ""
-        }。`,
+        detail: `偵測為二進位內容（${d.mime ?? "application/octet-stream"}），${meta}。`,
         next: "僅顯示檔案資訊，不載入內容。",
       };
+    }
     case "FILE_PERMISSION_DENIED":
       return {
         icon: Lock,

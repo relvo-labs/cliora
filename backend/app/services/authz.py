@@ -32,6 +32,7 @@ from app.db.models import NodeTunnel, TerminalSession, User
 from app.services.rbac import (
     AUDIT_VIEW,
     FILE_BROWSE,
+    FILE_UPLOAD,
     INTEGRATION_MANAGE,
     NODE_MANAGE,
     SESSION_TERMINATE,
@@ -214,6 +215,25 @@ def authorize_file_browse(user: User, session: TerminalSession) -> None:
         raise _forbidden(FILE_BROWSE, user, REASON_SCOPE)
 
 
+def may_upload_files(user: User, session: TerminalSession) -> bool:
+    """Whether this user may drop an image into the session's workspace.
+
+    Scoped exactly like browsing — the workspace belongs to the CLI session, and
+    a shell session is never a route to it — but gated on `file.upload`, which
+    Viewer does not hold (ADR 0024 sec 6).
+    """
+    if is_shell(session):
+        return False
+    return has_action(user, FILE_UPLOAD) and may_view_session(user, session)
+
+
+def authorize_file_upload(user: User, session: TerminalSession) -> None:
+    if not has_action(user, FILE_UPLOAD):
+        raise _forbidden(FILE_UPLOAD, user, REASON_ACTION)
+    if not may_upload_files(user, session):
+        raise _forbidden(FILE_UPLOAD, user, REASON_SCOPE)
+
+
 def may_view_audit(user: User) -> bool:
     """Whether this user may see audit detail (actor identity, the trail itself).
 
@@ -293,5 +313,6 @@ def session_capabilities(user: User, session: TerminalSession) -> dict[str, bool
         "can_takeover": may_takeover_session(user, session),
         "can_terminate": may_terminate_session(user, session),
         "can_browse_files": may_browse_files(user, session),
+        "can_upload_files": may_upload_files(user, session),
         "can_open_shell": may_open_shell(user, session),
     }

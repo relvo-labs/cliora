@@ -109,6 +109,7 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         # answers and only one of them tells the user to upgrade the daemon.
         tunnel=TunnelReportInput.from_payload(payload.get("tunnel")),
         privileged_terminal=bool(payload.get("privileged_terminal", False)),
+        image_upload=bool(payload.get("image_upload", False)),
     )
 
 

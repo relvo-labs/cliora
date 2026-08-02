@@ -151,6 +151,11 @@ class RegisterNodeInput:
     # (ADR 0023). False for a daemon that predates the field, which is the correct
     # reading: a posture nobody has claimed is not one the console may imply.
     privileged_terminal: bool = False
+    # The node's own report that the platform may write images into its workspaces
+    # (ADR 0024 W4). False for a daemon that predates the field, which is the
+    # correct reading: the console hides the entry point rather than offering a
+    # button that would fail.
+    image_upload: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -268,9 +273,14 @@ class NodeRegistrationService:
         # posture each time would bury the announce that matters under one row per
         # reconnect — and "when did this node become able to reach root" is the
         # question an incident review starts from (ADR 0023 §2.5).
-        posture_changed = node.privileged_terminal != data.privileged_terminal
+        posture_changed = (
+            node.privileged_terminal != data.privileged_terminal
+            or node.image_upload != data.image_upload
+        )
         previous_posture = node.privileged_terminal
+        previous_upload = node.image_upload
         node.privileged_terminal = data.privileged_terminal
+        node.image_upload = data.image_upload
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -281,6 +291,8 @@ class NodeRegistrationService:
                 metadata={
                     "privileged_terminal": data.privileged_terminal,
                     "previous": previous_posture,
+                    "image_upload": data.image_upload,
+                    "previous_image_upload": previous_upload,
                 },
             )
         return node

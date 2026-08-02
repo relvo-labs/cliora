@@ -132,6 +132,10 @@ export interface NodeDetail extends NodeSummary {
   // True when this node's system terminal can reach root through sudo (ADR 0023).
   // Reported by the node; there is no endpoint that sets it.
   privileged_terminal: boolean;
+  // Whether this node accepts image drop. Absent-means-no on the wire, so a
+  // daemon that predates the field reads as false and the console hides the
+  // affordance rather than offering one that fails (ADR 0024 W4).
+  image_upload: boolean;
   is_enabled: boolean;
   registered_at: string;
   runtimes: NodeRuntime[];
@@ -179,6 +183,7 @@ export interface SessionCapabilities {
   can_takeover: boolean;
   can_terminate: boolean;
   can_browse_files: boolean;
+  can_upload_files: boolean;
   // Already folds in the action, ownership and the node's own veto: the browser
   // renders it, it does not recombine it (ADR 0016/0021).
   can_open_shell: boolean;
@@ -268,6 +273,15 @@ export interface FileSearchResult {
 // A preview denial arrives in-band with success:false (HTTP 200) so the browser
 // can render a specific "cannot preview" pane. error.reason is a coarse
 // classification (dotenv/private_key/binary/…), never a content fragment.
+// One dropped image, as the daemon stored it (ADR 0024). `path` is
+// workspace-relative and daemon-chosen — the browser never sent a name.
+export interface FileUploadResult {
+  path: string;
+  mime: string;
+  size: number;
+  modified_at: string;
+}
+
 export interface FileContent {
   success: boolean;
   rel_path: string;
@@ -466,6 +480,7 @@ export const AUDIT_ACTIONS = [
   "enrollment.revoke",
   "enrollment.use",
   "file.sensitive_read_denied",
+  "file.upload",
   "node.disable",
   "node.enable",
   "node.register",
@@ -670,6 +685,9 @@ export const ACTION_TERMINAL_OPERATE = "terminal.operate";
 export const ACTION_TERMINAL_TAKEOVER = "terminal.takeover";
 export const ACTION_TERMINAL_SHELL = "terminal.shell";
 export const ACTION_FILE_BROWSE = "file.browse";
+// Writing to a workspace is a different permission from reading one: Viewer
+// holds file.browse and must not hold this (ADR 0024 sec 6).
+export const ACTION_FILE_UPLOAD = "file.upload";
 export const ACTION_AUDIT_VIEW = "audit.view";
 export const ACTION_TUNNEL_VIEW = "tunnel.view";
 export const ACTION_TUNNEL_MANAGE = "tunnel.manage";

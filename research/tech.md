@@ -1234,11 +1234,19 @@ filesystem:
 * 是否可讀。
 * 是否疑似 Binary。
 
+寫入僅有一條路徑（`.cliora/uploads/`，見 §11.9），且同樣經 `workspace.Root` 侷限。
+
 設定：
 
 ```yaml
 filesystem:
   max_preview_size: 2097152
+  upload:
+    enabled: true
+    max_bytes: 4194304
+    max_session_bytes: 67108864
+    max_files_per_day: 200
+    retention_days: 7
 ```
 
 讀取時應使用 Limit Reader，避免檔案在檢查後快速變大造成記憶體問題。
@@ -1247,15 +1255,24 @@ filesystem:
 
 ## 11.6 Binary 判斷
 
-可採以下方式：
+（2026-08-01 修訂。原本的「讀取前 8 KB」是實測到的誤判來源，見 `plan/13/08-measurements.md`。）
 
-1. 讀取前 8 KB。
-2. 若包含 Null Byte，判定為 Binary。
-3. 嘗試 UTF-8 Validation。
-4. 判斷控制字元比例。
-5. 搭配副檔名與 MIME Type。
+1. 掃描**已讀取的完整內容**（受 `max_preview_size` 約束）。
+   不使用固定窗格：窗格會切在多位元組字元中間而誤判合法的 UTF-8 文字檔
+   （實測本 repo 878 個合法 UTF-8 檔中誤判 20 個），也會漏看窗格之後的 Null Byte。
+2. 若任何位置包含 Null Byte，判定為 Binary。
+3. UTF-8 Validation；驗證必須落在 rune 邊界上。
+   驗證失敗的檔案判定為「編碼不支援」（`reason=unsupported_encoding`），
+   與 Binary 分開呈現 —— 兩者的下一步不同。
+4. 判斷控制字元比例：分子與分母都以 rune 計算，門檻 10%。
+   `\t`、`\n`、`\r`、`ESC`(0x1b)、`FF`(0x0c)、`VT`(0x0b) 視為文字
+   —— 帶 ANSI 顏色的建置 log 是純文字檔。
+5. 副檔名與 MIME Type 只影響顯示（語法高亮），不參與安全判定。
 
 圖片、PDF、壓縮檔、執行檔第一階段不直接預覽。
+
+不自動偵測或轉換非 UTF-8 編碼（Big5／GBK／Latin-1／UTF-16）：猜錯的代價是顯示看似
+損毀的亂碼。這類檔案回報為「編碼不支援」，由使用者在節點上自行轉碼。
 
 ---
 
@@ -1314,6 +1331,42 @@ filesystem:
 ```
 
 全文搜尋後續可整合 `ripgrep`，但不能允許前端傳入任意 rg 參數。
+
+---
+
+## 11.9 圖片投放（工作區的唯一寫入路徑）
+
+（2026-08-01 新增，ADR 0024。）
+
+目錄與命名：
+
+```text
+<workspace>/.cliora/
+├── .gitignore                     # 內容 "*"，僅在不存在時建立
+└── uploads/<UTC 日期>/<ULID>.<副檔名>
+```
+
+**檔名與目錄由 Daemon 決定，請求端不得指定。** 協定上不存在 `filename`、`path`、
+`directory`、`extension` 欄位；瀏覽器送出的是位元組。這一條同時消除路徑穿越、
+雙副檔名與覆寫既有檔案三個問題。
+
+落地順序（default-deny，任一步失敗都不留下檔案）：
+
+1. 功能是否啟用（`filesystem.upload.enabled`）。
+2. 大小是否超過 `max_bytes`。
+3. Magic number 嗅探，只認 PNG／JPEG／GIF／WebP；不採信宣告的 Content-Type。
+   嗅探結果同時決定回報的 MIME 與副檔名。
+4. 配額：`max_session_bytes` 與 `max_files_per_day`，每次現算不維護計數器。
+5. 建立目錄（0700）與 `.gitignore`。
+6. 寫入 `.part` 暫存檔（0600）、`fsync`、rename 就位。
+7. 回傳工作區相對路徑。
+
+清理：Session 啟動時與每 6 小時，刪除 `uploads/` 下 mtime 早於 `retention_days` 的檔案，
+並移除空的日期目錄。`.gitignore` 與 `.cliora/` 本身永不刪。
+
+相對路徑之所以可用，是因為 Session 以 `tmux new-session -c <workspace>` 啟動，
+CLI 的 cwd 即工作區。實測 `claude` 與 `codex` 都接受裸的相對路徑，
+不需要 `@` 前綴或其他方言。
 
 ---
 

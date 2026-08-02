@@ -508,6 +508,58 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "None.",
             origin=DAEMON,
         ),
+        # --- Image drop (P13, ADR 0024) ---
+        _entry(
+            "FILE_UPLOAD_TOO_LARGE",
+            None,
+            "The image is larger than 4 MiB",
+            "Central refuses the request before reading the whole body, and the "
+            "daemon refuses it again before writing anything.",
+            "Compress or resize the image and try again.",
+            origin=CENTRAL,
+        ),
+        _entry(
+            "FILE_UPLOAD_UNSUPPORTED_TYPE",
+            None,
+            "Only PNG, JPEG, GIF and WebP images can be dropped",
+            "The content did not match one of the four accepted image signatures. "
+            "The declared content type is not what decides this.",
+            "Convert the file to a supported image format. SVG and PDF are not images here.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_UPLOAD_QUOTA_EXCEEDED",
+            None,
+            "This session has reached its image quota",
+            "Either the cumulative byte quota or the per-day file count for this "
+            "workspace is full.",
+            "Delete images you no longer need from .cliora/uploads/ in the file tree; "
+            "expired ones are removed automatically after 7 days.",
+            audited=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_UPLOAD_FAILED",
+            None,
+            "The node could not store the image",
+            "Writing to the workspace failed — no disk space, no permission, or "
+            ".cliora exists but is not a directory.",
+            "Ask an administrator to check the node; `agentd doctor` names the file to fix.",
+            # Retryable: the common causes (disk pressure, a transient permission
+            # problem) clear on their own, and a retry cannot write twice — the
+            # daemon names each file itself, so nothing is overwritten.
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_UPLOAD_DISABLED",
+            None,
+            "This node does not accept image drop",
+            "The node's config sets filesystem.upload.enabled to false. Whether a "
+            "workspace may be written to is the node's decision, not the platform's.",
+            "None from the browser; the node's owner controls this setting.",
+            origin=DAEMON,
+        ),
         # --- Daemon update (P4-10) ---
         _entry(
             "UPDATE_NOT_ALLOWED",
