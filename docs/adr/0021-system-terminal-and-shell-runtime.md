@@ -1,6 +1,6 @@
 # ADR 0021 — System terminal (`shell` runtime)
 
-- Status: accepted
+- Status: accepted (§4.2 item 2 amended by ADR 0023, 2026-08-01)
 - Date: 2026-07-31
 - Supersedes: narrows `SCOPE-011` ("使用者不得從前端執行任意 Shell Command"). The
   non-goal is not withdrawn — see §Decision 1 for exactly which half of it survives.
@@ -167,3 +167,27 @@ inherited — a reload gets a new terminal, not the old one's scrollback.
 - `SCOPE-011.AC-01` becomes `lifecycle: deprecated` with a `supersedes` link from
   `FR-SHELL-001.AC-03`; the scope-guard test stays, because the property it tests is still
   required.
+
+## Amendment (2026-08-01, by ADR 0023): the second compensating control no longer holds
+
+§4.2 item 2 said the daemon's execution identity **is** the ceiling of the system terminal,
+and that if it ever became root this ADR must be revisited. It has been revisited.
+
+The execution identity did **not** become root — `EnsureNonRoot` is unchanged and the
+service still runs as the non-root user. The *ceiling* did: on a node installed with the
+privileged posture, the unit omits `NoNewPrivileges` and `/etc/sudoers.d/60-agentd` grants
+the service user passwordless sudo, so the terminal reaches root on demand (ADR 0023 §4).
+In effect this is the situation item 2 predicted, and that item is therefore withdrawn.
+
+Items 1, 3 and 4 of §4.2 — ownership, bounded lifetime, session-level audit — stand
+unchanged, as do §1 (`SCOPE-011` is narrowed, not withdrawn; ADR 0023 §2 did not narrow it
+further), §5 (commands are still not recorded) and §6 (a shell dies with its watcher).
+
+Two controls replace item 2: the posture is **visible** wherever a user is about to work
+(node list, node detail, session header, the terminal's own notice, and the `session.create`
+audit metadata), and the **node keeps a veto** it can exercise without the platform
+(`--no-privileged-terminal`, `runtime.codex.sandbox_bypass: false`). See ADR 0023 §5.
+
+One line of this ADR's own text is now wrong if read literally: §4.2's "the shell escalates
+nothing; it exposes the privileges the daemon already has". On a privileged node the shell
+escalates, deliberately.

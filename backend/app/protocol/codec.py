@@ -19,9 +19,18 @@ MAX_PAYLOAD = 64 * 1024
 # frame keeps the tight 64 KiB limit. Kept well under uvicorn's 16 MiB
 # ws_max_size so the socket layer never truncates a legal frame.
 MAX_FILE_PAYLOAD = 8 * 1024 * 1024
-# Response types allowed to use the larger bound.
+# Types allowed to use the larger bound. Three are responses (P3); the fourth,
+# filesystem.upload, is the first *request* to need it and the first in the
+# Central -> daemon direction (ADR 0024 sec 7). Its own schema caps `data` at
+# the base64 length of 4 MiB, so the wider frame bound does not widen what a
+# node will actually write.
 LARGE_FRAME_TYPES = frozenset(
-    {"filesystem.entries", "filesystem.content", "filesystem.search_result"}
+    {
+        "filesystem.entries",
+        "filesystem.content",
+        "filesystem.search_result",
+        "filesystem.upload",
+    }
 )
 HEADER_SIZE = 18
 ROOT = Path(__file__).parents[3]

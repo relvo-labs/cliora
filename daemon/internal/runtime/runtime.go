@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,6 +21,10 @@ const (
 	ReasonDisabled      = "RUNTIME_DISABLED"
 	ReasonNotFound      = "RUNTIME_NOT_FOUND"
 	ReasonNotExecutable = "RUNTIME_NOT_EXECUTABLE"
+	// ReasonSandboxFlagUnsupported is reported alongside an *available* runtime: the
+	// node asked for the sandbox to be off but the installed binary does not know
+	// the flag (ADR 0023 D3). It is not a protocol error code.
+	ReasonSandboxFlagUnsupported = "RUNTIME_SANDBOX_FLAG_UNSUPPORTED"
 )
 
 // Validation errors returned by Runtime.Validate for a rejected StartOptions.
@@ -45,6 +50,16 @@ type DetectResult struct {
 	BinaryPath string
 	Reason     string
 	CheckedAt  time.Time
+	// SandboxBypassRequested is what this node's config asked for; SandboxBypass is
+	// what the binary will actually be launched with. They differ when the
+	// installed CLI does not accept the flag, which is a third-party interface
+	// change we report rather than assume away: reporting the requested value would
+	// make the console claim a posture the machine is not in (ADR 0023 D3).
+	SandboxBypassRequested bool
+	SandboxBypass          bool
+	// SandboxNote explains a requested-but-unavailable bypass. Separate from Reason
+	// because the runtime is still usable; only doctor and the startup log read it.
+	SandboxNote string
 }
 
 type Runtime interface {
@@ -55,6 +70,9 @@ type Runtime interface {
 	// Binary returns the configured binary name when the runtime is enabled, or
 	// "" when disabled (used to resolve an allowlisted launch binary).
 	Binary() string
+	// LaunchArgs returns the daemon-owned arguments for this runtime — never
+	// anything a caller, message or config file supplied a string for (SEC-002).
+	LaunchArgs() []string
 }
 
 // cliRuntime is a generic adapter for a version-flagged CLI (claude/codex).
@@ -63,6 +81,13 @@ type cliRuntime struct {
 	enabled bool
 	binary  string
 	timeout time.Duration
+	// bypassRequested mirrors config's sandbox_bypass for this runtime.
+	bypassRequested bool
+	// bypassProbe caches whether the installed binary accepts the flag. Probed
+	// once per process: the answer only changes when the CLI is upgraded, and an
+	// upgrade is followed by a daemon restart or reconnect (runbook).
+	probeMu     sync.Mutex
+	bypassProbe *bool
 }
 
 func (r *cliRuntime) ID() string { return r.id }
@@ -74,8 +99,59 @@ func (r *cliRuntime) Binary() string {
 	return r.binary
 }
 
+// LaunchArgs returns the sandbox-bypass flags when this node asked for them and
+// the installed binary accepts them, and nil otherwise. A runtime with no entry in
+// the flag table always returns nil.
+func (r *cliRuntime) LaunchArgs() []string {
+	if !r.enabled || !r.bypassRequested || !SupportsSandboxBypass(r.id) {
+		return nil
+	}
+	if !r.bypassAvailable() {
+		return nil
+	}
+	return SandboxBypassArgs(r.id)
+}
+
+// bypassAvailable probes `<binary> --help` once and reports whether the flag
+// appears. There is no way to ask a CLI whether it knows a flag: --version does
+// not list flags, and launching with the flag would start an interactive session.
+func (r *cliRuntime) bypassAvailable() bool {
+	r.probeMu.Lock()
+	defer r.probeMu.Unlock()
+	if r.bypassProbe != nil {
+		return *r.bypassProbe
+	}
+	supported := flagAccepted(r.binary, SandboxBypassFlag, r.timeout)
+	r.bypassProbe = &supported
+	return supported
+}
+
+// flagAccepted reports whether a binary's help output mentions flag. Bounded the
+// same way version detection is (tech §8.5): a hung --help must not be able to
+// stall a session launch, and WaitDelay closes the pipes so an orphaned
+// grandchild cannot hold CombinedOutput open past the timeout.
+func flagAccepted(binary, flag string, timeout time.Duration) bool {
+	path, err := exec.LookPath(binary)
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, path, "--help")
+	cmd.WaitDelay = 200 * time.Millisecond
+	out, err := cmd.CombinedOutput()
+	if err != nil && len(out) == 0 {
+		return false
+	}
+	return strings.Contains(string(out), flag)
+}
+
 func (r *cliRuntime) Detect(ctx context.Context, now time.Time) DetectResult {
-	result := DetectResult{Runtime: r.id, CheckedAt: now}
+	result := DetectResult{
+		Runtime:                r.id,
+		CheckedAt:              now,
+		SandboxBypassRequested: r.bypassRequested && SupportsSandboxBypass(r.id),
+	}
 	if !r.enabled {
 		result.Reason = ReasonDisabled
 		return result
@@ -102,6 +178,15 @@ func (r *cliRuntime) Detect(ctx context.Context, now time.Time) DetectResult {
 	}
 	result.Available = true
 	result.Version = firstLine(out)
+	// Only probe the flag on a runtime that is otherwise usable: an unavailable
+	// runtime has nothing to report, and the probe costs another process.
+	result.SandboxBypass = len(r.LaunchArgs()) > 0
+	if result.SandboxBypassRequested && !result.SandboxBypass {
+		// Deliberately not Reason: Reason explains why a runtime is *unusable*, and
+		// this one launches fine. The console shows "sandbox: enforced" for it, which
+		// is the truth, and doctor prints this note to explain why (ADR 0023 D3).
+		result.SandboxNote = ReasonSandboxFlagUnsupported
+	}
 	return result
 }
 
@@ -132,10 +217,10 @@ func (r *cliRuntime) Validate(opts StartOptions) error {
 	return nil
 }
 
-// BuildCommand constructs the argv from the configured binary only — never from
-// caller-supplied strings. Actual session launch lands in P2.
+// BuildCommand constructs the argv from the configured binary plus the daemon's
+// own flag table — never from caller-supplied strings.
 func (r *cliRuntime) BuildCommand(opts StartOptions) *exec.Cmd {
-	cmd := exec.Command(r.binary)
+	cmd := exec.Command(r.binary, r.LaunchArgs()...)
 	cmd.Dir = opts.Workspace
 	return cmd
 }

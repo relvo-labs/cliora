@@ -50,9 +50,12 @@ type Manager struct {
 	// P2 session/terminal lifecycle. The manager persists across reconnects so
 	// tmux-backed sessions survive a Central restart; the guard/resolver enforce
 	// allowed-root workspaces and the runtime-id allowlist (SEC-001/002).
-	sessions      *session.Manager
-	guard         *workspace.Guard
-	resolveBinary func(string) (string, error)
+	sessions *session.Manager
+	guard    *workspace.Guard
+	// resolveLaunch turns an allowlisted runtime id into the binary *and* the
+	// daemon's own launch flags (runtime.ResolveLaunch). A test seam, and the only
+	// path from a session.start to an argv.
+	resolveLaunch func(string) (runtime.LaunchSpec, error)
 	// files performs the P3 read-only filesystem relay (list/read/search),
 	// confined to a session's workspace via the workspace guard (ADR 0014).
 	files *files.Service
@@ -98,9 +101,9 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		version:       version,
 		dialer:        websocket.DefaultDialer,
 		now:           time.Now,
-		sessions:      session.New(ctmux.Client{}, "", ""),
+		sessions:      session.New(newTmuxClient(cfg), "", ""),
 		guard:         workspace.New(cfg.Workspace.AllowedRoots),
-		resolveBinary: reg.ResolveBinary,
+		resolveLaunch: reg.ResolveLaunch,
 		files:         files.NewService(cfg, time.Now),
 		probeEgress:   dialProvider,
 		configPath:    config.DefaultConfigPath,
@@ -114,6 +117,20 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		slog.Warn("reaped port-forwarding tunnels left by a previous run", "count", reaped)
 	}
 	return m
+}
+
+// newTmuxClient builds the tmux client for this node: Cliora's own server plus the
+// generated config that makes the browser terminal scrollable (ADR 0023, PV-04).
+// A config that cannot be written is logged and then ignored — the sessions still
+// work, they just fall back to tmux's defaults, and doctor reports the gap rather
+// than the daemon refusing to start over a comfort feature.
+func newTmuxClient(cfg *config.Config) ctmux.Client {
+	client, err := ctmux.Prepare(cfg.Session.ScrollbackLimit)
+	if err != nil {
+		slog.Warn("tmux config not written; sessions fall back to tmux defaults",
+			"dir", ctmux.ResolveConfigDir(), "error", err)
+	}
+	return client
 }
 
 // SetConfigPath records where this daemon's config lives. The post-restart health
@@ -352,6 +369,13 @@ func runtimeItems(detected []runtime.DetectResult) []map[string]any {
 		if !r.CheckedAt.IsZero() {
 			item["checked_at"] = r.CheckedAt.UTC().Format("2006-01-02T15:04:05.000000Z07:00")
 		}
+		// Only sent for a runtime the daemon can actually bypass, and only as the
+		// measured outcome — a node that asked for the bypass but has a CLI that does
+		// not know the flag reports false, because that is what will happen when a
+		// session starts (contract 1.7.0, ADR 0023 D3).
+		if r.SandboxBypassRequested || r.SandboxBypass {
+			item["sandbox_bypass"] = r.SandboxBypass
+		}
 		runtimes = append(runtimes, item)
 	}
 	return runtimes
@@ -367,7 +391,14 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		hostname = m.cfg.Node.Name
 	}
 	return map[string]any{
-		"tunnel":          m.tunnelReport(),
+		"tunnel": m.tunnelReport(),
+		// The posture of this machine, reported so the console can show it. Never
+		// settable from Central: a message that could turn this on would be a message
+		// that could grant root (ADR 0023 D11).
+		"privileged_terminal": m.cfg.Node.PrivilegedTerminal,
+		// Likewise report-only: whether this machine's workspaces may be written
+		// to is decided by its config file, never by Central (ADR 0024 W4).
+		"image_upload":    m.files.UploadEnabled(),
 		"name":            m.cfg.Node.Name,
 		"hostname":        hostname,
 		"os":              m.info.OS,
@@ -474,6 +505,8 @@ func (m *Manager) dispatch(
 			m.handleFsRead(env, data, send)
 		case "filesystem.search":
 			m.handleFsSearch(ctx, env, data, send)
+		case "filesystem.upload":
+			m.handleFsUpload(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
@@ -499,7 +532,7 @@ func (m *Manager) handleStart(
 	// Resolve the launch binary from the runtime allowlist — never from a
 	// caller-supplied command (SEC-002) — then canonicalise the workspace
 	// against the allowed roots (SEC-001) before starting anything.
-	binary, err := m.resolveBinary(p.Runtime)
+	launch, err := m.resolveLaunch(p.Runtime)
 	if err != nil {
 		m.replyError(send, env.RequestID, err.Error())
 		return
@@ -509,28 +542,55 @@ func (m *Manager) handleStart(
 		m.replyError(send, env.RequestID, workspaceCode(err))
 		return
 	}
+	// "bypassed" vs "enforced" is the same fact the console shows and the audit
+	// trail records, so it is derived from the resolved launch rather than from
+	// config: this is what the process will actually be started with.
+	sandbox := "enforced"
+	if len(launch.Args) > 0 {
+		sandbox = "bypassed"
+	}
 	if startErr := m.sessions.StartSession(
-		ctx, p.SessionID, p.Runtime, resolved, binary, p.Rows, p.Columns,
+		ctx, p.SessionID, p.Runtime, resolved, launch.Path, launch.Args, p.Rows, p.Columns,
 	); startErr != nil {
 		code := "SESSION_START_FAILED"
 		if startErr.Error() == "SESSION_ALREADY_EXISTS" {
 			code = "SESSION_ALREADY_EXISTS"
 		}
-		// Labelled by runtime and outcome only. "claude starts fail but codex does not"
-		// is the shape of the question this answers, and neither label is identifying.
+		// Labelled by runtime, sandbox posture and outcome only. "claude starts fail
+		// but codex does not" is the shape of the question this answers, and none of
+		// the labels is identifying.
 		metrics.Increment(metrics.DaemonSessionStartTotal,
-			map[string]string{"runtime": p.Runtime, "result": "failed"})
+			map[string]string{"runtime": p.Runtime, "result": "failed", "sandbox": sandbox})
 		m.replyError(send, env.RequestID, code)
 		return
 	}
 	metrics.Increment(metrics.DaemonSessionStartTotal,
-		map[string]string{"runtime": p.Runtime, "result": "started"})
+		map[string]string{"runtime": p.Runtime, "result": "started", "sandbox": sandbox})
+	// Expire old dropped images for this workspace (FR-FILE-009.AC-09). Off the
+	// hot path deliberately: a directory walk must never delay the reply that
+	// tells the browser its terminal is ready.
+	go m.pruneWorkspaceUploads(resolved)
 	frame, _ := protocol.BuildResponse(
 		"session.started", m.creds.NodeID, env.RequestID, true,
 		map[string]any{"session_id": p.SessionID.String(), "runtime": p.Runtime, "workspace": resolved},
 		m.now(),
 	)
 	_ = send(frame)
+}
+
+// pruneWorkspaceUploads removes expired dropped images from one workspace. Best
+// effort throughout: retention is housekeeping, and failing a session start
+// because a stale PNG could not be unlinked would be the wrong trade.
+func (m *Manager) pruneWorkspaceUploads(workspacePath string) {
+	root, err := m.guard.OpenWorkspace(workspacePath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	if removed, freed := m.files.PruneUploads(root, m.now()); removed > 0 {
+		slog.Info("pruned expired workspace uploads",
+			"event", "filesystem.upload_prune", "removed", removed, "freed_bytes", freed)
+	}
 }
 
 // terminalChunk keeps each binary frame within the 64 KiB control/binary cap;

@@ -25553,6 +25553,1471 @@
         "mvp"
       ],
       "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-SEC-007-AC-02-IMPLEMENTED-BY-CODE",
+      "from": "SEC-007.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "deploy/install.sh"
+      },
+      "role": "primary",
+      "assertion": "The installer states the posture it is creating before writing anything.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-02-PLANNED-BY-PLAN",
+      "from": "SEC-007.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-02-SPECIFIED-BY-ADR",
+      "from": "SEC-007.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-03-IMPLEMENTED-BY-CODE",
+      "from": "SEC-007.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/connection/connection.go"
+      },
+      "role": "primary",
+      "assertion": "The node reports its posture on node.register; no inbound path writes it.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-03-PLANNED-BY-PLAN",
+      "from": "SEC-007.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-03-SPECIFIED-BY-ADR",
+      "from": "SEC-007.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-003-AC-02-IMPLEMENTED-BY-CODE",
+      "from": "FR-RUNTIME-003.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/runtime/launch.go"
+      },
+      "role": "primary",
+      "assertion": "The complete table of daemon-owned launch arguments; nothing else may contribute one.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-003-AC-02-PLANNED-BY-PLAN",
+      "from": "FR-RUNTIME-003.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-003-AC-02-SPECIFIED-BY-ADR",
+      "from": "FR-RUNTIME-003.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-02-IMPLEMENTED-BY-CODE",
+      "from": "FR-RUNTIME-004.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/config/config.go"
+      },
+      "role": "primary",
+      "assertion": "sandbox_bypass defaults to enabled and records that it came from the default.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-02-PLANNED-BY-PLAN",
+      "from": "FR-RUNTIME-004.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-02-SPECIFIED-BY-ADR",
+      "from": "FR-RUNTIME-004.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-03-IMPLEMENTED-BY-CODE",
+      "from": "FR-RUNTIME-004.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/runtime/registry.go"
+      },
+      "role": "primary",
+      "assertion": "The node's boolean gates the daemon's flag table; the platform has no override.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-03-PLANNED-BY-PLAN",
+      "from": "FR-RUNTIME-004.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-03-SPECIFIED-BY-ADR",
+      "from": "FR-RUNTIME-004.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-04-IMPLEMENTED-BY-CODE",
+      "from": "FR-RUNTIME-004.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/runtime/runtime.go"
+      },
+      "role": "primary",
+      "assertion": "The reported bypass is probed from the installed binary, not taken from config.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-04-PLANNED-BY-PLAN",
+      "from": "FR-RUNTIME-004.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-04-SPECIFIED-BY-ADR",
+      "from": "FR-RUNTIME-004.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-09-IMPLEMENTED-BY-CODE",
+      "from": "FR-SHELL-001.AC-09",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/views/SessionWorkspaceView.vue"
+      },
+      "role": "primary",
+      "assertion": "The session workspace states the node's privileged posture where the user works.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-09-PLANNED-BY-PLAN",
+      "from": "FR-SHELL-001.AC-09",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-09-SPECIFIED-BY-ADR",
+      "from": "FR-SHELL-001.AC-09",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-06-IMPLEMENTED-BY-CODE",
+      "from": "FR-TERM-004.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/tmux/conf.go"
+      },
+      "role": "primary",
+      "assertion": "mouse on plus a history-limit at or above the required floor, in a daemon-owned tmux config.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-06-PLANNED-BY-PLAN",
+      "from": "FR-TERM-004.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-06-SPECIFIED-BY-ADR",
+      "from": "FR-TERM-004.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-07-IMPLEMENTED-BY-CODE",
+      "from": "FR-TERM-004.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/session/manager.go"
+      },
+      "role": "primary",
+      "assertion": "The reattach snapshot stays a continuity mechanism; tmux history is the scrollback.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-07-PLANNED-BY-PLAN",
+      "from": "FR-TERM-004.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/12/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (PV tickets).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-07-SPECIFIED-BY-ADR",
+      "from": "FR-TERM-004.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0023-privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Decision record constraining this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-SEC-007-AC-03-VERIFIED-BY-PYTEST",
+      "from": "SEC-007.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_node_ws.py"
+      },
+      "role": "primary",
+      "assertion": "The reported posture is persisted, audited on change, and silent for an older daemon.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-RUNTIME-003-AC-02-VERIFIED-BY-PYTEST",
+      "from": "FR-RUNTIME-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_guards.py"
+      },
+      "role": "primary",
+      "assertion": "session.start carries exactly five fields; no argv or posture field anywhere Central produces.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-02-VERIFIED-BY-GOTEST",
+      "from": "FR-RUNTIME-004.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/config/posture_test.go"
+      },
+      "role": "primary",
+      "assertion": "Absent sandbox_bypass means enabled and is recorded as defaulted.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-03-VERIFIED-BY-GOTEST",
+      "from": "FR-RUNTIME-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/runtime/launch_test.go"
+      },
+      "role": "primary",
+      "assertion": "An explicit false removes the flag from the resolved launch.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-RUNTIME-004-AC-04-VERIFIED-BY-GOTEST",
+      "from": "FR-RUNTIME-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/runtime/launch_test.go"
+      },
+      "role": "primary",
+      "assertion": "A build that does not accept the flag is reported as enforced, not as requested.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-SHELL-001-AC-09-VERIFIED-BY-VITEST",
+      "from": "FR-SHELL-001.AC-09",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/NodeDetailPosture.test.ts"
+      },
+      "role": "primary",
+      "assertion": "The console states the posture and never claims one the node did not report.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-07-VERIFIED-BY-GOTEST",
+      "from": "FR-TERM-004.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/tmux/conf_test.go"
+      },
+      "role": "primary",
+      "assertion": "The generated tmux config carries the mouse and history settings the scroll fix depends on.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-SEC-007-AC-02-VALIDATED-BY-MANUAL",
+      "from": "SEC-007.AC-02",
+      "type": "validated_by",
+      "target": {
+        "kind": "manual",
+        "locator": "docs/runbooks/privileged-node-posture.md"
+      },
+      "role": "primary",
+      "assertion": "Installer disclosure reviewed against the runbook on an enrolled node.",
+      "owner": "operations",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-06-MEASURED-BY-GATE",
+      "from": "FR-TERM-004.AC-06",
+      "type": "measured_by",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-PV-NODE-POSTURE"
+      },
+      "role": "primary",
+      "assertion": "Wheel scrolling and the live history limit observed on an enrolled node.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-PV-NODE-POSTURE"
+    },
+    {
+      "id": "LNK-FR-RUNTIME-003-AC-02-GUARDS-SCOPE-GATE",
+      "from": "FR-RUNTIME-003.AC-02",
+      "type": "guards_scope",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-PV-ARGV-CHANNEL"
+      },
+      "role": "primary",
+      "assertion": "Static gate refusing any new argv or posture-setting field in schemas, config or Central payloads.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-PV-ARGV-CHANNEL"
+    },
+    {
+      "id": "LNK-SEC-007-AC-02-VERIFIED-BY-GOTEST",
+      "from": "SEC-007.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/cmd/agentd/posture_notice_test.go"
+      },
+      "role": "primary",
+      "assertion": "The installer's own output states the posture it creates, in both directions.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-TERM-004-AC-06-VERIFIED-BY-PLAYWRIGHT",
+      "from": "FR-TERM-004.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/session.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "Wheel scrolling reveals earlier output and does not walk the shell's history.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-01-PLANNED-BY",
+      "from": "FR-FILE-008.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/02-text-classification.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-01-SPECIFIED-BY",
+      "from": "FR-FILE-008.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0015-p3-filesystem-limits-and-preview-policy.md"
+      },
+      "role": "primary",
+      "assertion": "Amendment (2026-08-01) defining the classification rules.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-01-IMPLEMENTED-BY",
+      "from": "FR-FILE-008.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/policy.go"
+      },
+      "role": "primary",
+      "assertion": "Classify() is the sole authority on the text/binary verdict.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-02-PLANNED-BY",
+      "from": "FR-FILE-008.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/02-text-classification.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-02-SPECIFIED-BY",
+      "from": "FR-FILE-008.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0015-p3-filesystem-limits-and-preview-policy.md"
+      },
+      "role": "primary",
+      "assertion": "Amendment (2026-08-01) defining the classification rules.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-02-IMPLEMENTED-BY",
+      "from": "FR-FILE-008.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/policy.go"
+      },
+      "role": "primary",
+      "assertion": "Classify() is the sole authority on the text/binary verdict.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-03-PLANNED-BY",
+      "from": "FR-FILE-008.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/02-text-classification.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-03-SPECIFIED-BY",
+      "from": "FR-FILE-008.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0015-p3-filesystem-limits-and-preview-policy.md"
+      },
+      "role": "primary",
+      "assertion": "Amendment (2026-08-01) defining the classification rules.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-03-IMPLEMENTED-BY",
+      "from": "FR-FILE-008.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/policy.go"
+      },
+      "role": "primary",
+      "assertion": "Classify() is the sole authority on the text/binary verdict.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-04-PLANNED-BY",
+      "from": "FR-FILE-008.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/02-text-classification.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-04-SPECIFIED-BY",
+      "from": "FR-FILE-008.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0015-p3-filesystem-limits-and-preview-policy.md"
+      },
+      "role": "primary",
+      "assertion": "Amendment (2026-08-01) defining the classification rules.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-04-IMPLEMENTED-BY",
+      "from": "FR-FILE-008.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/policy.go"
+      },
+      "role": "primary",
+      "assertion": "Classify() is the sole authority on the text/binary verdict.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-05-PLANNED-BY",
+      "from": "FR-FILE-008.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/02-text-classification.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-05-SPECIFIED-BY",
+      "from": "FR-FILE-008.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0015-p3-filesystem-limits-and-preview-policy.md"
+      },
+      "role": "primary",
+      "assertion": "Amendment (2026-08-01) defining the classification rules.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-05-IMPLEMENTED-BY",
+      "from": "FR-FILE-008.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/policy.go"
+      },
+      "role": "primary",
+      "assertion": "Classify() is the sole authority on the text/binary verdict.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-01-VERIFIED-BY",
+      "from": "FR-FILE-008.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/policy_test.go"
+      },
+      "role": "primary",
+      "assertion": "TestClassifyRuneBoundary: valid UTF-8 must never be called binary at any cut offset.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-02-VERIFIED-BY",
+      "from": "FR-FILE-008.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/policy_test.go"
+      },
+      "role": "primary",
+      "assertion": "TestClassifyAnsiLog: ANSI-coloured terminal output stays text.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-03-VERIFIED-BY",
+      "from": "FR-FILE-008.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/policy_test.go"
+      },
+      "role": "primary",
+      "assertion": "TestClassifyNulAnywhere: a NUL past the old 8 KiB window still denies preview.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-04-MEASURED-BY",
+      "from": "FR-FILE-008.AC-04",
+      "type": "measured_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/policy_test.go"
+      },
+      "role": "primary",
+      "assertion": "TestClassifyCorpus checks every fixture against testdata/classify/expected.json.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-WF-CLASSIFY-CORPUS"
+    },
+    {
+      "id": "LNK-FR-FILE-008-AC-05-MEASURED-BY",
+      "from": "FR-FILE-008.AC-05",
+      "type": "measured_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/bench_test.go"
+      },
+      "role": "primary",
+      "assertion": "TestClassifyLatencyBudget bounds 2 MiB classification at 5 ms; it runs without -race because the detector invalidates the measurement.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-WF-CLASSIFY-CORPUS"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-01-PLANNED-BY",
+      "from": "FR-FILE-009.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/04-contract-central-and-rbac.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-01-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-01-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/files.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-01-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_files_upload_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-02-PLANNED-BY",
+      "from": "FR-FILE-009.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-02-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-02-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useImageDrop.ts"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-02-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useImageDrop.test.ts"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-03-PLANNED-BY",
+      "from": "FR-FILE-009.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/03-daemon-image-drop.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-03-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-03-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/upload.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-03-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "fixture",
+        "locator": "contracts/v1/fixtures/invalid/filesystem-upload-with-filename.json"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-CONTRACT-CROSS-LANGUAGE"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-04-PLANNED-BY",
+      "from": "FR-FILE-009.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/03-daemon-image-drop.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-04-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-04-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/upload.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-04-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/upload_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-05-PLANNED-BY",
+      "from": "FR-FILE-009.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/03-daemon-image-drop.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-05-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-05-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/upload.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-05-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/upload_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-06-PLANNED-BY",
+      "from": "FR-FILE-009.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-06-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-06-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useTerminalSession.ts"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-06-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useTerminalSession.test.ts"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-07-PLANNED-BY",
+      "from": "FR-FILE-009.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/04-contract-central-and-rbac.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-07-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-07-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/files.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-07-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_files_upload_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BACKEND-DB"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-08-PLANNED-BY",
+      "from": "FR-FILE-009.AC-08",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/03-daemon-image-drop.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-08-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-08-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/config/config.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-08-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/config/config_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-09-PLANNED-BY",
+      "from": "FR-FILE-009.AC-09",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/13/03-daemon-image-drop.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-09-SPECIFIED-BY",
+      "from": "FR-FILE-009.AC-09",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0024-workspace-write-posture.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0024 fixes the shape of the single write path.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-09-IMPLEMENTED-BY",
+      "from": "FR-FILE-009.AC-09",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/upload.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-09-VERIFIED-BY",
+      "from": "FR-FILE-009.AC-09",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/upload_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated check for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-DAEMON-RACE"
+    },
+    {
+      "id": "LNK-FR-FILE-009-AC-03-GUARDS-SCOPE",
+      "from": "FR-FILE-009.AC-03",
+      "type": "guards_scope",
+      "target": {
+        "kind": "gate",
+        "locator": "GATE-WF-NO-NAMING-CHANNEL"
+      },
+      "role": "primary",
+      "assertion": "Asserts no filename/path/directory/extension field exists on the upload path.",
+      "owner": "architecture",
+      "applicability": [
+        "mvp"
+      ]
     }
   ]
 }

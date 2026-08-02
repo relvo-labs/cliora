@@ -79,6 +79,10 @@ def _runtime_inputs(items: list[dict[str, Any]]) -> list[RuntimeInput]:
             version=r.get("version"),
             binary_path=r.get("binary_path"),
             checked_at=_parse_ts(r.get("checked_at")),
+            # Absent on an agentd older than contract 1.7.0, and absent means the
+            # sandbox is enforced (ADR 0023). Unlike the tunnel report there is no
+            # "has not said" state worth distinguishing: no claim, no bypass.
+            sandbox_bypass=bool(r.get("sandbox_bypass", False)),
         )
         for r in items
     ]
@@ -104,6 +108,8 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         # falses: "this node cannot forward ports" and "this node has not said" are different
         # answers and only one of them tells the user to upgrade the daemon.
         tunnel=TunnelReportInput.from_payload(payload.get("tunnel")),
+        privileged_terminal=bool(payload.get("privileged_terminal", False)),
+        image_upload=bool(payload.get("image_upload", False)),
     )
 
 

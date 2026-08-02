@@ -60,6 +60,13 @@ SESSION_FAILED = "session.failed"
 # extension only — never the rel_path, filename stem, absolute path or content
 # (ADR 0014). ---
 FILE_SENSITIVE_READ_DENIED = "file.sensitive_read_denied"
+# --- P13: an image was dropped into a session workspace (ADR 0024 W3). The
+# relative path IS recorded, unlike everywhere else in the filesystem relay: the
+# platform invented that name, so it leaks nothing about the node's existing
+# tree, and without it "who put what on this machine" degrades to a counter.
+# Content is never recorded, and neither is the client's original filename —
+# that string never enters the system at all.
+FILE_UPLOAD = "file.upload"
 # --- P4: daemon update (SEC-006 item 8, ADR 0017) ---
 # Two actions, not one with a `phase` field: the request and the outcome can be
 # minutes apart and can be separated by a Central restart, so a filter for "which
@@ -93,6 +100,14 @@ TUNNEL_CLOSE = "tunnel.close"
 # reachable by anyone holding the link" is the question that gets asked later, and a metadata
 # field inside another action cannot be filtered on.
 TUNNEL_PUBLIC_ACKNOWLEDGED = "tunnel.public_acknowledged"
+# --- Privileged node posture (ADR 0023) ---
+# Recorded when a node's reported posture changes: its system terminal became able to
+# reach root through sudo, or stopped being able to. The change happens on the machine
+# (systemd unit + sudoers), so the platform is the only place it is written down at
+# all — and "when did this node become privileged, and who was working on it then" is
+# the question an incident review starts from. Not recorded on every register: a
+# reconnect is not a change, and a row per heartbeat would bury the ones that matter.
+NODE_POSTURE_CHANGED = "node.posture_changed"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -116,6 +131,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         SESSION_TERMINATE,
         SESSION_FAILED,
         FILE_SENSITIVE_READ_DENIED,
+        FILE_UPLOAD,
         DAEMON_UPDATE_STARTED,
         DAEMON_UPDATE_RESULT,
         AUTHZ_DENIED,
@@ -126,6 +142,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         TUNNEL_CREATE,
         TUNNEL_CLOSE,
         TUNNEL_PUBLIC_ACKNOWLEDGED,
+        NODE_POSTURE_CHANGED,
     }
 )
 

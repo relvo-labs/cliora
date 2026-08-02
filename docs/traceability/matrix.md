@@ -81,6 +81,20 @@
 | FR-FILE-007 | [FR-FILE-007.AC-06](../../research/prd.md#fr-file-007-ac-06) | 名稱 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
 | FR-FILE-007 | [FR-FILE-007.AC-07](../../research/prd.md#fr-file-007-ac-07) | 類型 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
 | FR-FILE-007 | [FR-FILE-007.AC-08](../../research/prd.md#fr-file-007-ac-08) | 修改時間 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
+| FR-FILE-008 | [FR-FILE-008.AC-01](../../research/prd.md#fr-file-008-ac-01) | 完全合法的 UTF-8 文字檔不得被判為不可預覽，與檔案大小無關。 | plan:plan/13/02-text-classification.md<br>adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files/policy_test.go |
+| FR-FILE-008 | [FR-FILE-008.AC-02](../../research/prd.md#fr-file-008-ac-02) | 含 ANSI escape sequence 的文字檔（終端機輸出、建置 log）視為文字。 | plan:plan/13/02-text-classification.md<br>adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files/policy_test.go |
+| FR-FILE-008 | [FR-FILE-008.AC-03](../../research/prd.md#fr-file-008-ac-03) | 含 NUL 位元組的檔案一律不可預覽，與該位元組出現在檔案何處無關。 | plan:plan/13/02-text-classification.md<br>adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files/policy_test.go |
+| FR-FILE-008 | [FR-FILE-008.AC-04](../../research/prd.md#fr-file-008-ac-04) | 判定必須有一份可執行的分類 corpus，且 corpus 全數符合期望。 | plan:plan/13/02-text-classification.md<br>adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files/policy_test.go |
+| FR-FILE-008 | [FR-FILE-008.AC-05](../../research/prd.md#fr-file-008-ac-05) | 2 MiB 檔案的判定耗時不得超過 5 ms。 | plan:plan/13/02-text-classification.md<br>adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md | code:daemon/internal/files/policy.go | gotest:daemon/internal/files/bench_test.go |
+| FR-FILE-009 | [FR-FILE-009.AC-01](../../research/prd.md#fr-file-009-ac-01) | 持有 file.upload 的使用者可從瀏覽器把一張圖片交給 Session 所在節點。 | plan:plan/13/04-contract-central-and-rbac.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_upload_api.py |
+| FR-FILE-009 | [FR-FILE-009.AC-02](../../research/prd.md#fr-file-009-ac-02) | 支援貼上、拖放、挑檔三種入口，三者行為一致。 | plan:plan/13/05-frontend.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:frontend/src/composables/useImageDrop.ts | vitest:frontend/src/composables/useImageDrop.test.ts |
+| FR-FILE-009 | [FR-FILE-009.AC-03](../../research/prd.md#fr-file-009-ac-03) | 落地路徑與檔名由 Daemon 決定；請求不得包含檔名、路徑或目錄。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/files/upload.go | fixture:contracts/v1/fixtures/invalid/filesystem-upload-with-filename.json<br>gate:GATE-WF-NO-NAMING-CHANNEL |
+| FR-FILE-009 | [FR-FILE-009.AC-04](../../research/prd.md#fr-file-009-ac-04) | 僅接受 PNG、JPEG、GIF、WebP，且以內容而非宣告的型別判定。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/files/upload.go | gotest:daemon/internal/files/upload_test.go |
+| FR-FILE-009 | [FR-FILE-009.AC-05](../../research/prd.md#fr-file-009-ac-05) | 單張 4 MiB、每 Session 64 MiB、每日 200 張上限，逾越時明確拒絕且不落地。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/files/upload.go | gotest:daemon/internal/files/upload_test.go |
+| FR-FILE-009 | [FR-FILE-009.AC-06](../../research/prd.md#fr-file-009-ac-06) | 上傳成功後，工作區相對路徑以 Writer 身分送入終端機輸入行，不自動送出。 | plan:plan/13/05-frontend.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:frontend/src/composables/useTerminalSession.ts | vitest:frontend/src/composables/useTerminalSession.test.ts |
+| FR-FILE-009 | [FR-FILE-009.AC-07](../../research/prd.md#fr-file-009-ac-07) | 每次上傳留下稽核紀錄（使用者、Session、節點、MIME、位元組數、相對路徑）。 | plan:plan/13/04-contract-central-and-rbac.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_upload_api.py |
+| FR-FILE-009 | [FR-FILE-009.AC-08](../../research/prd.md#fr-file-009-ac-08) | 節點可停用此功能並回報；停用時前端不顯示投放入口。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/config/config.go | gotest:daemon/internal/config/config_test.go |
+| FR-FILE-009 | [FR-FILE-009.AC-09](../../research/prd.md#fr-file-009-ac-09) | 逾期（7 天）的上傳檔案由 Daemon 清除。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/files/upload.go | gotest:daemon/internal/files/upload_test.go |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-01](../../research/prd.md#fr-install-001-ac-01) | 管理員可建立一次性或限時 Token。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | pytest:backend/tests/db/test_enrollment_api.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_admin_creates_token_once_and_lists_without_plaintext<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_revoked_token_cannot_register<br>pytest:backend/tests/db/test_node_registration.py::test_concurrent_consume_respects_max_uses |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-02](../../research/prd.md#fr-install-001-ac-02) | Token 值 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-03](../../research/prd.md#fr-install-001-ac-03) | 建立者 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
@@ -174,7 +188,11 @@
 | FR-RUNTIME-002 | [FR-RUNTIME-002.AC-05](../../research/prd.md#fr-runtime-002-ac-05) | 顯示不可用原因。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed |
 | FR-RUNTIME-002 | [FR-RUNTIME-002.AC-06](../../research/prd.md#fr-runtime-002-ac-06) | 不可送出建立 Session 請求。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected |
 | FR-RUNTIME-003 | [FR-RUNTIME-003.AC-01](../../research/prd.md#fr-runtime-003-ac-01) | 前端不得直接傳入任意 Command。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>gotest:daemon/internal/runtime#TestRegistryAllowlist<br>pytest:backend/tests/contract/test_contract.py::test_json_manifest |
+| FR-RUNTIME-003 | [FR-RUNTIME-003.AC-02](../../research/prd.md#fr-runtime-003-ac-02) | Runtime 的啟動參數由 Daemon 端固定決定；前端、Central 與協定訊息均不得指定參數、 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/runtime/launch.go | pytest:backend/tests/test_scope_guards.py<br>gate:GATE-PV-ARGV-CHANNEL |
 | FR-RUNTIME-004 | [FR-RUNTIME-004.AC-01](../../research/prd.md#fr-runtime-004-ac-01) | Daemon 設定檔可指定： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>gotest:daemon/internal/config#TestValidateRejectsUnknownRuntime<br>gotest:daemon/internal/runtime#TestValidate |
+| FR-RUNTIME-004 | [FR-RUNTIME-004.AC-02](../../research/prd.md#fr-runtime-004-ac-02) | codex Runtime 於 Node 上預設在停用核准流程與沙箱的狀態下執行 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/config/config.go | gotest:daemon/internal/config/posture_test.go |
+| FR-RUNTIME-004 | [FR-RUNTIME-004.AC-03](../../research/prd.md#fr-runtime-004-ac-03) | Node 得以 sandboxbypass: false 關閉此預設；平台無任何路徑可覆寫該設定。 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/runtime/registry.go | gotest:daemon/internal/runtime/launch_test.go |
+| FR-RUNTIME-004 | [FR-RUNTIME-004.AC-04](../../research/prd.md#fr-runtime-004-ac-04) | Runtime 的實際沙箱狀態須回報平台並於介面顯示。若 Node 要求停用而已安裝的 CLI | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/runtime/runtime.go | gotest:daemon/internal/runtime/launch_test.go |
 | FR-SESSION-001 | [FR-SESSION-001.AC-01](../../research/prd.md#fr-session-001-ac-01) | 建立 Session 必填欄位： | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py<br>pytest:backend/tests/db/test_sessions_api.py::test_create_get_and_list<br>pytest:backend/tests/db/test_sessions_api.py::test_bad_runtime_rejected_422 |
 | FR-SESSION-001 | [FR-SESSION-001.AC-02](../../research/prd.md#fr-session-001-ac-02) | Node | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | — |
 | FR-SESSION-001 | [FR-SESSION-001.AC-03](../../research/prd.md#fr-session-001-ac-03) | Runtime | plan:plan/03/01-session-domain-api.md<br>source:research/tech.md | code:backend/app/services/sessions.py | — |
@@ -225,6 +243,7 @@
 | FR-SHELL-001 | [FR-SHELL-001.AC-06](../../research/prd.md#fr-shell-001-ac-06) | 系統終端機的建立、連線與終止須留下稽核紀錄；終端機內容不得寫入資料庫或 Log。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py |
 | FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
 | FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py<br>code:frontend/src/views/SessionWorkspaceView.vue | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path<br>pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused |
+| FR-SHELL-001 | [FR-SHELL-001.AC-09](../../research/prd.md#fr-shell-001-ac-09) | 系統終端機可經 sudo 取得 root 時，介面須明示該 Node 的提權姿態。 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:frontend/src/views/SessionWorkspaceView.vue | vitest:frontend/src/views/NodeDetailPosture.test.ts |
 | FR-TERM-001 | [FR-TERM-001.AC-01](../../research/prd.md#fr-term-001-ac-01) | 前端使用 xterm.js 顯示完整 ANSI Terminal。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons<br>playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate |
 | FR-TERM-001 | [FR-TERM-001.AC-02](../../research/prd.md#fr-term-001-ac-02) | ANSI 色彩 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-03](../../research/prd.md#fr-term-001-ac-03) | Cursor | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -248,6 +267,8 @@
 | FR-TERM-004 | [FR-TERM-004.AC-03](../../research/prd.md#fr-term-004-ac-03) | ~~Daemon 保存 2 MB 至 10 MB Ring Buffer。~~（已作廢：未採用的替代方案。實際保證見上列以行數與快照上限表述的條件。） | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-004 | [FR-TERM-004.AC-04](../../research/prd.md#fr-term-004-ac-04) | Daemon 的 tmux Scrollback 至少保存 5000 行。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | gotest:daemon/internal/install#TestGeneratedConfigCarriesThePublishedScrollback |
 | FR-TERM-004 | [FR-TERM-004.AC-05](../../research/prd.md#fr-term-004-ac-05) | 重新連線送出的 Scrollback 快照上限為 2 MB；超出時保留最新的部分並標示為截斷。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | gotest:daemon/internal/session#TestSnapshotLimitIsThePublishedTwoMegabytes<br>gotest:daemon/internal/files#TestReadOversize |
+| FR-TERM-004 | [FR-TERM-004.AC-06](../../research/prd.md#fr-term-004-ac-06) | 使用者須能於瀏覽器中向上檢視終端機的既有輸出，並可回到即時輸出。 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/tmux/conf.go | gate:GATE-PV-NODE-POSTURE<br>playwright:frontend/tests/e2e/session.spec.ts |
+| FR-TERM-004 | [FR-TERM-004.AC-07](../../research/prd.md#fr-term-004-ac-07) | 重新連線快照為連續性機制，不作為使用者檢視歷史輸出的途徑； | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/session/manager.go | gotest:daemon/internal/tmux/conf_test.go |
 | FR-TERM-005 | [FR-TERM-005.AC-01](../../research/prd.md#fr-term-005-ac-01) | 前端需顯示： | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone |
 | FR-TERM-005 | [FR-TERM-005.AC-02](../../research/prd.md#fr-term-005-ac-02) | Connected | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-005 | [FR-TERM-005.AC-03](../../research/prd.md#fr-term-005-ac-03) | Reconnecting | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -397,6 +418,8 @@
 | SEC-006 | [SEC-006.AC-08](../../research/prd.md#sec-006-ac-08) | 停用 Node。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_audit_coverage.py::test_disable_and_enable_are_distinct_actions |
 | SEC-006 | [SEC-006.AC-09](../../research/prd.md#sec-006-ac-09) | Daemon 更新。 | source:research/tech.md | code:backend/app/services/audit.py | pytest:backend/tests/db/test_audit_coverage.py<br>pytest:backend/tests/db/test_node_update_api.py::test_a_successful_update_records_the_new_version_and_two_audit_rows |
 | SEC-007 | [SEC-007.AC-01](../../research/prd.md#sec-007-ac-01) | Daemon 不應預設以 root 長期執行。 | source:research/tech.md | code:daemon/internal/install/systemd.go | gotest:daemon/internal/install<br>gotest:daemon/internal/config#TestEnsureNonRoot<br>gotest:daemon/internal/install#TestUnitFile |
+| SEC-007 | [SEC-007.AC-02](../../research/prd.md#sec-007-ac-02) | 安裝步驟須明確提示：該 Node 的系統終端機可經 sudo 取得 root 權限， | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:deploy/install.sh | manual:docs/runbooks/privileged-node-posture.md<br>gotest:daemon/cmd/agentd/posture_notice_test.go |
+| SEC-007 | [SEC-007.AC-03](../../research/prd.md#sec-007-ac-03) | Node 的提權姿態與 Runtime 沙箱狀態須回報平台並於介面顯示； | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:daemon/internal/connection/connection.go | pytest:backend/tests/db/test_node_ws.py |
 | TECH-SEC-01 | [TECH-SEC-01.AC-01](../../research/tech.md#tech-sec-01-ac-01) | 中央平台只允許 HTTPS／WSS。 | adr:docs/adr/0019-requirement-traceability.md<br>plan:plan/07/03-edge-console-and-single-origin.md | code:deploy/nginx/nginx.conf | scenario:scripts/p4/verify-edge.sh<br>gotest:daemon/internal/config#TestValidateRejectsInsecureURL<br>scenario:scripts/p4/verify-edge.sh#1. HTTP is redirected, never served<br>gate:GATE-RAILWAY-DEPLOY-VERIFY |
 | TECH-SEC-02 | [TECH-SEC-02.AC-01](../../research/tech.md#tech-sec-02-ac-01) | Daemon 不使用 root 長期執行。 | adr:docs/adr/0019-requirement-traceability.md | code:daemon/internal/install/systemd.go | gotest:daemon/internal/install<br>gotest:daemon/internal/config#TestEnsureNonRoot<br>gotest:daemon/internal/install#TestUnitFile |
 | TECH-SEC-03 | [TECH-SEC-03.AC-01](../../research/tech.md#tech-sec-03-ac-01) | Enrollment Token 一次性或限時。 | adr:docs/adr/0019-requirement-traceability.md | code:backend/app/security/tokens.py | pytest:backend/tests/test_security.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token |
@@ -448,6 +471,8 @@
 - `requirement:FR-TERM-004.AC-03` ← `FR-TERM-004.AC-05` (supersedes)
 - `requirement:FR-WORKSPACE-002` ← `MVP-AC-08.AC-01` (refined_by)
 - `requirement:FR-WORKSPACE-003` ← `MVP-AC-09.AC-01` (refined_by)
+- `gate:GATE-PV-ARGV-CHANNEL` ← `FR-RUNTIME-003.AC-02` (guards_scope)
+- `gate:GATE-PV-NODE-POSTURE` ← `FR-TERM-004.AC-06` (measured_by)
 - `gate:GATE-RAILWAY-CONFIG-TESTS` ← `TECH-SEC-12.AC-01` (verified_by)
 - `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `FR-CONN-002.AC-01` (verified_by)
 - `gate:GATE-RAILWAY-DEPLOY-VERIFY` ← `FR-INSTALL-002.AC-01` (verified_by)
@@ -461,8 +486,10 @@
 - `gate:GATE-RAILWAY-LATENCY` ← `NFR-003.AC-04` (measured_by)
 - `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-02` (verified_by)
 - `gate:GATE-RAILWAY-NODE-E2E` ← `NFR-002.AC-03` (verified_by)
+- `gate:GATE-WF-NO-NAMING-CHANNEL` ← `FR-FILE-009.AC-03` (guards_scope)
 - `requirement:SCOPE-011.AC-01` ← `FR-SHELL-001.AC-03` (supersedes)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
+- `code:backend/app/api/http/files.py` ← `FR-FILE-009.AC-01` (implemented_by)
 - `code:backend/app/api/http/integrations.py` ← `FR-TUNNEL-004.AC-01` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-001.AC-02` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-002.AC-04` (implemented_by)
@@ -513,6 +540,7 @@
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-04` (implemented_by)
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-05` (implemented_by)
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-06` (implemented_by)
+- `code:backend/app/services/files.py` ← `FR-FILE-009.AC-07` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-02` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-06` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-001.AC-01` (implemented_by)
@@ -692,6 +720,8 @@
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-004.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-006.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_viewer_can_browse` ← `FR-AUTH-002.AC-11` (verified_by)
+- `pytest:backend/tests/db/test_files_upload_api.py` ← `FR-FILE-009.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_files_upload_api.py` ← `FR-FILE-009.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_node_api.py` ← `FR-NODE-003.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_api.py` ← `FR-NODE-004.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_api.py::test_detail_exposes_live_resources_and_update_status` ← `FR-NODE-004.AC-01` (verified_by)
@@ -707,6 +737,7 @@
 - `pytest:backend/tests/db/test_node_registration.py::test_node_auth_rejects_revoked_credential` ← `TECH-SEC-04.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_registration.py::test_node_authenticates_with_valid_signature` ← `FR-NODE-001.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_update_api.py::test_a_successful_update_records_the_new_version_and_two_audit_rows` ← `SEC-006.AC-09` (verified_by)
+- `pytest:backend/tests/db/test_node_ws.py` ← `SEC-007.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_node_ws.py::test_ws_auth_register_heartbeat_persists` ← `FR-NODE-001.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_ws.py::test_ws_heartbeat_resources_reach_registry` ← `FR-NODE-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_node_ws.py::test_ws_requires_auth_first` ← `TECH-SEC-11.AC-01` (verified_by)
@@ -825,6 +856,7 @@
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-CONN-006.AC-07` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-SESSION-005.AC-05` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others` ← `FR-CONN-006.AC-08` (verified_by)
+- `pytest:backend/tests/test_scope_guards.py` ← `FR-RUNTIME-003.AC-02` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events` ← `SCOPE-001.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism` ← `SCOPE-002.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt` ← `SCOPE-003.AC-01` (guards_scope)
@@ -880,12 +912,14 @@
 - `pytest:backend/tests/test_tunnel_policy.py::test_the_generated_password_never_contains_the_providers_separator` ← `FR-TUNNEL-002.AC-02` (verified_by)
 - `pytest:backend/tests/test_tunnel_policy.py::test_the_nodes_veto_survives_everything_the_platform_says` ← `FR-TUNNEL-001.AC-01` (verified_by)
 - `pytest:backend/tests/test_tunnel_policy.py::test_three_port_lists_intersect_instead_of_the_last_one_winning` ← `FR-TUNNEL-004.AC-05` (verified_by)
+- `fixture:contracts/v1/fixtures/invalid/filesystem-upload-with-filename.json` ← `FR-FILE-009.AC-03` (verified_by)
 - `code:contracts/v1/schemas/messages/session-start.schema.json` ← `FR-SHELL-001.AC-03` (implemented_by)
 - `gotest:daemon/cmd/agentd#TestConfigValidateCommand` ← `FR-INSTALL-004.AC-01` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-06` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-07` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-08` (verified_by)
 - `gotest:daemon/cmd/agentd#TestVersionCommand` ← `FR-INSTALL-004.AC-01` (verified_by)
+- `gotest:daemon/cmd/agentd/posture_notice_test.go` ← `SEC-007.AC-02` (verified_by)
 - `gotest:daemon/internal/config#TestAConfiguredAllowlistCanOnlyNarrow` ← `FR-TUNNEL-004.AC-05` (verified_by)
 - `gotest:daemon/internal/config#TestAnExplicitFalseIsAnAbsoluteVeto` ← `FR-TUNNEL-001.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestEnsureNonRoot` ← `FR-INSTALL-003.AC-10` (verified_by)
@@ -898,8 +932,12 @@
 - `gotest:daemon/internal/config#TestValidateRejectsInsecureURL` ← `SEC-005.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsInsecureURL` ← `TECH-SEC-01.AC-01` (verified_by)
 - `gotest:daemon/internal/config#TestValidateRejectsUnknownRuntime` ← `FR-RUNTIME-004.AC-01` (verified_by)
+- `code:daemon/internal/config/config.go` ← `FR-FILE-009.AC-08` (implemented_by)
+- `code:daemon/internal/config/config.go` ← `FR-RUNTIME-004.AC-02` (implemented_by)
 - `code:daemon/internal/config/config.go` ← `FR-SHELL-001.AC-01` (implemented_by)
 - `code:daemon/internal/config/config.go` ← `FR-TUNNEL-003.AC-04` (implemented_by)
+- `gotest:daemon/internal/config/config_test.go` ← `FR-FILE-009.AC-08` (verified_by)
+- `gotest:daemon/internal/config/posture_test.go` ← `FR-RUNTIME-004.AC-02` (verified_by)
 - `code:daemon/internal/connection` ← `FR-CONN-001.AC-01` (implemented_by)
 - `gotest:daemon/internal/connection` ← `FR-CONN-001.AC-01` (verified_by)
 - `code:daemon/internal/connection` ← `FR-CONN-002.AC-01` (implemented_by)
@@ -948,6 +986,7 @@
 - `gotest:daemon/internal/connection#TestSessionAuthRegisterHeartbeatShutdown` ← `FR-CONN-001.AC-01` (verified_by)
 - `gotest:daemon/internal/connection#TestSessionStartStopRoundTripOverConnection` ← `FR-SESSION-005.AC-03` (verified_by)
 - `gotest:daemon/internal/connection#TestSessionStartStopRoundTripOverConnection` ← `FR-SESSION-005.AC-04` (verified_by)
+- `code:daemon/internal/connection/connection.go` ← `SEC-007.AC-03` (implemented_by)
 - `code:daemon/internal/files` ← `FR-FILE-001.AC-01` (implemented_by)
 - `code:daemon/internal/files` ← `FR-FILE-001.AC-02` (implemented_by)
 - `code:daemon/internal/files` ← `FR-FILE-001.AC-03` (implemented_by)
@@ -999,8 +1038,25 @@
 - `gotest:daemon/internal/files#TestReadSymlinkDenied` ← `TECH-SEC-06.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestSearchFilenameOnlyWithBounds` ← `FR-FILE-007.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestSearchResultsBound` ← `FR-FILE-007.AC-04` (verified_by)
+- `gotest:daemon/internal/files/bench_test.go` ← `FR-FILE-008.AC-05` (measured_by)
+- `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-01` (implemented_by)
+- `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-02` (implemented_by)
+- `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-03` (implemented_by)
+- `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-04` (implemented_by)
+- `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-05` (implemented_by)
 - `code:daemon/internal/files/policy.go` ← `SEC-004.AC-01` (implemented_by)
 - `code:daemon/internal/files/policy.go` ← `TECH-SEC-09.AC-01` (implemented_by)
+- `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-01` (verified_by)
+- `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-02` (verified_by)
+- `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-03` (verified_by)
+- `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-04` (measured_by)
+- `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-03` (implemented_by)
+- `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-04` (implemented_by)
+- `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-05` (implemented_by)
+- `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-09` (implemented_by)
+- `gotest:daemon/internal/files/upload_test.go` ← `FR-FILE-009.AC-04` (verified_by)
+- `gotest:daemon/internal/files/upload_test.go` ← `FR-FILE-009.AC-05` (verified_by)
+- `gotest:daemon/internal/files/upload_test.go` ← `FR-FILE-009.AC-09` (verified_by)
 - `code:daemon/internal/install` ← `FR-INSTALL-002.AC-01` (implemented_by)
 - `gotest:daemon/internal/install` ← `FR-INSTALL-002.AC-01` (verified_by)
 - `code:daemon/internal/install` ← `FR-INSTALL-003.AC-01` (implemented_by)
@@ -1108,6 +1164,11 @@
 - `gotest:daemon/internal/runtime#TestRegistryAllowlist` ← `SEC-002.AC-01` (verified_by)
 - `gotest:daemon/internal/runtime#TestRegistryAllowlist` ← `TECH-SEC-07.AC-01` (verified_by)
 - `gotest:daemon/internal/runtime#TestValidate` ← `FR-RUNTIME-004.AC-01` (verified_by)
+- `code:daemon/internal/runtime/launch.go` ← `FR-RUNTIME-003.AC-02` (implemented_by)
+- `gotest:daemon/internal/runtime/launch_test.go` ← `FR-RUNTIME-004.AC-03` (verified_by)
+- `gotest:daemon/internal/runtime/launch_test.go` ← `FR-RUNTIME-004.AC-04` (verified_by)
+- `code:daemon/internal/runtime/registry.go` ← `FR-RUNTIME-004.AC-03` (implemented_by)
+- `code:daemon/internal/runtime/runtime.go` ← `FR-RUNTIME-004.AC-04` (implemented_by)
 - `code:daemon/internal/session` ← `FR-SESSION-006.AC-01` (implemented_by)
 - `gotest:daemon/internal/session` ← `FR-SESSION-006.AC-01` (verified_by)
 - `gotest:daemon/internal/session` ← `MVP-AC-10.AC-01` (validated_by)
@@ -1122,6 +1183,9 @@
 - `gotest:daemon/internal/session#TestStopSignalsFirstAndOnlyForcesWhenIgnored` ← `FR-SESSION-005.AC-06` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-002.AC-01` (verified_by)
 - `gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit` ← `FR-TERM-003.AC-01` (verified_by)
+- `code:daemon/internal/session/manager.go` ← `FR-TERM-004.AC-07` (implemented_by)
+- `code:daemon/internal/tmux/conf.go` ← `FR-TERM-004.AC-06` (implemented_by)
+- `gotest:daemon/internal/tmux/conf_test.go` ← `FR-TERM-004.AC-07` (verified_by)
 - `gotest:daemon/internal/tunnel#TestAReconnectReportsTheNewURL` ← `FR-TUNNEL-001.AC-06` (verified_by)
 - `gotest:daemon/internal/tunnel#TestArgsCarryProtectionAndHostRewrite` ← `FR-TUNNEL-002.AC-01` (verified_by)
 - `gotest:daemon/internal/tunnel#TestArgsPinTheHostKeyAndRefuseToSkipIt` ← `FR-TUNNEL-003.AC-01` (verified_by)
@@ -1213,12 +1277,18 @@
 - `gotest:daemon/internal/workspace#TestSymlinkSwapTOCTOU` ← `SEC-001.AC-03` (verified_by)
 - `gotest:daemon/internal/workspace#TestSymlinkSwapTOCTOU` ← `TECH-SEC-06.AC-01` (verified_by)
 - `scenario:deploy/install.sh` ← `MVP-AC-02.AC-01` (validated_by)
+- `code:deploy/install.sh` ← `SEC-007.AC-02` (implemented_by)
 - `scenario:deploy/install.sh#/etc/os-release` ← `FR-INSTALL-003.AC-02` (verified_by)
 - `scenario:deploy/install.sh#_linux_${ARCH}.tar.gz` ← `FR-INSTALL-003.AC-04` (verified_by)
 - `scenario:deploy/install.sh#sha256sum -c` ← `FR-INSTALL-003.AC-05` (verified_by)
 - `scenario:deploy/install.sh#uname -m` ← `FR-INSTALL-003.AC-03` (verified_by)
 - `code:deploy/nginx/nginx.conf` ← `SEC-005.AC-01` (implemented_by)
 - `code:deploy/nginx/nginx.conf` ← `TECH-SEC-01.AC-01` (implemented_by)
+- `adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` ← `FR-FILE-008.AC-01` (specified_by)
+- `adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` ← `FR-FILE-008.AC-02` (specified_by)
+- `adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` ← `FR-FILE-008.AC-03` (specified_by)
+- `adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` ← `FR-FILE-008.AC-04` (specified_by)
+- `adr:docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` ← `FR-FILE-008.AC-05` (specified_by)
 - `adr:docs/adr/0019-requirement-traceability.md` ← `TECH-SEC-01.AC-01` (specified_by)
 - `adr:docs/adr/0019-requirement-traceability.md` ← `TECH-SEC-02.AC-01` (specified_by)
 - `adr:docs/adr/0019-requirement-traceability.md` ← `TECH-SEC-03.AC-01` (specified_by)
@@ -1235,6 +1305,25 @@
 - `adr:docs/adr/0019-requirement-traceability.md` ← `TECH-SEC-14.AC-01` (specified_by)
 - `adr:docs/adr/0019-requirement-traceability.md` ← `TECH-SEC-15.AC-01` (specified_by)
 - `adr:docs/adr/0022-third-party-tunnel-integration.md` ← `SCOPE-013.AC-01` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-RUNTIME-003.AC-02` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-RUNTIME-004.AC-02` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-RUNTIME-004.AC-03` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-RUNTIME-004.AC-04` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-SHELL-001.AC-09` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-TERM-004.AC-06` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `FR-TERM-004.AC-07` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `SEC-007.AC-02` (specified_by)
+- `adr:docs/adr/0023-privileged-node-posture.md` ← `SEC-007.AC-03` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-01` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-02` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-03` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-04` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-05` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-06` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-07` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-08` (specified_by)
+- `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-09` (specified_by)
+- `manual:docs/runbooks/privileged-node-posture.md` ← `SEC-007.AC-02` (validated_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-04` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
@@ -1247,6 +1336,8 @@
 - `vitest:frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on` ← `FR-FILE-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-02` (verified_by)
+- `vitest:frontend/src/composables/useImageDrop.test.ts` ← `FR-FILE-009.AC-02` (verified_by)
+- `code:frontend/src/composables/useImageDrop.ts` ← `FR-FILE-009.AC-02` (implemented_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#copies only a previewable file` ← `FR-FILE-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#creates a read-only editor with the shared workspace theme` ← `FR-FILE-002.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#exposes read-only affordances: word wrap, find and goto line` ← `FR-FILE-002.AC-04` (verified_by)
@@ -1254,6 +1345,7 @@
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#exposes read-only affordances: word wrap, find and goto line` ← `FR-FILE-002.AC-08` (verified_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#refresh refetches the same path and replaces the content` ← `FR-FILE-002.AC-07` (verified_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#refresh refetches the same path and replaces the content` ← `FR-FILE-006.AC-03` (verified_by)
+- `vitest:frontend/src/composables/useTerminalSession.test.ts` ← `FR-FILE-009.AC-06` (verified_by)
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket` ← `FR-TERM-002.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket` ← `FR-TERM-003.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons` ← `FR-TERM-001.AC-01` (verified_by)
@@ -1263,6 +1355,7 @@
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#retries on the full 1/2/5/10/30 second schedule` ← `FR-TERM-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#retries on the full 1/2/5/10/30 second schedule` ← `FR-TERM-006.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useTerminalSession.test.ts#retries on the full 1/2/5/10/30 second schedule` ← `FR-TERM-006.AC-06` (verified_by)
+- `code:frontend/src/composables/useTerminalSession.ts` ← `FR-FILE-009.AC-06` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-01` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-02` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-03` (implemented_by)
@@ -1300,6 +1393,7 @@
 - `vitest:frontend/src/views/IntegrationsView.test.ts#replaces the whole form when the deployment has no encryption key` ← `FR-TUNNEL-004.AC-04` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#requires the four-point acknowledgement before the first enable` ← `FR-TUNNEL-004.AC-01` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#shows only the fingerprint for a stored credential, never the token` ← `FR-TUNNEL-004.AC-03` (verified_by)
+- `vitest:frontend/src/views/NodeDetailPosture.test.ts` ← `FR-SHELL-001.AC-09` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#asks for the public acknowledgement every time that mode is chosen` ← `FR-TUNNEL-002.AC-03` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#explains a failed tunnel through the shared error catalog` ← `FR-TUNNEL-003.AC-03` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#opens the URL in a new window with noopener and says it may change` ← `FR-TUNNEL-001.AC-06` (verified_by)
@@ -1310,6 +1404,7 @@
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-09` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-TERM-001.AC-13` (implemented_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)
@@ -1354,6 +1449,7 @@
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-003.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-004.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-004.AC-02` (verified_by)
+- `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-004.AC-06` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-005.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-006.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts` ← `FR-TERM-006.AC-02` (verified_by)
@@ -1692,6 +1788,29 @@
 - `plan:plan/11/04-central-and-api.md` ← `FR-TUNNEL-004.AC-06` (planned_by)
 - `plan:plan/11/05-frontend.md` ← `FR-TUNNEL-002.AC-03` (planned_by)
 - `plan:plan/11/05-frontend.md` ← `FR-TUNNEL-002.AC-05` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-RUNTIME-003.AC-02` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-RUNTIME-004.AC-02` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-RUNTIME-004.AC-03` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-RUNTIME-004.AC-04` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-SHELL-001.AC-09` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-TERM-004.AC-06` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `FR-TERM-004.AC-07` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `SEC-007.AC-02` (planned_by)
+- `plan:plan/12/00-execution-plan.md` ← `SEC-007.AC-03` (planned_by)
+- `plan:plan/13/02-text-classification.md` ← `FR-FILE-008.AC-01` (planned_by)
+- `plan:plan/13/02-text-classification.md` ← `FR-FILE-008.AC-02` (planned_by)
+- `plan:plan/13/02-text-classification.md` ← `FR-FILE-008.AC-03` (planned_by)
+- `plan:plan/13/02-text-classification.md` ← `FR-FILE-008.AC-04` (planned_by)
+- `plan:plan/13/02-text-classification.md` ← `FR-FILE-008.AC-05` (planned_by)
+- `plan:plan/13/03-daemon-image-drop.md` ← `FR-FILE-009.AC-03` (planned_by)
+- `plan:plan/13/03-daemon-image-drop.md` ← `FR-FILE-009.AC-04` (planned_by)
+- `plan:plan/13/03-daemon-image-drop.md` ← `FR-FILE-009.AC-05` (planned_by)
+- `plan:plan/13/03-daemon-image-drop.md` ← `FR-FILE-009.AC-08` (planned_by)
+- `plan:plan/13/03-daemon-image-drop.md` ← `FR-FILE-009.AC-09` (planned_by)
+- `plan:plan/13/04-contract-central-and-rbac.md` ← `FR-FILE-009.AC-01` (planned_by)
+- `plan:plan/13/04-contract-central-and-rbac.md` ← `FR-FILE-009.AC-07` (planned_by)
+- `plan:plan/13/05-frontend.md` ← `FR-FILE-009.AC-02` (planned_by)
+- `plan:plan/13/05-frontend.md` ← `FR-FILE-009.AC-06` (planned_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)

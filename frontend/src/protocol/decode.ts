@@ -36,6 +36,8 @@ const TYPES = new Set([
   "filesystem.content",
   "filesystem.search",
   "filesystem.search_result",
+  "filesystem.upload",
+  "filesystem.uploaded",
   "node.challenge",
   "node.auth",
   "node.authenticated",
@@ -173,13 +175,25 @@ function validateRuntimeItem(item: unknown): void {
   const obj = item as Record<string, unknown>;
   requireKeys(
     obj,
-    new Set(["runtime", "available", "version", "binary_path", "checked_at"]),
+    new Set([
+      "runtime",
+      "available",
+      "version",
+      "binary_path",
+      "checked_at",
+      "sandbox_bypass",
+    ]),
     ["runtime", "available"],
   );
   if (!RUNTIME_IDS.has(obj.runtime as string))
     reject("INVALID_MESSAGE", "Unknown runtime");
   if (typeof obj.available !== "boolean")
     reject("INVALID_MESSAGE", "runtime.available must be boolean");
+  // Optional (contract 1.7.0, ADR 0023): an older daemon omits it, and absent means
+  // the sandbox is enforced. The string "false" is rejected rather than coerced —
+  // three languages read that truthiness three different ways.
+  if ("sandbox_bypass" in obj && typeof obj.sandbox_bypass !== "boolean")
+    reject("INVALID_MESSAGE", "sandbox_bypass must be boolean");
 }
 
 // A node's port-forwarding prerequisites. Optional, so a daemon that predates the capability
@@ -250,6 +264,8 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "runtimes",
       "workspace_roots",
       "tunnel",
+      "privileged_terminal",
+      "image_upload",
     ]),
     [
       "name",
@@ -280,6 +296,16 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
     !Array.isArray(payload.workspace_roots)
   )
     reject("INVALID_MESSAGE", "runtimes/workspace_roots must be arrays");
+  // Report-only, and optional: a node that says nothing is not privileged.
+  if (
+    "privileged_terminal" in payload &&
+    typeof payload.privileged_terminal !== "boolean"
+  )
+    reject("INVALID_MESSAGE", "privileged_terminal must be boolean");
+  // Likewise: absent means "this node does not accept image drop", never
+  // "unknown" (contract 1.8.0, ADR 0024 W4).
+  if ("image_upload" in payload && typeof payload.image_upload !== "boolean")
+    reject("INVALID_MESSAGE", "image_upload must be boolean");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
   for (const root of payload.workspace_roots as unknown[]) {
     if (!isPlainObject(root))
@@ -375,6 +401,65 @@ function validateFsReadPayload(payload: Record<string, unknown>): void {
     reject("INVALID_MESSAGE", "Invalid session id");
   if (!isRelPath(payload.path))
     reject("INVALID_MESSAGE", "Invalid workspace path");
+}
+
+// Image drop (contract 1.8.0, ADR 0024). The browser is neither producer nor
+// consumer of these two frames — uploads travel over HTTP — but the decoder
+// validates them anyway, for the same reason it validates the tunnel frames: a
+// type accepted without checking is a type that forwards malformed data.
+//
+// The assertion that matters here is the *absence* of fields. Two keys, exactly:
+// no filename, path, directory, extension or mime, so the sender cannot name
+// the file it is creating.
+const UPLOAD_MAX_BASE64 = 5592408; // base64 length of 4 MiB
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+const UPLOAD_PATH =
+  /^\.cliora\/uploads\/\d{4}-\d{2}-\d{2}\/[0-9A-HJKMNP-TV-Z]{26}\.(png|jpg|gif|webp)$/;
+const UPLOAD_MIMES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+function validateFsUploadPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["session_id", "data"]), ["session_id", "data"]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  if (
+    typeof payload.data !== "string" ||
+    payload.data.length < 4 ||
+    payload.data.length > UPLOAD_MAX_BASE64 ||
+    !BASE64.test(payload.data)
+  )
+    reject("INVALID_MESSAGE", "Invalid upload payload");
+}
+
+function validateFsUploadedPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["path", "mime", "size", "modified_at"]), [
+    "path",
+    "mime",
+    "size",
+    "modified_at",
+  ]);
+  // The daemon named this path, so a value that does not match the shape the
+  // daemon produces means the frame did not come from where it claims.
+  if (typeof payload.path !== "string" || !UPLOAD_PATH.test(payload.path))
+    reject("INVALID_MESSAGE", "Invalid upload path");
+  if (typeof payload.mime !== "string" || !UPLOAD_MIMES.has(payload.mime))
+    reject("INVALID_MESSAGE", "Invalid upload mime");
+  if (
+    typeof payload.size !== "number" ||
+    !Number.isInteger(payload.size) ||
+    payload.size < 1 ||
+    payload.size > 4 * 1024 * 1024
+  )
+    reject("INVALID_MESSAGE", "Invalid upload size");
+  if (
+    typeof payload.modified_at !== "string" ||
+    !TIMESTAMP.test(payload.modified_at)
+  )
+    reject("INVALID_MESSAGE", "Invalid upload timestamp");
 }
 
 function validateFsSearchPayload(payload: Record<string, unknown>): void {
@@ -732,6 +817,9 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
   if (data.type === "filesystem.list") validateFsListPayload(data.payload);
   if (data.type === "filesystem.read") validateFsReadPayload(data.payload);
   if (data.type === "filesystem.search") validateFsSearchPayload(data.payload);
+  if (data.type === "filesystem.upload") validateFsUploadPayload(data.payload);
+  if (data.type === "filesystem.uploaded")
+    validateFsUploadedPayload(data.payload);
   if (data.type === "node.register") validateRegisterPayload(data.payload);
   if (data.type === "node.heartbeat") validateHeartbeatPayload(data.payload);
   if (data.type === "node.runtime_status")

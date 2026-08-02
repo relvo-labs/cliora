@@ -1,0 +1,1 @@
+{"version":1,"type":"node.runtime_status","request_id":"01K0TN0000000000000000000B","node_id":"00000000-0000-4000-8000-000000000001","timestamp":"2026-08-01T09:00:00Z","payload":{"runtimes":[{"runtime":"codex","available":true,"version":"codex 0.9.0","sandbox_bypass":false},{"runtime":"shell","available":true}]}}

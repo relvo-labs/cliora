@@ -86,6 +86,8 @@ def _detail(node: Node, registry: NodeConnectionRegistry, settings: Settings) ->
         os_version=node.os_version,
         daemon_version=node.daemon_version,
         run_user=node.run_user,
+        privileged_terminal=node.privileged_terminal,
+        image_upload=node.image_upload,
         is_enabled=node.is_enabled,
         registered_at=node.registered_at,
         runtimes=[
@@ -95,6 +97,7 @@ def _detail(node: Node, registry: NodeConnectionRegistry, settings: Settings) ->
                 version=r.version,
                 binary_path=r.binary_path,
                 checked_at=r.checked_at,
+                sandbox_bypass=r.sandbox_bypass,
             )
             for r in node.runtimes
         ],

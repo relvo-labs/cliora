@@ -23,6 +23,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -83,6 +84,21 @@ class Node(Base):
     # reused (confirmed product decision — see ADR 0011).
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    # --- Execution posture, reported by the node (ADR 0023) ---
+    # True when this machine's system terminal can reach root through sudo. Indexed
+    # because "which nodes are privileged" is a fleet-level security question, not a
+    # detail of one row. Report-only: no API path writes it, and the platform cannot
+    # change a node's posture — only the machine's own systemd unit and sudoers can.
+    privileged_terminal: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
+    # True when this machine accepts image drop into a session workspace (ADR 0024).
+    # Report-only for the same reason and indexed for the same reason: "which nodes
+    # will accept a file from a browser" is a fleet-level security question.
+    image_upload: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
+
     # --- Daemon update state (P4-10, ADR 0017) ---
     # Explicit columns rather than keys inside `metadata`: "which nodes failed to
     # update" has to be an indexable query, because it is the question an operator
@@ -132,6 +148,12 @@ class NodeRuntime(Base):
     version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     binary_path: Mapped[str | None] = mapped_column(String(4096), nullable=True)
     checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What the runtime will actually be launched with, as measured on the node — not
+    # what its config asked for (ADR 0023 D3). False for every runtime that has no
+    # sandbox to bypass, and for a node whose CLI does not accept the flag.
+    sandbox_bypass: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
 
     node: Mapped[Node] = relationship(back_populates="runtimes")
 

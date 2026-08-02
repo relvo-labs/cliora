@@ -46,6 +46,8 @@ function nodeDetail(status: NodeUpdateStatus): NodeDetail {
     os_version: "Ubuntu 24.04",
     daemon_version: status.current_version,
     run_user: "cliora",
+    privileged_terminal: false,
+    image_upload: false,
     is_enabled: true,
     registered_at: "2026-07-01T00:00:00Z",
     runtimes: [],

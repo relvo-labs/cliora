@@ -15,7 +15,7 @@ import (
 // and this default all derive from it, and TestVersionMatchesTheVersionFile fails if this
 // literal drifts from that file. An unstamped build says `-dev` so a developer binary
 // cannot be mistaken for the release it was cut from.
-var version = "0.4.0-dev"
+var version = "0.6.0-dev"
 
 func main() {
 	if err := newRootCommand().Execute(); err != nil {
@@ -42,6 +42,7 @@ func newRootCommand() *cobra.Command {
 		newDoctorCommand(&configPath),
 		newInstallCommand(&configPath),
 		newUninstallCommand(&configPath),
+		newPostureCommand(&configPath),
 		newRegisterCommand(),
 		newWorkspaceCommand(&configPath),
 		newUpdateCommand(&configPath),

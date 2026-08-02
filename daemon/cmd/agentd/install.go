@@ -41,6 +41,7 @@ func newInstallCommand(configPath *string) *cobra.Command {
 		workspaceRoots  []string
 		allowInsecure   bool
 		credentialsPath string
+		privileged      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -73,8 +74,12 @@ func newInstallCommand(configPath *string) *cobra.Command {
 			params := install.Params{
 				Server: server, Token: token, NodeName: nodeName, RunUser: runUser,
 				WorkspaceRoots: workspaceRoots, AllowInsecure: allowInsecure, DaemonVersion: version,
-				PublicKey: publicKey,
+				PublicKey: publicKey, PrivilegedTerminal: privileged,
 			}
+			// Said before anything is written, and said plainly: this is the one part of
+			// the install the operator cannot discover by reading the console later
+			// (SEC-007.AC-02, ADR 0023).
+			printPostureNotice(out, privileged)
 
 			fmt.Fprintln(out, "Registering with Central…")
 			resp, err := install.Register(ctx, install.DefaultClient(), server,
@@ -91,8 +96,17 @@ func newInstallCommand(configPath *string) *cobra.Command {
 			if err := installFiles(cfg, resp, privateKey, *configPath, credentialsPath, uid, gid); err != nil {
 				return err
 			}
-			if err := writeUnit(runUser, *configPath); err != nil {
+			if err := writeUnit(runUser, *configPath, privileged); err != nil {
 				return err
+			}
+			if privileged {
+				if err := install.NewSudoersInstaller().Install(ctx, runUser); err != nil {
+					// Not a warning: the operator asked for a privileged node and would
+					// otherwise get a machine whose console claims a posture it does not
+					// have. The unit is written but the service is not started yet.
+					return fmt.Errorf("grant sudo to %s: %w", runUser, err)
+				}
+				fmt.Fprintf(out, "Granted sudo to %s via %s\n", runUser, install.SudoersPath)
 			}
 			if err := startService(ctx); err != nil {
 				return err
@@ -117,7 +131,31 @@ func newInstallCommand(configPath *string) *cobra.Command {
 	cmd.Flags().StringArrayVar(&workspaceRoots, "workspace-root", nil, "allowed workspace root (repeatable)")
 	cmd.Flags().BoolVar(&allowInsecure, "allow-insecure", false, "permit http/ws server URL (dev only)")
 	cmd.Flags().StringVar(&credentialsPath, "credentials", config.DefaultCredentialsPath, "path to credentials.yaml")
+	// Default true: Cliora nodes are disposable isolated VMs and the posture was
+	// asked for explicitly (ADR 0023 D0/D2). A machine that is not disposable is
+	// installed with --privileged-terminal=false.
+	cmd.Flags().BoolVar(&privileged, "privileged-terminal", true,
+		"allow the system terminal to reach root via sudo (see ADR 0023)")
 	return cmd
+}
+
+// printPostureNotice states the posture in the installer output. SEC-007's
+// requirement that installation "clearly warns" about the daemon's privileges is
+// older than this change; what is new is that the warning now has to cover a
+// terminal that can become root and a CLI that runs without a sandbox.
+func printPostureNotice(out io.Writer, privileged bool) {
+	if !privileged {
+		fmt.Fprintln(out, "Posture: the system terminal cannot escalate (NoNewPrivileges stays set).")
+		fmt.Fprintln(out, "         codex still runs without a sandbox unless you also set")
+		fmt.Fprintln(out, "         runtime.codex.sandbox_bypass: false in the config.")
+		return
+	}
+	fmt.Fprintln(out, "warning: this node's system terminal can reach root through sudo, and codex")
+	fmt.Fprintln(out, "         will run with approvals and its sandbox disabled. That is the")
+	fmt.Fprintln(out, "         intended posture for a disposable, isolated VM.")
+	fmt.Fprintln(out, "         If this machine is not disposable, reinstall with")
+	fmt.Fprintln(out, "         --privileged-terminal=false and set")
+	fmt.Fprintln(out, "         runtime.codex.sandbox_bypass: false in /etc/agentd/config.yaml.")
 }
 
 // installFiles writes config + credentials at 0600 owned by the service user,
@@ -192,9 +230,10 @@ func copyExecutable(dst string) error {
 	return os.Rename(tmp, dst)
 }
 
-func writeUnit(runUser, configPath string) error {
+func writeUnit(runUser, configPath string, privileged bool) error {
 	unit := install.UnitFile(install.UnitParams{
 		User: runUser, BinaryPath: binaryInstallPath, ConfigPath: configPath,
+		PrivilegedTerminal: privileged,
 	})
 	return os.WriteFile(systemdUnitPath, []byte(unit), 0o644)
 }
@@ -249,6 +288,10 @@ func newUninstallCommand(configPath *string) *cobra.Command {
 				_ = os.RemoveAll(stateDir)
 				_ = os.RemoveAll(logDir)
 			}
+			// Removed in both modes: a sudoers file granting rights to a service that no
+			// longer exists is the worst kind of leftover — it grants something and
+			// explains nothing.
+			_ = install.NewSudoersInstaller().Remove()
 			_ = os.Remove(binaryInstallPath)
 			fmt.Fprintln(out, "agentd removed. Central still holds the node record (soft delete).")
 			return nil

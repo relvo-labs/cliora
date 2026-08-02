@@ -113,7 +113,9 @@ func TestSessionStartStopRoundTripOverConnection(t *testing.T) {
 	// Real tmux over a private socket + the Fake CLI as the resolved binary.
 	manager.sessions = session.New(ctmux.Client{Socket: socket}, "", "")
 	manager.guard = workspace.New([]string{workspaceDir})
-	manager.resolveBinary = func(string) (string, error) { return bin, nil }
+	manager.resolveLaunch = func(string) (runtime.LaunchSpec, error) {
+		return runtime.LaunchSpec{Path: bin}, nil
+	}
 	defer func() { _, _ = manager.sessions.Stop(context.Background(), sessionID) }()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -211,7 +213,9 @@ func TestSessionAttachStreamsOutput(t *testing.T) {
 	manager := New(cfg, creds, runtime.NewRegistry(cfg.Runtime), systeminfo.Gather(), "1.0.0")
 	manager.sessions = session.New(ctmux.Client{Socket: socket}, "", "")
 	manager.guard = workspace.New([]string{workspaceDir})
-	manager.resolveBinary = func(string) (string, error) { return bin, nil }
+	manager.resolveLaunch = func(string) (runtime.LaunchSpec, error) {
+		return runtime.LaunchSpec{Path: bin}, nil
+	}
 	defer func() { _, _ = manager.sessions.Stop(context.Background(), sessionID) }()
 
 	ctx, cancel := context.WithCancel(context.Background())

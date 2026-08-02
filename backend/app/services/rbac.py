@@ -31,6 +31,7 @@ TERMINAL_TAKEOVER = "terminal.takeover"
 TERMINAL_SHELL = "terminal.shell"
 SESSION_TERMINATE = "session.terminate"
 FILE_BROWSE = "file.browse"
+FILE_UPLOAD = "file.upload"
 ENROLLMENT_MANAGE = "enrollment.manage"
 NODE_MANAGE = "node.manage"
 AUDIT_VIEW = "audit.view"
@@ -55,6 +56,13 @@ _VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE})
 # the session, and nobody may attach to a shell they did not open.
 _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     SESSION_CREATE,
+    # Image drop writes to the node's workspace, so it is deliberately NOT part of
+    # `file.browse` — all three roles hold that one, and handing Viewer a write
+    # would contradict the read-only viewer the rest of the system promises
+    # (ADR 0024 sec 6). It is also not `terminal.operate`: that action means
+    # driving a terminal, and reusing it would make "typed something" and "wrote a
+    # file" indistinguishable in the audit trail.
+    FILE_UPLOAD,
     SESSION_TERMINATE,
     TERMINAL_OPERATE,
     TERMINAL_TAKEOVER,

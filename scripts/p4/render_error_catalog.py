@@ -156,6 +156,16 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Image drop",
+        (
+            "FILE_UPLOAD_TOO_LARGE",
+            "FILE_UPLOAD_UNSUPPORTED_TYPE",
+            "FILE_UPLOAD_QUOTA_EXCEEDED",
+            "FILE_UPLOAD_FAILED",
+            "FILE_UPLOAD_DISABLED",
+        ),
+    ),
+    (
         "Daemon update",
         (
             "UPDATE_NOT_ALLOWED",

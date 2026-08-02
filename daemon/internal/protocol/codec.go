@@ -27,11 +27,20 @@ var LargeFrameTypes = map[string]bool{
 	"filesystem.entries":       true,
 	"filesystem.content":       true,
 	"filesystem.search_result": true,
+	// filesystem.upload is the first REQUEST type in this set, and the direction
+	// is Central -> daemon, so the node's decode limit widens from 64 KiB to
+	// 8 MiB for this one type (ADR 0024 §7). Accepted because the peer is an
+	// authenticated Central, the handler re-checks type and size immediately
+	// after decode, and three ceilings sit in front of the write (RBAC, then
+	// Central's 4 MiB, then the daemon's own 4 MiB, then the quota). The
+	// response, filesystem.uploaded, is a path and three scalars and stays on
+	// the tight bound - only the direction carrying an image needs the room.
+	"filesystem.upload": true,
 }
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -44,7 +53,12 @@ type Envelope struct {
 }
 
 func DecodeControl(data []byte) (Envelope, error) {
-	if len(data) > MaxPayload {
+	// Two-stage bound, mirroring backend/app/protocol/codec.py: refuse an absurd
+	// frame before parsing it, then — once the type is known — hold everything
+	// except the large types to the tight 64 KiB control limit. Until image drop
+	// the daemon only ever *built* large frames, so this side needed no
+	// exception; filesystem.upload is the first one it receives (ADR 0024 §7).
+	if len(data) > MaxFilePayload {
 		return Envelope{}, errors.New("FRAME_TOO_LARGE")
 	}
 	var raw map[string]json.RawMessage
@@ -66,6 +80,11 @@ func DecodeControl(data []byte) (Envelope, error) {
 	}
 	if !allowedTypes[env.Type] {
 		return Envelope{}, errors.New("MESSAGE_TYPE_UNSUPPORTED")
+	}
+	// Stage two of the bound: the wider ceiling belongs to the large types only,
+	// so it cannot be used to smuggle an oversize session or tunnel frame.
+	if len(data) > MaxPayload && !LargeFrameTypes[env.Type] {
+		return Envelope{}, errors.New("FRAME_TOO_LARGE")
 	}
 	if len(env.RequestID) != 26 || env.NodeID == uuid.Nil || len(env.Payload) == 0 {
 		return Envelope{}, errors.New("INVALID_MESSAGE")
@@ -108,6 +127,17 @@ type fsReadFields struct {
 	SessionID uuid.UUID `json:"session_id"`
 	Path      string    `json:"path"`
 }
+
+// fsUploadFields is two fields, enforced by strictUnmarshal's
+// DisallowUnknownFields: a frame carrying filename, path, directory, extension
+// or mime is rejected here exactly as the JSON Schema rejects it. The point of
+// the design is that the sender cannot name the file, and this is where Go
+// says so (ADR 0024 sec 3).
+type fsUploadFields struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Data      string    `json:"data"`
+}
+
 type fsSearchFields struct {
 	SessionID  uuid.UUID `json:"session_id"`
 	Keyword    string    `json:"keyword"`
@@ -148,6 +178,10 @@ type runtimeItem struct {
 	Version    *string `json:"version,omitempty"`
 	BinaryPath *string `json:"binary_path,omitempty"`
 	CheckedAt  *string `json:"checked_at,omitempty"`
+	// SandboxBypass is the measured posture of this runtime on this node
+	// (contract 1.7.0, ADR 0023). Optional: an older daemon does not send it, and
+	// absent means "no bypass", never "unknown".
+	SandboxBypass *bool `json:"sandbox_bypass,omitempty"`
 }
 type workspaceRoot struct {
 	Path        string  `json:"path"`
@@ -165,6 +199,16 @@ type registerFields struct {
 	Runtimes       []runtimeItem   `json:"runtimes"`
 	WorkspaceRoots []workspaceRoot `json:"workspace_roots"`
 	Tunnel         *tunnelReport   `json:"tunnel"`
+	// PrivilegedTerminal reports that this node's system terminal can reach root
+	// through sudo (contract 1.7.0, ADR 0023). Report-only: there is deliberately
+	// no message in either direction that lets Central *set* it.
+	PrivilegedTerminal *bool `json:"privileged_terminal,omitempty"`
+	// ImageUpload reports that this node accepts image drop into a session
+	// workspace (contract 1.8.0, ADR 0024 W4). Report-only for the same reason:
+	// whether the platform may write to a machine is the machine's answer, and
+	// the console needs it so it can hide the entry point instead of offering a
+	// button that always fails.
+	ImageUpload *bool `json:"image_upload,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -296,6 +340,35 @@ func validRelPath(s string) bool {
 
 // validKeyword accepts a filename search keyword: non-empty, bounded, no
 // control chars. No globs/regex/shell arguments are permitted (SEC-002).
+// MaxUploadBase64 is the base64 length of a 4 MiB image, matching
+// filesystem-upload.schema.json. Checking it before decoding means an
+// over-limit frame is refused without allocating the decoded copy.
+const MaxUploadBase64 = 5592408
+
+// validUploadData accepts only canonical standard-alphabet base64. The
+// permissive decoders tolerate newlines and the URL-safe alphabet; allowing
+// either would mean two representations of the same bytes cross the wire, and
+// the daemon decodes with StdEncoding.Strict().
+func validUploadData(data string) bool {
+	if len(data) < 4 || len(data) > MaxUploadBase64 || len(data)%4 != 0 {
+		return false
+	}
+	for i := 0; i < len(data); i++ {
+		c := data[i]
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '+', c == '/':
+		case c == '=':
+			// Padding is only legal in the final two positions.
+			if i < len(data)-2 {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 func validKeyword(s string) bool {
 	if s == "" || len(s) > 256 {
 		return false
@@ -517,6 +590,12 @@ func ValidateControl(raw []byte) error {
 		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
 			!validKeyword(p.Keyword) || (p.Root != "" && !validRelPath(p.Root)) ||
 			p.MaxResults < 0 || p.MaxResults > 200 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.upload":
+		var p fsUploadFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!validUploadData(p.Data) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "tunnel.open":

@@ -24,6 +24,10 @@ type Params struct {
 	DaemonVersion  string
 	PublicKey      string
 	HeartbeatSecs  int
+	// PrivilegedTerminal records the posture chosen at install time so the generated
+	// config reports it (ADR 0023). The grant itself is the systemd unit plus the
+	// sudoers drop-in; this is what the node tells Central about itself.
+	PrivilegedTerminal bool
 }
 
 // ServerWSURL converts the public HTTPS base URL into the wss node endpoint the
@@ -83,7 +87,15 @@ func BuildConfig(p Params, detected []runtime.DetectResult) (*config.Config, err
 		if binary == "" {
 			binary = r.Runtime
 		}
-		runtimes[r.Runtime] = config.RuntimeConfig{Enabled: true, Binary: binary}
+		rc := config.RuntimeConfig{Enabled: true, Binary: binary}
+		// Written explicitly rather than left to load-time defaulting, for the same
+		// reason the shell and tunnel blocks are: the node owner's only way to refuse
+		// this posture is a key they can see (ADR 0023 D2).
+		if config.SandboxBypassRuntimeIDs[r.Runtime] {
+			bypass := true
+			rc.SandboxBypass = &bypass
+		}
+		runtimes[r.Runtime] = rc
 	}
 	heartbeat := p.HeartbeatSecs
 	if heartbeat <= 0 {
@@ -97,7 +109,7 @@ func BuildConfig(p Params, detected []runtime.DetectResult) (*config.Config, err
 	// gives the operator a visible place to extend them.
 	cfg := &config.Config{
 		Server:  config.ServerConfig{URL: wsURL, AllowInsecure: insecure},
-		Node:    config.NodeConfig{Name: p.NodeName},
+		Node:    config.NodeConfig{Name: p.NodeName, PrivilegedTerminal: p.PrivilegedTerminal},
 		Runtime: runtimes,
 		Workspace: config.WorkspaceConfig{
 			AllowedRoots:        p.WorkspaceRoots,
@@ -144,7 +156,35 @@ It ships enabled, and a config that predates this block also counts as enabled.
 To refuse it on this node set "enabled: false" below and restart agentd; Central
 cannot turn it back on.
 The shell grants nothing agentd does not already have: its ceiling is this
-service's own execution identity, which is why agentd must not run as root.`
+service's own execution identity. agentd never runs as root — but on a node
+installed with the privileged posture that identity can reach root through sudo,
+so the ceiling is root (ADR 0023). See the node block above.`
+
+// sandboxRuntimeComment is written above the runtime.codex block of a generated
+// config.yaml. Same reasoning as shellRuntimeComment: the node owner holds the only
+// veto, and a veto whose location nobody knows is not a control.
+const sandboxRuntimeComment = `codex runs with its approval prompts and OS sandbox disabled on this node
+(ADR 0023). agentd adds one fixed flag when starting it:
+"--dangerously-bypass-approvals-and-sandbox".
+This is the intended posture for a disposable, isolated VM: codex edits files,
+installs packages and runs commands here without asking. On a machine you would
+not rebuild, set "sandbox_bypass: false" below and restart agentd.
+The flag itself is not configurable — agentd owns it, and neither the console nor
+Central can name a command, argument or environment variable for a session
+(SEC-002). This switch only decides whether agentd's own flag is applied.
+If the installed codex does not recognise the flag, agentd launches without it and
+the console shows the sandbox as enforced rather than claiming otherwise.`
+
+// privilegedTerminalComment is written above the node block when the posture is on.
+// It says what the key is *not*, because a boolean named privileged_terminal reads
+// like the switch that grants the privilege, and editing it changes nothing.
+const privilegedTerminalComment = `This node's identity and posture.
+"privileged_terminal: true" REPORTS that the system terminal can reach root
+through sudo on this machine; it does not grant it, and setting it to false does
+not take it away. The grant is the systemd unit (no NoNewPrivileges) plus
+/etc/sudoers.d/60-agentd.
+To actually change the posture: sudo agentd posture --privileged-terminal=false
+To see what is installed right now: sudo agentd posture`
 
 // tunnelEnabledByDefault is addressable so the generated config can carry an explicit
 // `enabled: true` rather than an absent key. Same value either way; the difference is
@@ -170,7 +210,8 @@ This block is this machine's refusal: set "enabled: false" and restart agentd, a
 no request from Central can turn it back on. "allowed_ports" narrows what may be
 forwarded; ports below 1024 are never forwarded whatever it says.
 Like the shell, a tunnel grants nothing agentd does not already have — its ceiling
-is this service's own execution identity, which is why agentd must not run as root.`
+is this service's own execution identity, which on a privileged node can reach root
+through sudo (ADR 0023).`
 
 // MarshalConfig serializes a config for writing to config.yaml (0600). It goes
 // through a yaml.Node rather than straight to bytes so the shell block can carry
@@ -188,6 +229,16 @@ func MarshalConfig(cfg *config.Config) ([]byte, error) {
 	}
 	if key := mappingKey(&doc, "tunnel"); key != nil {
 		key.HeadComment = tunnelComment
+	}
+	// Absent when the node has no codex binary: BuildConfig only writes detected
+	// runtimes, and a comment about a block that is not there is worse than none.
+	if key := mappingKey(mappingValue(&doc, "runtime"), "codex"); key != nil {
+		key.HeadComment = sandboxRuntimeComment
+	}
+	if cfg.Node.PrivilegedTerminal {
+		if key := mappingKey(&doc, "node"); key != nil {
+			key.HeadComment = privilegedTerminalComment
+		}
 	}
 	return yaml.Marshal(&doc)
 }

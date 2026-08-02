@@ -166,10 +166,31 @@ The fastest correct order, because each step closes a different door:
 4. **Read the audit trail** for the shape of it (§4) — and remember it will not
    tell you what ran. Go to the host's own auditing for that.
 
+### The privileged posture (ADR 0023) — read this before the next section
+
+Since agentd 0.5.0 a node can be installed in the **privileged posture**: the unit omits
+`NoNewPrivileges` and `/etc/sudoers.d/60-agentd` grants the service user passwordless sudo,
+so the system terminal reaches root on demand. On such a node, "remote root for everyone
+holding `terminal.shell` on a session they own" is the **intended** state, not a finding.
+The premise is that the node is a disposable, isolated VM (ADR 0023 §Context).
+
+Which posture a node is in:
+
+```sh
+sudo agentd posture      # the unit, the sudoers drop-in, sudo itself, and the reported value
+```
+
+Everything below still applies, with one correction: the daemon must still not *run* as
+root even in the privileged posture. See `privileged-node-posture.md` for granting,
+revoking, and the four distinct reasons sudo can fail.
+
 ### "The daemon is running as root"
 
-Treat as a serious finding, not a hygiene item. Root plus this feature is remote
-root on the node for every user holding `terminal.shell`.
+Treat as a serious finding, not a hygiene item — in either posture. Running as root is not
+the same as being able to escalate: escalation goes through `sudo`, which the node's own
+`auth.log` records and which the node owner can revoke, while `User=root` leaves no record,
+makes every workspace file root-owned, and breaks the update health check's identity
+assumptions (ADR 0017).
 
 ```sh
 systemctl show agentd -p User -p Group
@@ -192,6 +213,8 @@ next reconciliation clears it. If tmux has one Central does not,
 
 ## 7. Related runbooks
 
+- `privileged-node-posture.md` — sudo in the terminal, the codex sandbox, and terminal
+  scrolling (ADR 0023). Also: why upgrading to 0.5.0 ends the sessions that were running.
 - `update-failure.md` — the upgrade that delivers this capability, and why
   sessions survive a restart.
 - `heartbeat-loss.md` — a node going offline takes its shells with it.

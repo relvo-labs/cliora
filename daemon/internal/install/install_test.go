@@ -322,9 +322,14 @@ func TestGeneratedConfigExplainsTheSystemTerminal(t *testing.T) {
 	if commentAt < 0 || commentAt > shellAt {
 		t.Errorf("the shell block is not preceded by its explanation:\n%s", text)
 	}
-	// The veto and the reason agentd must stay unprivileged are the two things an
-	// operator reading only this file has to come away with.
-	for _, want := range []string{`"enabled: false"`, "not run as root", "ADR 0021"} {
+	// The veto and the ceiling of the feature are the two things an operator reading
+	// only this file has to come away with. The ceiling used to be stated as "agentd
+	// must not run as root"; since ADR 0023 that is only half of it — agentd still
+	// never runs as root, and on a privileged node its identity can reach root
+	// through sudo. The file has to say both, so the test asserts both.
+	for _, want := range []string{
+		`"enabled: false"`, "never runs as root", "through sudo", "ADR 0021", "ADR 0023",
+	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("generated config never mentions %q:\n%s", want, text)
 		}
@@ -395,7 +400,9 @@ func TestGeneratedConfigExplainsThePortForwardingVeto(t *testing.T) {
 		"enabled: false",
 		"credential is NOT in this file",
 		"below 1024 are never forwarded",
-		"must not run as root",
+		// Same correction as the shell block: the ceiling is the service identity,
+		// which on a privileged node reaches root (ADR 0023).
+		"can reach root",
 	} {
 		if !strings.Contains(text, phrase) {
 			t.Errorf("the generated config should explain %q:\n%s", phrase, text)

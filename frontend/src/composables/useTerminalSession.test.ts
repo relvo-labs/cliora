@@ -200,6 +200,72 @@ describe("useTerminalSession", () => {
     expect(sockets[0].sent).toHaveLength(sentOnOpen);
   });
 
+  // typeText: how image drop puts a path on the input line (ADR 0024 sec 2).
+  // It is the same writer-gated channel as onData, deliberately: the front end
+  // types, and no new "platform may write to a terminal" authority is created.
+  describe("typeText", () => {
+    async function writerSession() {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      await s.connect(SESSION);
+      sockets[0].open();
+      makeWriter(sockets[0]);
+      return s;
+    }
+
+    it("sends the text as raw bytes when the caller is the writer", async () => {
+      const s = await writerSession();
+      const before = sockets[0].sent.length;
+
+      expect(s.typeText(".cliora/uploads/2026-08-05/01K.png ")).toBe(true);
+
+      const sent = sockets[0].sent[before];
+      expect(new TextDecoder().decode(sent as Uint8Array)).toBe(
+        ".cliora/uploads/2026-08-05/01K.png ",
+      );
+    });
+
+    it("sends no Enter, so the user still decides when to submit", async () => {
+      const s = await writerSession();
+      const before = sockets[0].sent.length;
+      s.typeText("path.png ");
+      const sent = new TextDecoder().decode(
+        sockets[0].sent[before] as Uint8Array,
+      );
+      expect(sent.endsWith(" ")).toBe(true);
+      expect(sent).not.toContain("\r");
+      expect(sent).not.toContain("\n");
+    });
+
+    it("refuses when the caller is only a viewer", async () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      await s.connect(SESSION);
+      sockets[0].open();
+      const before = sockets[0].sent.length;
+
+      expect(s.typeText("path.png ")).toBe(false);
+      expect(sockets[0].sent).toHaveLength(before);
+    });
+
+    it("refuses control characters", async () => {
+      const s = await writerSession();
+      const before = sockets[0].sent.length;
+
+      // A public "write to the terminal" helper must not be able to submit a
+      // line, clear the screen or move the cursor on the user's behalf.
+      for (const bad of ["a\r", "a\n", "a\u001b[2J", "a\u0000", "a\u007f"]) {
+        expect(s.typeText(bad)).toBe(false);
+      }
+      expect(sockets[0].sent).toHaveLength(before);
+    });
+
+    it("refuses an empty string", async () => {
+      const s = await writerSession();
+      expect(s.typeText("")).toBe(false);
+    });
+  });
+
   it("fit() resizes once the host is visible, and de-duplicates", async () => {
     const s = newSession();
     const element = host({ visible: true });

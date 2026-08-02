@@ -100,6 +100,10 @@ class SessionCapabilities(BaseModel):
     can_takeover: bool
     can_terminate: bool
     can_browse_files: bool
+    # Role plus ownership, computed here rather than in the browser: a
+    # role-only check cannot express "may write to a colleague's session"
+    # (ADR 0016, ADR 0024).
+    can_upload_files: bool
     # Whether this viewer may open a system terminal *inside* this session. Already
     # folds in the action, ownership and the node's own veto, so the browser has
     # nothing left to combine (ADR 0021).
@@ -221,6 +225,8 @@ class RuntimeItemDTO(BaseModel):
     version: str | None = Field(default=None, max_length=128)
     binary_path: str | None = Field(default=None, max_length=4096)
     checked_at: datetime | None = None
+    # Optional on the wire (contract 1.7.0): absent means the sandbox is enforced.
+    sandbox_bypass: bool = False
 
     def to_input(self) -> RuntimeInput:
         return RuntimeInput(
@@ -229,6 +235,7 @@ class RuntimeItemDTO(BaseModel):
             version=self.version,
             binary_path=self.binary_path,
             checked_at=self.checked_at,
+            sandbox_bypass=self.sandbox_bypass,
         )
 
 
@@ -253,6 +260,10 @@ class RegisterNodeRequest(BaseModel):
     daemon_version: str = Field(min_length=1, max_length=64)
     run_user: str = Field(min_length=1, max_length=64)
     public_key: str = Field(min_length=43, max_length=44)
+    # The installer reports the posture it just created (ADR 0023). Report-only: this
+    # is the enrollment call, so there is no later API that can set it.
+    privileged_terminal: bool = False
+    image_upload: bool = False
     runtimes: list[RuntimeItemDTO] = Field(default_factory=list, max_length=16)
     workspace_roots: list[WorkspaceRootDTO] = Field(default_factory=list, max_length=64)
 
@@ -266,6 +277,8 @@ class RegisterNodeRequest(BaseModel):
             daemon_version=self.daemon_version,
             run_user=self.run_user,
             public_key=self.public_key,
+            privileged_terminal=self.privileged_terminal,
+            image_upload=self.image_upload,
             runtimes=[r.to_input() for r in self.runtimes],
             workspace_roots=[w.to_input() for w in self.workspace_roots],
         )
@@ -282,6 +295,10 @@ class NodeRuntimeDTO(BaseModel):
     version: str | None
     binary_path: str | None
     checked_at: datetime | None
+    # True when this runtime is launched with its sandbox and approval prompts off
+    # (ADR 0023). The console shows it next to the runtime, because the person about
+    # to start a session is the one who needs to know.
+    sandbox_bypass: bool = False
 
 
 class NodeWorkspaceRootDTO(BaseModel):
@@ -338,6 +355,12 @@ class NodeDetail(NodeSummary):
     os_version: str | None
     daemon_version: str | None
     run_user: str | None
+    # Posture, as reported by the node. Shown in the console and not settable here:
+    # there is deliberately no endpoint that writes it (ADR 0023 D11).
+    privileged_terminal: bool
+    # Whether this node accepts image drop; the console hides the affordance when
+    # false rather than offering a button that always fails (ADR 0024 W4).
+    image_upload: bool
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]

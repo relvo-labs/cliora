@@ -17,6 +17,9 @@ const LABELS: Record<string, string> = {
   "node.disable": "停用 Node",
   "node.enable": "啟用 Node",
   "node.remove": "移除 Node",
+  // 這台機器的系統終端機變成（或不再是）可經 sudo 取得 root。變更發生在機器上，
+  // 平台是唯一會把它記下來的地方（ADR 0023）。
+  "node.posture_changed": "Node 提權姿態變更",
   "credential.revoke": "撤銷憑證",
   "credential.rotate": "輪替憑證",
   "session.create": "建立 Session",
@@ -25,6 +28,7 @@ const LABELS: Record<string, string> = {
   "session.terminate": "終止 Session",
   "session.failed": "Session 失敗",
   "file.sensitive_read_denied": "敏感檔讀取被拒",
+  "file.upload": "投放圖片",
   "authz.denied": "授權被拒",
   // 埠轉發（ADR 0022）。整合層與隧道層分開記，因為它們回答的是不同的問題：
   // 「誰決定本組織使用這個服務、用誰的帳號」與「誰把哪台機器的哪個 port 對外」。
@@ -64,6 +68,7 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "node.enable",
       "node.disable",
       "node.remove",
+      "node.posture_changed",
       "credential.revoke",
       "credential.rotate",
       "daemon.update_started",
@@ -95,6 +100,12 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
   {
     title: "安全事件 / Security",
     actions: ["authz.denied", "file.sensitive_read_denied"],
+  },
+  {
+    // A successful drop is ordinary session activity, not a security event —
+    // filing it under Security would bury the refusals that are (ADR 0024 W3).
+    title: "工作區 / Workspace",
+    actions: ["file.upload"],
   },
 ];
 
