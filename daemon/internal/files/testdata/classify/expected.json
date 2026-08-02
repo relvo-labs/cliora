@@ -1,0 +1,202 @@
+[
+  {
+    "name": "cjk-cut-pad0.md",
+    "verdict": "text",
+    "note": "valid UTF-8 CJK, 0-byte ASCII pad shifts the old 8 KiB cut inside a rune"
+  },
+  {
+    "name": "cjk-cut-pad1.md",
+    "verdict": "text",
+    "note": "valid UTF-8 CJK, 1-byte ASCII pad shifts the old 8 KiB cut inside a rune"
+  },
+  {
+    "name": "cjk-cut-pad2.md",
+    "verdict": "text",
+    "note": "valid UTF-8 CJK, 2-byte ASCII pad shifts the old 8 KiB cut inside a rune"
+  },
+  {
+    "name": "cjk-cut-pad3.md",
+    "verdict": "text",
+    "note": "valid UTF-8 CJK, 3-byte ASCII pad shifts the old 8 KiB cut inside a rune"
+  },
+  {
+    "name": "cjk-cut-pad4.md",
+    "verdict": "text",
+    "note": "valid UTF-8 CJK, 4-byte ASCII pad shifts the old 8 KiB cut inside a rune"
+  },
+  {
+    "name": "ascii.txt",
+    "verdict": "text",
+    "note": "plain ASCII"
+  },
+  {
+    "name": "crlf.txt",
+    "verdict": "text",
+    "note": "CRLF line endings"
+  },
+  {
+    "name": "no-trailing-newline.txt",
+    "verdict": "text",
+    "note": "no newline at EOF"
+  },
+  {
+    "name": "empty.txt",
+    "verdict": "text",
+    "note": "empty file is text, and Monaco shows it blank"
+  },
+  {
+    "name": "only-newlines.txt",
+    "verdict": "text",
+    "note": "whitespace only"
+  },
+  {
+    "name": "utf8-bom.txt",
+    "verdict": "text",
+    "note": "UTF-8 BOM is valid UTF-8"
+  },
+  {
+    "name": "tabs.tsv",
+    "verdict": "text",
+    "note": "tab-heavy tabular data"
+  },
+  {
+    "name": "ansi-colour.log",
+    "verdict": "text",
+    "note": "three ANSI colour pairs per line; binary under the old rule"
+  },
+  {
+    "name": "ansi-spinner.log",
+    "verdict": "text",
+    "note": "cursor-control heavy spinner output; binary under the old rule"
+  },
+  {
+    "name": "formfeed.txt",
+    "verdict": "text",
+    "note": "form feed as a page break; binary under the old rule"
+  },
+  {
+    "name": "vertical-tab.txt",
+    "verdict": "text",
+    "note": "vertical tab in older documents"
+  },
+  {
+    "name": "emoji.md",
+    "verdict": "text",
+    "note": "4-byte runes throughout"
+  },
+  {
+    "name": "four-byte.json",
+    "verdict": "text",
+    "note": "4-byte runes inside JSON"
+  },
+  {
+    "name": "minified.js",
+    "verdict": "text",
+    "note": "one very long line"
+  },
+  {
+    "name": "big5.txt",
+    "verdict": "unsupported_encoding",
+    "note": "Big5-encoded Chinese"
+  },
+  {
+    "name": "gbk.txt",
+    "verdict": "unsupported_encoding",
+    "note": "GBK-encoded Chinese"
+  },
+  {
+    "name": "shiftjis.txt",
+    "verdict": "unsupported_encoding",
+    "note": "Shift-JIS Japanese"
+  },
+  {
+    "name": "latin1.txt",
+    "verdict": "unsupported_encoding",
+    "note": "Latin-1 accents"
+  },
+  {
+    "name": "image.png",
+    "verdict": "binary",
+    "note": "real PNG"
+  },
+  {
+    "name": "image.jpg",
+    "verdict": "binary",
+    "note": "real JPEG"
+  },
+  {
+    "name": "image.gif",
+    "verdict": "binary",
+    "note": "real GIF"
+  },
+  {
+    "name": "image.webp",
+    "verdict": "binary",
+    "note": "synthetic RIFF/WEBP container (no encoder available)"
+  },
+  {
+    "name": "archive.tar.gz",
+    "verdict": "binary",
+    "note": "gzip stream"
+  },
+  {
+    "name": "archive.zip",
+    "verdict": "binary",
+    "note": "zip container"
+  },
+  {
+    "name": "program.elf",
+    "verdict": "binary",
+    "note": "first 2 KiB of a real ELF executable"
+  },
+  {
+    "name": "utf16le.txt",
+    "verdict": "binary",
+    "note": "UTF-16LE: NUL bytes make it binary, not merely unreadable"
+  },
+  {
+    "name": "utf16be.txt",
+    "verdict": "binary",
+    "note": "UTF-16BE"
+  },
+  {
+    "name": "sqlite.db",
+    "verdict": "binary",
+    "note": "SQLite header"
+  },
+  {
+    "name": "certificate.pem.txt",
+    "verdict": "text",
+    "note": "PEM block: printable ASCII only"
+  },
+  {
+    "name": "base64-blob.txt",
+    "verdict": "text",
+    "note": "long base64 lines, no control characters"
+  },
+  {
+    "name": "boundary-8192-then-cjk.md",
+    "verdict": "text",
+    "note": "first multi-byte rune starts exactly at byte 8192"
+  },
+  {
+    "name": "del-sparse.txt",
+    "verdict": "text",
+    "note": "one DEL per 12 runes, under the control-character threshold"
+  },
+  {
+    "name": "bom-only.txt",
+    "verdict": "text",
+    "note": "a UTF-8 BOM and nothing else"
+  },
+  {
+    "name": "ascii-prefix-then-nul.bin",
+    "verdict": "binary",
+    "note": "first 9000 bytes printable ASCII, NUL after: served as TEXT under the old window"
+  },
+  {
+    "name": "control-heavy.bin",
+    "verdict": "binary",
+    "note": "more than 10% real control characters"
+  }
+]

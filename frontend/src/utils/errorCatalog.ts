@@ -288,6 +288,35 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: false,
   },
 
+  // --- 圖片投放（ADR 0024）---
+  FILE_UPLOAD_TOO_LARGE: {
+    cause: "圖片超過 4 MiB 上限。",
+    nextStep: "請壓縮或縮小尺寸後再試。",
+    retryable: false,
+  },
+  FILE_UPLOAD_UNSUPPORTED_TYPE: {
+    cause:
+      "內容不是 PNG、JPEG、GIF 或 WebP；判定依據是檔案內容，不是宣告的型別。",
+    nextStep: "請轉存為支援的圖片格式（SVG 與 PDF 不算圖片）。",
+    retryable: false,
+  },
+  FILE_UPLOAD_QUOTA_EXCEEDED: {
+    cause: "此 Session 的圖片用量或當日張數已達上限。",
+    nextStep:
+      "請在檔案樹的 .cliora/uploads/ 刪除不需要的圖片；逾期 7 天者會自動清除。",
+    retryable: false,
+  },
+  FILE_UPLOAD_FAILED: {
+    cause: "Node 無法寫入工作區（磁碟、權限，或 .cliora 不是目錄）。",
+    nextStep: "請通知管理者在該機器上執行 agentd doctor，它會指出要修的檔案。",
+    retryable: true,
+  },
+  FILE_UPLOAD_DISABLED: {
+    cause: "此 Node 的設定關閉了圖片投放。工作區是否可被寫入由該機器決定。",
+    nextStep: "請與該 Node 的擁有者確認 filesystem.upload.enabled 設定。",
+    retryable: false,
+  },
+
   // --- Daemon update ---
   UPDATE_NOT_ALLOWED: {
     cause:

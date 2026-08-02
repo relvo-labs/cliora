@@ -4,7 +4,8 @@
 
 ## Missing links
 
-No static coverage gaps.
+- **FR-FILE-008.AC-04** (should): missing verified_by
+- **FR-FILE-008.AC-05** (should): missing verified_by
 
 ## Awaiting requirement rewrite
 

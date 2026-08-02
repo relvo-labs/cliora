@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // Root is a traversal-safe handle to a session's workspace directory. It wraps
@@ -115,6 +116,90 @@ func (r *Root) OpenFile(rel string) (*os.File, error) {
 		return nil, mapPathErr(err)
 	}
 	return f, nil
+}
+
+// MkdirAllIn creates rel and any missing parents beneath the root. Every
+// component is resolved by os.Root, so a ".." segment or an escaping symlink is
+// refused by the kernel exactly as it is for reads (ADR 0024 W1).
+func (r *Root) MkdirAllIn(rel string, perm os.FileMode) error {
+	clean, err := relClean(rel)
+	if err != nil {
+		return err
+	}
+	if clean == "." {
+		return nil
+	}
+	if err := r.root.MkdirAll(clean, perm); err != nil {
+		return mapPathErr(err)
+	}
+	return nil
+}
+
+// CreateExclusive opens rel for writing and fails if it already exists.
+//
+// O_EXCL is load-bearing rather than defensive: the daemon generates every name
+// it writes (ADR 0024 §3), so a collision does not mean "try again with a
+// suffix" — it means something else is writing into a directory this code
+// believes it owns, and continuing would overwrite it. O_NOFOLLOW matches the
+// read path's refusal to follow a symlink as the final component.
+func (r *Root) CreateExclusive(rel string, perm os.FileMode) (*os.File, error) {
+	clean, err := relClean(rel)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.root.OpenFile(clean, os.O_WRONLY|os.O_CREATE|os.O_EXCL|syscall.O_NOFOLLOW, perm)
+	if err != nil {
+		return nil, mapPathErr(err)
+	}
+	return f, nil
+}
+
+// RenameIn renames oldRel to newRel, both confined to the root. Used to publish
+// a fully written temp file atomically, so a failed write never leaves a
+// partial file under a name that looks finished.
+func (r *Root) RenameIn(oldRel, newRel string) error {
+	oldClean, err := relClean(oldRel)
+	if err != nil {
+		return err
+	}
+	newClean, err := relClean(newRel)
+	if err != nil {
+		return err
+	}
+	if err := r.root.Rename(oldClean, newClean); err != nil {
+		return mapPathErr(err)
+	}
+	return nil
+}
+
+// RemoveIn deletes rel beneath the root. Used by upload pruning and to clean up
+// a temp file after a failed write.
+func (r *Root) RemoveIn(rel string) error {
+	clean, err := relClean(rel)
+	if err != nil {
+		return err
+	}
+	if err := r.root.Remove(clean); err != nil {
+		return mapPathErr(err)
+	}
+	return nil
+}
+
+// LstatIn stats rel without following a final symlink. Callers use it to
+// confirm that a directory they are about to write into is a real directory:
+// os.Root follows symlinks that stay inside the root, so an in-root symlink
+// could otherwise redirect writes to another part of the workspace. This is the
+// write-side counterpart of RealRel on the read path.
+func (r *Root) LstatIn(rel string) (os.FileInfo, error) {
+	clean, err := relClean(rel)
+	if err != nil {
+		return nil, err
+	}
+	info, err := r.root.Lstat(clean)
+	if err != nil {
+		return nil, mapPathErr(err)
+	}
+	return info, nil
 }
 
 // RealRel returns the workspace-relative resolved path of an open handle, read

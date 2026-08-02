@@ -208,3 +208,49 @@ func TestFilesystemLatencyBudget(t *testing.T) {
 		}
 	}
 }
+
+// classifyBudgetMs bounds Classify over a full 2 MiB preview buffer
+// (FR-FILE-008.AC-05). The point of the number is not that 5 ms is fast; it is
+// that scanning the whole buffer instead of an 8 KiB prefix was never a
+// performance decision. ADR 0015 allows 3 s for a ≤2 MB preview, so this is
+// 0.17% of the budget at the limit and ~0.09% in practice.
+const classifyBudgetMs = 5
+
+func twoMiBMixedText() []byte {
+	unit := "套件說明 package docs line with 中文 and ascii\n"
+	return []byte(strings.Repeat(unit, (2*1024*1024)/len(unit)+1))
+}
+
+func TestClassifyLatencyBudget(t *testing.T) {
+	if raceEnabled {
+		t.Skip("latency budget is meaningless under the race detector; " +
+			"GATE-WF-CLASSIFY-CORPUS runs this package without -race")
+	}
+	body := twoMiBMixedText()
+	if v, _ := Classify(body); v != VerdictText {
+		t.Fatalf("fixture must classify as text, got %s", verdictName(v))
+	}
+	// Best of five: this asserts a ceiling, and a single sample on a shared CI
+	// runner measures the neighbours as much as the code.
+	best := time.Duration(1<<62 - 1)
+	for i := 0; i < 5; i++ {
+		start := time.Now()
+		Classify(body)
+		if d := time.Since(start); d < best {
+			best = d
+		}
+	}
+	t.Logf("Classify over %d bytes: %.2f ms (budget %d ms)",
+		len(body), float64(best.Microseconds())/1000, classifyBudgetMs)
+	if best > classifyBudgetMs*time.Millisecond {
+		t.Errorf("Classify took %v for 2 MiB, over the %d ms budget", best, classifyBudgetMs)
+	}
+}
+
+func BenchmarkClassify2MiB(b *testing.B) {
+	body := twoMiBMixedText()
+	b.SetBytes(int64(len(body)))
+	for b.Loop() {
+		Classify(body)
+	}
+}

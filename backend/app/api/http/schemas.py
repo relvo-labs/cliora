@@ -100,6 +100,10 @@ class SessionCapabilities(BaseModel):
     can_takeover: bool
     can_terminate: bool
     can_browse_files: bool
+    # Role plus ownership, computed here rather than in the browser: a
+    # role-only check cannot express "may write to a colleague's session"
+    # (ADR 0016, ADR 0024).
+    can_upload_files: bool
     # Whether this viewer may open a system terminal *inside* this session. Already
     # folds in the action, ownership and the node's own veto, so the browser has
     # nothing left to combine (ADR 0021).
@@ -259,6 +263,7 @@ class RegisterNodeRequest(BaseModel):
     # The installer reports the posture it just created (ADR 0023). Report-only: this
     # is the enrollment call, so there is no later API that can set it.
     privileged_terminal: bool = False
+    image_upload: bool = False
     runtimes: list[RuntimeItemDTO] = Field(default_factory=list, max_length=16)
     workspace_roots: list[WorkspaceRootDTO] = Field(default_factory=list, max_length=64)
 
@@ -273,6 +278,7 @@ class RegisterNodeRequest(BaseModel):
             run_user=self.run_user,
             public_key=self.public_key,
             privileged_terminal=self.privileged_terminal,
+            image_upload=self.image_upload,
             runtimes=[r.to_input() for r in self.runtimes],
             workspace_roots=[w.to_input() for w in self.workspace_roots],
         )
@@ -352,6 +358,9 @@ class NodeDetail(NodeSummary):
     # Posture, as reported by the node. Shown in the console and not settable here:
     # there is deliberately no endpoint that writes it (ADR 0023 D11).
     privileged_terminal: bool
+    # Whether this node accepts image drop; the console hides the affordance when
+    # false rather than offering a button that always fails (ADR 0024 W4).
+    image_upload: bool
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]

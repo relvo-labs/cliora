@@ -67,8 +67,15 @@ func (s *Service) Read(root *workspace.Root, relPath string) (ReadResult, error)
 	}
 
 	// 6. Binary / undetermined deny (default-deny for non-text, ADR 0015).
-	if binary, mime := DetectBinary(content); binary {
-		return ReadResult{RelPath: relPath, Denied: true, Code: "FILE_BINARY", Mime: mime, Size: size, ModifiedAt: mtime}, nil
+	// The whole bounded buffer is classified, not a prefix window — see
+	// Classify. A non-UTF-8 text file is denied under the same wire code but
+	// with a distinct reason, because "transcode it" and "give up" are
+	// different next steps for the user (FR-FILE-004 note, FR-FILE-008).
+	switch verdict, mime := Classify(content); verdict {
+	case VerdictBinary:
+		return ReadResult{RelPath: relPath, Denied: true, Code: "FILE_BINARY", Reason: "binary", Mime: mime, Size: size, ModifiedAt: mtime}, nil
+	case VerdictUnsupportedEncoding:
+		return ReadResult{RelPath: relPath, Denied: true, Code: "FILE_BINARY", Reason: "unsupported_encoding", Mime: mime, Size: size, ModifiedAt: mtime}, nil
 	}
 
 	// 7. Success: bounded UTF-8 text preview.

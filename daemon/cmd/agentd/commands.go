@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -14,11 +15,13 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cliora/cliora/daemon/internal/config"
+	"github.com/cliora/cliora/daemon/internal/files"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
 	ctmux "github.com/cliora/cliora/daemon/internal/tmux"
 	"github.com/cliora/cliora/daemon/internal/tunnel"
 	"github.com/cliora/cliora/daemon/internal/update"
+	"github.com/cliora/cliora/daemon/internal/workspace"
 )
 
 func newConfigCommand(configPath *string) *cobra.Command {
@@ -129,6 +132,7 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 					reportSandboxPosture(out, r)
 				}
 				reportTmuxPosture(ctx, out, cfg)
+				reportUploadPosture(out, cfg, report)
 			}
 
 			// The privileged posture is not a fault in either direction, so neither
@@ -183,6 +187,73 @@ func reportTmuxPosture(ctx context.Context, out io.Writer, cfg *config.Config) {
 	if legacy := ctmux.LegacySessionNames(ctx); len(legacy) > 0 {
 		fmt.Fprintf(out, "[warn] %d cliora session(s) remain on tmux's default socket and are "+
 			"no longer served; see docs/runbooks/privileged-node-posture.md\n", len(legacy))
+	}
+}
+
+// reportUploadPosture prints whether this node accepts image drop and, when it
+// does, what is currently sitting in each workspace's upload directory
+// (ADR 0024). Disabled is a posture, not a fault, so neither branch fails
+// doctor; a hijacked .cliora path is a fault, because it silently breaks the
+// only write path the platform has.
+func reportUploadPosture(out io.Writer, cfg *config.Config, report func(string, error)) {
+	up := cfg.Filesystem.Upload
+	if !up.UploadEnabled() {
+		fmt.Fprintln(out, "[info] image-upload=disabled (filesystem.upload.enabled: false)")
+		return
+	}
+	fmt.Fprintf(out, "[info] image-upload=enabled max=%s/file quota=%s/session retention=%dd\n",
+		humanBytes(up.MaxBytes), humanBytes(up.MaxSessionBytes), up.RetentionDays)
+
+	// doctor runs without a session, so it inspects the allowed roots rather
+	// than one workspace: the question an operator has is "is anything wrong
+	// on this machine", not "is anything wrong in this session".
+	guard := workspace.New(cfg.Workspace.AllowedRoots)
+	for _, rootPath := range cfg.Workspace.AllowedRoots {
+		root, err := guard.OpenWorkspace(rootPath)
+		if err != nil {
+			continue
+		}
+		info, statErr := root.LstatIn(".cliora")
+		switch {
+		case statErr != nil:
+			// Absent is the normal state before the first upload.
+		case !info.IsDir():
+			report("image-upload:"+rootPath, fmt.Errorf(
+				"%s/.cliora exists but is not a directory; remove it or set "+
+					"filesystem.upload.enabled: false in the config", rootPath))
+		default:
+			count, bytes := uploadUsageSummary(root)
+			fmt.Fprintf(out, "[info] image-upload:%s files=%d size=%s\n",
+				rootPath, count, humanBytes(bytes))
+		}
+		_ = root.Close()
+	}
+}
+
+// uploadUsageSummary counts what is currently stored under a root's upload
+// directory. Best effort: doctor reporting must never fail on a walk error.
+func uploadUsageSummary(root *workspace.Root) (count int, total int64) {
+	_ = fs.WalkDir(root.FS(), files.UploadDirRel(), func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return nil //nolint:nilerr // absent directory is the normal case
+		}
+		if info, err := d.Info(); err == nil {
+			count++
+			total += info.Size()
+		}
+		return nil
+	})
+	return count, total
+}
+
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MiB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f KiB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
 	}
 }
 

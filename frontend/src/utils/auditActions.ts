@@ -28,6 +28,7 @@ const LABELS: Record<string, string> = {
   "session.terminate": "終止 Session",
   "session.failed": "Session 失敗",
   "file.sensitive_read_denied": "敏感檔讀取被拒",
+  "file.upload": "投放圖片",
   "authz.denied": "授權被拒",
   // 埠轉發（ADR 0022）。整合層與隧道層分開記，因為它們回答的是不同的問題：
   // 「誰決定本組織使用這個服務、用誰的帳號」與「誰把哪台機器的哪個 port 對外」。
@@ -99,6 +100,12 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
   {
     title: "安全事件 / Security",
     actions: ["authz.denied", "file.sensitive_read_denied"],
+  },
+  {
+    // A successful drop is ordinary session activity, not a security event —
+    // filing it under Security would bury the refusals that are (ADR 0024 W3).
+    title: "工作區 / Workspace",
+    actions: ["file.upload"],
   },
 ];
 

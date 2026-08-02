@@ -85,7 +85,40 @@ type FilesystemConfig struct {
 	// pattern (e.g. ".ssh"). Empty → defaults.
 	DeniedDirectories []string     `yaml:"denied_directories"`
 	Search            SearchConfig `yaml:"search"`
+	// Upload bounds the single write path into the workspace (ADR 0024).
+	Upload UploadConfig `yaml:"upload"`
 }
+
+// UploadConfig bounds image drop, the one path by which anything may be written
+// into a workspace (ADR 0024, FR-FILE-009).
+//
+// There is deliberately no `directory`, `filename_template` or `allowed_types`
+// key here. The target directory and the file name belong to the daemon —
+// letting a config name them would re-open path traversal and overwrite through
+// the back door — and the accepted formats are part of the wire contract, so
+// changing them means changing the contract and all three consumers.
+type UploadConfig struct {
+	// Enabled is a pointer so that "absent" and "explicitly false" stay
+	// distinguishable: absent means the node inherited the behaviour from an
+	// upgrade, and the startup log has to be able to say so (see
+	// UploadFromDefault). Same reasoning as TunnelConfig.Enabled.
+	Enabled *bool `yaml:"enabled"`
+	// MaxBytes caps a single image. The wire schema caps the base64 form at the
+	// matching length, so an over-size request is refused before it is decoded.
+	MaxBytes int64 `yaml:"max_bytes"`
+	// MaxSessionBytes and MaxFilesPerDay are the cumulative quota (ADR 0024 W2).
+	// Without them, a write path is a disk-exhaustion entry point.
+	MaxSessionBytes int64 `yaml:"max_session_bytes"`
+	MaxFilesPerDay  int   `yaml:"max_files_per_day"`
+	// RetentionDays is how long a dropped image survives. It is not "until the
+	// session ends": a CLI transcript keeps referring to the file, and a
+	// vanished image reads to the user as the model losing its memory.
+	RetentionDays int `yaml:"retention_days"`
+}
+
+// UploadEnabled reports whether image drop is on, treating an absent key as on
+// (see D8: default true, acquired by upgrade, announced in the release note).
+func (u UploadConfig) UploadEnabled() bool { return u.Enabled == nil || *u.Enabled }
 
 // SearchConfig bounds filename search so a request cannot walk an unbounded
 // tree (tech §11.8, ADR 0015).
@@ -115,6 +148,16 @@ const (
 	DefaultSearchMaxResults = 200
 	DefaultSearchMaxScanned = 50000
 	DefaultSearchTimeoutSec = 10
+)
+
+// Image-drop defaults (ADR 0024). DefaultUploadMaxBytes is chosen from the frame
+// budget, not from taste: 4 MiB of image is 5.33 MiB of base64, which still fits
+// the 8 MiB MaxFilePayload with room for the JSON envelope.
+const (
+	DefaultUploadMaxBytes        int64 = 4 * 1024 * 1024
+	DefaultUploadMaxSessionBytes int64 = 64 * 1024 * 1024
+	DefaultUploadMaxFilesPerDay        = 200
+	DefaultUploadRetentionDays         = 7
 )
 
 type SessionConfig struct {
@@ -181,6 +224,12 @@ type Config struct {
 	// ShellFromDefault reports that runtime.shell was absent and defaulted to
 	// enabled, rather than being written by an operator. Never serialised.
 	ShellFromDefault bool `yaml:"-"`
+
+	// UploadFromDefault reports that filesystem.upload.enabled was absent and
+	// defaulted to enabled, rather than being written by an operator. Surfaced
+	// at startup because a workspace that the platform may now write into is a
+	// fact the node's owner should not learn by accident. Never serialised.
+	UploadFromDefault bool `yaml:"-"`
 
 	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
 	// absent and defaulted to enabled rather than being chosen. Surfaced in the
@@ -338,6 +387,26 @@ func (c *Config) applyFilesystemDefaults() {
 	}
 	if s.TimeoutSeconds == 0 {
 		s.TimeoutSeconds = DefaultSearchTimeoutSec
+	}
+	u := &c.Filesystem.Upload
+	if u.Enabled == nil {
+		// Record that nobody chose this. "The operator asked for it" and "an
+		// upgrade did it" are different facts about a machine whose workspace
+		// can now be written to, and the startup log must be able to tell them
+		// apart (same treatment as SandboxBypassFromDefault).
+		c.UploadFromDefault = true
+	}
+	if u.MaxBytes <= 0 {
+		u.MaxBytes = DefaultUploadMaxBytes
+	}
+	if u.MaxSessionBytes <= 0 {
+		u.MaxSessionBytes = DefaultUploadMaxSessionBytes
+	}
+	if u.MaxFilesPerDay <= 0 {
+		u.MaxFilesPerDay = DefaultUploadMaxFilesPerDay
+	}
+	if u.RetentionDays <= 0 {
+		u.RetentionDays = DefaultUploadRetentionDays
 	}
 }
 

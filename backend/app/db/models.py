@@ -92,6 +92,12 @@ class Node(Base):
     privileged_terminal: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), index=True
     )
+    # True when this machine accepts image drop into a session workspace (ADR 0024).
+    # Report-only for the same reason and indexed for the same reason: "which nodes
+    # will accept a file from a browser" is a fleet-level security question.
+    image_upload: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
 
     # --- Daemon update state (P4-10, ADR 0017) ---
     # Explicit columns rather than keys inside `metadata`: "which nodes failed to

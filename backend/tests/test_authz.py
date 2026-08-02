@@ -105,6 +105,7 @@ def test_capability_projection_matches_the_predicates(role: str, is_owner: bool)
         "can_takeover": authz.may_takeover_session(actor, session),
         "can_terminate": authz.may_terminate_session(actor, session),
         "can_browse_files": authz.may_browse_files(actor, session),
+        "can_upload_files": authz.may_upload_files(actor, session),
         "can_open_shell": authz.may_open_shell(actor, session),
     }
 
@@ -237,6 +238,9 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/sessions/{session_id}/files/tree"): rbac.FILE_BROWSE,
     ("GET", "/api/sessions/{session_id}/files/search"): rbac.FILE_BROWSE,
     ("GET", "/api/sessions/{session_id}/files/content"): rbac.FILE_BROWSE,
+    # The one write route (ADR 0024). A separate action from file.browse on
+    # purpose: all three roles browse, only two may write.
+    ("POST", "/api/sessions/{session_id}/files/images"): rbac.FILE_UPLOAD,
     # Favourites/recents exist to make creating a session faster, so they are gated on
     # `session.create`: a Viewer cannot create one and has nothing to shortcut (ADR 0016).
     ("GET", "/api/workspaces/favorites"): rbac.SESSION_CREATE,

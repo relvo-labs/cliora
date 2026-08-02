@@ -133,6 +133,16 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `FILE_TOO_LARGE` | — | The file is too large to preview | The file exceeds the preview cap (2 MiB by default). | Open it on the node instead. | no | no | daemon |
 | `FILE_BINARY` | — | This file is not text | The content is binary, so there is nothing useful to render. | None. | no | no | daemon |
 
+## Image drop
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `FILE_UPLOAD_TOO_LARGE` | — | The image is larger than 4 MiB | Central refuses the request before reading the whole body, and the daemon refuses it again before writing anything. | Compress or resize the image and try again. | no | no | central |
+| `FILE_UPLOAD_UNSUPPORTED_TYPE` | — | Only PNG, JPEG, GIF and WebP images can be dropped | The content did not match one of the four accepted image signatures. The declared content type is not what decides this. | Convert the file to a supported image format. SVG and PDF are not images here. | no | no | daemon |
+| `FILE_UPLOAD_QUOTA_EXCEEDED` | — | This session has reached its image quota | Either the cumulative byte quota or the per-day file count for this workspace is full. | Delete images you no longer need from .cliora/uploads/ in the file tree; expired ones are removed automatically after 7 days. | no | yes | daemon |
+| `FILE_UPLOAD_FAILED` | — | The node could not store the image | Writing to the workspace failed — no disk space, no permission, or .cliora exists but is not a directory. | Ask an administrator to check the node; `agentd doctor` names the file to fix. | yes | no | daemon |
+| `FILE_UPLOAD_DISABLED` | — | This node does not accept image drop | The node's config sets filesystem.upload.enabled to false. Whether a workspace may be written to is the node's decision, not the platform's. | None from the browser; the node's owner controls this setting. | no | no | daemon |
+
 ## Daemon update
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

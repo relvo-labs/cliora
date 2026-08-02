@@ -244,6 +244,30 @@ export function useTerminalSession(getTicket: TicketProvider) {
     fitSafely();
     terminal.focus();
   }
+  // Type text into the terminal as if the user had typed it — the same
+  // writer-gated path `onData` uses, so no new authority is created. Image drop
+  // uses it to put the stored path on the input line (ADR 0024 §2): the front
+  // end types, Central never injects.
+  //
+  // Returns false when the caller is not the writer, so the UI can say why
+  // instead of appearing to work.
+  function typeText(text: string): boolean {
+    if (!text || socket?.readyState !== WebSocket.OPEN || !isWriter())
+      return false;
+    // This is a public "write to the terminal" function and the next caller will
+    // not know where its string came from. A control character here could move
+    // the cursor, clear the screen, or submit the line on the user's behalf.
+    // Spelled out rather than as a regex: a character class of literal
+    // control codes is what `no-control-regex` exists to catch, and the
+    // intent reads better here than an exception to that rule would.
+    for (let i = 0; i < text.length; i += 1) {
+      const code = text.charCodeAt(i);
+      if (code < 0x20 || code === 0x7f) return false;
+    }
+    socket.send(new TextEncoder().encode(text));
+    return true;
+  }
+
   function retry(): void {
     retryIndex = 0;
     window.clearTimeout(retryTimer);
@@ -284,6 +308,7 @@ export function useTerminalSession(getTicket: TicketProvider) {
     fit: applyFit,
     proposeSize,
     focus: () => terminal?.focus(),
+    typeText,
     status: readonly(status),
     role: readonly(role),
     gap: readonly(gap),

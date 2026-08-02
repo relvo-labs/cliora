@@ -31,6 +31,39 @@ describe("PreviewDenied", () => {
     expect(text).toContain("4.0 KB");
   });
 
+  // WF-08: "we cannot decode this encoding" and "this is not text" arrive under
+  // the same wire code but call for different actions, so the pane must not say
+  // the same thing for both. Calling a Big5 source file binary is wrong, and it
+  // was part of what users were reporting.
+  it("says 'not UTF-8' rather than 'binary' for an undecodable text file", () => {
+    const text = render(
+      {
+        code: "FILE_BINARY",
+        reason: "unsupported_encoding",
+        mime: "text/plain; charset=unknown",
+        size: 2048,
+      },
+      "docs/legacy.txt",
+    ).text();
+    expect(text).toContain("無法以 UTF-8 顯示此檔案");
+    expect(text).toContain("Big5");
+    // And the next step differs: convert it, rather than give up.
+    expect(text).toContain("iconv");
+    expect(text).not.toContain("二進位");
+  });
+
+  it("still says 'binary' when the reason says binary", () => {
+    const text = render({
+      code: "FILE_BINARY",
+      reason: "binary",
+      mime: "application/octet-stream",
+      size: 4096,
+    }).text();
+    expect(text).toContain("不支援預覽");
+    expect(text).toContain("二進位");
+    expect(text).not.toContain("iconv");
+  });
+
   it("explains a sensitive denial by classification only", () => {
     const text = render(
       { code: "FILE_DENIED", reason: "dotenv" },

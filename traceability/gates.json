@@ -605,6 +605,53 @@
       "artifacts": [
         "artifacts/pv/local/node-posture.txt"
       ]
+    },
+    {
+      "id": "GATE-WF-CLASSIFY-CORPUS",
+      "owner": "daemon",
+      "layer": "unit",
+      "command": [
+        "go",
+        "test",
+        "./internal/files/",
+        "-run",
+        "TestClassifyCorpus|TestClassifyLatencyBudget",
+        "-count",
+        "1"
+      ],
+      "working_directory": "daemon",
+      "timeout_seconds": 300,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp"
+      ]
+    },
+    {
+      "id": "GATE-WF-NO-NAMING-CHANNEL",
+      "owner": "architecture",
+      "layer": "contract",
+      "command": [
+        "scripts/wf/check-no-naming-channel.sh"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 120,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "security"
+      ]
     }
   ]
 }

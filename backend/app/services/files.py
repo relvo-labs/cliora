@@ -11,6 +11,7 @@ policy.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import os
 import posixpath
@@ -42,6 +43,33 @@ _SENSITIVE_REASONS = frozenset({"dotenv", "private_key", "keystore", "sensitive_
 # Daemon error codes that must collapse to a single safe outward "cannot access"
 # so the browser cannot probe for the existence of paths outside its workspace.
 _NOT_ACCESSIBLE = frozenset({"WORKSPACE_OUTSIDE_ALLOWED_ROOT", "WORKSPACE_NOT_FOUND"})
+
+# Image-drop refusals the daemon can return, with the outward status each maps
+# to. They keep their own code rather than collapsing into INTERNAL_ERROR
+# because every one of them has a different next step for the user, and none of
+# them reveals anything about the node's filesystem (ADR 0024).
+_UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
+    "FILE_UPLOAD_TOO_LARGE": (
+        "The image is larger than 4 MiB",
+        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+    ),
+    "FILE_UPLOAD_UNSUPPORTED_TYPE": (
+        "Only PNG, JPEG, GIF and WebP images can be dropped",
+        status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    ),
+    "FILE_UPLOAD_QUOTA_EXCEEDED": (
+        "This session has reached its image quota",
+        status.HTTP_429_TOO_MANY_REQUESTS,
+    ),
+    "FILE_UPLOAD_FAILED": (
+        "The node could not store the image",
+        status.HTTP_502_BAD_GATEWAY,
+    ),
+    "FILE_UPLOAD_DISABLED": (
+        "This node does not accept image drop",
+        status.HTTP_403_FORBIDDEN,
+    ),
+}
 
 
 def _reject_rel_path(rel: str, *, allow_empty: bool = False) -> str:
@@ -267,6 +295,80 @@ class FileRelayService:
             await self._maybe_audit_denied(actor_id, s.node_id, session_id, rel, payload)
             return payload
 
+    async def upload_image(
+        self, *, actor: User, session_id: uuid.UUID, data: bytes
+    ) -> dict[str, Any]:
+        """Relay one image to the node and return the path it was stored at.
+
+        Central holds the bytes only for the duration of this call: they are
+        base64'd, forwarded, and dropped. Nothing is written to disk, to the
+        database, to a log line or to a metrics label (ADR 0024 sec 5). A byte
+        stored here would raise three questions — how long, who can read it, is
+        it in backups — and not storing it answers all three.
+        """
+        actor_id = actor.id
+        async with self._observe("upload", session_id=session_id, actor_id=actor_id) as detail:
+            s = await self._resolve_for_upload(session_id, actor)
+            detail["node_id"] = str(s.node_id)
+            detail["bytes"] = len(data)
+            message = await self._registry.request(
+                s.node_id,
+                "filesystem.upload",
+                {
+                    "session_id": str(session_id),
+                    "data": base64.b64encode(data).decode("ascii"),
+                },
+                timeout_seconds=self._settings.file_upload_timeout_seconds,
+            )
+            payload = self._expect(message, "filesystem.uploaded")
+            detail["mime"] = payload.get("mime")
+            await self._audit_upload(actor_id, s.node_id, session_id, payload)
+            return payload
+
+    async def _resolve_for_upload(self, session_id: uuid.UUID, viewer: User) -> TerminalSession:
+        """Same resolution as `_resolve`, gated on `file.upload` instead of
+        `file.browse`. Kept separate rather than parameterised so that neither
+        check can be reached by passing the wrong argument."""
+        s = await self._repo.get(session_id)
+        if s is None:
+            raise ApiError("SESSION_NOT_FOUND", "Session not found", status.HTTP_404_NOT_FOUND)
+        authz.authorize_file_upload(viewer, s)
+        if not self._registry.is_connected(s.node_id):
+            raise ApiError("NODE_OFFLINE", "Node is not connected", status.HTTP_409_CONFLICT)
+        return s
+
+    async def _audit_upload(
+        self,
+        actor_id: uuid.UUID,
+        node_id: uuid.UUID,
+        session_id: uuid.UUID,
+        payload: dict[str, Any],
+    ) -> None:
+        """Record a successful drop (ADR 0024 W3). The relative path is included
+        because the platform chose it; the content and the client's original
+        filename are not recorded anywhere."""
+        try:
+            await self._audit.record(
+                audit.FILE_UPLOAD,
+                user_id=actor_id,
+                node_id=node_id,
+                session_id=session_id,
+                metadata={
+                    "path": payload.get("path"),
+                    "mime": payload.get("mime"),
+                    "bytes": payload.get("size"),
+                },
+            )
+        except Exception:
+            # Same trade as the sensitive-read audit: the write already happened
+            # on the node, so failing the user's request would not un-write it.
+            # The gap is counted and logged rather than hidden.
+            metrics.increment(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="upload")
+            log.warning(
+                "audit write failed",
+                extra={"action": audit.FILE_UPLOAD, "session_id": str(session_id)},
+            )
+
     async def _maybe_audit_denied(
         self,
         actor_id: uuid.UUID,
@@ -340,6 +442,14 @@ class FileRelayService:
             return ApiError("FILE_INVALID_PATH", "Invalid path", status.HTTP_400_BAD_REQUEST)
         if code == "SESSION_NOT_FOUND":
             return ApiError("SESSION_NOT_FOUND", "Session not found", status.HTTP_404_NOT_FOUND)
+        # Image-drop refusals pass through with their own code. Collapsing them
+        # into INTERNAL_ERROR would tell a user whose quota is full that the
+        # server broke — and each of these has a different, actionable next step
+        # (ADR 0024; the codes are in the wire enum, so they really can arrive).
+        upload = _UPLOAD_ERROR_STATUS.get(code)
+        if upload is not None:
+            message, http_status = upload
+            return ApiError(code, message, http_status)
         return ApiError(
             "INTERNAL_ERROR",
             "Node could not complete the request",

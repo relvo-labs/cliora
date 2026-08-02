@@ -23,6 +23,9 @@ const (
 	FilesystemReadBytes          = "filesystem_read_bytes"
 	FilesystemDeniedTotal        = "filesystem_denied_total"
 	FilesystemRequestTotal       = "filesystem_request_total"
+	// Image drop (P13, ADR 0024). Bytes written, not requests: the quota that
+	// matters is cumulative size, so that is what the series has to show.
+	FilesystemUploadBytes = "filesystem_upload_bytes"
 )
 
 // tech §18.2, the daemon's own series (P4-09).
@@ -60,6 +63,10 @@ var allowedLabels = map[string]bool{
 	// values, neither identifying, and it answers a question that gets asked after the
 	// fact: were the sessions on this node running without a sandbox?
 	"sandbox": true,
+	// "mime" is one of exactly four accepted image types on filesystem_upload_bytes
+	// (ADR 0024 §2.1). The set is closed by the wire contract, so this cannot grow
+	// with user input — which is the only reason a content-derived label is safe here.
+	"mime": true,
 }
 
 // LabelNotAllowed names a rejected label key. Recording panics rather than silently

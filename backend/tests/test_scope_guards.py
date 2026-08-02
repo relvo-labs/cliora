@@ -82,23 +82,71 @@ def test_scope_005_no_automatic_task_dispatch() -> None:
 
 
 def test_scope_006_the_console_is_not_an_ide() -> None:
-    """An IDE needs somewhere to save. No route mutates a file and no filesystem
-    message does anything but list, read or search."""
+    """An IDE needs somewhere to save *what you are looking at*. Image drop
+    (ADR 0024) added one write, but it cannot save a file you opened: it writes a
+    new image to a name the daemon invents, and there is still no message that
+    edits, renames or deletes anything.
+    """
     filesystem = {name for name in _message_names() if name.startswith("filesystem-")}
-    assert filesystem == {"filesystem-list", "filesystem-read", "filesystem-search"}
+    assert filesystem == {
+        "filesystem-list",
+        "filesystem-read",
+        "filesystem-search",
+        "filesystem-upload",
+        "filesystem-uploaded",
+    }
 
 
-def test_scope_007_no_file_write_or_edit_surface() -> None:
+def test_scope_007_the_only_write_path_is_image_drop() -> None:
+    """Narrowed, not withdrawn (ADR 0024, the same treatment SCOPE-011 got).
+
+    The workspace is no longer read-only, so this guard no longer asserts that
+    nothing writes. It asserts the shape of what does: exactly one mutating
+    route, gated on an action Viewer does not hold, and still no edit/delete/
+    rename surface anywhere.
+    """
     file_routes = {path for path in _route_paths() if "/files" in path}
     mutating = {
         (method, path)
         for method, path in mounted_routes()
         if "/files" in path and method not in {"GET"}
     }
-    assert file_routes, "the read-only file surface disappeared; this guard is stale"
-    assert mutating == set()
+    assert file_routes, "the file surface disappeared; this guard is stale"
+    assert mutating == {("POST", "/api/sessions/{session_id}/files/images")}, (
+        "a second write path appeared. ADR 0024 permits exactly one, and any "
+        "further path needs its own ADR against W1-W4."
+    )
     assert rbac.FILE_BROWSE in rbac.ALL_ACTIONS
-    assert _no_surface_for("file.write", "file.edit", "file.delete") == []
+    assert rbac.FILE_UPLOAD in rbac.ALL_ACTIONS
+    # Viewer stays read-only even though the system as a whole no longer is.
+    assert rbac.FILE_UPLOAD not in rbac.ROLE_ACTIONS[rbac.VIEWER]
+    assert _no_surface_for("file.edit", "file.delete", "file.rename") == []
+
+
+def test_scope_007b_the_upload_request_cannot_name_the_file() -> None:
+    """The single property that makes one write path safe (ADR 0024 §3).
+
+    A `filename` field would reintroduce path traversal, double extensions and
+    overwrite in one move, and it would buy nothing: nobody needs the screenshot
+    to keep its original name. Defended here as well as in the schema because a
+    comment is not a defence — this is the same reasoning that put the argv
+    guard in place for `session.start`.
+    """
+    upload = json.loads((MESSAGE_SCHEMAS / "filesystem-upload.schema.json").read_text())
+    assert set(upload["properties"]) == {"session_id", "data"}
+    assert upload["additionalProperties"] is False
+    forbidden = {
+        "filename",
+        "name",
+        "path",
+        "dir",
+        "directory",
+        "extension",
+        "ext",
+        "mime",
+        "overwrite",
+    }
+    assert forbidden.isdisjoint(upload["properties"])
 
 
 def test_scope_008_no_git_surface() -> None:
