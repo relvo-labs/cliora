@@ -1,6 +1,7 @@
 # Security review — P15 general file upload (ADR 0026)
 
 - Reviewed: 2026-08-03
+- Release: `agentd` 0.7.0, contract v1.9.0, migration `0020`
 - Scope: the second workspace write path — `filesystem.store`,
   `POST /api/sessions/{id}/files/upload`, `files.Store`, the upload policy, the
   file tree's drop target. Contract v1.9.0, migration `0020`.

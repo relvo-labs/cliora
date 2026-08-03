@@ -1,4 +1,4 @@
-# Release note — general file upload
+# Release note — agentd 0.7.0: general file upload
 
 Ships in `agentd` 0.7.0, contract v1.9.0, migration `0020`. ADR 0026, `plan/15`.
 
