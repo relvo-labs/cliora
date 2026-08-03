@@ -398,7 +398,12 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		"privileged_terminal": m.cfg.Node.PrivilegedTerminal,
 		// Likewise report-only: whether this machine's workspaces may be written
 		// to is decided by its config file, never by Central (ADR 0024 W4).
-		"image_upload":    m.files.UploadEnabled(),
+		"image_upload": m.files.UploadEnabled(),
+		// Two switches, not one: "may the platform put screenshots in .cliora/"
+		// and "may it put arbitrary files anywhere in my workspace" are
+		// different-sized grants, and a node owner is entitled to answer them
+		// differently (ADR 0026 §9).
+		"file_upload":     m.files.FileUploadEnabled(),
 		"name":            m.cfg.Node.Name,
 		"hostname":        hostname,
 		"os":              m.info.OS,
@@ -507,6 +512,8 @@ func (m *Manager) dispatch(
 			m.handleFsSearch(ctx, env, data, send)
 		case "filesystem.upload":
 			m.handleFsUpload(env, data, send)
+		case "filesystem.store":
+			m.handleFsStore(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":

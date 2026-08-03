@@ -21,6 +21,13 @@ type Service struct {
 	maxPreview   int64
 	entryLimit   int
 	now          func() time.Time
+	// storeQuota is the only mutable state on the service. General file upload
+	// cannot recount its usage from the filesystem the way image drop can,
+	// because its files land wherever the user chose (ADR 0026 §5).
+	storeQuota *storeQuota
+	// freeBytes is a seam so the free-space refusal can be tested without
+	// filling a disk. Production uses statfsFreeBytes.
+	freeBytes func(path string) (int64, error)
 }
 
 // NewService builds the file service from daemon config.
@@ -40,6 +47,8 @@ func NewService(cfg *config.Config, now func() time.Time) *Service {
 		maxPreview:   cfg.Filesystem.MaxPreviewSize,
 		entryLimit:   DefaultEntryLimit,
 		now:          now,
+		storeQuota:   newStoreQuota(),
+		freeBytes:    statfsFreeBytes,
 	}
 }
 
@@ -80,6 +89,16 @@ type ReadResult struct {
 	Code   string `json:"-"`
 	Reason string `json:"-"`
 	Mime   string `json:"-"`
+}
+
+// StoreResultPayload is the response payload for filesystem.store. Unlike
+// filesystem.uploaded it carries no mime: this path does not judge content type
+// (ADR 0026 §1.3), and a field nobody can fill honestly is a field that will one
+// day be filled dishonestly.
+type StoreResultPayload struct {
+	Path       string    `json:"path"`
+	Size       int64     `json:"size"`
+	ModifiedAt time.Time `json:"modified_at"`
 }
 
 // SearchResult is the response payload for filesystem.search.

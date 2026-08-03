@@ -19,6 +19,11 @@ var (
 	ErrNotFound  = errors.New("WORKSPACE_NOT_FOUND")
 	ErrNotDir    = errors.New("WORKSPACE_NOT_DIRECTORY")
 	ErrPermision = errors.New("WORKSPACE_PERMISSION_DENIED")
+	// ErrExists is its own sentinel because on the file-upload path "something is
+	// already called that" is a normal, expected outcome the user has to be told
+	// about (ADR 0026 §3) — not a malformed request. Folding it into ErrInvalid
+	// would surface a collision as "invalid path", which explains nothing.
+	ErrExists = errors.New("WORKSPACE_EXISTS")
 )
 
 // evalSymlinks is a seam so tests can exercise the containment logic without a

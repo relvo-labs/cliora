@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -36,11 +37,16 @@ var LargeFrameTypes = map[string]bool{
 	// response, filesystem.uploaded, is a path and three scalars and stays on
 	// the tight bound - only the direction carrying an image needs the room.
 	"filesystem.upload": true,
+	// filesystem.store is the second, and the bound itself does NOT move for it
+	// (ADR 0026): general file upload shares image drop's 4 MiB per-file ceiling,
+	// which is 5.33 MiB of base64 and still inside the 8 MiB already granted
+	// above. Its response, filesystem.stored, is a path and two scalars.
+	"filesystem.store": true,
 }
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -138,6 +144,22 @@ type fsUploadFields struct {
 	Data      string    `json:"data"`
 }
 
+// fsStoreFields is the other upload path, and the contrast with fsUploadFields
+// above is the design (ADR 0026 sec 2). Here the sender DOES name the
+// destination - it has to, because a file's name is what makes it useful - so
+// the protection moves from "there is no field" to "the field cannot hold a
+// path": Filename is one segment, checked by validStoreFilename, and Directory
+// is checked by the same validRelPath every read request uses.
+//
+// Still absent, and still enforced by DisallowUnknownFields: overwrite, mode,
+// mime, precondition, revision. Nothing here can ask to replace something.
+type fsStoreFields struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Directory string    `json:"directory"`
+	Filename  string    `json:"filename"`
+	Data      string    `json:"data"`
+}
+
 type fsSearchFields struct {
 	SessionID  uuid.UUID `json:"session_id"`
 	Keyword    string    `json:"keyword"`
@@ -209,6 +231,10 @@ type registerFields struct {
 	// the console needs it so it can hide the entry point instead of offering a
 	// button that always fails.
 	ImageUpload *bool `json:"image_upload,omitempty"`
+	// FileUpload reports that this node accepts general file upload into a session
+	// workspace (contract 1.9.0, ADR 0026 §9). Separate from ImageUpload because
+	// the two grants are different sizes; absent means "no", never "unknown".
+	FileUpload *bool `json:"file_upload,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -344,6 +370,42 @@ func validRelPath(s string) bool {
 // filesystem-upload.schema.json. Checking it before decoding means an
 // over-limit frame is refused without allocating the decoded copy.
 const MaxUploadBase64 = 5592408
+
+// MaxStoreFilenameBytes bounds a stored filename. Bytes, not runes: the wire
+// schema's maxLength counts code points, so an 88-character CJK name is 256
+// bytes and would pass a code-point bound (measured:
+// plan/15/07-open-measurements.md sec 2).
+const MaxStoreFilenameBytes = 255
+
+// validStoreFilename accepts exactly one storable path segment. A separator here
+// is the only way a filename could become a path, and it matters more than it
+// looks: URL encoding lets %2F reach the query parameter as "/", so this check
+// must run after decoding and must not be the only place that runs it.
+func validStoreFilename(name string) bool {
+	if name == "" || len(name) > MaxStoreFilenameBytes || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsRune(name, '/') || strings.ContainsRune(name, 0) {
+		return false
+	}
+	for _, r := range name {
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return utf8.ValidString(name)
+}
+
+// validStoreData is validUploadData with one difference: an empty string is
+// accepted, because an empty file is a legitimate thing to upload (a placeholder,
+// an empty __init__.py). All three consumers decode "" to zero bytes cleanly
+// (measured: plan/15/07-open-measurements.md sec 4).
+func validStoreData(data string) bool {
+	if data == "" {
+		return true
+	}
+	return validUploadData(data)
+}
 
 // validUploadData accepts only canonical standard-alphabet base64. The
 // permissive decoders tolerate newlines and the URL-safe alphabet; allowing
@@ -596,6 +658,13 @@ func ValidateControl(raw []byte) error {
 		var p fsUploadFields
 		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
 			!validUploadData(p.Data) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.store":
+		var p fsStoreFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!validRelPath(p.Directory) || !validStoreFilename(p.Filename) ||
+			!validStoreData(p.Data) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "tunnel.open":

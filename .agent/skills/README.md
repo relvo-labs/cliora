@@ -1,6 +1,6 @@
 # Skills Index
 
-> Auto-generated skills index. Last updated: 2026-06-22.
+> Auto-generated skills index. Last updated: 2026-08-03.
 
 ## Category: backend
 

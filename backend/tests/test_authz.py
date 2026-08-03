@@ -241,6 +241,11 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # The one write route (ADR 0024). A separate action from file.browse on
     # purpose: all three roles browse, only two may write.
     ("POST", "/api/sessions/{session_id}/files/images"): rbac.FILE_UPLOAD,
+    # General file upload reuses file.upload rather than adding an action
+    # (ADR 0026 sec 6): the verb is the same, and with three fixed roles nobody can
+    # express "may upload images but not files". The cost is that the action's
+    # meaning widens, which is a release-note obligation rather than a matrix one.
+    ("POST", "/api/sessions/{session_id}/files/upload"): rbac.FILE_UPLOAD,
     # Favourites/recents exist to make creating a session faster, so they are gated on
     # `session.create`: a Viewer cannot create one and has nothing to shortcut (ADR 0016).
     ("GET", "/api/workspaces/favorites"): rbac.SESSION_CREATE,

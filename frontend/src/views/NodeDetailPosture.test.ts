@@ -45,6 +45,7 @@ function nodeDetail(overrides: Partial<NodeDetail> = {}): NodeDetail {
     run_user: "neil",
     privileged_terminal: false,
     image_upload: false,
+    file_upload: false,
     is_enabled: true,
     registered_at: "2026-07-01T00:00:00Z",
     runtimes: [runtime()],

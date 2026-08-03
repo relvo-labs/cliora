@@ -172,3 +172,59 @@ describe("ApiClient", () => {
     expect(store.current()).toEqual({ access: null, refresh: null });
   });
 });
+
+// --- General file upload (FU-06, ADR 0026) --------------------------------
+
+describe("uploadFile", () => {
+  it("percent-encodes the destination, and does not send a guessed type", async () => {
+    // `+` is the failure that would be invisible: a query-string reader decodes a
+    // bare `+` as a space, so `a+b.txt` would silently become `a b.txt`
+    // (measured: plan/15/07-open-measurements.md §2). encodeURIComponent sends %2B.
+    const sent: { url?: string; headers: Record<string, string> } = {
+      headers: {},
+    };
+    class FakeXHR {
+      upload = { onprogress: null as unknown };
+      status = 201;
+      statusText = "Created";
+      responseText = JSON.stringify({
+        path: "docs/a+b.txt",
+        size: 3,
+        modified_at: "2026-08-03T00:00:00Z",
+      });
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      onabort: (() => void) | null = null;
+      open(_method: string, url: string) {
+        sent.url = url;
+      }
+      setRequestHeader(key: string, value: string) {
+        sent.headers[key] = value;
+      }
+      send() {
+        this.onload?.();
+      }
+      abort() {}
+    }
+    const original = globalThis.XMLHttpRequest;
+    (globalThis as { XMLHttpRequest: unknown }).XMLHttpRequest =
+      FakeXHR as unknown as typeof XMLHttpRequest;
+    try {
+      const client = new ApiClient(makeStore("tok", "ref"));
+      const result = await client.uploadFile(
+        "s1",
+        "docs",
+        "a+b.txt",
+        new Blob(["abc"]),
+      );
+      expect(result.path).toBe("docs/a+b.txt");
+      expect(sent.url).toContain("directory=docs");
+      expect(sent.url).toContain("filename=a%2Bb.txt");
+      // Not the blob's own type: this path does not judge content type at all, and
+      // sending a guess would invite someone to trust it.
+      expect(sent.headers["Content-Type"]).toBe("application/octet-stream");
+    } finally {
+      (globalThis as { XMLHttpRequest: unknown }).XMLHttpRequest = original;
+    }
+  });
+});

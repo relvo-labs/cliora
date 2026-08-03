@@ -95,6 +95,18 @@
 | FR-FILE-009 | [FR-FILE-009.AC-07](../../research/prd.md#fr-file-009-ac-07) | 每次上傳留下稽核紀錄（使用者、Session、節點、MIME、位元組數、相對路徑）。 | plan:plan/13/04-contract-central-and-rbac.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_upload_api.py |
 | FR-FILE-009 | [FR-FILE-009.AC-08](../../research/prd.md#fr-file-009-ac-08) | 節點可停用此功能並回報；停用時前端不顯示投放入口。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/config/config.go | gotest:daemon/internal/config/config_test.go |
 | FR-FILE-009 | [FR-FILE-009.AC-09](../../research/prd.md#fr-file-009-ac-09) | 逾期（7 天）的上傳檔案由 Daemon 清除。 | plan:plan/13/03-daemon-image-drop.md<br>adr:docs/adr/0024-workspace-write-posture.md | code:daemon/internal/files/upload.go | gotest:daemon/internal/files/upload_test.go |
+| FR-FILE-010 | [FR-FILE-010.AC-01](../../research/prd.md#fr-file-010-ac-01) | 持有 file.upload 的使用者可將檔案上傳至 Session 工作區內指定的目錄。 | plan:plan/15/03-contract-central-and-rbac.md<br>adr:docs/adr/0026-general-file-upload.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_store_api.py |
+| FR-FILE-010 | [FR-FILE-010.AC-02](../../research/prd.md#fr-file-010-ac-02) | 支援拖放至檔案樹的目錄列與工具列挑檔兩個入口，兩者行為一致。 | plan:plan/15/04-frontend-drop-target.md<br>adr:docs/adr/0026-general-file-upload.md | code:frontend/src/composables/useFileUpload.ts | vitest:frontend/src/composables/useFileUpload.test.ts |
+| FR-FILE-010 | [FR-FILE-010.AC-03](../../research/prd.md#fr-file-010-ac-03) | 檔名沿用使用者提供的名稱；名稱不得含路徑分隔符號或控制字元。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store_policy.go | fixture:contracts/v1/fixtures/invalid/filesystem-store-filename-with-slash.json |
+| FR-FILE-010 | [FR-FILE-010.AC-04](../../research/prd.md#fr-file-010-ac-04) | 目的地必須是工作區內既有的目錄；不得建立目錄。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store.go | gotest:daemon/internal/files/store_test.go |
+| FR-FILE-010 | [FR-FILE-010.AC-05](../../research/prd.md#fr-file-010-ac-05) | 同名項目已存在時拒絕，且不得改動既有檔案。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store.go | gotest:daemon/internal/files/store_test.go<br>gate:GATE-FU-NO-OVERWRITE |
+| FR-FILE-010 | [FR-FILE-010.AC-06](../../research/prd.md#fr-file-010-ac-06) | 敏感檔案規則（FR-FILE-005）適用於上傳的目的地與檔名。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store_policy.go | gate:GATE-FU-WRITE-POLICY |
+| FR-FILE-010 | [FR-FILE-010.AC-07](../../research/prd.md#fr-file-010-ac-07) | .git/（含 worktree 中作為檔案存在的 .git）與平台自有目錄不得作為目的地。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store_policy.go | gotest:daemon/internal/files/store_policy_test.go |
+| FR-FILE-010 | [FR-FILE-010.AC-08](../../research/prd.md#fr-file-010-ac-08) | 落地檔案權限為 0644，不得可執行。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store.go | gate:GATE-FU-NO-OVERWRITE |
+| FR-FILE-010 | [FR-FILE-010.AC-09](../../research/prd.md#fr-file-010-ac-09) | 單檔、每 Session 累計、每日檔數與節點可用空間四項上限，逾越時明確拒絕且不落地。 | plan:plan/15/02-daemon-store-path.md<br>adr:docs/adr/0026-general-file-upload.md | code:daemon/internal/files/store.go | gotest:daemon/internal/files/store_quota_test.go |
+| FR-FILE-010 | [FR-FILE-010.AC-10](../../research/prd.md#fr-file-010-ac-10) | 每次上傳留下稽核紀錄（使用者、Session、節點、相對路徑、位元組數），不記內容。 | plan:plan/15/03-contract-central-and-rbac.md<br>adr:docs/adr/0026-general-file-upload.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_store_api.py |
+| FR-FILE-010 | [FR-FILE-010.AC-11](../../research/prd.md#fr-file-010-ac-11) | 節點可停用此功能並回報；停用時前端不顯示上傳入口。 | plan:plan/15/03-contract-central-and-rbac.md<br>adr:docs/adr/0026-general-file-upload.md | code:backend/app/db/migrations/versions/0020_node_file_upload.py | vitest:frontend/src/views/SessionWorkspaceView.test.ts |
+| FR-FILE-010 | [FR-FILE-010.AC-12](../../research/prd.md#fr-file-010-ac-12) | 不支援資料夾上傳，且必須明確拒絕而非部分處理。 | plan:plan/15/04-frontend-drop-target.md<br>adr:docs/adr/0026-general-file-upload.md | code:frontend/src/composables/useFileUpload.ts | vitest:frontend/src/components/file/FileTree.test.ts |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-01](../../research/prd.md#fr-install-001-ac-01) | 管理員可建立一次性或限時 Token。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | pytest:backend/tests/db/test_enrollment_api.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_admin_creates_token_once_and_lists_without_plaintext<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_revoked_token_cannot_register<br>pytest:backend/tests/db/test_node_registration.py::test_concurrent_consume_respects_max_uses |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-02](../../research/prd.md#fr-install-001-ac-02) | Token 值 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-03](../../research/prd.md#fr-install-001-ac-03) | 建立者 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
@@ -471,6 +483,9 @@
 - `requirement:FR-TERM-004.AC-03` ← `FR-TERM-004.AC-05` (supersedes)
 - `requirement:FR-WORKSPACE-002` ← `MVP-AC-08.AC-01` (refined_by)
 - `requirement:FR-WORKSPACE-003` ← `MVP-AC-09.AC-01` (refined_by)
+- `gate:GATE-FU-NO-OVERWRITE` ← `FR-FILE-010.AC-05` (guards_scope)
+- `gate:GATE-FU-NO-OVERWRITE` ← `FR-FILE-010.AC-08` (verified_by)
+- `gate:GATE-FU-WRITE-POLICY` ← `FR-FILE-010.AC-06` (verified_by)
 - `gate:GATE-PV-ARGV-CHANNEL` ← `FR-RUNTIME-003.AC-02` (guards_scope)
 - `gate:GATE-PV-NODE-POSTURE` ← `FR-TERM-004.AC-06` (measured_by)
 - `gate:GATE-RAILWAY-CONFIG-TESTS` ← `TECH-SEC-12.AC-01` (verified_by)
@@ -490,9 +505,11 @@
 - `requirement:SCOPE-011.AC-01` ← `FR-SHELL-001.AC-03` (supersedes)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-009.AC-01` (implemented_by)
+- `code:backend/app/api/http/files.py` ← `FR-FILE-010.AC-01` (implemented_by)
 - `code:backend/app/api/http/integrations.py` ← `FR-TUNNEL-004.AC-01` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-001.AC-02` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-002.AC-04` (implemented_by)
+- `code:backend/app/db/migrations/versions/0020_node_file_upload.py` ← `FR-FILE-010.AC-11` (implemented_by)
 - `code:backend/app/security/secret_box.py` ← `FR-TUNNEL-004.AC-03` (implemented_by)
 - `code:backend/app/security/secret_box.py` ← `FR-TUNNEL-004.AC-04` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `SEC-003.AC-01` (implemented_by)
@@ -541,6 +558,7 @@
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-05` (implemented_by)
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-06` (implemented_by)
 - `code:backend/app/services/files.py` ← `FR-FILE-009.AC-07` (implemented_by)
+- `code:backend/app/services/files.py` ← `FR-FILE-010.AC-10` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-02` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-06` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-001.AC-01` (implemented_by)
@@ -720,6 +738,8 @@
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-004.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-006.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_viewer_can_browse` ← `FR-AUTH-002.AC-11` (verified_by)
+- `pytest:backend/tests/db/test_files_store_api.py` ← `FR-FILE-010.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_files_store_api.py` ← `FR-FILE-010.AC-10` (verified_by)
 - `pytest:backend/tests/db/test_files_upload_api.py` ← `FR-FILE-009.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_files_upload_api.py` ← `FR-FILE-009.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_node_api.py` ← `FR-NODE-003.AC-01` (verified_by)
@@ -912,6 +932,7 @@
 - `pytest:backend/tests/test_tunnel_policy.py::test_the_generated_password_never_contains_the_providers_separator` ← `FR-TUNNEL-002.AC-02` (verified_by)
 - `pytest:backend/tests/test_tunnel_policy.py::test_the_nodes_veto_survives_everything_the_platform_says` ← `FR-TUNNEL-001.AC-01` (verified_by)
 - `pytest:backend/tests/test_tunnel_policy.py::test_three_port_lists_intersect_instead_of_the_last_one_winning` ← `FR-TUNNEL-004.AC-05` (verified_by)
+- `fixture:contracts/v1/fixtures/invalid/filesystem-store-filename-with-slash.json` ← `FR-FILE-010.AC-03` (verified_by)
 - `fixture:contracts/v1/fixtures/invalid/filesystem-upload-with-filename.json` ← `FR-FILE-009.AC-03` (verified_by)
 - `code:contracts/v1/schemas/messages/session-start.schema.json` ← `FR-SHELL-001.AC-03` (implemented_by)
 - `gotest:daemon/cmd/agentd#TestConfigValidateCommand` ← `FR-INSTALL-004.AC-01` (verified_by)
@@ -1050,6 +1071,17 @@
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-02` (verified_by)
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-03` (verified_by)
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-04` (measured_by)
+- `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-04` (implemented_by)
+- `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-05` (implemented_by)
+- `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-08` (implemented_by)
+- `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-09` (implemented_by)
+- `code:daemon/internal/files/store_policy.go` ← `FR-FILE-010.AC-03` (implemented_by)
+- `code:daemon/internal/files/store_policy.go` ← `FR-FILE-010.AC-06` (implemented_by)
+- `code:daemon/internal/files/store_policy.go` ← `FR-FILE-010.AC-07` (implemented_by)
+- `gotest:daemon/internal/files/store_policy_test.go` ← `FR-FILE-010.AC-07` (verified_by)
+- `gotest:daemon/internal/files/store_quota_test.go` ← `FR-FILE-010.AC-09` (verified_by)
+- `gotest:daemon/internal/files/store_test.go` ← `FR-FILE-010.AC-04` (verified_by)
+- `gotest:daemon/internal/files/store_test.go` ← `FR-FILE-010.AC-05` (verified_by)
 - `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-03` (implemented_by)
 - `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-04` (implemented_by)
 - `code:daemon/internal/files/upload.go` ← `FR-FILE-009.AC-05` (implemented_by)
@@ -1323,7 +1355,20 @@
 - `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-07` (specified_by)
 - `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-08` (specified_by)
 - `adr:docs/adr/0024-workspace-write-posture.md` ← `FR-FILE-009.AC-09` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-01` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-02` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-03` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-04` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-05` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-06` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-07` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-08` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-09` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-10` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-11` (specified_by)
+- `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-12` (specified_by)
 - `manual:docs/runbooks/privileged-node-posture.md` ← `SEC-007.AC-02` (validated_by)
+- `vitest:frontend/src/components/file/FileTree.test.ts` ← `FR-FILE-010.AC-12` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-04` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
@@ -1336,6 +1381,9 @@
 - `vitest:frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on` ← `FR-FILE-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#refresh discards the cached level and refetches it` ← `FR-FILE-006.AC-02` (verified_by)
+- `vitest:frontend/src/composables/useFileUpload.test.ts` ← `FR-FILE-010.AC-02` (verified_by)
+- `code:frontend/src/composables/useFileUpload.ts` ← `FR-FILE-010.AC-02` (implemented_by)
+- `code:frontend/src/composables/useFileUpload.ts` ← `FR-FILE-010.AC-12` (implemented_by)
 - `vitest:frontend/src/composables/useImageDrop.test.ts` ← `FR-FILE-009.AC-02` (verified_by)
 - `code:frontend/src/composables/useImageDrop.ts` ← `FR-FILE-009.AC-02` (implemented_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#copies only a previewable file` ← `FR-FILE-002.AC-05` (verified_by)
@@ -1401,6 +1449,7 @@
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#shows the four third-party statements when the server asks for them` ← `FR-TUNNEL-002.AC-05` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#shows the one-time password in the creation dialog and nowhere else` ← `FR-TUNNEL-002.AC-02` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#states that a local veto cannot be overridden by the platform` ← `FR-TUNNEL-004.AC-05` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `FR-FILE-010.AC-11` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
@@ -1811,6 +1860,18 @@
 - `plan:plan/13/04-contract-central-and-rbac.md` ← `FR-FILE-009.AC-07` (planned_by)
 - `plan:plan/13/05-frontend.md` ← `FR-FILE-009.AC-02` (planned_by)
 - `plan:plan/13/05-frontend.md` ← `FR-FILE-009.AC-06` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-03` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-04` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-05` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-06` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-07` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-08` (planned_by)
+- `plan:plan/15/02-daemon-store-path.md` ← `FR-FILE-010.AC-09` (planned_by)
+- `plan:plan/15/03-contract-central-and-rbac.md` ← `FR-FILE-010.AC-01` (planned_by)
+- `plan:plan/15/03-contract-central-and-rbac.md` ← `FR-FILE-010.AC-10` (planned_by)
+- `plan:plan/15/03-contract-central-and-rbac.md` ← `FR-FILE-010.AC-11` (planned_by)
+- `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-02` (planned_by)
+- `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-12` (planned_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)

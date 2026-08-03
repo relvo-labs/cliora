@@ -25,15 +25,20 @@ const PreviewPane = defineAsyncComponent(
   () => import("../components/file/PreviewPane.vue"),
 );
 import { useAsyncResource } from "../composables/useAsyncResource";
+import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useTerminalSession } from "../composables/useTerminalSession";
 import { api } from "../stores/auth";
+import { useFilesStore } from "../stores/files";
 import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 
 const props = defineProps<{ id: string }>();
 const router = useRouter();
 const sessions = useSessionsStore();
+// Reached directly for one thing only: refreshing the directory an upload landed
+// in. The tree owns its own loading; this is the one event it cannot see.
+const filesStore = useFilesStore();
 const nodes = useNodesStore();
 
 // Capabilities come from the session payload, computed server-side from the role
@@ -313,6 +318,64 @@ const canUploadImages = computed(
 );
 const isWriter = computed(() => terminal.role.value === "writer");
 
+// --- General file upload (FU-06, ADR 0026) --------------------------------
+//
+// Same permission as image drop, different node flag. That pairing is the whole
+// posture model: `can_upload_files` answers "may this user", and the node answers
+// "may this machine" — twice, because accepting a screenshot into .cliora/ and
+// accepting an arbitrary file anywhere in the workspace are different-sized grants
+// (ADR 0026 §9).
+//
+// And unlike image drop there is deliberately no writer condition: that path ends
+// by typing into the terminal, so it needs the write lock. This one only touches
+// the filesystem, so two people can upload at once.
+const canUploadFiles = computed(
+  () =>
+    capabilities.value?.can_upload_files === true &&
+    nodePosture.value?.file_upload === true,
+);
+
+const fileUpload = useFileUpload(
+  (directory, filename, file, onProgress, signal) =>
+    api().uploadFile(props.id, directory, filename, file, {
+      onProgress,
+      signal,
+    }),
+);
+const uploadRefusal = ref("");
+
+async function uploadFiles(files: File[], directory: string): Promise<void> {
+  if (!canUploadFiles.value) return;
+  uploadRefusal.value = "";
+  const outcome = await fileUpload.submit(files, directory);
+  // One refresh per batch, and only for directories that actually gained a file:
+  // three uploads should not make the tree jump three times.
+  for (const dir of outcome.touched) {
+    void filesStore.refreshDir(dir);
+  }
+}
+
+function renameAndRetry(id: string): void {
+  const item = fileUpload.items.value.find((entry) => entry.id === id);
+  if (!item) return;
+  const suggestion = suggestRename(item.name);
+  // A prompt rather than an inline editor: this is the recovery path for a
+  // collision, and the alternative is a form that has to live inside a list row.
+  const next = window.prompt("以新檔名重新上傳：", suggestion);
+  if (!next) return;
+  void fileUpload.retryAs(id, next).then((outcome) => {
+    for (const dir of outcome.touched) void filesStore.refreshDir(dir);
+  });
+}
+
+// The browser's default action for an unhandled file drop is to navigate to the
+// file. Two elements accept drops (the terminal panel for images, the file tree
+// for files); everything else in this view has to swallow them, or a near-miss
+// loses the whole console.
+function swallowStrayDrop(event: DragEvent): void {
+  event.preventDefault();
+}
+
 async function dropImage(file: File): Promise<void> {
   if (!canUploadImages.value) return;
   const storedPath = await imageDrop.submit(file);
@@ -468,7 +531,7 @@ async function confirmTerminate(): Promise<void> {
         顯示最新輸出片段（先前歷史已截斷）。
       </p>
 
-      <div class="grid">
+      <div class="grid" @dragover="swallowStrayDrop" @drop="swallowStrayDrop">
         <div class="center">
           <WorkspaceTabs
             :tabs="tabs"
@@ -622,10 +685,70 @@ async function confirmTerminate(): Promise<void> {
             :session-id="filesSessionId"
             :root-label="workspaceLabel"
             :can-browse="canBrowseFiles"
+            :can-upload="canUploadFiles"
             :disabled-reason="filesDisabledReason"
             @open="openPreview"
             @clear="closePreview"
+            @upload="uploadFiles"
+            @upload-refused="(message: string) => (uploadRefusal = message)"
           />
+
+          <!-- Upload list. Kept until dismissed when anything failed: an error
+               that disappears on its own is an error nobody read. -->
+          <p v-if="uploadRefusal" class="upload-refusal" role="alert">
+            {{ uploadRefusal }}
+          </p>
+          <p
+            v-if="fileUpload.batchRefusal.value"
+            class="upload-refusal"
+            role="alert"
+          >
+            {{ fileUpload.batchRefusal.value }}
+          </p>
+          <ul
+            v-if="fileUpload.items.value.length"
+            class="uploads"
+            aria-label="上傳進度"
+          >
+            <li
+              v-for="item in fileUpload.items.value"
+              :key="item.id"
+              :data-state="item.state"
+            >
+              <span class="up-name" :title="item.name">{{ item.name }}</span>
+              <span class="up-dir">→ {{ item.directory }}/</span>
+              <span v-if="item.state === 'uploading'" class="up-state">
+                {{ Math.round(item.progress * 100) }}%
+              </span>
+              <span v-else-if="item.state === 'queued'" class="up-state">
+                等待中
+              </span>
+              <span v-else-if="item.state === 'done'" class="up-state ok">
+                已上傳
+              </span>
+              <template v-else>
+                <span class="up-state bad">{{ item.errorMessage }}</span>
+                <button
+                  v-if="item.errorCode === 'FILE_EXISTS'"
+                  type="button"
+                  class="link"
+                  @click="renameAndRetry(item.id)"
+                >
+                  改名重試
+                </button>
+              </template>
+            </li>
+          </ul>
+          <p
+            v-if="fileUpload.items.value.some((i) => i.state === 'error')"
+            class="upload-note"
+          >
+            上傳只會新增檔案，不會覆寫也不會刪除；要取代或刪除請在該 Node 上以
+            終端機處理。
+            <button type="button" class="link" @click="fileUpload.clear()">
+              清除清單
+            </button>
+          </p>
         </aside>
       </div>
 
@@ -899,6 +1022,67 @@ async function confirmTerminate(): Promise<void> {
   min-height: 0;
   width: 100%;
 }
+/* Upload list (FU-06). Every row carries text for its state as well as position,
+ * because colour alone is not a state signal (style.md). */
+.uploads {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+}
+.uploads li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-default);
+}
+.uploads li[data-state="error"] {
+  border: 1px solid var(--status-error);
+}
+.up-name {
+  font-family:
+    JetBrains Mono,
+    ui-monospace,
+    monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.up-dir {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.up-state {
+  margin-inline-start: auto;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.up-state.ok {
+  color: var(--status-success, var(--text-secondary));
+}
+.up-state.bad {
+  color: var(--status-error);
+  white-space: normal;
+}
+.upload-refusal {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  color: var(--status-error);
+}
+.upload-note {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .link {
   border: 0;
   background: none;

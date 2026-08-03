@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Response to filesystem.store (ADR 0026). No mime: this path does not judge content type, and a field nobody can fill honestly is a field that will one day be filled dishonestly. size has minimum 0 where filesystem-uploaded has 1 - deliberately, because an empty file is uploadable and a zero-byte image is not.",
+  "type": "object", "additionalProperties": false,
+  "required": ["path", "size", "modified_at"],
+  "properties": {
+    "path": {
+      "$comment": "Workspace-relative, and chosen by the user rather than by the daemon - so unlike filesystem-uploaded.path there is no fixed shape to pin, only the same containment rule every relative path obeys.",
+      "type": "string", "minLength": 1, "maxLength": 4096,
+      "pattern": "^(?![/~])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000-\\u001f]+$"
+    },
+    "size": {"type": "integer", "minimum": 0, "maximum": 4194304},
+    "modified_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,6})?Z$"}
+  }
+}

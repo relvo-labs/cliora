@@ -533,8 +533,12 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "This session has reached its image quota",
             "Either the cumulative byte quota or the per-day file count for this "
             "workspace is full.",
-            "Delete images you no longer need from .cliora/uploads/ in the file tree; "
-            "expired ones are removed automatically after 7 days.",
+            # This used to say "delete them from the file tree", which has never been
+            # possible — there is no delete affordance, and ADR 0026 deliberately did
+            # not add one. Pointing at the terminal is the only honest advice.
+            "Remove images you no longer need from .cliora/uploads/ on the node "
+            "(a terminal session is the way to do that); expired ones are removed "
+            "automatically after 7 days.",
             audited=True,
             origin=DAEMON,
         ),
@@ -550,6 +554,42 @@ CATALOG: dict[str, ErrorEntry] = dict(
             # daemon names each file itself, so nothing is overwritten.
             retryable=True,
             origin=DAEMON,
+        ),
+        # --- General file upload (P15, ADR 0026) ---
+        _entry(
+            "FILE_EXISTS",
+            None,
+            "A file or directory with that name already exists",
+            "Upload never replaces anything: the node creates the file with O_EXCL, "
+            "so a name that is already taken is refused and not one existing byte is "
+            "touched. That property is why this path needs no version token and has "
+            "no undo.",
+            "Upload it under a different name, or replace the file from a terminal "
+            "session if replacing is what you meant.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_UPLOAD_NO_SPACE",
+            None,
+            "The node does not have enough free disk space",
+            "The workspace filesystem is below the node's configured free-space floor, "
+            "or the file would not leave twice its own size free. This check is what "
+            "stands in for a retention period on this path: uploaded files belong to "
+            "the user, so nothing expires them.",
+            "Free space on the node, or ask an administrator to; `agentd doctor` "
+            "reports the figure it is comparing against.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_INVALID_NAME",
+            None,
+            "That filename cannot be used",
+            "A filename must be a single path segment: no separator, no control "
+            "characters, at most 255 bytes. Checked after URL decoding, because "
+            "percent-encoding can otherwise smuggle a separator through.",
+            "Rename the file and try again.",
+            origin=CENTRAL,
         ),
         _entry(
             "FILE_UPLOAD_DISABLED",

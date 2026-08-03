@@ -652,6 +652,54 @@
         "mvp",
         "security"
       ]
+    },
+    {
+      "id": "GATE-FU-NO-OVERWRITE",
+      "owner": "architecture",
+      "layer": "static",
+      "command": [
+        "scripts/fu/check-no-overwrite.sh"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "security"
+      ]
+    },
+    {
+      "id": "GATE-FU-WRITE-POLICY",
+      "owner": "daemon",
+      "layer": "unit",
+      "command": [
+        "go",
+        "test",
+        "./internal/files/",
+        "-run",
+        "TestStorePolicy",
+        "-count",
+        "1"
+      ],
+      "working_directory": "daemon",
+      "timeout_seconds": 300,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "security"
+      ]
     }
   ]
 }
