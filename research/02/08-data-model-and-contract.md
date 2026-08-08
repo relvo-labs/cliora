@@ -141,6 +141,9 @@ UNIQUE (project_id, name)
 
 ## 3. 既有表的改動（全部是新增 nullable 欄位）
 
+若採納 **D31**（mockup 走 Pinggy 預覽），`node_tunnels` 另加一個 nullable `run_id`——讓預覽 tunnel 能隨 run 一起關閉，並在 Run 詳情頁顯示。**沒有其他欄位需要動**：`protection`／`basic_auth_user`／`basic_auth_hash`／`allowed_ips` 三種保護策略的欄位早已存在（ADR 0022）。
+
+
 ```sql
 -- 0021 (V2.0)
 ALTER TABLE terminal_sessions ADD COLUMN project_id UUID NULL
@@ -235,7 +238,7 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | `CLIORA_ARTIFACT_MAX_BYTES` | `10485760` | 單件卡片產物上限 |
 | `CLIORA_ARTIFACT_PROJECT_QUOTA_MB` | `1024` | 專案產物總配額 |
 | `CLIORA_RUN_WAITING_TIMEOUT_H` | `24` | `waiting_for_input` 逾時 |
-| `CLIORA_SECRET_MASTER_KEY` | — | **機密主金鑰（已裁決：環境變數）**。缺少／過短／等於 dev 預設值 → 拒絕啟動並指名 |
+| `CLIORA_SECRET_MASTER_KEY` | — | **機密主金鑰（已裁決：環境變數）**。缺少／過短／等於 dev 預設值 → 拒絕啟動並指名。**與既有的 `CLIORA_SECRET_ENCRYPTION_KEY`（ADR 0022 的 tunnel 憑證）同一種模式但獨立**——兩者輪替時機不同，共用會互相綁住 |
 
 daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 config 檔慣例。
 

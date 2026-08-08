@@ -631,7 +631,11 @@ fetch 以外的任何遠端寫入、merge、rebase 到共用分支、release、t
 
 ### 主金鑰放環境變數：買到什麼、付出什麼
 
-買到的：與既有做法一致（`.env` 裡本來就有 JWT secret 與 token pepper，且啟動時檢查）、沒有新的雲端依賴、離線與自架部署都能用、實作最小。
+買到的：**與本 repo 的既有做法完全一致**——不只是 JWT secret 與 token pepper，ADR 0022 的 tunnel 供應商憑證就是用 `CLIORA_SECRET_ENCRYPTION_KEY`（環境變數、32 bytes base64、AES-GCM、每次寫入換 nonce、無金鑰即拒絕啟用該功能）加密的。**這不是新發明的模式，是照抄一個已經通過安全審查的模式。**
+
+> 一個實作細節：`project_secrets` 建議用**自己的** `CLIORA_SECRET_MASTER_KEY`，不要共用 `CLIORA_SECRET_ENCRYPTION_KEY`。兩者的輪替時機不同（tunnel token 換供應商時換；專案機密可能因人員異動而換），共用會讓其中一個的輪替被另一個綁住。
+
+還買到：沒有新的雲端依賴、離線與自架部署都能用、實作最小。
 
 **付出的代價要誠實寫進 ADR，不能只寫好處**：
 
@@ -905,6 +909,87 @@ Traqora 看起來是有 9 條功能分支的**活躍專案**。所以：
 
 ---
 
+---
+
+## 🆕 D31 — Mockup 預覽走既有的 Pinggy tunnel
+
+**提案（2026-08-08）**：不要讓平台去渲染 Agent 產生的 HTML，改成**讓 mockup 從 run 所在的 node 經 Pinggy tunnel 對外提供**，並由 **Agent 在任務卡上詢問要用哪一種保護策略**（密碼／限制 IP／不保護）。
+
+**這是目前最好的方案，而且它幾乎不用新做東西。**
+
+### 為什麼它比前四個方案都好
+
+**一、它從構造上消滅了 stored XSS，不是靠設定去繞過。**
+
+前面的 B（sandbox iframe）是在同一個 origin 裡想辦法關住不受信任的內容——做對了安全，做錯一個 flag 就全開。Pinggy 的 URL 是**完全不同的 origin**，同源政策自己就把它擋在 `localStorage` 與同源 API 之外。**沒有 sandbox flag 要調，沒有 CSP 要對。**
+
+**二、它不是新功能。** 既有的東西已經齊了：
+
+| 需要的東西 | 現況 |
+|---|---|
+| tunnel 生命週期、授權、限額、稽核 | ADR 0022 已交付（`plan/11`） |
+| protocol `tunnel.open` / `close` / `status` | 已存在 |
+| `node_tunnels.protection` ＋ `basic_auth_user`／`basic_auth_hash`／`allowed_ips` | **三種策略的欄位已經在資料模型裡** |
+| 供應商憑證（加密、write-only、fingerprint） | `tunnel_integration` 已存在 |
+| 併發預算、TTL、port allowlist | `concurrent_budget: 8`、`default_ttl_seconds: 4h`、`allowed_ports` |
+| RBAC | `tunnel.view` / `tunnel.manage` 已存在 |
+| UI | `/nodes/:id/tunnels` 已存在 |
+
+**三、mockup 正好是 ADR 0022 範圍宣告的理想使用情境。** 那份 ADR 明寫：
+
+> This feature is for previewing applications under development. **It is not for any environment holding real data.**
+
+它的兩個能力缺口——**流量經過供應商且 TLS 在對方終止**、**平台無法回答「誰看過這個預覽」**——對一個沒有任何真實資料的 mockup 來說，正好都不構成問題。這比它原本的使用情境（預覽開發中的應用，那多少會有測試資料）**更貼合**。
+
+**四、詢問策略這件事不需要新機制。** `cliora task ask` → `waiting_for_input` → 卡片顯示「等待你的回覆」→ 人回答（D24）。整條流程已經設計好了。
+
+**五、它順手解決的不只是 mockup。** 任何產出「跑得起來的東西」的 run——Storybook、報表網站、開發伺服器——都能用同一條路預覽。
+
+### 紅線 5 有沒有被打破
+
+沒有，但論證必須寫清楚，否則它看起來像第五種出口。
+
+tunnel **不是產出離開沙箱**，位元組始終在 node 上；它是一扇看進沙箱的窗。但它確實製造了一個對外的面，而紅線 5 的實作規則寫了「不得執行任何上述四種以外的外部副作用」。
+
+**保住紅線的關鍵是：開 tunnel 的不是 Agent，是人。**
+
+```text
+Agent 用 task ask 詢問要用哪種保護策略
+  → 卡片顯示「等待你的回覆」
+  → 人選擇（密碼／限制 IP／不保護）
+  → 平台以那個策略開 tunnel
+  → Agent 只被告知 URL
+```
+
+**Agent 憑證的 scope 永不含 `tunnel.manage`**——與 `task.approve`、`secret.manage`、`process.manage` 同一條規則。Agent 沒有任何單方面的對外副作用，紅線 5 成立。
+
+### 必須設計的六件事
+
+1. **只服務指定的子目錄**：`artifacts/preview/`，**不是 run 根目錄、不是 `repo/`**。靜態檔案、**不列目錄**、不執行。否則一次路徑穿越就把整份原始碼推上公網。
+2. **預覽程序不繼承 run 的環境變數**。run 的 env 裡有機密（D22），預覽伺服器不該看得到。
+3. **生命週期綁 run**：run 結束、取消、租約逾時 → tunnel 一律關閉。另加一個與 run 無關的最大 TTL（沿用 `default_ttl_seconds`）。
+4. **預設是密碼保護**，且密碼**由平台產生**（不是 Agent，不是使用者自訂弱密碼），一次性顯示在卡片上。`tunnel_integration.default_protection` 本來就是 `basic`，沿用。
+5. **「不保護」要多一道明確確認**，並寫進 audit。URL 雖然是隨機的，但它會進瀏覽器紀錄、進卡片、可能進日誌——**隨機不等於秘密**。
+6. **每個 Project 一個預覽併發上限**，與既有的 `concurrent_budget` 一起算。否則一個失控的 run 會把整個組織的 tunnel 額度吃光。
+
+### 與截圖（方案 D）的關係：不是二選一
+
+| | 截圖（PNG 產物） | Pinggy 預覽 |
+|---|---|---|
+| 性質 | **永久的交付紀錄**（`task_artifacts`，跟著卡片走） | **暫時的即時預覽**（隨 run 結束消失） |
+| 互動 | 沒有 | 有 |
+| 成本 | 零 | 供應商額度 ＋ 一次人工決策 |
+| 離線可看 | 是 | 否 |
+
+**兩個都要**：截圖是留在卡片上的證據，tunnel 是需要點點看時才開。用 tunnel 取代截圖會讓三個月後回頭看卡片時什麼都不剩。
+
+### 要同步修訂的東西
+
+- **ADR 0022 加一節**：這條路徑現在也用於 run 的預覽，發起方式是「Agent 提議 → 人核准 → 平台執行」。它的範圍宣告（不得用於持有真實資料的環境）**不變且更強**。
+- `node_tunnels` 需要一個 nullable 的 `run_id`，讓預覽 tunnel 能隨 run 一起關掉並在 Run 詳情頁顯示。
+
+---
+
 ## 決策裁決表
 
 ### 已裁決
@@ -930,6 +1015,7 @@ Traqora 看起來是有 9 條功能分支的**活躍專案**。所以：
 | D10 ⚠️ | 證據可信度 | 三級 ＋ 伺服器端判定；「平台代跑驗證命令」在 Agent Run 路徑上**改為允許**，因為那本來就是 run 在做的事——但仍不開放「對任意 node 執行任意命令」的 API |
 | D11 ⚠️ | 工具介面 | CLI 優先，V2.1 首發 |
 | D12 | 相容機制 | 單一旗標 ＋ 永久 nullable |
+| D31 🆕 | Mockup 預覽 | **提案：走既有 Pinggy tunnel**，Agent 在卡片上問策略、人決定、平台開。與截圖並存不互斥。**待你裁決** |
 | D30 🆕 | 驗收素材 | ✅ **已裁決：用 Traqora**，不用 Cliora 自己。V2.2 期間限用 scratch clone（run 尚未隔離） |
 | D14 🆕 | 平台不可用時 | ✅ **已裁決：直接失敗，不做離線佇列**。關鍵在訊息要說出「Session 可繼續工作」；M9 是重新評估的觸發條件 |
 | D13 | RBAC | 新增動作（見 `07` §5，已因 Runner 擴充） |
