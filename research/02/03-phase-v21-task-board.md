@@ -117,7 +117,14 @@ cliora task update <ref> --stage implementing --note "…"
 
 1. 憑證從 `.cliora/context/<session_id>.token` 讀，不是使用者的 JWT。
 2. `context show` **不需要連線**（讀本機檔案），所以平台掛掉時 Agent 至少還知道自己在做什麼。
-3. `task update` 需要連線；連不上時依 **D14** 直接失敗，訊息是「無法連線到 Cliora（Session 可繼續工作）。你的變更未被記錄，恢復連線後請重新執行。」——第二句是重點：**平台掛掉不影響 CLI Agent 本身工作**，那是 V1 的既有性質。
+3. `task update` 需要連線；連不上時依 **D14 直接失敗，不進佇列**。訊息由 CLI 產生（不是把 HTTP 錯誤原樣吐出）：
+
+   ```text
+   無法連線到 Cliora（Session 可繼續工作）。
+   你的變更未被記錄，恢復連線後請重新執行。
+   ```
+
+   **第二句是重點**：平台掛掉不影響 CLI Agent 本身工作，那是 V1 的既有性質。回傳非零 exit code 但**不應讓 Agent 判斷「我沒辦法繼續」**——情境包要明寫這一點。
 4. 嘗試勾 gate 一律被 API 拒絕（scope 不含）。
 
 發行方式：CLI 隨情境包投影到 `.cliora/bin/`，或由 `agentd` 隨附。**選一個並寫進 ADR**——投影的好處是版本跟著平台走，隨附的好處是不必每個 Session 寫一次。建議隨附於 `agentd`，但 V2.1 因為不升級 daemon，先用投影。
@@ -144,7 +151,7 @@ cliora task update <ref> --stage implementing --note "…"
 - **不新增任何 protocol 訊息、不升級 `agentd`、不改 contract。**
 - **不做 Agent Runner 與任何自主執行**（V2.2）——本階段的 Agent 只在使用者開的互動式 Session 裡工作。
 - 不做 Execution Plan 與 Verification（V2.4）。
-- 不做離線佇列（D14，V2.4）。
+- **不做離線佇列**（D14 已裁決：直接失敗）。
 - 不做流程可設定性（D15，V2.4）。
 - 不做 git、機密、Evidence、MCP。
 - **不做 Agent 驅動的釐清與拆解**（V2.5）——V2.1 只有人工表單與資料模型。
@@ -170,7 +177,7 @@ cliora task update <ref> --stage implementing --note "…"
 | 風險 | 對策 |
 |---|---|
 | **Agent 不會用 CLI** | 情境包第一段就是「怎麼回報進度」的三行說明；`09` §5 的 M3 觀察前 10 個 Session 的實際使用率 |
-| 平台掛掉導致工作無紀錄（D14 的已知缺口） | V2.1 明確訊息 ＋ V2.4 佇列；出口條件 7 驗證 Session 本身不受影響 |
+| 平台掛掉導致工作無紀錄 | **這是 D14 接受的已知取捨，不做佇列。** 靠的是訊息要說出「Session 可繼續工作」＋ `context show` 免連線；出口條件 7 驗證 Session 本身不受影響。M9 是重新評估的觸發條件 |
 | `.cliora/` 污染使用者 repo | 單一目錄、可 gitignore、有保留期；出口條件 9 用 `git status` 驗證 |
 | 流程檔因 `O_EXCL` 寫不進去被誤判為錯誤 | 版本號目錄 ＋ `FILE_EXISTS` 視為成功；出口條件 8 |
 | DoR 七項全部強制會讓人放棄使用 | V2.1 只警告不阻擋；`dependsOn` 是唯一硬阻擋 |

@@ -42,7 +42,7 @@
 | FR-VERIFY-001 | 驗證報告 | central | schema 驗證；不合格不寫入半筆；失敗項不可摺疊隱藏 |
 | FR-VERIFY-002 | 證據可信度分級 | central | 三級 `source` **由伺服器端判定**，忽略 payload；每列記錄寫入者身分 |
 | FR-VERIFY-003 | Done Gate | central | **強制拒絕**並指名缺項；Admin `--force` 需必填理由，理由永久可見 |
-| FR-VERIFY-004 | 離線佇列 | central | 只佇列寫入；補送不升級 `source`；衝突不自動覆蓋 |
+| FR-VERIFY-004 | 平台不可用時的行為 | central | **直接失敗不佇列**（D14）；訊息含「Session 可繼續工作」；`context show` 免連線；非零 exit code 但不中斷 Agent |
 
 ### FR-AGENT — Agent Runner（V2.2）
 
@@ -151,7 +151,7 @@
 |---|---|---|---|---|
 | FR-PROJECT-001..005 | V2.0 | `backend/tests/db/test_projects.py`、e2e | 建立→綁定→開 Session 截圖 | ☐ |
 | FR-TASK-001..010 | V2.1 | Gate 拒絕邏輯、樂觀鎖併發、token scope、CLI 子命令、看板單元、e2e | 看板拖曳與三種拒絕截圖、`git status` 只見 `.cliora/`、Central 停機下的 CLI 行為 | ☐ |
-| FR-PLAN-001 / FR-VERIFY-001..004 | V2.4 | `source` 伺服器端判定、Done Gate、佇列補送 | Plan 面板與失敗報告截圖、`--force` 的時間軸紀錄 | ☐ |
+| FR-PLAN-001 / FR-VERIFY-001..004 | V2.4（FR-VERIFY-004 在 V2.1） | `source` 伺服器端判定、Done Gate、CLI 離線行為 | Plan 面板與失敗報告截圖、`--force` 的時間軸紀錄 | ☐ |
 | FR-AGENT-001..010 | V2.2 | 原子認領併發、租約逾時重排、cancel 殘留、log 截斷 | 兩 runner 搶同一卡的紀錄、指定 vs 未指定各一次、kill 後重排錄影、訊息串與產物區截圖、HTML 產物的 response header | ☐ |
 | FR-RUNENV-001..007 | V2.3 | 不可讀回（schema＋回應）、去識別、四種推送拒絕、目錄隔離 | 機密 UI 無顯示值、log 中的 `***`、mirror 加速數字 | ☐ |
 | FR-DELIVERY-001..004 / FR-EVIDENCE-001..002 / FR-AGENTTOOL-001..002 | V2.4 | 四種 delivery、無自動合併的 allowlist 斷言、exit code 為真 | 四種交付各一次的結果截圖、被拒的 Done Gate | ☐ |

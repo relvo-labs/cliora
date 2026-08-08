@@ -49,7 +49,7 @@
 3. Agent 請求裡帶 `source: machine_verified` → 伺服器忽略、存為 `agent_reported`、記一筆 activity（**要有測試**）。
 4. 把缺驗證報告的卡拖到 `done` → **被拒**，訊息指名缺哪一項。
 5. Admin `--force` 推進 → 成功，理由進時間軸且在 Task Detail 永久可見。
-6. 斷網下 `cliora task update` 進佇列；恢復後自動補送；補送期間被別人改過的那一筆進衝突清單，**未自動覆蓋**。
+6. 斷網下 `cliora task update` **直接失敗**（D14），訊息含「Session 可繼續工作」；`cliora context show` **仍可讀**；Agent 未因此中斷工作。
 7. 不合 schema 的輸入 → 拒絕並回可行動訊息，**不寫入半筆資料**。
 8. **Ad-hoc Session 的 Session Workspace 與升級前截圖逐像素一致。**
 9. 旗標關閉：完整 V1 回歸全綠。
@@ -143,7 +143,7 @@
 | Daemon 整合 | 真實 repo 的 clone／worktree／push 拒絕；真實程序的 cancel 與殘留檢查 |
 | Central 單元 | **原子認領**、重排上限、**資格判定五條件（含指定不覆蓋綁定）**、Done Gate 依 `delivery` 分歧、`source` 伺服器端判定、機密 allowlist 子集檢查 |
 | Central DB | migration 上下行、`version` 樂觀鎖併發、**併發認領**、RBAC 矩陣 |
-| CLI | 每個子命令一條測試；`task ask`／`say`／`messages` 的往返 |
+| CLI | 每個子命令一條測試；`task ask`／`say`／`messages` 的往返；**離線行為**（失敗訊息內容、非零 exit code、`context show` 免連線） |
 | 前端單元 | 看板分組、藍圖聚合（含未分類桶）、run 狀態徽章、訊息串三種來源、機密欄位無顯示值路徑 |
 | E2E | 建 Project→綁 runner→建卡（四種 delivery 各一）→dispatch→領取→執行→提問→回覆→交付→Done Gate |
 | E2E（V2.5） | 提需求→釐清 run 提問→回答→規格→核准→拆解→部分接受→卡片可追溯回需求 |
@@ -167,7 +167,7 @@
 | M3 | 情境包壓到 4 KB 後，Agent 的行為是否真的變好？ | D8 的預算值 | V2.1 上線後觀察 10 個 Session |
 | M4 | 計畫快照一張卡實際會產生幾個？50 的上限合理嗎？ | D9 的清理策略 | V2.2 上線後觀察 20 張卡 |
 | M5 | Agent 提交的資料有多少比例不合 schema？ | 是否需要更寬鬆的解析或更好的提示 | V2.2 上線後統計 |
-| M9 | 平台不可用的實際頻率與時長？ | D14：V2.2 的佇列該不該提前到 V2.1 | V2.1 起持續觀察 |
+| M9 | 平台不可用的實際頻率與時長？ | **D14 重新評估的觸發條件**（目前裁決是直接失敗、不做佇列）。數據若顯示不可用頻繁，先問「為什麼平台這麼常掛」，而不是直接做佇列 | V2.1 起持續觀察 |
 | M6 | `git status --porcelain` 在最大的實際 repo 上要多久？ | 證據採集的逾時值 | V2.4 開工前 |
 | M7 | 有多少 Session 實際上是 Ad-hoc？ | 決定 V2 的預設值該不該變 | V2.1 起持續觀察 |
 | M8 | sidebar 208px 在七列兩層下是否還夠？ | `07` §3 | V2.0 開工時 |
