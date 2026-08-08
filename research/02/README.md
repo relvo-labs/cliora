@@ -24,6 +24,7 @@
 
 | 文件 | 用途 |
 |---|---|
+| [CHECKLIST.md](./CHECKLIST.md) | **執行清單**：47 張 ticket、7 份 ADR、16 個量測項攤平成可打勾的清單 |
 | [00-upgrade-roadmap.md](./00-upgrade-roadmap.md) | 全局定位、兩種執行模式、Monstrare 內化清單、**紅線撤銷與換上什麼**、六階段 |
 | [01-architecture-decisions.md](./01-architecture-decisions.md) | **D1–D29 決策**，含已裁決、建議採納、仍需裁決三張表 |
 | [02-phase-v20-project-foundation.md](./02-phase-v20-project-foundation.md) | V2.0 專案基座（`PJ-`） |
