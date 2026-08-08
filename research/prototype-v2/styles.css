@@ -1,0 +1,525 @@
+/* Cliora V2 前端 prototype
+ *
+ * 規則：既有 token 直接沿用 frontend/src/theme/tokens.css 的值，一個都不改。
+ * V2 需要的新 token 全部集中在 §2，並在「Tokens」畫面上逐項列出供審查——
+ * 這份 prototype 的目的之一就是決定那些值該不該進 tokens.css。
+ */
+
+/* ── §1 既有 token（與 frontend/src/theme/tokens.css 完全一致，勿改） ───────── */
+:root {
+  --surface-canvas: #f4f6f8;
+  --surface-default: #fafbfc;
+  --surface-elevated: #fff;
+  --text-primary: #1a1f24;
+  --text-secondary: #48505a;
+  --text-muted: #66707d;
+  --text-inverse: #fff;
+  --border-default: #d7dde4;
+  --border-focus: #67a2ae;
+  --border-danger: #c45c5c;
+  --action-primary: #35575d;
+  --action-primary-hover: #2c464b;
+  --action-disabled: #b5bdc8;
+  --status-online: #2f9b63;
+  --status-offline: #727b87;
+  --status-busy: #c68c37;
+  --status-error: #d25454;
+  --terminal-background: #0f1115;
+  --terminal-foreground: #d7dde4;
+  --terminal-selection: #78aaff40;
+  --terminal-cursor: #fff;
+  --layout-header: 56px;
+  --layout-sidebar: 208px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+}
+
+/* ── §2 V2 新增 token 候選（尚未進 tokens.css，待本次審查決定） ─────────────
+ *
+ * 三組「進行中」必須一眼分得出來（09 §7）：
+ *   Session 進行中 → 沿用 --status-online 綠
+ *   Task 進行中   → --stage-implementing 藍
+ *   Run 執行中    → --run-running 琥珀 ＋ 脈動指示
+ */
+:root {
+  /* Task stage（六車道）— 刻意避開 --status-* 的綠，改走灰→藍→紫→深綠的推進感 */
+  --stage-backlog: #8892a0;
+  --stage-blocked: #b4574f;
+  --stage-ready: #4a7c8c;
+  --stage-implementing: #3f6fa8;
+  --stage-verify: #7a5ea8;
+  --stage-done: #2f7a56;
+
+  /* Run 狀態 — 第三組，帶動態指示 */
+  --run-queued: #8892a0;
+  --run-running: #c68c37;
+  --run-waiting: #d2691e;
+  --run-succeeded: #2f9b63;
+  --run-failed: #d25454;
+  --run-lost: #a0673f;
+
+  /* Risk */
+  --risk-low: #6b7684;
+  --risk-medium: #c68c37;
+  --risk-high: #c45c5c;
+
+  /* 證據可信度三級（實心／線框／灰字），三處畫面必須完全一致 */
+  --source-machine: #2f7a56;
+  --source-platform: #4a7c8c;
+  --source-agent: #8892a0;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-base: 13px;
+  --font-md: 15px;
+  --font-lg: 19px;
+  --font-xl: 24px;
+}
+
+/* ── §3 base（沿用 frontend/src/theme/base.css 的字體堆疊與 reset） ────────── */
+:root {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  font-size: var(--font-base);
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--text-primary);
+  background: var(--surface-canvas);
+}
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; }
+p { margin: 0; }
+code, .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* ── §4 Prototype 專用工具列（正式產品不存在） ─────────────────────────── */
+.proto-bar {
+  position: sticky; top: 0; z-index: 60;
+  display: flex; align-items: center; gap: var(--space-3);
+  height: 38px; padding: 0 var(--space-4);
+  background: #1a1f24; color: #cfd6de; font-size: var(--font-sm);
+}
+.proto-bar .tag {
+  padding: 2px 7px; border-radius: 999px;
+  background: #35575d; color: #fff; font-size: var(--font-xs); font-weight: 600;
+}
+.proto-bar select {
+  padding: 3px 8px; border: 1px solid #3a434e; border-radius: var(--radius-sm);
+  background: #232931; color: #cfd6de;
+}
+.proto-bar .sp { flex: 1; }
+.proto-bar button {
+  padding: 4px 10px; border: 1px solid #3a434e; border-radius: var(--radius-sm);
+  background: #232931; color: #cfd6de;
+}
+.proto-bar button[aria-pressed="true"] { background: #35575d; border-color: #4a707a; color: #fff; }
+.proto-bar .w { color: #8b95a1; font-variant-numeric: tabular-nums; }
+
+/* 說明模式：把規劃文件的決定貼在畫面上 */
+.note {
+  display: none;
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--border-focus);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: #eef4f6;
+  color: #2c464b;
+  font-size: var(--font-sm);
+  line-height: 1.6;
+}
+.note b { color: #1a1f24; }
+.note .ref { color: var(--text-muted); font-size: var(--font-xs); }
+body.notes .note { display: block; }
+
+/* ── §5 App shell（與 AppLayout.vue 的 grid 一致） ──────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--layout-sidebar) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100dvh - 38px);
+}
+.shell > header {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: var(--space-4);
+  height: var(--layout-header); padding: 0 20px;
+  background: var(--surface-elevated);
+  border-bottom: 1px solid var(--border-default);
+}
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; }
+.brand i {
+  display: grid; width: 30px; height: 30px; place-items: center;
+  border-radius: 7px; background: var(--action-primary);
+  color: var(--text-inverse); font-style: normal; font-weight: 700;
+}
+.spacer { flex: 1; }
+.account { display: flex; align-items: center; gap: var(--space-3); font-size: var(--font-base); }
+.account .who { font-weight: 600; }
+.account .role {
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-canvas); color: var(--text-muted); font-size: var(--font-xs);
+}
+
+.shell > aside {
+  min-height: 0; overflow-y: auto;
+  padding: var(--space-4) var(--space-3);
+  background: var(--surface-elevated);
+  border-right: 1px solid var(--border-default);
+}
+nav { display: grid; gap: 5px; }
+nav a {
+  display: flex; align-items: center; gap: 11px;
+  padding: 11px; border-radius: 8px;
+  color: var(--text-secondary); text-decoration: none; font-size: var(--font-base);
+  cursor: pointer;
+}
+nav a:hover { background: var(--surface-canvas); }
+nav a.active { background: var(--surface-canvas); color: var(--action-primary); font-weight: 600; }
+nav a .ico { width: 16px; text-align: center; opacity: .75; }
+/* 群組標題做成分隔線樣式而非縮排項目——208px 才夠用（09 §3） */
+.nav-group {
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 11px var(--space-1);
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-muted); font-size: var(--font-xs);
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.shell > main { min-height: 0; overflow: auto; padding: var(--space-5) 28px 40px; }
+.shell > main.fill { overflow: hidden; padding: var(--space-3) var(--space-4) var(--space-4); }
+
+/* ── §6 通用元件 ───────────────────────────────────────────────────────── */
+.page-head { display: flex; align-items: flex-start; gap: var(--space-4); margin-bottom: var(--space-4); }
+.page-head h1 { font-size: var(--font-xl); letter-spacing: -.01em; }
+.page-head .sub { margin-top: 3px; color: var(--text-muted); font-size: var(--font-base); }
+
+.card {
+  background: var(--surface-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.card > .hd {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+  font-weight: 600;
+}
+.card > .bd { padding: var(--space-4); }
+.grid { display: grid; gap: var(--space-4); }
+.g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.row { display: flex; align-items: center; gap: var(--space-2); }
+.wrap { flex-wrap: wrap; }
+.muted { color: var(--text-muted); }
+.sm { font-size: var(--font-sm); }
+.xs { font-size: var(--font-xs); }
+
+button.btn {
+  padding: 7px 13px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); background: var(--surface-default);
+  color: var(--text-secondary);
+}
+button.btn:hover { border-color: var(--border-focus); }
+button.btn.primary {
+  border-color: var(--action-primary); background: var(--action-primary); color: #fff;
+}
+button.btn.primary:hover { background: var(--action-primary-hover); }
+button.btn:disabled { color: var(--action-disabled); border-color: var(--border-default); cursor: not-allowed; background: var(--surface-canvas); }
+button.btn.sm { padding: 4px 9px; font-size: var(--font-sm); }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: 999px;
+  font-size: var(--font-xs); font-weight: 600; white-space: nowrap;
+}
+.badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.badge.solid { color: #fff; }
+.badge.outline { background: transparent; border: 1px solid currentColor; }
+.badge.quiet { background: var(--surface-canvas); color: var(--text-muted); font-weight: 500; }
+
+.table { width: 100%; border-collapse: collapse; font-size: var(--font-base); }
+.table th {
+  padding: 8px 12px; text-align: left; font-size: var(--font-xs); font-weight: 600;
+  color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em;
+  border-bottom: 1px solid var(--border-default);
+}
+.table td { padding: 11px 12px; border-bottom: 1px solid var(--border-default); vertical-align: middle; }
+.table tr:last-child td { border-bottom: 0; }
+.table tr.clickable:hover td { background: var(--surface-canvas); cursor: pointer; }
+
+.empty {
+  padding: var(--space-6); text-align: center; color: var(--text-muted);
+  border: 1px dashed var(--border-default); border-radius: var(--radius-md);
+}
+.empty strong { display: block; margin-bottom: 6px; color: var(--text-secondary); }
+
+/* ── §7 看板 ───────────────────────────────────────────────────────────── */
+.board-bar {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-3); padding: var(--space-2) var(--space-3);
+  background: var(--surface-elevated); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); font-size: var(--font-sm);
+}
+.lanes { display: grid; grid-template-columns: repeat(6, minmax(196px, 1fr)); gap: var(--space-3); }
+.lane {
+  display: flex; flex-direction: column; min-height: 220px;
+  background: var(--surface-default); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.lane.over { border-color: var(--border-focus); background: #eef4f6; }
+.lane > .hd {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px var(--space-3); border-bottom: 1px solid var(--border-default);
+  font-size: var(--font-sm); font-weight: 600;
+}
+.lane .bar { width: 3px; height: 13px; border-radius: 2px; }
+.lane .count {
+  margin-left: auto; padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-canvas); color: var(--text-muted); font-size: var(--font-xs);
+}
+.lane .count.over-wip { background: #fbe9e9; color: #b4574f; }
+.lane > .bd { display: grid; gap: var(--space-2); padding: var(--space-2); align-content: start; }
+
+.tcard {
+  padding: 10px; background: var(--surface-elevated);
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  cursor: grab; font-size: var(--font-sm);
+}
+.tcard:hover { border-color: var(--border-focus); }
+.tcard.dragging { opacity: .45; }
+.tcard.bounce { animation: bounce .32s ease; }
+@keyframes bounce {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.tcard .ref { color: var(--text-muted); font-size: var(--font-xs); font-weight: 600; letter-spacing: .02em; }
+.tcard .title { margin: 3px 0 7px; color: var(--text-primary); line-height: 1.45; }
+.tcard .meta { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.tcard .who { margin-top: 7px; color: var(--text-muted); font-size: var(--font-xs); }
+
+/* 「等待你的回覆」是整個看板上唯一「系統在等人」的狀態，必須最醒目 */
+.tcard.waiting {
+  border-color: var(--run-waiting);
+  box-shadow: 0 0 0 1px var(--run-waiting), 0 2px 10px rgba(210, 105, 30, .16);
+}
+.waiting-strip {
+  display: flex; align-items: center; gap: 6px;
+  margin: -10px -10px 8px; padding: 5px 10px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: var(--run-waiting); color: #fff;
+  font-size: var(--font-xs); font-weight: 700;
+}
+.pulse { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+/* ── §8 Roadmap ────────────────────────────────────────────────────────── */
+.rm-epic { margin-bottom: var(--space-3); }
+.rm-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px var(--space-4); border-bottom: 1px solid var(--border-default);
+}
+.rm-row.us { padding-left: 40px; background: var(--surface-default); }
+.rm-row.task { padding-left: 68px; font-size: var(--font-sm); }
+.rm-row .name { flex: 1; }
+.meter { width: 130px; height: 6px; border-radius: 3px; background: var(--surface-canvas); overflow: hidden; }
+.meter i { display: block; height: 100%; background: var(--stage-done); }
+.pct { width: 42px; text-align: right; font-size: var(--font-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* ── §9 Task detail ───────────────────────────────────────────────────── */
+.detail-head {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  padding: var(--space-4); margin-bottom: var(--space-4);
+  background: var(--surface-elevated); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+.detail-head h1 { font-size: var(--font-lg); }
+.detail-cols { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: var(--space-4); }
+.kv { display: grid; grid-template-columns: 106px minmax(0, 1fr); gap: 7px var(--space-3); font-size: var(--font-base); }
+.kv dt { color: var(--text-muted); }
+.kv dd { margin: 0; }
+.checklist { display: grid; gap: 6px; font-size: var(--font-base); }
+.checklist li { display: flex; gap: 8px; align-items: flex-start; list-style: none; }
+.checklist .mark { width: 15px; flex: none; text-align: center; }
+.checklist .ok { color: var(--status-online); }
+.checklist .no { color: var(--status-error); }
+.checklist .approver { color: var(--text-muted); font-size: var(--font-xs); }
+ul.checklist { margin: 0; padding: 0; }
+
+/* 訊息串 */
+.thread { display: grid; gap: var(--space-3); max-height: 420px; overflow: auto; padding-right: 4px; }
+.msg { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: var(--space-2); font-size: var(--font-base); }
+.msg .av {
+  display: grid; width: 28px; height: 28px; place-items: center; border-radius: 7px;
+  font-size: var(--font-xs); font-weight: 700; color: #fff;
+}
+.msg.user .av { background: var(--action-primary); }
+.msg.agent .av { background: var(--stage-implementing); }
+.msg .name { font-weight: 600; }
+.msg .time { color: var(--text-muted); font-size: var(--font-xs); }
+.msg .body { margin-top: 3px; line-height: 1.6; }
+.msg.agent.question .body {
+  padding: 10px 12px; border-left: 3px solid var(--run-waiting);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: #fdf3ea;
+}
+.msg.system {
+  grid-template-columns: 1fr; padding: 4px 0;
+  color: var(--text-muted); font-size: var(--font-xs);
+}
+.composer { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.composer input {
+  flex: 1; padding: 9px 11px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); background: var(--surface-default);
+}
+.pull-hint { margin-top: 6px; color: var(--text-muted); font-size: var(--font-xs); }
+
+/* 產物 */
+.artifact {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px 12px; border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm); background: var(--surface-default);
+}
+.artifact .ico {
+  display: grid; width: 32px; height: 32px; place-items: center; flex: none;
+  border-radius: var(--radius-sm); background: var(--surface-canvas);
+  color: var(--text-muted); font-size: var(--font-xs); font-weight: 700;
+}
+.artifact .n { flex: 1; min-width: 0; }
+.artifact .n b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.artifact .n span { color: var(--text-muted); font-size: var(--font-xs); }
+.thumb { width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; }
+
+/* 步驟 / 計畫 */
+.steps { display: grid; gap: 2px; }
+.step { display: flex; align-items: center; gap: 9px; padding: 7px 0; font-size: var(--font-base); }
+.step .m { width: 16px; text-align: center; flex: none; }
+.step.completed .t { color: var(--text-muted); }
+.step.in_progress .t { font-weight: 600; }
+.step.failed .t { color: var(--status-error); }
+
+/* 驗證 */
+.check {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 9px 0; border-bottom: 1px solid var(--border-default); font-size: var(--font-base);
+}
+.check:last-child { border-bottom: 0; }
+.check .cmd { flex: 1; }
+.check .code { font-variant-numeric: tabular-nums; }
+.fail-box {
+  margin-top: var(--space-2); padding: var(--space-3);
+  border: 1px solid #f0d4d4; border-radius: var(--radius-sm); background: #fdf1f1;
+  font-size: var(--font-sm); line-height: 1.6;
+}
+
+/* ── §10 Requirements ─────────────────────────────────────────────────── */
+.stepper { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-4); font-size: var(--font-sm); }
+.stepper .s { display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; background: var(--surface-elevated); border: 1px solid var(--border-default); color: var(--text-muted); }
+.stepper .s.active { border-color: var(--action-primary); color: var(--action-primary); font-weight: 600; }
+.stepper .s.done { color: var(--stage-done); border-color: #bfe0cf; }
+.stepper .arr { color: var(--border-default); }
+.q-open {
+  display: flex; gap: var(--space-2); padding: 10px 12px; margin-bottom: 8px;
+  border: 1px solid #f0dcc4; border-radius: var(--radius-sm); background: #fdf6ec;
+  font-size: var(--font-base);
+}
+.q-open .n { flex: none; width: 18px; font-weight: 700; color: var(--run-waiting); }
+.prop-tree { display: grid; gap: 2px; }
+.prop {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  background: var(--surface-elevated); font-size: var(--font-base);
+}
+.prop.us { margin-left: 22px; }
+.prop.task { margin-left: 44px; }
+.prop input[type="checkbox"] { margin-top: 3px; }
+.prop .n { flex: 1; }
+.prop .dor-miss { margin-top: 5px; color: var(--status-error); font-size: var(--font-xs); }
+
+/* ── §11 Run 詳情 ─────────────────────────────────────────────────────── */
+.timeline { display: grid; gap: 0; }
+.tl {
+  display: grid; grid-template-columns: 118px 14px minmax(0, 1fr) 74px;
+  align-items: center; gap: var(--space-2); padding: 7px 0; font-size: var(--font-sm);
+}
+.tl .t { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.tl .d { width: 8px; height: 8px; border-radius: 50%; background: var(--border-default); }
+.tl .d.on { background: var(--action-primary); }
+.tl .dur { text-align: right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.log {
+  max-height: 340px; overflow: auto; padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--terminal-background); color: var(--terminal-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-sm); line-height: 1.65; white-space: pre-wrap;
+}
+.log .redacted { padding: 0 4px; border-radius: 3px; background: #4a3a2a; color: #e0b070; }
+.log .truncated { display: block; margin: 8px 0; color: #c68c37; }
+
+/* ── §12 Session Workspace（兩欄 ＋ 右欄 tab；Terminal 寬度不得變窄） ──── */
+.ws { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: var(--space-3); height: 100%; min-height: 0; }
+.ws-main { display: flex; flex-direction: column; min-height: 0; background: var(--surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.tabs { display: flex; gap: 2px; padding: 6px 6px 0; border-bottom: 1px solid var(--border-default); background: var(--surface-default); }
+.tabs button {
+  padding: 7px 13px; border: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  background: transparent; color: var(--text-secondary); font-size: var(--font-sm);
+}
+.tabs button.active { background: var(--surface-elevated); color: var(--action-primary); font-weight: 600; box-shadow: 0 1px 0 var(--surface-elevated); }
+.term {
+  flex: 1; min-height: 0; overflow: auto; padding: var(--space-3);
+  background: var(--terminal-background); color: var(--terminal-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--font-sm); line-height: 1.6; white-space: pre-wrap;
+}
+.ws-rail { display: flex; flex-direction: column; min-height: 0; background: var(--surface-elevated); border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
+.ws-rail .bd { flex: 1; min-height: 0; overflow: auto; padding: var(--space-3); }
+.statusbar {
+  display: flex; align-items: center; gap: var(--space-4);
+  margin-top: var(--space-2); padding: 6px var(--space-3);
+  background: var(--surface-elevated); border: 1px solid var(--border-default);
+  border-radius: var(--radius-md); font-size: var(--font-sm); color: var(--text-secondary);
+}
+.filetree { display: grid; gap: 1px; font-size: var(--font-sm); }
+.filetree div { padding: 4px 6px; border-radius: var(--radius-sm); color: var(--text-secondary); }
+.filetree div:hover { background: var(--surface-canvas); }
+
+/* ── §13 Toast（拖曳被拒的三種訊息） ──────────────────────────────────── */
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 80; display: grid; gap: var(--space-2); }
+.toast {
+  display: flex; gap: 10px; max-width: 400px; padding: 11px 13px;
+  background: var(--surface-elevated); border: 1px solid var(--border-default);
+  border-left: 3px solid var(--status-error);
+  border-radius: var(--radius-sm); box-shadow: 0 6px 20px rgba(26, 31, 36, .13);
+  font-size: var(--font-sm); animation: slidein .18s ease;
+}
+.toast.ok { border-left-color: var(--status-online); }
+.toast b { display: block; margin-bottom: 3px; }
+@keyframes slidein { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ── §14 Token 審查畫面 ───────────────────────────────────────────────── */
+.swatch { display: flex; align-items: center; gap: var(--space-3); padding: 9px 0; border-bottom: 1px solid var(--border-default); }
+.swatch .chip { width: 40px; height: 26px; border-radius: var(--radius-sm); border: 1px solid rgba(0,0,0,.08); flex: none; }
+.swatch .nm { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: var(--font-sm); }
+.swatch .hex { color: var(--text-muted); font-family: ui-monospace, Menlo, monospace; font-size: var(--font-sm); }
+
+/* ── §15 窄視窗（1100px 以下收合右欄，沿用既有斷點） ──────────────────── */
+@media (max-width: 1100px) {
+  .ws { grid-template-columns: minmax(0, 1fr); }
+  .ws-rail { display: none; }
+  .detail-cols { grid-template-columns: minmax(0, 1fr); }
+  .g3, .g2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 900px) {
+  .shell { grid-template-columns: 0 minmax(0, 1fr); }
+  .shell > aside { display: none; }
+}

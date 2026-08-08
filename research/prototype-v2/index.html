@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cliora V2 — 前端 Prototype</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Prototype 工具列：正式產品不存在，只為了審查方便 -->
+<div class="proto-bar">
+  <span class="tag">PROTOTYPE</span>
+  <label>畫面
+    <select id="jump"></select>
+  </label>
+  <button id="toggle-notes" aria-pressed="false" title="把規劃文件的決定貼在畫面上">說明模式</button>
+  <span class="sp"></span>
+  <span class="w" id="vw"></span>
+  <span class="muted" style="color:#8b95a1">research/02 · 六階段 · D1–D29</span>
+</div>
+
+<div class="shell">
+  <header>
+    <div class="brand"><i>C</i><span>Cliora</span></div>
+    <span class="spacer"></span>
+    <div class="account">
+      <span class="who">neil</span>
+      <span class="role">Admin</span>
+      <button class="btn sm">登出</button>
+    </div>
+  </header>
+
+  <aside>
+    <nav id="nav"></nav>
+  </aside>
+
+  <main id="main"></main>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
