@@ -196,6 +196,85 @@ func (m *Manager) handleFsUpload(env protocol.Envelope, data []byte, send func([
 	_ = send(frame)
 }
 
+// handleFsStore writes one uploaded file into the session workspace at a
+// caller-chosen location (FR-FILE-010). It sits beside handleFsUpload
+// deliberately: the two paths differ in exactly one respect — who names the
+// destination — and reading them side by side is how that stays visible.
+func (m *Manager) handleFsStore(env protocol.Envelope, data []byte, send func([]byte) error) {
+	if protocol.ValidateControl(data) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	var p fsStorePayload
+	if json.Unmarshal(env.Payload, &p) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	// Strict base64, for the same reason as image drop: the permissive decoder
+	// tolerates trailing garbage, so the same bytes would have more than one
+	// representation on the wire. Empty is legal here though — an empty file is a
+	// legitimate thing to upload.
+	var raw []byte
+	if p.Data != "" {
+		decoded, decodeErr := base64.StdEncoding.Strict().DecodeString(p.Data)
+		if decodeErr != nil {
+			m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+			return
+		}
+		raw = decoded
+	}
+	root, code, ok := m.openSessionWorkspace(p.SessionID)
+	if !ok {
+		m.replyError(send, env.RequestID, orSessionNotFound(code))
+		return
+	}
+	defer root.Close()
+
+	started := time.Now()
+	res, err := m.files.Store(root, p.Directory, p.Filename, raw, m.now())
+	if err != nil {
+		code := workspaceCode(err)
+		metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "store", "code": code})
+		m.replyError(send, env.RequestID, code)
+		return
+	}
+	if res.Denied {
+		metrics.Increment(metrics.FilesystemRequestTotal,
+			map[string]string{"op": "store", "code": res.Code})
+		metrics.Increment(metrics.FilesystemStoreRefusedTotal,
+			map[string]string{"code": res.Code})
+		// The refusal reason travels in the error frame's code only; the reason
+		// string is a coarse classification, so it is safe to log but Central
+		// needs the code to pick its HTTP status.
+		slog.Info("filesystem store refused",
+			"event", "filesystem.store", "request_id", env.RequestID,
+			"session_id", p.SessionID.String(), "code", res.Code, "reason", res.Reason,
+			"duration_ms", time.Since(started).Milliseconds())
+		m.replyError(send, env.RequestID, res.Code)
+		return
+	}
+	metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "store", "code": "OK"})
+	metrics.Observe(metrics.FilesystemUploadBytes, float64(res.Size), map[string]string{"source": "file"})
+	// The relative path is logged because the user chose it and can see it; the
+	// bytes never are.
+	slog.Info("filesystem store",
+		"event", "filesystem.store", "request_id", env.RequestID,
+		"session_id", p.SessionID.String(), "bytes", res.Size,
+		"rel_path", res.RelPath, "duration_ms", time.Since(started).Milliseconds())
+
+	frame, buildErr := protocol.BuildResponse("filesystem.stored", m.creds.NodeID, env.RequestID,
+		true, map[string]any{
+			"path":        res.RelPath,
+			"size":        res.Size,
+			"modified_at": res.ModifiedAt.UTC().Format(time.RFC3339),
+		}, m.now())
+	if buildErr != nil {
+		m.replyError(send, env.RequestID, "FRAME_TOO_LARGE")
+		return
+	}
+	_ = send(frame)
+}
+
 // denialReason is the coarse classification for a denial metric, defaulting to
 // the code when the policy did not attach one (binary/oversize).
 func denialReason(res files.ReadResult) string {
@@ -305,6 +384,18 @@ type fsSearchPayload struct {
 // consumers and an ADR — which is the intended cost.
 type fsUploadPayload struct {
 	SessionID uuid.UUID `json:"session_id"`
+	Data      string    `json:"data"`
+}
+
+// fsStorePayload is the other upload path, and it is the mirror image of the one
+// above: here the sender names the destination, because a file's name is what
+// makes it useful (ADR 0026 §2). Still absent, and still enforced by the wire
+// schema's additionalProperties:false: overwrite, mode, mime, precondition,
+// revision. Nothing in this struct can ask to replace something.
+type fsStorePayload struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Directory string    `json:"directory"`
+	Filename  string    `json:"filename"`
 	Data      string    `json:"data"`
 }
 

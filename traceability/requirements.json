@@ -741,7 +741,13 @@
           "id": "FR-FILE-005.AC-01",
           "source_anchor": "fr-file-005-ac-01",
           "verification_profile": "automated",
-          "risk": "medium"
+          "risk": "medium",
+          "review": {
+            "classified_by": "architecture",
+            "classified_at": "2026-08-03",
+            "rationale": "The same policy now also governs the write direction: file upload checks the destination directory and the client-supplied filename through the identical SensitiveClassification function, so the platform never writes to a location or under a name it would refuse to display (ADR 0026 sec 4). Criterion text unchanged.",
+            "approved": true
+          }
         }
       ]
     },
@@ -1014,6 +1020,95 @@
           "source_anchor": "fr-file-009-ac-09",
           "verification_profile": "measurement",
           "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-FILE-010",
+      "kind": "functional",
+      "title": "檔案上傳",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-010"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "should",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-FILE-010.AC-01",
+          "source_anchor": "fr-file-010-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-010.AC-02",
+          "source_anchor": "fr-file-010-ac-02",
+          "verification_profile": "automated",
+          "risk": "low"
+        },
+        {
+          "id": "FR-FILE-010.AC-03",
+          "source_anchor": "fr-file-010-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-010.AC-04",
+          "source_anchor": "fr-file-010-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-010.AC-05",
+          "source_anchor": "fr-file-010-ac-05",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-010.AC-06",
+          "source_anchor": "fr-file-010-ac-06",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-010.AC-07",
+          "source_anchor": "fr-file-010-ac-07",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-010.AC-08",
+          "source_anchor": "fr-file-010-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-010.AC-09",
+          "source_anchor": "fr-file-010-ac-09",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-010.AC-10",
+          "source_anchor": "fr-file-010-ac-10",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-010.AC-11",
+          "source_anchor": "fr-file-010-ac-11",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-010.AC-12",
+          "source_anchor": "fr-file-010-ac-12",
+          "verification_profile": "automated",
+          "risk": "low"
         }
       ]
     },

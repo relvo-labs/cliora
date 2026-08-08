@@ -49,6 +49,12 @@ du -sh /path/to/workspace/.cliora/uploads
 rm -rf /path/to/workspace/.cliora/uploads/2026-07-*     # whole days are safe to remove
 ```
 
+**Deleting is a terminal operation, and only a terminal operation.** The console
+has no delete affordance for these images — or for anything else in a workspace —
+and that is a product decision rather than a gap (2026-08-03, ADR 0026). A user
+who has hit `FILE_UPLOAD_QUOTA_EXCEEDED` needs a terminal session on that node,
+not a button; the error text says so.
+
 Safe to delete: anything under `uploads/`. The daemon recreates the tree on the next drop
 and removes emptied day directories itself.
 

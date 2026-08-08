@@ -69,6 +69,21 @@ _UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
         "This node does not accept image drop",
         status.HTTP_403_FORBIDDEN,
     ),
+    # General file upload (ADR 0026) adds three refusals of its own. FILE_EXISTS is
+    # the most common one and it is not a failure: never overwriting is the property
+    # that lets this path exist without a version precondition or an undo.
+    "FILE_EXISTS": (
+        "A file or directory with that name already exists",
+        status.HTTP_409_CONFLICT,
+    ),
+    "FILE_UPLOAD_NO_SPACE": (
+        "The node does not have enough free disk space",
+        status.HTTP_507_INSUFFICIENT_STORAGE,
+    ),
+    "FILE_UPLOAD_FILES_DISABLED": (
+        "This node does not accept file upload",
+        status.HTTP_403_FORBIDDEN,
+    ),
 }
 
 
@@ -104,6 +119,44 @@ def _reject_rel_path(rel: str, *, allow_empty: bool = False) -> str:
             status.HTTP_400_BAD_REQUEST,
         )
     return clean
+
+
+# The longest filename the daemon will store, in BYTES. The wire schema's
+# maxLength counts code points, so 84 CJK characters plus an extension passes it
+# at 88 characters and 256 bytes (measured: plan/15/07-open-measurements.md sec 2).
+_MAX_FILENAME_BYTES = 255
+
+
+def _reject_filename(name: str) -> str:
+    """Validate a client-supplied filename at the HTTP boundary: exactly one path
+    segment, no separator, no control characters, bounded in bytes.
+
+    This runs on the value Starlette has already URL-decoded, and that ordering is
+    the point: `%2F` decodes to `/` and `..%2F` to `../`, so a check applied to the
+    raw query string would not see the separator at all. Mirrors the daemon's own
+    check rather than replacing it (defence in depth, SEC-001) — Central validates
+    so an obviously bad request never occupies a node connection, and the daemon
+    validates because Central is not the only conceivable caller.
+    """
+    if not name:
+        raise ApiError("FILE_INVALID_NAME", "A filename is required", status.HTTP_400_BAD_REQUEST)
+    if len(name.encode("utf-8")) > _MAX_FILENAME_BYTES:
+        raise ApiError("FILE_INVALID_NAME", "Filename too long", status.HTTP_400_BAD_REQUEST)
+    if name in (".", ".."):
+        raise ApiError("FILE_INVALID_NAME", "Invalid filename", status.HTTP_400_BAD_REQUEST)
+    if "/" in name:
+        raise ApiError(
+            "FILE_INVALID_NAME",
+            "A filename may not contain a path separator",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F for ch in name):
+        raise ApiError(
+            "FILE_INVALID_NAME",
+            "Filename contains control characters",
+            status.HTTP_400_BAD_REQUEST,
+        )
+    return name
 
 
 def _keyword_digest(keyword: str) -> str:
@@ -322,7 +375,49 @@ class FileRelayService:
             )
             payload = self._expect(message, "filesystem.uploaded")
             detail["mime"] = payload.get("mime")
-            await self._audit_upload(actor_id, s.node_id, session_id, payload)
+            await self._audit_upload(actor_id, s.node_id, session_id, payload, source="image")
+            return payload
+
+    async def store_file(
+        self,
+        *,
+        actor: User,
+        session_id: uuid.UUID,
+        directory: str,
+        filename: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        """Relay one uploaded file to the node and return the path it was stored at.
+
+        Central holds the bytes only for the duration of this call, the same as
+        `upload_image`: they are base64'd, forwarded and dropped. Nothing is written
+        to disk, to the database, to a log line or to a metrics label (ADR 0024 sec 5,
+        which applies to this path unchanged).
+
+        The filename does reach the audit record, and only there. An audit table has
+        access control; a correlation log does not, and a filename can name a
+        confidential project as readily as a search keyword can.
+        """
+        actor_id = actor.id
+        async with self._observe("store", session_id=session_id, actor_id=actor_id) as detail:
+            s = await self._resolve_for_upload(session_id, actor)
+            detail["node_id"] = str(s.node_id)
+            detail["bytes"] = len(data)
+            rel_dir = _reject_rel_path(directory, allow_empty=True)
+            name = _reject_filename(filename)
+            message = await self._registry.request(
+                s.node_id,
+                "filesystem.store",
+                {
+                    "session_id": str(session_id),
+                    "directory": rel_dir,
+                    "filename": name,
+                    "data": base64.b64encode(data).decode("ascii"),
+                },
+                timeout_seconds=self._settings.file_upload_timeout_seconds,
+            )
+            payload = self._expect(message, "filesystem.stored")
+            await self._audit_upload(actor_id, s.node_id, session_id, payload, source="file")
             return payload
 
     async def _resolve_for_upload(self, session_id: uuid.UUID, viewer: User) -> TerminalSession:
@@ -343,21 +438,36 @@ class FileRelayService:
         node_id: uuid.UUID,
         session_id: uuid.UUID,
         payload: dict[str, Any],
+        source: str = "image",
     ) -> None:
-        """Record a successful drop (ADR 0024 W3). The relative path is included
-        because the platform chose it; the content and the client's original
-        filename are not recorded anywhere."""
+        """Record a successful write (ADR 0024 W3, ADR 0026 sec 6).
+
+        One action for both upload paths, with `source` telling them apart, because
+        the verb is the same and splitting it would make every audit query a union
+        of two keys.
+
+        The relative path is recorded either way, but for different reasons. On the
+        image path the platform chose it (ADR 0024 D11). On the file path the *user*
+        chose it — and it is still recordable, because the user already sees that
+        path: they picked it in the tree. Without it, W3's question ("who put what
+        here") has only a counter for an answer. Content is never recorded on either.
+        """
+        metadata: dict[str, Any] = {
+            "path": payload.get("path"),
+            "bytes": payload.get("size"),
+            "source": source,
+        }
+        if source == "image":
+            # Only the image path sniffs a type, so only it has one to record. An
+            # empty mime would be worse than an absent one.
+            metadata["mime"] = payload.get("mime")
         try:
             await self._audit.record(
                 audit.FILE_UPLOAD,
                 user_id=actor_id,
                 node_id=node_id,
                 session_id=session_id,
-                metadata={
-                    "path": payload.get("path"),
-                    "mime": payload.get("mime"),
-                    "bytes": payload.get("size"),
-                },
+                metadata=metadata,
             )
         except Exception:
             # Same trade as the sensitive-read audit: the write already happened

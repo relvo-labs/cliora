@@ -6,6 +6,7 @@
     "tunnel": {"$ref": "node-tunnel-report.schema.json"},
     "privileged_terminal": {"type": "boolean"},
     "image_upload": {"type": "boolean"},
+    "file_upload": {"type": "boolean"},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
     "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
     "os": {"type": "string", "minLength": 1, "maxLength": 64},

@@ -24,12 +24,18 @@ MAX_FILE_PAYLOAD = 8 * 1024 * 1024
 # Central -> daemon direction (ADR 0024 sec 7). Its own schema caps `data` at
 # the base64 length of 4 MiB, so the wider frame bound does not widen what a
 # node will actually write.
+#
+# filesystem.store (ADR 0026) is the fifth, and it does not move the bound: it
+# shares image drop's 4 MiB per-file ceiling, which is 5.33 MiB of base64 and
+# still inside the room already granted here. Its response, filesystem.stored,
+# is a path and two scalars and keeps the tight limit.
 LARGE_FRAME_TYPES = frozenset(
     {
         "filesystem.entries",
         "filesystem.content",
         "filesystem.search_result",
         "filesystem.upload",
+        "filesystem.store",
     }
 )
 HEADER_SIZE = 18

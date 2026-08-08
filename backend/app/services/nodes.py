@@ -156,6 +156,11 @@ class RegisterNodeInput:
     # correct reading: the console hides the entry point rather than offering a
     # button that would fail.
     image_upload: bool = False
+    # The node's own report that the platform may place arbitrary files at
+    # user-chosen paths in its workspaces (ADR 0026 §9). False for a daemon that
+    # predates the field — and separate from image_upload, because a machine may
+    # accept screenshots while refusing this.
+    file_upload: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,11 +281,14 @@ class NodeRegistrationService:
         posture_changed = (
             node.privileged_terminal != data.privileged_terminal
             or node.image_upload != data.image_upload
+            or node.file_upload != data.file_upload
         )
         previous_posture = node.privileged_terminal
         previous_upload = node.image_upload
+        previous_file_upload = node.file_upload
         node.privileged_terminal = data.privileged_terminal
         node.image_upload = data.image_upload
+        node.file_upload = data.file_upload
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -293,6 +301,8 @@ class NodeRegistrationService:
                     "previous": previous_posture,
                     "image_upload": data.image_upload,
                     "previous_image_upload": previous_upload,
+                    "file_upload": data.file_upload,
+                    "previous_file_upload": previous_file_upload,
                 },
             )
         return node

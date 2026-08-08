@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "General file upload, contract 1.9.0 (ADR 0026). Compare filesystem-upload.schema.json: THAT type carries no name at all, because a screenshot does not need one. Here the caller must name the destination, so the protection moves from 'there is no field' to 'the field cannot hold a path' - directory and filename are separate, so a separator in a filename is unrepresentable rather than merely rejected. Still absent, and enforced by additionalProperties:false: overwrite, mode, mime, precondition, revision. Nothing in this payload can ask to replace something.",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "directory", "filename", "data"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "directory": {
+      "$comment": "Workspace-relative; '.' is the workspace root, which is a legitimate destination.",
+      "type": "string", "minLength": 1, "maxLength": 4096,
+      "pattern": "^(?![/~])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000-\\u001f]+$"
+    },
+    "filename": {
+      "$comment": "One path segment. maxLength counts code points, so it is a loose outer bound - the 255-BYTE limit is enforced by the daemon and the browser, because 84 CJK runes plus an extension is 88 code points and 256 bytes.",
+      "type": "string", "minLength": 1, "maxLength": 255,
+      "pattern": "^(?!\\.{1,2}$)[^/\\u0000-\\u001f]+$"
+    },
+    "data": {
+      "$comment": "Canonical standard-alphabet base64, capped at the base64 length of 4 MiB - the same ceiling as filesystem.upload, because both paths share one config key. minLength 0 accepts an empty file: a placeholder or an empty __init__.py is a legitimate upload, and all three consumers decode the empty string to zero bytes.",
+      "type": "string", "minLength": 0, "maxLength": 5592408,
+      "pattern": "^([A-Za-z0-9+/]+={0,2})?$"
+    }
+  }
+}

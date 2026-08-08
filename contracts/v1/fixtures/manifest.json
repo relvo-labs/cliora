@@ -88,6 +88,14 @@
     {"path":"invalid/filesystem-upload-with-mime.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
     {"path":"invalid/filesystem-upload-non-base64.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
     {"path":"invalid/filesystem-upload-oversize.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
+    {"path":"valid/filesystem-store.json","accept":true,"type":"filesystem.store"},
+    {"path":"valid/filesystem-store-root.json","accept":true,"type":"filesystem.store"},
+    {"path":"valid/filesystem-stored.json","accept":true,"type":"filesystem.stored"},
+    {"path":"valid/node-register-file-upload.json","accept":true,"type":"node.register"},
+    {"path":"invalid/filesystem-store-filename-with-slash.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
+    {"path":"invalid/filesystem-store-with-overwrite.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
+    {"path":"invalid/filesystem-store-parent-escape.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
+    {"path":"invalid/node-register-file-upload-non-boolean.json","accept":false,"code":"INVALID_MESSAGE"},
     {"path":"invalid/node-register-image-upload-non-boolean.json","accept":false,"type":"node.register","code":"INVALID_MESSAGE"}
   ],
   "binary": [

@@ -186,3 +186,150 @@ describe("FileTree", () => {
     expect(wrapper.find('[role="tree"]').exists()).toBe(false);
   });
 });
+
+// --- Drag and drop (FU-06, ADR 0026) --------------------------------------
+//
+// The composable's target resolution is unit-tested through useFileTree; these
+// prove the handlers are wired to the rendered rows, that the destination shown is
+// the resolved one, and that nothing is offered when the gate is closed.
+
+function dropEvent(items: Array<{ isFile: boolean; file: File | null }>) {
+  return {
+    dataTransfer: {
+      items: items.map((i) => ({
+        kind: "file",
+        type: "text/plain",
+        webkitGetAsEntry: () => ({ isFile: i.isFile }),
+        getAsFile: () => i.file,
+      })),
+      dropEffect: "",
+    },
+  };
+}
+
+describe("FileTree drag and drop", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    listImpl.fn = async (path) => {
+      if (path === ".") {
+        return {
+          path: ".",
+          truncated: false,
+          entries: [
+            entry({
+              name: "src",
+              rel_path: "src",
+              type: "directory",
+              expandable: true,
+            }),
+            entry({
+              name: "node_modules",
+              rel_path: "node_modules",
+              type: "directory",
+              excluded: true,
+              expandable: false,
+            }),
+            entry({ name: "README.md", rel_path: "README.md" }),
+          ],
+        };
+      }
+      return { path, truncated: false, entries: [] };
+    };
+  });
+
+  it("highlights a directory row and names it as the destination", async () => {
+    const wrapper = render({ canUpload: true });
+    await settle();
+    await wrapper.find('[data-key="src"]').trigger("dragenter");
+    await nextTick();
+    const row = wrapper.find('[data-key="src"]');
+    expect(row.attributes("data-drop-target")).toBeDefined();
+    expect(row.text()).toContain("放到 src/");
+  });
+
+  it("resolves a file row to its parent directory, and says so", async () => {
+    // Requiring a precise hit on a folder row would make the feature tedious, so a
+    // file row means "next to this file" — and the label has to name the folder or
+    // the user is guessing.
+    const wrapper = render({ canUpload: true });
+    await settle();
+    await wrapper.find('[data-key="README.md"]').trigger("dragenter");
+    await nextTick();
+    const row = wrapper.find('[data-key="README.md"]');
+    expect(row.attributes("data-drop-target")).toBeDefined();
+    expect(row.text()).toContain("放到 app/");
+  });
+
+  it("does not offer an excluded directory as a destination", async () => {
+    const wrapper = render({ canUpload: true });
+    await settle();
+    await wrapper.find('[data-key="node_modules"]').trigger("dragenter");
+    await nextTick();
+    expect(
+      wrapper.find('[data-key="node_modules"]').attributes("data-drop-target"),
+    ).toBeUndefined();
+  });
+
+  it("emits the files and the resolved directory on drop", async () => {
+    const wrapper = render({ canUpload: true });
+    await settle();
+    const file = new File([new Uint8Array(4)], "data.csv");
+    await wrapper
+      .find('[data-key="README.md"]')
+      .trigger("drop", dropEvent([{ isFile: true, file }]));
+    const emitted = wrapper.emitted("upload");
+    expect(emitted).toHaveLength(1);
+    expect(emitted![0][0]).toEqual([file]);
+    // The parent of README.md is the workspace root.
+    expect(emitted![0][1]).toBe(".");
+  });
+
+  it("refuses a folder without emitting an upload", async () => {
+    const wrapper = render({ canUpload: true });
+    await settle();
+    await wrapper
+      .find('[data-key="src"]')
+      .trigger("drop", dropEvent([{ isFile: false, file: null }]));
+    expect(wrapper.emitted("upload")).toBeUndefined();
+    const refused = wrapper.emitted("uploadRefused");
+    expect(refused).toHaveLength(1);
+    expect(String(refused![0][0])).toContain("資料夾");
+  });
+
+  it("offers nothing at all when the gate is closed", async () => {
+    // Hidden rather than disabled: a drop target that refuses on release is worse
+    // than one that was never offered (ADR 0026 §9 — the node's own answer).
+    const wrapper = render({ canUpload: false });
+    await settle();
+    await wrapper.find('[data-key="src"]').trigger("dragenter");
+    await nextTick();
+    expect(
+      wrapper.find('[data-key="src"]').attributes("data-drop-target"),
+    ).toBeUndefined();
+    await wrapper
+      .find('[data-key="src"]')
+      .trigger(
+        "drop",
+        dropEvent([{ isFile: true, file: new File([], "a.txt") }]),
+      );
+    expect(wrapper.emitted("upload")).toBeUndefined();
+    // And the picker is not rendered either.
+    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+  });
+
+  it("emits the focused directory when the picker is used", async () => {
+    // Drag and drop does not exist for keyboard or touch users, so this entry point
+    // is not optional.
+    const wrapper = render({ canUpload: true });
+    await settle();
+    const input = wrapper.find('input[type="file"]');
+    expect(input.exists()).toBe(true);
+    const file = new File([new Uint8Array(2)], "notes.md");
+    Object.defineProperty(input.element, "files", { value: [file] });
+    await input.trigger("change");
+    const emitted = wrapper.emitted("upload");
+    expect(emitted).toHaveLength(1);
+    expect(emitted![0][0]).toEqual([file]);
+    expect(emitted![0][1]).toBe(".");
+  });
+});

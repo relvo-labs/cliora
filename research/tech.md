@@ -1234,7 +1234,8 @@ filesystem:
 * 是否可讀。
 * 是否疑似 Binary。
 
-寫入僅有一條路徑（`.cliora/uploads/`，見 §11.9），且同樣經 `workspace.Root` 侷限。
+寫入有兩條路徑，且都經 `workspace.Root` 侷限（見 §11.9）：
+圖片投放（`.cliora/uploads/`，由 Daemon 命名）與檔案上傳（使用者指定目錄與檔名，永不覆寫）。
 
 設定：
 
@@ -1242,11 +1243,16 @@ filesystem:
 filesystem:
   max_preview_size: 2097152
   upload:
-    enabled: true
-    max_bytes: 4194304
+    enabled: true                    # 圖片投放
+    max_bytes: 4194304               # 兩條路徑共用的單檔上限
     max_session_bytes: 67108864
     max_files_per_day: 200
     retention_days: 7
+    files:                           # 檔案上傳
+      enabled: true
+      max_session_bytes: 268435456
+      max_files_per_day: 200
+      min_free_bytes: 536870912
 ```
 
 讀取時應使用 Limit Reader，避免檔案在檢查後快速變大造成記憶體問題。
@@ -1297,6 +1303,10 @@ filesystem:
 
 需注意 Pattern 不應過度寬鬆，例如 `*secret*` 可能擋到程式碼檔案。
 
+同一份規則**同時適用於寫入方向**：檔案上傳的目的地與檔名都要通過
+`SensitiveClassification()`，也就是讀取面正在用的同一個函式（ADR 0026 §4）。
+平台不寫入它自己不肯顯示的位置或名字。
+
 正式設計建議分成：
 
 * Exact Name
@@ -1334,7 +1344,9 @@ filesystem:
 
 ---
 
-## 11.9 圖片投放（工作區的唯一寫入路徑）
+## 11.9 工作區的兩條寫入路徑
+
+### 11.9.1 圖片投放
 
 （2026-08-01 新增，ADR 0024。）
 
@@ -1367,6 +1379,41 @@ filesystem:
 相對路徑之所以可用，是因為 Session 以 `tmux new-session -c <workspace>` 啟動，
 CLI 的 cwd 即工作區。實測 `claude` 與 `codex` 都接受裸的相對路徑，
 不需要 `@` 前綴或其他方言。
+
+### 11.9.2 檔案上傳
+
+（2026-08-03 新增，ADR 0026。）
+
+與 §11.9.1 相反：**落地位置與檔名由請求端指定**，不限型別。
+換來的是一套自己的防護，其中最重要的一條是**永不覆寫**。
+
+落地順序（default-deny，任一步失敗都不留下檔案）：
+
+1. 功能是否啟用（`filesystem.upload.files.enabled`）。
+2. 大小是否超過 `max_bytes`（與圖片投放共用同一個鍵）。
+3. 位置與檔名的政策：檔名必須是單一路徑片段（1–255 **位元組**、無 `/`、
+   非 `.`／`..`、無控制字元）；`.git`（目錄與 worktree 的檔案兩種形式）、
+   `.cliora/`、`denied_patterns`／`denied_directories`、`excluded_directories`
+   一律拒絕。**用的是讀取面同一個 `SensitiveClassification()`。**
+4. 配額：`files.max_session_bytes` 與 `files.max_files_per_day`（記憶體計數器，
+   重啟歸零；守的是壞掉的客戶端）。
+5. 可用空間：`Statfs` 的 **`Bavail`**（不是 `Bfree` —— 後者含 root 保留區塊，
+   而 agentd 非 root）低於 `files.min_free_bytes` 或不足檔案大小兩倍時拒絕。
+6. 目的地：必須存在、`Lstat` 不是 symlink、`Stat` 是目錄。**不建立目錄。**
+7. 目標名稱：必須不存在（`Lstat`），否則回 `FILE_EXISTS`。
+8. 寫入 `.<name>.<ULID>.part`（0600）→ `fsync` → 以該 fd `Chmod(0644)` → rename 就位。
+
+**不清理、不保留期。** 落地的檔案在使用者選定的位置，從落地那一刻起是他的資料；
+平台七天後刪掉它會是災難而不是紀律。W2 的第三腿在這條路徑上是**可見性**
+（ADR 0024 的 W2 已據此精修）。
+
+**平台不提供刪除、更名或編輯。** 兩條寫入路徑都只會新增檔案，
+所以工作區裡的東西不可能因為前端的操作而消失或被取代。
+要刪除或取代（包含 §11.9.1 落在 `.cliora/uploads/` 的圖片）一律在該 Node 上以終端機操作。
+這是產品決定而不是未實作 —— 一個「之後會補」的說法會讓下一個人去設計 undo、
+版本前提與回收桶，而那三樣正是本設計不需要的東西。
+
+`0644` 是固定值：從瀏覽器拖進來的檔案不應該可執行。
 
 ---
 

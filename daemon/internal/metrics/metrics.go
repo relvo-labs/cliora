@@ -24,8 +24,14 @@ const (
 	FilesystemDeniedTotal        = "filesystem_denied_total"
 	FilesystemRequestTotal       = "filesystem_request_total"
 	// Image drop (P13, ADR 0024). Bytes written, not requests: the quota that
-	// matters is cumulative size, so that is what the series has to show.
+	// matters is cumulative size, so that is what the series has to show. Shared
+	// with general file upload (ADR 0026) and labelled by "source" to keep the
+	// two paths apart.
 	FilesystemUploadBytes = "filesystem_upload_bytes"
+	// General file upload (P15, ADR 0026). This series exists for one decision:
+	// whether the 4 MiB per-file ceiling needs to become a chunked upload. Without
+	// it that argument can only be made from anecdote (plan/15 00-…md D3).
+	FilesystemStoreRefusedTotal = "filesystem_store_refused_total"
 )
 
 // tech §18.2, the daemon's own series (P4-09).
@@ -67,6 +73,9 @@ var allowedLabels = map[string]bool{
 	// (ADR 0024 §2.1). The set is closed by the wire contract, so this cannot grow
 	// with user input — which is the only reason a content-derived label is safe here.
 	"mime": true,
+	// "source" is image|file on filesystem_upload_bytes (ADR 0026). Two values,
+	// fixed by the two code paths that emit them, so it cannot grow at all.
+	"source": true,
 }
 
 // LabelNotAllowed names a rejected label key. Recording panics rather than silently

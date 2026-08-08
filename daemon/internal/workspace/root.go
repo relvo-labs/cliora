@@ -137,11 +137,20 @@ func (r *Root) MkdirAllIn(rel string, perm os.FileMode) error {
 
 // CreateExclusive opens rel for writing and fails if it already exists.
 //
-// O_EXCL is load-bearing rather than defensive: the daemon generates every name
-// it writes (ADR 0024 §3), so a collision does not mean "try again with a
-// suffix" — it means something else is writing into a directory this code
-// believes it owns, and continuing would overwrite it. O_NOFOLLOW matches the
-// read path's refusal to follow a symlink as the final component.
+// O_EXCL is load-bearing rather than defensive, and it is load-bearing in two
+// different ways depending on the caller:
+//
+//   - Image drop (ADR 0024 §3) generates every name it writes, so a collision
+//     does not mean "try again with a suffix" — it means something else is
+//     writing into a directory this code believes it owns.
+//   - File upload (ADR 0026 §3) is handed a name by the client, so a collision
+//     is a *normal result* to report back (FILE_EXISTS). O_EXCL is what makes
+//     "never overwrite" true at the syscall rather than at a preceding Lstat,
+//     and never overwriting is the reason that path needs no version
+//     precondition, no trash can and no undo.
+//
+// O_NOFOLLOW matches the read path's refusal to follow a symlink as the final
+// component.
 func (r *Root) CreateExclusive(rel string, perm os.FileMode) (*os.File, error) {
 	clean, err := relClean(rel)
 	if err != nil {
@@ -185,6 +194,23 @@ func (r *Root) RemoveIn(rel string) error {
 	return nil
 }
 
+// StatIn stats rel, following a final symlink that stays inside the root. It is
+// used to confirm that an upload destination is a directory — but only *after*
+// LstatIn has confirmed the same path is not itself a symlink. The pair matters:
+// os.Root follows in-root symlinks, so `datasets -> elsewhere-in-root` would
+// otherwise silently redirect where an uploaded file lands (ADR 0026 §1.2).
+func (r *Root) StatIn(rel string) (os.FileInfo, error) {
+	clean, err := relClean(rel)
+	if err != nil {
+		return nil, err
+	}
+	info, err := r.root.Stat(clean)
+	if err != nil {
+		return nil, mapPathErr(err)
+	}
+	return info, nil
+}
+
 // LstatIn stats rel without following a final symlink. Callers use it to
 // confirm that a directory they are about to write into is a real directory:
 // os.Root follows symlinks that stay inside the root, so an in-root symlink
@@ -221,11 +247,15 @@ func (r *Root) RealRel(f *os.File) (string, error) {
 
 // mapPathErr converts an os.Root/open error into the WORKSPACE_* vocabulary. An
 // escape attempt (os.Root refusing a "../" or out-of-root symlink) is treated
-// as outside-root; missing paths as not-found; EACCES as permission-denied.
+// as outside-root; missing paths as not-found; EACCES as permission-denied;
+// EEXIST as already-exists (see ErrExists — it is a normal outcome on the
+// file-upload path, so it must not collapse into ErrInvalid).
 func mapPathErr(err error) error {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return ErrNotFound
+	case errors.Is(err, fs.ErrExist):
+		return ErrExists
 	case errors.Is(err, fs.ErrPermission):
 		return ErrPermision
 	case isEscape(err):

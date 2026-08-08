@@ -42,11 +42,21 @@ vi.mock("../composables/useTerminalSession", () => ({
 vi.mock("../components/file/FileTree.vue", () => ({
   default: {
     name: "FileTree",
-    emits: ["open", "clear"],
-    template: `<div class="file-tree">
+    props: ["canUpload"],
+    emits: ["open", "clear", "upload", "uploadRefused"],
+    // Built here rather than in the template: a template expression resolves
+    // identifiers against the component instance, so `new File(...)` inline finds
+    // no constructor.
+    setup: () => ({ sample: new File(["x"], "data.csv") }),
+    // `data-can-upload` is how the view's gate is observed from outside: the real
+    // component hides its own affordances, so the assertion has to be about what
+    // the view told it, not about what it drew.
+    template: `<div class="file-tree" :data-can-upload="canUpload || undefined">
       <button class="open-a" @click="$emit('open', 'src/app.py')">a</button>
       <button class="open-b" @click="$emit('open', 'docs/readme.md')">b</button>
       <button class="clear" @click="$emit('clear')">c</button>
+      <button class="do-upload" @click="$emit('upload', [sample], 'datasets')">u</button>
+      <button class="refuse" @click="$emit('uploadRefused', '資料夾請用終端機處理')">r</button>
     </div>`,
   },
 }));
@@ -69,6 +79,7 @@ vi.mock("../components/file/PreviewPane.vue", () => {
 });
 
 import * as auth from "../stores/auth";
+import { useNodesStore } from "../stores/nodes";
 import SessionWorkspaceView from "./SessionWorkspaceView.vue";
 
 const ID = "44444444-4444-4444-8444-444444444444";
@@ -93,6 +104,7 @@ function session(overrides: Partial<SessionDetail> = {}): SessionDetail {
       can_terminate: true,
       can_takeover: true,
       can_browse_files: true,
+      can_upload_files: true,
       can_open_shell: false,
     },
     ...overrides,
@@ -439,5 +451,143 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     expect(wrapper.findAll('[role="tab"]')[0].attributes("aria-selected")).toBe(
       "true",
     );
+  });
+});
+
+// --- General file upload (FU-06, ADR 0026) --------------------------------
+//
+// The property under test is the *pair* of gates: the same permission as image
+// drop, but a different node flag. A machine may accept screenshots into
+// `.cliora/` and refuse arbitrary files anywhere in the workspace, so the two
+// affordances cannot share one condition.
+
+function nodeDetail(over: Record<string, unknown> = {}) {
+  return {
+    id: "11111111-1111-1111-1111-111111111111",
+    name: "vm",
+    hostname: "vm",
+    status: "online",
+    privileged_terminal: false,
+    image_upload: false,
+    file_upload: false,
+    runtimes: [],
+    workspace_roots: [],
+    resources: null,
+    recent_errors: [],
+    ...over,
+  };
+}
+
+async function renderWithNode(
+  nodeOver: Record<string, unknown>,
+  sessionOver: Partial<SessionDetail> = {},
+) {
+  const nodes = useNodesStore();
+  vi.spyOn(nodes, "fetchNode").mockResolvedValue(nodeDetail(nodeOver) as never);
+  const wrapper = await render(vi.fn(async () => session(sessionOver)));
+  await flushPromises();
+  return wrapper;
+}
+
+describe("SessionWorkspaceView — file upload gate (FU-06)", () => {
+  it("opens the drop target when permission and the node both allow it", async () => {
+    const wrapper = await renderWithNode({ file_upload: true });
+    expect(
+      wrapper.find(".file-tree").attributes("data-can-upload"),
+    ).toBeDefined();
+  });
+
+  it("keeps it closed when the node refuses, even with permission", async () => {
+    const wrapper = await renderWithNode({ file_upload: false });
+    expect(
+      wrapper.find(".file-tree").attributes("data-can-upload"),
+    ).toBeUndefined();
+  });
+
+  it("keeps it closed when permission is missing, even if the node allows it", async () => {
+    const wrapper = await renderWithNode({ file_upload: true }, {
+      capabilities: {
+        can_terminate: true,
+        can_takeover: true,
+        can_browse_files: true,
+        can_upload_files: false,
+        can_open_shell: false,
+      },
+    } as Partial<SessionDetail>);
+    expect(
+      wrapper.find(".file-tree").attributes("data-can-upload"),
+    ).toBeUndefined();
+  });
+
+  it("gates the two upload paths on separate node flags", async () => {
+    // The combination that proves they are not one switch: this machine takes
+    // screenshots into .cliora/ but refuses arbitrary files elsewhere.
+    const wrapper = await renderWithNode({
+      image_upload: true,
+      file_upload: false,
+    });
+    expect(
+      wrapper.find(".file-tree").attributes("data-can-upload"),
+    ).toBeUndefined();
+    // The terminal's own drop bar is still offered.
+    expect(wrapper.find(".drop-bar").exists()).toBe(true);
+  });
+
+  it("shows a batch refusal without uploading anything", async () => {
+    const wrapper = await renderWithNode({ file_upload: true });
+    await wrapper.find(".refuse").trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("資料夾請用終端機處理");
+  });
+
+  it("lists an upload and refreshes the directory it landed in", async () => {
+    const uploadFile = vi.fn(
+      async (
+        _sessionId: string,
+        _directory: string,
+        _filename: string,
+        _file: Blob,
+      ) => ({
+        path: "datasets/data.csv",
+        size: 1,
+        modified_at: "2026-08-03T00:00:00Z",
+      }),
+    );
+    const nodes = useNodesStore();
+    vi.spyOn(nodes, "fetchNode").mockResolvedValue(
+      nodeDetail({ file_upload: true }) as never,
+    );
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession: vi.fn(async () => session()),
+      attachSession: vi.fn(async () => ({ ticket: "t" })),
+      openShell: shellApi.openShell,
+      terminateSession: shellApi.terminateSession,
+      terminateSessionOnUnload: shellApi.terminateSessionOnUnload,
+      uploadFile,
+      listFileTree: vi.fn(async () => ({
+        path: "datasets",
+        truncated: false,
+        entries: [],
+      })),
+    } as never);
+    const router = testRouter();
+    router.push(`/sessions/${ID}`);
+    await router.isReady();
+    const wrapper = mount(SessionWorkspaceView, {
+      props: { id: ID },
+      global: {
+        plugins: [router],
+        stubs: { AppLayout: { template: "<div><slot /></div>" } },
+      },
+    });
+    await flushPromises();
+
+    await wrapper.find(".do-upload").trigger("click");
+    await flushPromises();
+
+    expect(uploadFile).toHaveBeenCalledTimes(1);
+    expect(uploadFile.mock.calls[0][1]).toBe("datasets");
+    expect(wrapper.text()).toContain("data.csv");
+    expect(wrapper.text()).toContain("已上傳");
   });
 });

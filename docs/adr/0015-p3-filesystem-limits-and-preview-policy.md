@@ -94,6 +94,29 @@ Its sentence "Viewer read-only, consistent with P2's read-only viewer attach" st
 **for Viewer** — Viewer has no write capability at all — but it no longer describes the
 posture of the system.
 
+### Amendment (2026-08-03, ADR 0026): the scope line, third and final reading
+
+The amendment above said "not built yet" of five things. Two of those readings are now
+wrong, and in opposite directions, so the list has to be split rather than shortened:
+
+- **General file upload is built** (ADR 0026). A file lands at a directory and filename the
+  caller chooses. It never replaces anything — `O_EXCL` on the final name — and its
+  destination and filename must pass the same sensitive-file policy this ADR defines for
+  previews. Two write paths now exist and **both only ever add a file.**
+- **Editing, rename and delete are decided against, not deferred.** By product decision on
+  2026-08-03 they belong to the CLI and the terminal, and the console will not grow them.
+  `plan/14` designed them and was withdrawn as too large a change; the directory is kept so
+  the reasoning survives. **There is no way to remove or replace a workspace file from the
+  browser, by design** — including the images image drop writes, which is why
+  `FILE_UPLOAD_QUOTA_EXCEEDED` now points at a terminal session rather than at the file tree.
+- **Download is the only one still "not built yet."**
+
+The limits table gains one row — `File upload | 4 MiB / file (shared with image drop),
+256 MiB / session, 200 / day, free-space floor, **no retention**` — and the absence of
+retention there is deliberate: retention applies to a directory the platform named and
+therefore owns, and an uploaded file sits where the user put it. ADR 0024's W2 was refined
+to say so.
+
 ## Sensitive file policy — **balanced** (confirmed)
 
 Four categories via `filesystem.denied_patterns`; admins may extend for environment-specific secrets:
