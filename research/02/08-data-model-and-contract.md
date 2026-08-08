@@ -251,10 +251,10 @@ daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 conf
 | 階段 | Contract | `agentd` | Central | 前端 | CLI |
 |---|---|---|---|---|---|
 | V2.0 | 不變 | 不變 | minor | minor | — |
-| V2.1 | 不變 | 不變 | minor | minor | 0.1.0 |
-| V2.2 | v1.10.0 | 0.8.0 | minor | minor | 0.2.0 |
+| V2.1 | 不變 | 不變 | minor | minor | 0.1.0（投影到 `.cliora/bin/`） |
+| V2.2 | v1.10.0 | 0.8.0 | minor | minor | 0.2.0（**改為隨 `agentd` 附帶**，路徑固定） |
 | V2.3 | v1.11.0 | 0.9.0 | minor | minor | 0.2.x |
-| V2.4 | v1.12.0 | 0.10.0 | minor | minor | 0.3.0 |
+| V2.4 | v1.12.0 | 0.10.0 | minor | minor | 0.3.0（＋條件性的 `cliora mcp` stdio 外殼） |
 | V2.5 | 不變 | **不變** | minor | minor | 0.4.0 |
 
 新 Central ＋ 舊 daemon：新訊息在舊 daemon 上是未知型別，被既有處理拒絕（fixture 已涵蓋）。Central 要轉成「此 node 的 agentd 需升級到 0.x 才能擔任 Agent Runner」的可行動訊息，**而不是 500，也不是讓該 node 從 runner 清單消失**。

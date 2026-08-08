@@ -127,7 +127,9 @@ cliora task update <ref> --stage implementing --note "…"
    **第二句是重點**：平台掛掉不影響 CLI Agent 本身工作，那是 V1 的既有性質。回傳非零 exit code 但**不應讓 Agent 判斷「我沒辦法繼續」**——情境包要明寫這一點。
 4. 嘗試勾 gate 一律被 API 拒絕（scope 不含）。
 
-發行方式：CLI 隨情境包投影到 `.cliora/bin/`，或由 `agentd` 隨附。**選一個並寫進 ADR**——投影的好處是版本跟著平台走，隨附的好處是不必每個 Session 寫一次。建議隨附於 `agentd`，但 V2.1 因為不升級 daemon，先用投影。
+發行方式：**V2.1 用投影**（`.cliora/bin/`），因為本階段不升級 daemon；**V2.2 起改為隨 `agentd` 附帶**。
+
+理由與 D11 的 stdio 裁決一致：MCP 設定要指向一個**穩定的可執行路徑**，隨 daemon 附帶才有固定路徑與跟著 daemon 走的版本。這個轉換要寫進 ADR 0028，否則 V2.4 做 MCP 時會發現路徑不固定。
 
 ### TK-07 — 前端：看板、藍圖、任務詳情
 

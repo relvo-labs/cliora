@@ -124,6 +124,7 @@ git 狀態由 daemon 在 run 內以固定 argv 擷取（`rev-parse`、`status --
 - 不做流程編輯器（`00` §9）。
 - 不開放「對任意 node 執行任意命令」的 API（DV-04 的修訂只在 run 內成立）。
 - **不做 PRD patch 提案與任務建議**——它們屬於 V2.5 的釐清與拆解（`07` RQ-06）。
+- **MCP 外殼是條件性的**：只在 M2／M5 指向要做時才建（`01` D11 的決策規則）。transport 已定為 **stdio**（`cliora mcp` 子命令，隨 `agentd` 附帶），**只在 Agent Run 路徑自動配置**——互動式 Session 的工作目錄是使用者的 repo，平台不代寫 MCP 設定（D2 的同一條邊界）。
 
 ## 出口條件
 

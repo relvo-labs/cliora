@@ -70,6 +70,10 @@
 
 想要自動載入的團隊，仍可自己把 `.cliora/process/` 複製一份到 `.claude/skills/`。那是他們的 repo、他們的決定，平台不代勞。
 
+> **一處修正（2026-08-08，隨 D11 的 stdio 裁決）**：上面「平台無法用 API 讓 Agent 知道一條規則」這句對 CLI 成立，但**對 MCP resources 不完全成立**——resource 是 server 提供、client 可掛進 context 的內容，不必是工作目錄裡的檔案。
+>
+> 邊界因此不是消失而是**分層**：**檔案投影是保底路徑**（零依賴、離線可用、D14 靠它），**MCP resources 是加值路徑**（要 client 支援、要連線）。兩者並存，不是二選一。Codex 對 resources 的支援深度尚未確認，這也是保底路徑不能省的理由。
+
 ### 保留 Monstrare 的出處
 
 流程定義的措辭與結構源自 Monstrare（MIT）。內化時在 ADR 0027 與平台的流程定義種子資料中標註出處，不假裝是原創。
@@ -238,15 +242,83 @@ On-demand：**只給路徑，讓 Agent 自己用原生工具讀**。內化之後
 
 **決定：CLI 優先，MCP 為同源第二外殼。CLI 的最小集合必須在 V2.1 交付。**
 
-CLI 為什麼優先：Claude Code 與 Codex 都會跑 shell，不需要各自的設定；MCP 在 Codex 側設定成本較高。
+CLI 為什麼優先：Claude Code 與 Codex 都會跑 shell，不需要各自的設定；MCP 在 Codex 側支援較有限、設定成本較高。而 `context show` 讀本機檔案免連線（D14 的前提）用 CLI 最直接。
 
-交付順序：
+### MCP 做不做——用量測決定，不用感覺
+
+MCP 相對 CLI 真正多出來的只有三樣，而且都可以被量到：
+
+| MCP 多的 | 修的是什麼問題 | 量測 |
+|---|---|---|
+| **工具探索**（server 自報工具與 schema） | Agent 根本沒想到要回報進度 | **M2** CLI 使用率 |
+| **結構化參數**（JSON Schema 驗證） | Agent 想回報但參數格式錯 | **M5** 格式錯誤率 |
+| **Resources**（可掛進 context 的唯讀內容） | on-demand 情境目前只能「給路徑自己讀」 | 併入 M3 |
+
+**決策規則（寫進 ADR，不要留成「看情況」）**：
+
+| M2 使用率 | M5 錯誤率 | 結論 |
+|---|---|---|
+| 高 | 低 | **整包砍掉。** CLI 已經夠了，做了也沒人受益 |
+| **低** | — | **做。** 工具探索正是解「沒想到要用」 |
+| 高 | **高** | **做。** schema 驗證正是解「用了但參數錯」 |
+
+還有一條要一起算：**每個 MCP 工具定義都常駐在 context 裡**（10 個工具 ≈ 1KB，每次請求都付，不管有沒有用到）。D8 的預算是 4KB，MCP 等於先吃掉四分之一。它省下「教語法」的篇幅，但賠上工具定義的常駐成本，**淨效果不一定是正的**——判準要把這筆算進去。
+
+### Transport 已裁決：stdio（2026-08-08）
+
+**做的話用 stdio**，不開 HTTP 端點。
+
+**它消掉了一個原本列在下方風險表裡的問題。** stdio 的 server 是本機程序，所以它就是 **`cliora` 這支二進位的一個子命令**（`cliora mcp`）——同一份邏輯、同一組驗證、兩個協定外殼（argv 與 MCP）。「CLI 與 MCP 行為分歧」從「要靠測試盯住」變成「結構上不可能」。
+
+**它也保住了 D14 的離線性質，而且更好。** stdio server 讀本機檔案不需要連線，所以 `.cliora/` 投影出來的情境包、流程說明、reference 可以直接當 **MCP resources** 提供——即使 Central 掛了。只有寫入類的工具需要連線，與 CLI 的分界一致。
+
+| | **stdio（已裁決）** | Streamable HTTP |
+|---|---|---|
+| 誰跑 server | CLI 的子行程，在 node 上 | Central |
+| 與 CLI 的關係 | **同一支二進位**，分歧不可能 | 兩份實作，要靠測試盯 |
+| 離線 | 讀本機檔案的部分照常 | 完全不可用 |
+| Central 新增的面 | **無** | 新端點 ＋ 新認證路徑 |
+| 憑證 | 讀 `.cliora/context/<id>.token`，與 CLI 相同 | 需要 bearer 流程 |
+| 代價 | 二進位要發佈、要版本相符 | 無二進位，但要營運端點 |
+
+### stdio 把 D2 的邊界又翻出來一次，而兩條路徑的答案不同
+
+stdio 需要**工作目錄裡有一份 MCP 設定**才會被 CLI 載入。這正是 D2 討論過的東西：
+
+| | Agent Run | 互動式 Session |
+|---|---|---|
+| 工作目錄是誰的 | **平台建立的隔離目錄** | **使用者的 workspace** |
+| 寫 MCP 設定 | 自然，沒有邊界問題 | **等同 D2 選項 B（寫進使用者 repo），已被否決** |
+| 結論 | **MCP 原生可用** | **不自動配置；由使用者自行加入** |
+
+所以：**MCP 是 Agent Run 路徑的原生能力；互動式 Session 維持純 CLI，想用 MCP 的團隊自己在他們的 repo 加設定。**
+
+這與 D2 對 skill 的處置是同一個形狀——平台不代勞污染使用者的 repo，把便利留給自己能完全控制的那個目錄。**兩條路徑因此會有能力落差，這要寫進文件，不要讓人自己撞到。**
+
+### 發佈方式：隨 `agentd` 附帶
+
+stdio 需要一個穩定的可執行路徑給 MCP 設定指過去。**隨 `agentd` 附帶**比每次 run 投影一份進 `.cliora/bin/` 好：路徑固定、版本跟著 daemon 走、不必每次寫二進位進工作目錄。
+
+V2.1 因為不升級 daemon 而先用投影（TK-06），但 MCP 落在 V2.4——那時 `agentd` 已經升過三次，隨附是理所當然的做法。
+
+### Resources 修正了 D2 的一句話
+
+D2 寫的是：「只存在 PostgreSQL 裡的 skill，CLI 永遠看不到；平台無法用 API 讓 Agent 知道一條規則。」
+
+**那句話對 CLI 成立，對 MCP resources 不完全成立**——resource 是 server 提供、client 可掛進 context 的內容，不必是工作目錄裡的檔案。
+
+但不翻掉 D2，因為：resource 要 client 支援（Claude Code 支援；**Codex 的支援深度未確認**）、需要 MCP 連線活著、而 D14 的離線保底靠的就是本機檔案。
+
+**正確的修正是：檔案投影是保底路徑，MCP resources 是加值路徑，兩者並存。** 這一句要補進 D2。
+
+### 交付順序
 
 | 階段 | CLI 子命令 | 為什麼是這個階段 |
 |---|---|---|
 | **V2.1（必要）** | `cliora task list/get/update`、`cliora context show` | 沒有它，Agent 無法把卡片推進，看板只能靠人拖 |
 | V2.2 | `cliora task say`／`ask`／`messages` | 看板作為溝通管道（D24）；沒有它 Agent 無法提問 |
-| V2.4 | `cliora plan snapshot`／`verify submit`／`evidence add`、MCP 外殼 | 計畫與驗證上線 |
+| V2.4 | `cliora plan snapshot`／`verify submit`／`evidence add` | 計畫與驗證上線 |
+| V2.4（**條件性**） | `cliora mcp`（stdio 外殼），**只在 M2／M5 指向要做時才建** | 見上方決策規則 |
 
 **憑證**：每個 Session 一枚、只含該 Project 範圍、可撤銷、Session 結束即失效的 token，隨情境包投影到 `.cliora/context/<session_id>.token`（同樣受保留期管轄）。**不是使用者的 JWT。**
 
@@ -1055,7 +1127,7 @@ ADR 0022 帶著一句硬性範圍宣告：「**這個功能用於預覽開發中
 | D8 | 情境內容 | ≤4 KB，只給路徑 |
 | D9 | 執行計畫形狀 | DB 版本列，保留 append-only 語意 |
 | D10 ⚠️ | 證據可信度 | 三級 ＋ 伺服器端判定；「平台代跑驗證命令」在 Agent Run 路徑上**改為允許**，因為那本來就是 run 在做的事——但仍不開放「對任意 node 執行任意命令」的 API |
-| D11 ⚠️ | 工具介面 | CLI 優先，V2.1 首發 |
+| D11 ⚠️ | 工具介面 | CLI 優先，V2.1 首發。**MCP transport 已裁決為 stdio**（同一支二進位的子命令，隨 `agentd` 附帶，只在 Agent Run 路徑自動配置）；**做不做仍由 M2／M5 決定** |
 | D12 | 相容機制 | 單一旗標 ＋ 永久 nullable |
 | D31 🆕 | Mockup 預覽 | ✅ **已裁決：走既有 tunnel 整合（目前只有 Pinggy）**。Agent 在卡片上問策略、人決定、平台開。**未啟用整合時系統不做 mockup**：`ui` gate 自動停用、產出變體的卡在 dispatch 當下被拒、一般 UI 卡照常執行。截圖是 D29 的通用能力，不受影響 |
 | D30 🆕 | 驗收素材 | ✅ **已裁決：用 Traqora**，不用 Cliora 自己。V2.2 期間限用 scratch clone（run 尚未隔離） |
