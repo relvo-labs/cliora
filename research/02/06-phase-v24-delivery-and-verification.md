@@ -127,7 +127,7 @@ git 狀態由 daemon 在 run 內以固定 argv 擷取（`rev-parse`、`status --
 
 ## 出口條件
 
-1. **五種** `delivery` 各跑通一次；`none` 與 `artifact` 都不產生任何遠端變更。
+1. **五種** `delivery` 各跑通一次；`none` 與 `artifact` 都不產生任何遠端變更。**對 `Lei-k/Traqora` 開出第一個真實 PR**（D30）——這是整個 V2 的第一次真實交付。
 2. `delivery: none`／`artifact` 但工作目錄有變更 → 明示「偵測到 N 個檔案變更」**並把 diff 附成一件卡片產物**，未靜默丟棄。
 2b. `delivery: artifact` 但一件產物都沒有 → **run 不算成功**，結果說明缺什麼。
 3. `delivery: pull_request` 但無變更 → run 成功、結論「無變更」、**沒有空 PR**。

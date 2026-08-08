@@ -95,7 +95,7 @@ GET    /api/projects/{id}/activity      分頁時間軸
 
 ## 出口條件
 
-1. 可以建立一個 Project，綁定**兩個不同 Node** 上的 workspace，從 Project 頁面看到兩者的 node 線上狀態。
+1. 可以建立一個 Project（**驗收素材：`Lei-k/Traqora`**，D30），綁定**兩個不同 Node** 上的 workspace，從 Project 頁面看到兩者的 node 線上狀態。
 2. 從 Project 建立的 Session 出現在該 Project 的時間軸上；Ad-hoc Session 不受影響也不出現在任何 Project。
 3. 解綁一個 workspace 不影響正在跑的 Session。
 4. Node 被刪除時，綁定列一起消失，Project 本身不受影響。

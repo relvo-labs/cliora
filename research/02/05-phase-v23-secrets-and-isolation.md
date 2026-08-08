@@ -117,6 +117,7 @@ migration `0027` — `project_secrets`：`id`、`project_id`、`name`、`kind`�
 2. 機密值出現在 CLI 輸出時，平台收到的 log 是 `***`；**原值從未離開 node**（在 Central 端斷言 log 內容不含值）。
 3. `accept_secrets: false` 的 node，其 runner 永遠不會被 offer 需要機密的卡片。
 4. `source: repo` 的卡片 → run 目錄有 `repo/`，在正確的 base branch 上，分支名為 `cliora/<card_ref>-<run_seq>`。
+4b. **用 Traqora 驗 `base_branch: main`**（D30）——證明它是設定值，不是寫死的 `master`；**PAT 與 SSH 各測一次**。
 5. `source: none` 的卡片 → run 目錄**沒有** `repo/`，Agent 讀不到任何程式碼。
 6. daemon 嘗試推 `main`、推非 `cliora/` 前綴、force push、推到 allowlist 外的 host → **四種全部被拒**，且拒絕發生在 daemon 內（不是靠遠端拒絕）。
 6b. **PAT 路徑**：token 不出現在 `git remote -v`、reflog、`ps` 或任何錯誤訊息（四處各一條斷言）。

@@ -173,6 +173,8 @@ DELETE /api/artifacts/{id}                   project.manage 僅配額用盡時�
 - **卡片訊息串**：這是「平台作為橋樑」最直接的體現，要做得好用——輸入框固定在下方、Agent 的問題要醒目、系統事件用低調樣式。
 - **產物區**：卡片上獨立一區列出所有產物（檔名、大小、來自哪次 run、時間）；訊息裡的附件同時出現在訊息與產物區。圖片顯示縮圖，其餘一律下載按鈕。**不做「在新分頁開啟」**（那等同內嵌渲染）。
 
+> **驗收素材（D30）**：用 `Lei-k/Traqora` 的 **scratch clone 或 fork**，不要用正式 repo——本階段的 run 沒有隔離，直接在 workspace 執行。正式 repo 要等 V2.3 隔離上線之後。
+
 ## 這一階段明確不做
 
 - 不碰 git（V2.3）。
@@ -217,4 +219,4 @@ DELETE /api/artifacts/{id}                   project.manage 僅配額用盡時�
 | 產物含機密 | 無法保證，誠實寫進 ADR 與 UI；保障來自存取控制與機密可撤銷 |
 | `waiting_for_input` 佔容量 | 24h 逾時自動結束（出口條件 11） |
 | run 與 Session 的狀態機混在一起 | `task_runs` 是獨立的表與獨立的狀態機；出口條件 12 用 `terminal_sessions` 的列數驗證 |
-| 無人值守執行在使用者的 workspace 上造成非預期變更 | **本階段的已知缺口**：V2.3 才隔離。所以 V2.2 建議只在測試專案啟用，並在 UI 明示「此 run 直接在 workspace 執行」 |
+| 無人值守執行在使用者的 workspace 上造成非預期變更 | **本階段的已知缺口**：V2.3 才隔離。**驗收一律用 Traqora 的 scratch clone 或 fork，不得用正式 repo**（D30），並在 UI 明示「此 run 直接在 workspace 執行」 |

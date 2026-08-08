@@ -157,11 +157,22 @@ Monstrare 的 `ui-mockup-gate`：涉及畫面的卡片在 `ready` 之前要有 2
 
 落地方式：mockup 變體是釐清 run 的**卡片產物**（V2.2 的 D29 機制），人在平台上檢視並選一個，決定記錄在卡片的 `links.mockupDecision`。
 
-> **這裡有一個必須先解決的問題**：mockup 是 HTML，而 D29 §4 規定 **HTML 產物不得在應用 origin 內渲染**（Cliora 是單一 origin 部署，會變成 stored XSS）。
+> **這裡有一個必須先解決的問題**：mockup 是 HTML，而 D29 §4 規定 **HTML 產物不得在應用 origin 內渲染**。
 >
-> 兩個可行做法，**開工前二選一**：
-> - **A（建議）**：只提供下載，人在本機開。最簡單、零風險，但體驗差。
-> - **B**：`sandbox` iframe ＋ 嚴格 CSP ＋ `blob:` URL。體驗好，但要仔細做，且要有針對逃逸的測試。
+> 為什麼是硬規定：Cliora 是**單一 origin 部署**（ADR 0020）。在應用 origin 裡渲染 Agent 產生的 HTML，那份 HTML 就能讀 `localStorage`（裡面有 JWT）、以使用者身分打同源 API、改寫整個頁面。**「是我們自己的 Agent 做的」不是信任邊界**——Agent 讀過 repo 內容、可能被 prompt injection，它的產出必須當成不受信任的內容處理。
+>
+> 四個做法：
+>
+> | | 風險 | 體驗 | 成本 |
+> |---|---|---|---|
+> | **D：截圖為主（建議）** | **零**（圖片本來就在安全白名單） | 好——設計審查本來就是看圖 | **零**：Agent 產生 PNG，平台照既有圖片路徑顯示 |
+> | A：HTML 只給下載 | 零 | **差**——下載三個檔、各自開分頁、記住哪個是哪個，然後回來勾選。這種流程會讓人乾脆跳過關卡，而**被跳過的關卡比沒有關卡更糟** | 零 |
+> | B：`sandbox` iframe ＋ CSP | 中——做對就安全，做錯就是完全洩漏 | 好 | 中，且要有逃逸測試 |
+> | C：獨立 origin（`artifacts.<domain>`） | 低——業界標準做法 | 好 | **高**：多一張憑證、多一筆 DNS、installer 多一件事 |
+>
+> **建議 D**：Agent 附上 PNG 截圖作為主要變體、HTML 作為可下載的附件。這也符合 Monstrare 自己的慣例（它的 kanban 就是用 `docs/board-screenshot.png` 說明）。
+>
+> 若日後真的需要互動式預覽，再做 B，**而且要注意 `sandbox="allow-scripts"` 絕對不能同時帶 `allow-same-origin`**（兩者並存等於沒有 sandbox，內容可以自己把 sandbox 屬性拿掉），並用 `srcdoc` 而非 `blob:`（`blob:` 在部分瀏覽器會繼承建立者的 origin）。
 >
 > **不可以「先做了再說」**——這是 RQ-07 可以整包延後的主要理由。
 
