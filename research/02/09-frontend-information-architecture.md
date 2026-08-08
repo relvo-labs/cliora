@@ -200,6 +200,8 @@ Epic → User Story → Task 三層摺疊，每層顯示完成度（`stage === '
 | 規格有未解決問題 | 核准按鈕停用 ＋ 指名是哪幾個問題，**不是靜默禁用** |
 | 提案卡缺 DoR | 接受介面上逐項標示；接受後落 `backlog` 而非 `ready`，並說明原因 |
 | 產物配額將滿 | Project Settings 顯示用量；接近上限時卡片提示；用盡時 run 明確報錯而非靜默失敗 |
+| **UI Mockup 關卡停用** | Project Settings 寫出來：「UI Mockup 關卡：**停用** —— 未啟用 tunnel 整合。[前往設定]」。**一個悄悄不存在的關卡比一個說明自己為什麼不存在的關卡糟**（D31） |
+| 產出 mockup 的卡片被 dispatch | 整合未啟用時當下拒絕並說明；**一般 UI 實作卡照常執行**，不因此被擋 |
 
 ## 7. Design token 與元件
 

@@ -97,7 +97,7 @@
 | FR-SPEC-005 | 提案接受 | central | 全部／部分／編輯後建立／拒絕；缺 DoR 者落 `backlog`；被拒提案保留理由 |
 | FR-SPEC-006 | 來源可追溯 | frontend | 每張卡回溯到需求與提案編號 |
 | FR-SPEC-007 | PRD Patch 提案 | central | 平台只渲染與記錄決定，**不套用**；接受後走一張 `delivery: pull_request` 卡片 |
-| FR-SPEC-008 | UI Mockup 關卡（可延後） | frontend | 2–3 變體為 run artifacts；人工選定記錄在卡片 |
+| FR-SPEC-008 | UI Mockup 關卡（**有條件**，可延後） | frontend | **依賴 tunnel 整合已啟用**；未啟用時 `ui` gate **自動停用**、停用原因可見、產出變體的卡 dispatch 被拒、一般 UI 卡照常；已啟用時 2–3 變體可預覽、保護策略由人選定、`tunnel.manage` 不在 Agent scope |
 
 ### NFR 與 SEC 增修
 
@@ -139,6 +139,7 @@
 | 0030 | **隔離工作目錄與 git 存取**（D19／D20）：六條目錄規則、五條 git 約束 | V2.3 |
 | 0031 | **機密管理與 SEC-002 修訂**（D22／D23） | V2.3 |
 | 0032 | **交付模式與 PR 建立**（D21／D25）：`source` × `delivery`、紅線 5 | V2.4 |
+| — | **修訂 ADR 0022**：tunnel 也用於 run 的 mockup 預覽（Agent 提議 → 人核准 → 平台執行）；其範圍宣告不變且更強 | V2.5 |
 | 0033 | **需求釐清與拆解的形狀**（D28）：釐清用既有管道、產出是提案、三個人工關卡、停止條件內化 | V2.5 |
 
 每份 ADR 沿用既有格式：Status／Date／Amends／Related／Requirements／Contract／Ships in／Plan，以及 **Alternatives rejected 表**——本 repo 的 ADR 之所以有用，多半是因為那張表把「以後有人會再提一次的東西」先寫掉了。

@@ -141,7 +141,9 @@ UNIQUE (project_id, name)
 
 ## 3. 既有表的改動（全部是新增 nullable 欄位）
 
-若採納 **D31**（mockup 走 Pinggy 預覽），`node_tunnels` 另加一個 nullable `run_id`——讓預覽 tunnel 能隨 run 一起關閉，並在 Run 詳情頁顯示。**沒有其他欄位需要動**：`protection`／`basic_auth_user`／`basic_auth_hash`／`allowed_ips` 三種保護策略的欄位早已存在（ADR 0022）。
+**D31**（mockup 走 tunnel 預覽）：`node_tunnels` 另加一個 nullable `run_id`——讓預覽 tunnel 能隨 run 一起關閉，並在 Run 詳情頁顯示。**沒有其他欄位需要動**：`protection`／`basic_auth_user`／`basic_auth_hash`／`allowed_ips` 三種保護策略的欄位早已存在（ADR 0022）。
+
+**`process_definitions` 的 `ui` gate 是衍生狀態，不是獨立設定**：`tunnel_integration.enabled = false` ⇒ `ui` gate 自動停用。實作上讀取流程定義時就要套用這個衍生規則，**不要靠 Admin 記得去關**——否則涉及畫面的卡片會卡在永遠無法滿足的關卡上（D31）。
 
 
 ```sql

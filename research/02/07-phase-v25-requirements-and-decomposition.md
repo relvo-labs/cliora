@@ -151,43 +151,54 @@ task_proposals            拆解提案（一次拆解一列，內含整棵樹）
 
 提案內容照 `version2.md` §7.6：Added／Modified／Removed Sections、Reason、Related Tasks、Open Questions。
 
-### RQ-07 — UI Mockup 關卡（可延後）
+### RQ-07 — UI Mockup 關卡（**有條件，且可延後**）
 
 Monstrare 的 `ui-mockup-gate`：涉及畫面的卡片在 `ready` 之前要有 2–3 個變體與人工選定。
 
-落地方式：mockup 變體同時是**卡片產物**（截圖，永久）與**可選的 Pinggy 預覽**（互動，暫時）。人檢視後選一個，決定記錄在卡片的 `links.mockupDecision`。
+#### 前置條件：tunnel 整合必須已啟用（D31）
 
-> **這裡有一個必須先解決的問題**：mockup 是 HTML，而 D29 §4 規定 **HTML 產物不得在應用 origin 內渲染**。
->
-> 為什麼是硬規定：Cliora 是**單一 origin 部署**（ADR 0020）。在應用 origin 裡渲染 Agent 產生的 HTML，那份 HTML 就能讀 `localStorage`（裡面有 JWT）、以使用者身分打同源 API、改寫整個頁面。**「是我們自己的 Agent 做的」不是信任邊界**——Agent 讀過 repo 內容、可能被 prompt injection，它的產出必須當成不受信任的內容處理。
->
-> 五個做法：
->
-> | | 風險 | 互動 | 成本 |
-> |---|---|---|---|
-> | **E：走既有 Pinggy tunnel（建議，D31）** | **低**——不同 origin，同源政策自己擋住；且 mockup 無真實資料，正好落在 ADR 0022 的範圍宣告內 | **有** | **幾乎零**：tunnel 生命週期、三種保護策略、額度、稽核、UI 全部已存在 |
-> | **D：截圖為主（建議並存）** | 零 | 沒有 | 零 |
-> | A：HTML 只給下載 | 零 | 沒有 | 零，但流程差到會讓人跳過關卡 |
-> | B：`sandbox` iframe ＋ CSP | 中——做對安全，**做錯一個 flag 就全開** | 有 | 中，要有逃逸測試 |
-> | C：獨立 origin | 低 | 有 | **高**：多憑證、多 DNS、installer 多一件事 |
->
-> **建議 E ＋ D 並存，不是二選一**：截圖是留在卡片上的**永久證據**（`task_artifacts`，跟著卡片走），tunnel 是需要點點看時才開的**暫時預覽**（隨 run 結束消失）。只做 tunnel 的話，三個月後回頭看卡片什麼都不剩。
->
-> E 的流程完全複用既有機制：
->
-> ```text
-> Agent 用 cliora task ask 問「這份 mockup 要用哪種保護？密碼／限制 IP／不保護」
->   → 卡片顯示「等待你的回覆」（D24）
->   → 人選擇 → 平台以那個策略開 tunnel → Agent 只被告知 URL
-> ```
->
-> **開 tunnel 的是人，不是 Agent**——`tunnel.manage` 永不在 Agent 憑證的 scope 內。這是紅線 5 得以成立的關鍵（D31）。
->
-> E 要設計的六件事見 D31：只服務 `artifacts/preview/`（不列目錄、不是 `repo/`）、預覽程序不繼承 run 的 env、生命週期綁 run、預設密碼保護且密碼由平台產生、「不保護」需額外確認並寫 audit、每個 Project 有併發上限。
->
-> B 若日後還是要做，兩個地雷先標記：**`sandbox="allow-scripts"` 絕不能同時帶 `allow-same-origin`**（並存等於沒有 sandbox），且用 `srcdoc` 而非 `blob:`（後者在部分瀏覽器繼承建立者 origin）。
+**沒有啟用 tunnel 整合（目前唯一供應商是 Pinggy），系統就不做 mockup。** 這不是降級模式，是整個關卡不存在：
 
-**這一包可以延後，不影響其餘七包。** 若團隊目前沒有 UI 工作，先不做；`process_definitions` 把 `ui` gate 關掉即可（V2.4 DV-08 的可設定性正好用上）。
+| | 未啟用 | 已啟用 |
+|---|---|---|
+| UI Mockup 關卡（變體、選定、`links.mockupDecision`） | **不存在** | 存在 |
+| `process_definitions` 的 `ui` gate | **自動停用** | 可用 |
+| Agent 附截圖為卡片產物 | **照常**（D29 的通用能力） | 照常 |
+
+**`ui` gate 必須由系統自動停用，不能只是「Admin 可以關掉」**——否則涉及畫面的卡片會卡在一個永遠無法滿足的關卡上，那是死鎖不是嚴謹。
+
+#### 落地方式（整合已啟用時）
+
+mockup 變體同時是**卡片產物**（截圖，永久）與 **Pinggy 預覽**（互動，暫時）。人檢視後選一個，決定記錄在卡片的 `links.mockupDecision`。
+
+流程完全複用既有機制，沒有新元件：
+
+```text
+Agent 用 cliora task ask 問「這份 mockup 要用哪種保護？密碼／限制 IP／不保護」
+  → 卡片顯示「等待你的回覆」（D24）
+  → 人選擇 → 平台以那個策略開 tunnel → Agent 只被告知 URL
+```
+
+**開 tunnel 的是人，不是 Agent**——`tunnel.manage` 永不在 Agent 憑證的 scope 內。這是紅線 5 得以成立的關鍵（D31）。
+
+#### 為什麼是 tunnel 而不是平台自己渲染
+
+Cliora 是**單一 origin 部署**（ADR 0020）。在應用 origin 裡渲染 Agent 產生的 HTML，那份 HTML 就能讀 `localStorage`（裡面有 JWT）、以使用者身分打同源 API、改寫整個頁面。**「是我們自己的 Agent 做的」不是信任邊界**——Agent 讀過 repo 內容、可能被 prompt injection。
+
+Pinggy 的 URL 是**完全不同的 origin**，同源政策自己就擋住了——沒有 sandbox flag 要調，沒有 CSP 要對。而且 mockup 沒有真實資料，正好落在 ADR 0022 的範圍宣告內（「用於預覽開發中的應用，不適用於任何持有真實資料的環境」），比它原本的使用情境更貼合。
+
+#### dispatch 行為分兩種卡
+
+| 卡片性質 | 未啟用整合時 |
+|---|---|
+| **產出 mockup 變體**是這張卡的交付物 | **dispatch 當下拒絕**，理由寫明整合未啟用 |
+| 一般 UI 實作卡 | **照常執行**，`links.mockupDecision` 的要求解除 |
+
+#### 六件要設計的事（沿用 D31）
+
+只服務 `artifacts/preview/`（不列目錄、不是 `repo/`）、預覽程序不繼承 run 的 env、生命週期綁 run、**預設密碼保護且密碼由平台產生**、「不保護」需額外確認並寫 audit、每個 Project 有併發上限。
+
+**這一包可以延後，不影響其餘七包。** 若團隊目前沒有 UI 工作或沒啟用 tunnel 整合，先不做。
 
 ### RQ-08 — 前端
 

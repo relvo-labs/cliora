@@ -114,7 +114,9 @@
 8. 釐清 run 的 `delivery` 是 `none` → 執行後**遠端無任何變更**；工作目錄若有變更則明示。
 9. Agent 嘗試自己核准規格或接受提案 → 被拒（scope 不含 `task.approve`）。
 10. 24h 未回覆自動退 `blocked`，**已問到的內容保留為規格草稿，不整批丟棄**。
-11. 旗標關閉：完整 V1 回歸全綠。
+11. **未啟用 tunnel 整合時**：`ui` gate **自動停用**（不是靠 Admin 手動關）；Project Settings 寫出停用原因；產出 mockup 變體的卡片 dispatch **被拒並說明**；**一般 UI 實作卡照常執行**；Agent 附截圖為產物**不受影響**。
+12. 啟用 tunnel 整合後：mockup 變體可預覽，保護策略由 Agent 在卡片上詢問、人選擇、**平台開啟**；Agent 憑證嘗試 `tunnel.manage` 被拒；run 結束 tunnel 一併關閉。
+13. 旗標關閉：完整 V1 回歸全綠。
 
 ## 3. 旗標關閉回歸套組（每階段都跑）
 
