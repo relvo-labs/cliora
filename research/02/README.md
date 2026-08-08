@@ -44,7 +44,8 @@
 3. 每次只啟動一個階段。階段內可同時推進 contract、Central、Daemon、Frontend，但**共享契約先定稿**。
 4. 每個工作包以「決策 → 契約 → 實作 → 自動測試 → 操作證據」完成。
 5. 階段出口條件未通過，不把下一階段標為可發布。
-6. 需求變更先更新 `research/prd.md` 與 `traceability/requirements.json`，再同步 `11` 的追蹤表。
+6. **`v2` 合併回 `dev` 一律由人工確認**——條件全綠只是取得提案資格，不是核准（`10` §7）。
+7. 需求變更先更新 `research/prd.md` 與 `traceability/requirements.json`，再同步 `11` 的追蹤表。
 
 ## 兩個獨立旗標
 

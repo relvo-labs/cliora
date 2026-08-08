@@ -188,7 +188,8 @@ Agent Run 在它自己的隔離目錄裡當然可以隨意讀寫——那是它�
 - 新 RBAC 動作必須同時加進 `ROLE_ACTIONS`、`frontend/src/api/dto.ts` 的 `ACTION_*`、seed migration，**並在同一張 ticket 內接上強制點**（`test_every_action_is_enforced_somewhere` 雙向失敗）。
 - 所有時間 aware，傳輸 RFC 3339 UTC，畫面才轉本地。
 - 每個平台側寫入動作寫一筆 audit。**Agent 的動作 actor 標示為 runner，不冒充人類。**
-- 每一種新的儲存（run 目錄、run log、**卡片產物**、secret）都要回答 ADR 0024 W2 的那個問題：**誰清這個、什麼時候清。** 注意 run log 與卡片產物的答案不同：前者是診斷，有保留期；後者是交付物，跟著卡片走。
+- 每一種新的儲存（run 目錄、run log、**卡片產物**、secret）都要回答 ADR 0024 W2 的那個問題：**誰清這個、什麼時候清。**
+- **`v2` 分支何時合併回 `dev`，一律由人工確認**（`10` §7）。出口條件全綠只是取得提案資格，不是核准；自動化不得發起或完成這個合併。 注意 run log 與卡片產物的答案不同：前者是診斷，有保留期；後者是交付物，跟著卡片走。
 
 ## 9. 明確不做（V2 全期）
 
