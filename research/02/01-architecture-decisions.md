@@ -503,21 +503,58 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 **問題**：怎麼拿到程式碼、怎麼把結果送回去。
 
-**取得**：卡片宣告 `source`（見 D21），daemon 執行 `git clone --filter` 或從 node 上的 bare mirror `git worktree add`，再 `git checkout -b cliora/<card_ref>-<run_seq> origin/<base_branch>`。
+**已裁決（2026-08-08）：同時支援 fine-grained PAT 與 SSH key。**
+
+**取得**：卡片宣告 `source`（D21），daemon 從 node 上的 bare mirror `git worktree add`，再 `git checkout -b cliora/<card_ref>-<run_seq> origin/<base_branch>`。
 
 **送回**：只有 `git push origin cliora/<card_ref>-<run_seq>`。
 
-**五條硬約束**（寫死在 daemon，不是設定值，各配一條測試）：
+### 五條硬約束（寫死在 daemon，不是設定值，各配一條測試）
 
-1. **分支命名空間**：只能推 `cliora/` 前綴的分支。
-2. **永不推 base／target 分支**，即使卡片這樣寫——卡片的 `target_branch` 是「PR 要合併回哪裡」，不是推送目標。
-3. **永不 force push**、不刪遠端分支、不動 tag。
-4. **remote allowlist**：只能推到該 Project 登記的 repository host。
-5. **commit trailer 帶 run id**，讓 PR ↔ run ↔ task 三者可回溯；作者身分是 bot identity，不冒充人類。
+1. 只能推 `cliora/` 前綴的分支。
+2. 永不推 base／target 分支——`target_branch` 是「PR 合併回哪裡」，不是推送目標。
+3. 永不 force push、不刪遠端分支、不動 tag。
+4. remote allowlist：只能推到該 Project 登記的 repository host。
+5. commit trailer 帶 run id，作者是 bot identity，不冒充人類。
 
-**認證**：走 D22 的 secret store（`kind=git_credential`）。憑證以短效期為佳（GitHub App installation token 這類），沒有的話用 PAT，但要能撤銷、能限 repo 範圍。
+### 兩種認證的落地方式
 
-**不做**：fetch 以外的任何遠端寫入、merge、rebase 到共用分支、release、tag。
+**兩者都不得把 token 或私鑰寫進檔案**（D22 的「不落檔」）：
+
+| | Fine-grained PAT | SSH key |
+|---|---|---|
+| 傳輸 | HTTPS | SSH |
+| 交給 git 的方式 | `GIT_ASKPASS` 指向一支**本身不含機密**的小 helper，helper 從環境變數讀值 | **`ssh-agent` ＋ `ssh-add -`（從 stdin 讀入）**，私鑰永不落檔 |
+| 為什麼不用別的 | **不得把 token 塞進 remote URL**——它會出現在 `git remote -v`、reflog 與錯誤訊息。也不用 `-c http.extraHeader`，那會出現在 `ps` | **不得寫一個 0600 私鑰檔再刪掉**——那違反不落檔規則，而且刪除失敗就留在磁碟上 |
+| 收尾 | 程序結束即消失 | run 結束 kill agent；socket 在 run 目錄內、權限 0700 |
+| host 驗證 | host allowlist | host allowlist ＋ **known_hosts pinning**（`StrictHostKeyChecking=yes`） |
+
+`ssh-agent` 那一格是對 D22「機密不落檔」的**重要細化**：**socket 不是金鑰**。這條要明寫進 ADR，否則實作時很容易退回「寫個 0600 檔案就好」。
+
+known_hosts 這條有既有的前例可循（`fix/update-healthcheck-known-hosts`），沿用同一套做法。
+
+### 一個必須先講清楚的後果：SSH 開不了 PR
+
+**SSH 只有 git 傳輸，沒有 API。** 所以一個用 SSH 認證的 repo，若卡片的 `delivery` 是 `pull_request`，它**還需要第二個機密**來開 PR。
+
+| repo 認證 | push | 開 PR |
+|---|---|---|
+| PAT（含 `Pull requests: write`） | ✅ 同一枚 | ✅ 同一枚 |
+| PAT（只有 `Contents: write`） | ✅ | ❌ 需另一枚 `provider_token` |
+| **SSH key** | ✅ | ❌ **必定**需要另一枚 `provider_token` |
+
+**UI 在設定 repository 時就要檢查並提示**，不要等 run 跑到最後一步才失敗——那時候分支已經推上去了，使用者只會看到一個沒頭沒尾的錯誤。
+
+### Fine-grained PAT 的最小權限（寫進文件並在 UI 提示）
+
+- `Contents: Read and write`
+- `Pull requests: Read and write`（若同一枚要開 PR）
+- **指定 repository，不要 all repositories**
+- **設定到期日**——fine-grained PAT 強制要求，這正是選它而不選 classic PAT 的理由
+
+### 不做
+
+fetch 以外的任何遠端寫入、merge、rebase 到共用分支、release、tag。
 
 ---
 
@@ -559,23 +596,55 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 **問題**：裁決要求「系統紀錄環境變數，以安全的方式下放給 agent 執行」。這是 V2 最大的新安全面。
 
-**建議**：
+**已裁決（2026-08-08）：主金鑰放環境變數 `CLIORA_SECRET_MASTER_KEY`。**
 
 | 面向 | 決定 |
 |---|---|
-| 儲存 | `project_secrets`，值以信封加密存放，金鑰來自 Central 的環境／KMS，**不與資料庫同一處** |
+| 儲存 | `project_secrets`，**信封加密**：每筆一把資料金鑰（DEK），DEK 以主金鑰包裝後與密文同列 |
+| 主金鑰 | **環境變數**，與既有的 `CLIORA_JWT_SECRET`／`CLIORA_TOKEN_PEPPER` 同一種做法 |
 | 讀取 | **寫入後永不可讀回。** 沒有任何 API 回傳值，UI 只顯示名稱、建立者、最後使用時間 |
 | 下放 | 每次 run 隨 `run.offer` 送出**該卡片宣告需要的那幾個**，走既有已認證的 WSS。不是整包、不是常駐 |
-| 落地 | runner 以環境變數傳給 CLI 程序，**不寫進任何檔案**；run 結束即隨程序消失 |
-| 去識別 | runner 在送 `run.log_chunk` 前，對所有已知值做比對替換為 `***`。**在 runner 端做，不是在平台端做**——值不該離開 node |
-| 名稱 allowlist | Project 宣告可用的名稱集合；卡片只能從中挑，不能引入新名稱 |
-| node 可拒絕 | node 設定可宣告「本節點不接受機密」，該 node 的 runner 只領 `secrets: []` 的卡片 |
-| 稽核 | 每次下放一筆 audit（誰的 run、哪個 project、哪幾個名稱——**不含值**）；`last_used_at` 更新 |
-| 輪替與撤銷 | 可覆寫（等同重新建立）、可刪除；進行中的 run 不受影響，下一次 run 生效 |
+| 落地 | runner 只放在記憶體，以環境變數傳給 CLI 程序，**不寫進任何檔案**（例外見 D20 的 `ssh-agent`） |
+| 去識別 | runner 在送 `run.log_chunk` 前對已知值比對替換為 `***`。**在 runner 端做**——值不該離開 node |
+| 名稱 allowlist | Project 宣告可用名稱；卡片只能從中挑 |
+| node 可拒絕 | `accept_secrets: false` 的 node 只領 `required_secrets` 為空的卡片 |
+| 稽核 | 每次下放一筆 audit（誰的 run、哪個 project、哪幾個名稱——**不含值**） |
+| 輪替與撤銷 | 可覆寫、可刪除；進行中的 run 不受影響，下一次生效 |
 
-**與既有 `tunnel_integration` 的關係**：不混用。那張表是「組織給第三方 tunnel 供應商的憑證」，是單一用途、Admin 專屬的東西。專案機密是多值、多專案、會被下放到 node 的，風險等級不同，混在一起會讓兩者的規則互相污染。
+### 主金鑰放環境變數：買到什麼、付出什麼
 
-**這一條必然觸發安全審查**（`09` §6）。
+買到的：與既有做法一致（`.env` 裡本來就有 JWT secret 與 token pepper，且啟動時檢查）、沒有新的雲端依賴、離線與自架部署都能用、實作最小。
+
+**付出的代價要誠實寫進 ADR，不能只寫好處**：
+
+| | 環境變數（已裁決） | KMS |
+|---|---|---|
+| **金鑰與密文的信任邊界** | **同一個**——能讀 env 的人通常也能讀 DB | 分開 |
+| 解密稽核 | **沒有**（不知道誰在何時解了什麼） | 有 |
+| 輪替 | 部署 ＋ 重新包裝 DEK | 一次 API 呼叫 |
+| 金鑰遺失 | **所有機密不可復原** | 可控 |
+
+第一列是最重要的一列：**這個方案沒有把金鑰與資料分開**。不是致命，但它意味著「DB 備份外洩」的防護仰賴攻擊者拿不到 env，而不是兩道獨立的防線。ADR 要把這句寫出來。
+
+### 讓這個選擇不變成死路的四件事
+
+1. **信封加密仍然要做。** 輪替主金鑰時只需重新包裝 DEK，不必重新加密所有密文。沒有信封，輪替就是一次全表重寫。
+2. **`key_version` 從第一天就有**，不是「日後再加」。
+3. **啟動時驗證**：金鑰缺少、長度不足、或等於 dev 預設值 → **拒絕啟動並指名是哪一個**。這是 `.env.example` 對 JWT secret 與 token pepper 的既有處置，照抄即可。
+4. **把升級到 KMS 的路徑寫進 ADR**：有了信封加密與 `key_version`，改用 KMS 只是換掉「解開 DEK」那一個函式。這句話要寫，否則半年後會有人以為當初選錯而想整批重做。
+
+### 一個運維上的硬事實
+
+**DB 備份本身無法還原機密**——金鑰在 env，不在備份裡。所以：
+
+- `docs/runbooks/backup-restore.md` 要增訂：金鑰另外保管，且必須與該次備份的 `key_version` 相符。
+- **金鑰遺失＝所有機密不可復原**，只能全部重建（每個 repo 的 token 都要重發）。這一句要在機密設定頁上直接寫出來，不要只躺在 runbook 裡。
+
+### 與既有 `tunnel_integration` 的關係
+
+不混用。那張表是「組織給第三方 tunnel 供應商的憑證」，單一用途、Admin 專屬。專案機密是多值、多專案、會被下放到 node 的，風險等級不同，混在一起會讓兩者的規則互相污染。
+
+**這一條必然觸發安全審查**（`10` §6）。
 
 ---
 
@@ -814,8 +883,8 @@ D21 的誠實性規則原本是：`delivery: none` 但工作目錄有變更 → 
 | D29 🆕 ⚠️ | 任務卡產物 | ✅ **已裁決：Agent 可交付產物到卡片**，執行中亦可用留言附檔。能力與 `delivery: artifact` 宣告分開；存平台不存 node；**預設下載不渲染**；不可變 |
 | D18 | 多對多綁定 | 顯式授權表 ＋ labels 能力過濾 ＋ 可選指定，三層 |
 | D19 ⚠️ | 隔離工作目錄 | daemon 擁有、不在 allowed root、配額 ＋ 保留期 ＋ repo 快取 |
-| D20 ⚠️ | Git 存取 | 五條硬約束寫死在 daemon |
-| D22 ⚠️ | 機密管理 | 寫入後不可讀回、按需下放、runner 端去識別、node 可拒絕 |
+| D20 ⚠️ | Git 存取 | ✅ **已裁決：PAT ＋ SSH key 兩者都支援**。五條硬約束寫死在 daemon；PAT 走 `GIT_ASKPASS`、SSH 走 `ssh-agent` stdin，兩者都不落檔；**SSH 開不了 PR，需另一枚 provider_token** |
+| D22 ⚠️ | 機密管理 | ✅ **已裁決：主金鑰放環境變數**。信封加密 ＋ `key_version` ＋ 啟動時驗證 ＋ KMS 升級路徑寫進 ADR；寫入後不可讀回、按需下放、runner 端去識別、node 可拒絕 |
 | D23 ⚠️ | SEC-002 修訂 | 只撤銷 env 值那一句，argv 完全保留 |
 | D24 | 看板溝通 | 訊息表 ＋ `waiting_for_input` ＋ 逾時退回 |
 | D25 ⚠️ | 自主執行收斂 | 限制出口而非限制沙箱內行為 |
@@ -828,5 +897,4 @@ D21 的誠實性規則原本是：`delivery: none` 但工作目錄有變更 → 
 |---|---|
 | D14 | 互動式 Session 裡，平台不可用時 Agent 的寫入直接失敗（V2.1）還是進佇列（V2.4）？ |
 | — | Cliora 自己要不要成為第一個被管理的 Project？ |
-| — | 機密加密金鑰放哪：環境變數、雲端 KMS，還是兩者都支援？ |
-| — | git 認證優先支援哪一種：GitHub App、PAT，還是 SSH deploy key？ |
+

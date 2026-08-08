@@ -115,8 +115,8 @@ created_at
 ### `project_secrets`
 
 ```text
-id / project_id / name / kind(env|git_credential|provider_token)
-value_encrypted / key_version
+id / project_id / name / kind(env|git_pat|git_ssh_key|provider_token)
+value_encrypted / dek_wrapped / key_version    ← 信封加密：DEK 以主金鑰包裝
 created_by / created_at / rotated_at / last_used_at / deleted_at
 UNIQUE (project_id, name)
 ```
@@ -124,6 +124,8 @@ UNIQUE (project_id, name)
 **沒有任何 API 回傳 `value_encrypted` 或其明文。** 這一條要有針對 OpenAPI schema 的斷言測試，不只是「我們沒寫那個 endpoint」。
 
 `projects.allowed_secret_names` JSONB 是名稱 allowlist；卡片的 `required_secrets` 必須是它的子集。
+
+`project_repositories` 需要 `auth_kind`（`pat`／`ssh`）、`credential_secret_id`，以及 **`provider_token_secret_id`（nullable）**——因為 **SSH 只有 git 傳輸沒有 API，開 PR 必定要第二枚機密**（D20）。設定畫面就要檢查這個組合，不是等 run 跑到最後才失敗。
 
 ### 與 `version2.md` §10 的差異
 
@@ -233,7 +235,7 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | `CLIORA_ARTIFACT_MAX_BYTES` | `10485760` | 單件卡片產物上限 |
 | `CLIORA_ARTIFACT_PROJECT_QUOTA_MB` | `1024` | 專案產物總配額 |
 | `CLIORA_RUN_WAITING_TIMEOUT_H` | `24` | `waiting_for_input` 逾時 |
-| `CLIORA_SECRET_MASTER_KEY` / `_KMS_KEY_ID` | — | 機密主金鑰（擇一，**不與 DB 同處**） |
+| `CLIORA_SECRET_MASTER_KEY` | — | **機密主金鑰（已裁決：環境變數）**。缺少／過短／等於 dev 預設值 → 拒絕啟動並指名 |
 
 daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 config 檔慣例。
 
