@@ -20,10 +20,25 @@ const { impl } = vi.hoisted(() => ({
     listRecentWorkspaces: null as null | (() => Promise<RecentWorkspace[]>),
     addFavorite: null as null | ((input: unknown) => Promise<unknown>),
     removeFavorite: null as null | ((id: string) => Promise<void>),
+    listProjects: null as null | (() => unknown[]),
+    getProject: null as null | ((id: string) => unknown),
   },
 }));
 
+// `features` and `permissions` both default to empty, so every pre-existing test
+// here exercises the dialog **without** the project layer — which is the ad-hoc
+// path, and the one that must stay identical to the pre-V2 dialog. The project
+// cases opt in explicitly by assigning to `authState`.
+const authState: { permissions: string[]; features: string[] } = {
+  permissions: [],
+  features: [],
+};
+
 vi.mock("../../stores/auth", () => ({
+  useAuthStore: () => ({
+    hasPermission: (action: string) => authState.permissions.includes(action),
+    hasFeature: (feature: string) => authState.features.includes(feature),
+  }),
   api: () => ({
     listFavorites: () => impl.listFavorites!(),
     listRecentWorkspaces: () => impl.listRecentWorkspaces!(),
@@ -31,6 +46,8 @@ vi.mock("../../stores/auth", () => ({
     removeFavorite: (id: string) => impl.removeFavorite!(id),
     listNodes: async (): Promise<NodeSummary[]> => [nodeSummary()],
     getNode: async (): Promise<NodeDetail> => nodeDetail(),
+    listProjects: async () => impl.listProjects?.() ?? [],
+    getProject: async (id: string) => impl.getProject?.(id),
   }),
 }));
 
@@ -90,8 +107,12 @@ function recent(over: Partial<RecentWorkspace> = {}): RecentWorkspace {
  * the dialog's load at all and every shortcut assertion would pass against an
  * untouched store. Tests have to reproduce the false -> true transition.
  */
-async function open() {
-  const wrapper = mount(NewSessionDialog, { props: { open: false } });
+async function open(prefill?: {
+  projectId?: string;
+  nodeId?: string;
+  workspace?: string;
+}) {
+  const wrapper = mount(NewSessionDialog, { props: { open: false, prefill } });
   await wrapper.setProps({ open: true });
   await flush();
   return wrapper;
@@ -313,5 +334,141 @@ describe("NewSessionDialog shortcuts", () => {
     for (const item of items) {
       expect(item.find("button").exists()).toBe(true);
     }
+  });
+});
+
+// --- V2.0: the optional project field (plan/16 PJ-06, ADR 0027) ---
+//
+// The first test is the one that matters most. Everything else here describes a
+// feature; that one defends the promise that the feature is invisible when the
+// deployment has not asked for it.
+
+describe("NewSessionDialog project field", () => {
+  const BOUND = "/home/neil/projects/app";
+
+  function projectFixtures(): void {
+    impl.listProjects = () => [
+      { id: "p1", name: "Traqora", slug: "traqora", status: "active" },
+      { id: "p2", name: "Retired", slug: "retired", status: "archived" },
+    ];
+    impl.getProject = () => ({
+      id: "p1",
+      name: "Traqora",
+      slug: "traqora",
+      status: "active",
+      workspaces: [
+        {
+          id: "b1",
+          node_id: NODE,
+          node_name: "vm",
+          node_enabled: true,
+          path: BOUND,
+          label: null,
+          is_primary: true,
+          usability: "usable",
+          created_at: "2026-08-08T00:00:00Z",
+        },
+        {
+          id: "b2",
+          node_id: NODE,
+          node_name: "vm",
+          node_enabled: true,
+          path: "/home/neil/projects/withdrawn",
+          label: null,
+          is_primary: false,
+          // Not offered: a binding whose root was withdrawn cannot start a session,
+          // so putting it in the list would be offering a certain refusal.
+          usability: "outside_allowed_root",
+          created_at: "2026-08-08T00:00:00Z",
+        },
+      ],
+    });
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    impl.listFavorites = async () => [];
+    impl.listRecentWorkspaces = async () => [];
+    authState.permissions = [];
+    authState.features = [];
+    impl.listProjects = null;
+    impl.getProject = null;
+  });
+
+  it("is absent — not disabled — when the deployment has no project layer", async () => {
+    // The flag-off promise for this dialog. A disabled control still announces
+    // that the feature exists; absence is what "unchanged" means.
+    const wrapper = await open();
+    expect(wrapper.find('[data-testid="project-field"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain("ad-hoc");
+  });
+
+  it("is absent when the deployment has it but the person may not see projects", async () => {
+    authState.features = ["projects"];
+    const wrapper = await open();
+    expect(wrapper.find('[data-testid="project-field"]').exists()).toBe(false);
+  });
+
+  it("appears, defaults to no project, and omits archived ones", async () => {
+    authState.features = ["projects"];
+    authState.permissions = ["project.view"];
+    projectFixtures();
+    const wrapper = await open();
+
+    const field = wrapper.find('[data-testid="project-field"]');
+    expect(field.exists()).toBe(true);
+    const options = field.findAll("option").map((o) => o.text());
+    expect(options[0]).toContain("ad-hoc");
+    expect(options).toContain("Traqora");
+    // Archived projects accept no new sessions, so offering one would be offering
+    // a choice the server refuses.
+    expect(options).not.toContain("Retired");
+    expect((field.find("select").element as HTMLSelectElement).value).toBe("");
+  });
+
+  it("disables the project picker and explains the ad-hoc fallback when none exist", async () => {
+    authState.features = ["projects"];
+    authState.permissions = ["project.view"];
+    impl.listProjects = () => [];
+    const wrapper = await open();
+
+    const select = wrapper.get('[data-testid="project-field"] select');
+    expect(select.attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("No projects exist yet");
+  });
+
+  it("locks a project-page prefill until the user explicitly changes to ad-hoc", async () => {
+    authState.features = ["projects"];
+    authState.permissions = ["project.view"];
+    projectFixtures();
+    const wrapper = await open({
+      projectId: "p1",
+      nodeId: NODE,
+      workspace: BOUND,
+    });
+
+    const select = wrapper.get('[data-testid="project-field"] select');
+    expect((select.element as HTMLSelectElement).value).toBe("p1");
+    expect(select.attributes("disabled")).toBeDefined();
+    await wrapper.get("button.change-project").trigger("click");
+    await flush();
+    expect((select.element as HTMLSelectElement).value).toBe("");
+    expect(select.attributes("disabled")).toBeUndefined();
+  });
+
+  it("offers only the usable bound directories once a project is chosen", async () => {
+    authState.features = ["projects"];
+    authState.permissions = ["project.view"];
+    projectFixtures();
+    const wrapper = await open();
+
+    await wrapper.find('[data-testid="project-field"] select').setValue("p1");
+    await flush();
+    await wrapper.findAll("select")[0].setValue(NODE);
+    await flush();
+
+    const paths = wrapper.findAll(".bound").map((b) => b.text());
+    expect(paths).toEqual([BOUND]);
+    expect(paths).not.toContain("/home/neil/projects/withdrawn");
   });
 });

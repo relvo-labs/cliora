@@ -4,6 +4,7 @@
 // by default (same-origin / vite proxy) and overridable via VITE_API_BASE_URL.
 
 import type {
+  ActivityPage,
   AttachTicket,
   AuditPage,
   AuditQuery,
@@ -21,6 +22,10 @@ import type {
   NodeDetail,
   NodeSummary,
   NodeTunnelPolicy,
+  ProjectDetail,
+  ProjectStatus,
+  ProjectSummary,
+  ProjectWorkspace,
   RecentWorkspace,
   ReleaseManifest,
   SessionDetail,
@@ -206,14 +211,95 @@ export class ApiClient {
     return this.request("POST", "/api/ws-ticket", { resource });
   }
 
+  // --- V2.0 projects (ADR 0027) ---
+  //
+  // Every one of these answers 404 when the deployment has the project layer
+  // switched off. The browser is expected to know that from `User.features`
+  // rather than by probing.
+
+  listProjects(params?: {
+    status?: ProjectStatus;
+    owned_by_me?: boolean;
+  }): Promise<ProjectSummary[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.owned_by_me) query.set("owned_by_me", "true");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.request("GET", `/api/projects${suffix}`);
+  }
+
+  getProject(id: string): Promise<ProjectDetail> {
+    return this.request("GET", `/api/projects/${encodeURIComponent(id)}`);
+  }
+
+  createProject(input: {
+    name: string;
+    slug?: string;
+    description?: string;
+  }): Promise<ProjectDetail> {
+    return this.request("POST", "/api/projects", input);
+  }
+
+  updateProject(
+    id: string,
+    input: { name?: string; description?: string; status?: ProjectStatus },
+  ): Promise<ProjectSummary> {
+    return this.request(
+      "PATCH",
+      `/api/projects/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  bindProjectWorkspace(
+    id: string,
+    input: {
+      node_id: string;
+      path: string;
+      label?: string;
+      is_primary?: boolean;
+    },
+  ): Promise<ProjectWorkspace> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(id)}/workspaces`,
+      input,
+    );
+  }
+
+  unbindProjectWorkspace(id: string, bindingId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(id)}/workspaces/${encodeURIComponent(bindingId)}`,
+    );
+  }
+
+  listProjectActivity(
+    id: string,
+    params?: { limit?: number; before?: string },
+  ): Promise<ActivityPage> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.before) query.set("before", params.before);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(id)}/activity${suffix}`,
+    );
+  }
+
   // --- P2 sessions ---
   listSessions(params?: {
     node_id?: string;
     status?: string;
+    // A uuid scopes to one project; the literal "none" returns only the ad-hoc
+    // sessions. Omitted means everything, exactly as before the project layer.
+    project_id?: string;
   }): Promise<SessionSummary[]> {
     const query = new URLSearchParams();
     if (params?.node_id) query.set("node_id", params.node_id);
     if (params?.status) query.set("status", params.status);
+    if (params?.project_id) query.set("project_id", params.project_id);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return this.request("GET", `/api/sessions${suffix}`);
   }

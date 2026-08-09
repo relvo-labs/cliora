@@ -102,9 +102,35 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # marked covered since P1 while tmux's default of 2000 lines quietly failed it, so
     # this phase treats "a number in a config file" and "the behaviour on a node" as
     # different things on purpose.
+    # 2026-08-08 (plan/16 PJ-01): +26 total / +24 verifiable, and **none of it is
+    # V2**. The registry already measured 440/307 on a clean `v2` tree: the image
+    # drop and general file upload phases (plan/13, plan/15 — `013e6b4`, `1741b2c`)
+    # added FR-FILE-009/010 and their criteria without moving this ledger, so this
+    # assertion and `validate_selectors` had both been failing since 2026-08-03.
+    # Recorded rather than quietly corrected, because a pinned number that drifts
+    # unnoticed for a week is the failure this test exists to prevent.
+    #
+    # PJ-01's own six requirements (FR-PROJECT-001..005, SCOPE-014) contribute
+    # **zero** here: they are registered `lifecycle: proposed`, and `coverage()`
+    # skips anything not `active`. They land on this ledger when PJ-08 (and, for
+    # SCOPE-014, the end of V2.4) flips them — +31 criteria, as one reviewable
+    # event, which is the sequencing plan/16/01-…md §6.1 exists to force.
+    # 2026-08-08 (plan/16 PJ-08): +27 total / +27 verifiable for the V2.0 project
+    # layer — FR-PROJECT-001 (5), -002 (8), -003 (4), -004 (5), -005 (5), all
+    # `automated`. This is the reviewable event the two-step registration exists to
+    # produce: PJ-01 registered them `proposed`, where `coverage()` skips them, and
+    # only now — with all four primary link types pointing at real files — do they
+    # become active and land here (plan/16/01-…md §6.1).
+    #
+    # 2026-08-08 (plan/16 PJ-09): +1 for `SCOPE-014.AC-04` — "dispatch is
+    # pull-based". Of the four constraints that replaced red line 4, this is the only
+    # one that is true *and* guardable today, so it is the only criterion of that
+    # requirement set `active`. AC-01..03 are about git pushes and have no code until
+    # V2.3; they stay `proposed`, because a criterion counted as covered by a gate
+    # that does not exist is worse than one openly outstanding.
     assert result["summary"] == {
-        "total": 414,
-        "verifiable": 283,
+        "total": 468,
+        "verifiable": 335,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

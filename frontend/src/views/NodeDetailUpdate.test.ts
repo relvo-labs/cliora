@@ -122,6 +122,7 @@ async function render(options: {
     username: "admin",
     display_name: "Admin",
     role: options.role ?? "Admin",
+    features: [],
     permissions: options.role === "Developer" ? [] : ["node.manage"],
   };
 
@@ -283,6 +284,7 @@ describe("NodeDetailView — daemon update", () => {
       display_name: "Admin",
       role: "Admin",
       permissions: ["node.manage"],
+      features: [],
     };
     const router = testRouter();
     await router.push("/nodes/n-1");

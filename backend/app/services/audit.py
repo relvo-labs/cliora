@@ -108,6 +108,21 @@ TUNNEL_PUBLIC_ACKNOWLEDGED = "tunnel.public_acknowledged"
 # the question an incident review starts from. Not recorded on every register: a
 # reconnect is not a change, and a row per heartbeat would bury the ones that matter.
 NODE_POSTURE_CHANGED = "node.posture_changed"
+# --- V2.0 project layer (ADR 0027) ---
+PROJECT_CREATE = "project.create"
+PROJECT_UPDATE = "project.update"
+# Archiving happens through the same PATCH as a rename, but it gets its own action
+# for the same reason `node.enable` was split out of `node.disable` in P4-04: "who
+# archived that project" is a question asked on its own, and an operator filtering
+# for it should not also receive every description edit. The project *timeline*
+# keeps one `project.updated` kind, because a reader there is scanning one project
+# in order rather than searching across the fleet (services/activity.py).
+PROJECT_ARCHIVE = "project.archive"
+# Bind and unbind are separate for the same reason. They are also separate from
+# `node.manage`'s actions: removing a machine and detaching a directory from a
+# project are different operations on different things.
+PROJECT_WORKSPACE_BIND = "project.workspace_bind"
+PROJECT_WORKSPACE_UNBIND = "project.workspace_unbind"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -143,6 +158,11 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         TUNNEL_CLOSE,
         TUNNEL_PUBLIC_ACKNOWLEDGED,
         NODE_POSTURE_CHANGED,
+        PROJECT_CREATE,
+        PROJECT_UPDATE,
+        PROJECT_ARCHIVE,
+        PROJECT_WORKSPACE_BIND,
+        PROJECT_WORKSPACE_UNBIND,
     }
 )
 

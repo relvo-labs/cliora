@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 
 import { ACTION_SESSION_CREATE } from "../api/dto";
 import type { SessionDetail } from "../api/dto";
@@ -15,10 +15,30 @@ import { formatInstant } from "../utils/time";
 
 const auth = useAuthStore();
 const sessions = useSessionsStore();
+const route = useRoute();
 const router = useRouter();
 
 const canCreate = computed(() => auth.hasPermission(ACTION_SESSION_CREATE));
 const dialogOpen = ref(false);
+
+// Prefill carried in the query string, which is how a project's binding list opens
+// this dialog on a specific node and directory (ProjectDetailView). A query string
+// rather than a store: it survives a reload and can be linked to, and the dialog
+// stays a component that takes props rather than one that reaches into a store to
+// discover why it was opened.
+//
+// Reading it is what makes that button do anything at all. Without this the push
+// lands here and the query is silently ignored — a control that appears to work.
+const prefill = computed(() => {
+  const asString = (value: unknown): string | undefined =>
+    typeof value === "string" && value !== "" ? value : undefined;
+  const found = {
+    projectId: asString(route.query.project_id),
+    nodeId: asString(route.query.node_id),
+    workspace: asString(route.query.workspace),
+  };
+  return found.projectId || found.nodeId || found.workspace ? found : undefined;
+});
 
 const resource = useAsyncResource(() => sessions.fetchList(), {
   isEmpty: (list) => list.length === 0,
@@ -30,7 +50,13 @@ const displayState = computed(() =>
     : resource.state.value,
 );
 
-onMounted(() => resource.run());
+onMounted(() => {
+  void resource.run();
+  // Arriving with a prefill means the user already pressed a button that said
+  // "open a session here"; making them press "New session" again would be asking
+  // twice for one intent.
+  if (prefill.value && canCreate.value) dialogOpen.value = true;
+});
 
 function open(id: string): void {
   void router.push({ name: "session-workspace", params: { id } });
@@ -39,6 +65,13 @@ function open(id: string): void {
 function onCreated(session: SessionDetail): void {
   dialogOpen.value = false;
   open(session.id);
+}
+
+function closeDialog(): void {
+  dialogOpen.value = false;
+  // Drop the prefill from the URL on cancel, so pressing "New session" afterwards
+  // opens an empty dialog rather than silently reusing a dismissed intent.
+  if (prefill.value) void router.replace({ name: "sessions" });
 }
 </script>
 
@@ -85,6 +118,7 @@ function onCreated(session: SessionDetail): void {
             <th>Name</th>
             <th>Runtime</th>
             <th>Workspace</th>
+            <th>Project</th>
             <th>Status</th>
             <th>Started</th>
             <th>Last activity</th>
@@ -97,6 +131,9 @@ function onCreated(session: SessionDetail): void {
             </td>
             <td>{{ s.runtime }}</td>
             <td class="path" :title="s.workspace">{{ s.workspace }}</td>
+            <td :title="s.project_id ?? 'Ad-hoc'">
+              {{ s.project_id ? s.project_id.slice(0, 8) : "Ad-hoc" }}
+            </td>
             <td><StatusBadge :status="s.status" /></td>
             <td :title="s.started_at ?? ''">
               {{ formatInstant(s.started_at) }}
@@ -111,8 +148,9 @@ function onCreated(session: SessionDetail): void {
 
     <NewSessionDialog
       :open="dialogOpen"
+      :prefill="prefill"
       @created="onCreated"
-      @cancel="dialogOpen = false"
+      @cancel="closeDialog"
     />
   </AppLayout>
 </template>

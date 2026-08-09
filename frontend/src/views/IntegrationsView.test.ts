@@ -76,6 +76,7 @@ describe("IntegrationsView", () => {
       display_name: "Admin",
       role: "Admin",
       permissions: ["integration.manage", "tunnel.view", "tunnel.manage"],
+      features: [],
     };
   });
 

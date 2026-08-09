@@ -6,6 +6,8 @@ import {
   ACTION_AUDIT_VIEW,
   ACTION_ENROLLMENT_MANAGE,
   ACTION_INTEGRATION_MANAGE,
+  ACTION_PROJECT_VIEW,
+  FEATURE_PROJECTS,
 } from "../../api/dto";
 import { useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
@@ -32,6 +34,85 @@ const canViewAudit = computed(() => auth.hasPermission(ACTION_AUDIT_VIEW));
 const canManageIntegrations = computed(() =>
   auth.hasPermission(ACTION_INTEGRATION_MANAGE),
 );
+// Two independent conditions, ANDed: `features` says whether this *deployment* has
+// the project layer, `permissions` whether this *person* may see it. Neither alone
+// is authorization — the server refuses regardless (ADR 0027).
+const showProjects = computed(
+  () =>
+    auth.hasFeature(FEATURE_PROJECTS) &&
+    auth.hasPermission(ACTION_PROJECT_VIEW),
+);
+
+interface NavEntry {
+  kind: "link" | "group";
+  label: string;
+  icon?: string;
+  route?: string;
+}
+
+// Built as data rather than as `v-if`s in the template, because there are two
+// arrangements and they differ in *order*, not only in membership.
+//
+// With the project layer off, the rail must be the pre-V2 rail exactly — same six
+// entries, same order, no group rule. "Regrouped minus one row" is not the same
+// thing as "unchanged", and the flag-off screenshot baseline compares against the
+// latter (plan/16 exit condition 6).
+const entries = computed<NavEntry[]>(() => {
+  const infrastructure: NavEntry[] = [
+    { kind: "link", label: "Dashboard", icon: "◈", route: "dashboard" },
+    { kind: "link", label: "Nodes", icon: "▣", route: "nodes" },
+    ...(canManageEnrollment.value
+      ? [
+          {
+            kind: "link" as const,
+            label: "Enrollment",
+            icon: "◉",
+            route: "enrollment",
+          },
+        ]
+      : []),
+    ...(canViewAudit.value
+      ? [{ kind: "link" as const, label: "Audit", icon: "☰", route: "audit" }]
+      : []),
+    ...(canManageIntegrations.value
+      ? [
+          {
+            kind: "link" as const,
+            label: "Integrations",
+            icon: "⇄",
+            route: "integrations",
+          },
+        ]
+      : []),
+  ];
+
+  const sessions: NavEntry = {
+    kind: "link",
+    label: "Sessions",
+    icon: "▷",
+    route: "sessions",
+  };
+
+  if (!showProjects.value) {
+    // The original flat rail, in its original order.
+    return [
+      infrastructure[0],
+      infrastructure[1],
+      sessions,
+      ...infrastructure.slice(2),
+    ];
+  }
+
+  // `Projects` and `Sessions` are single-entry groups, so they render as plain rows
+  // — a heading whose only child repeats it is two rows saying one thing. Only
+  // `Infrastructure` is genuinely two levels.
+  return [
+    { kind: "link", label: "Projects", icon: "▦", route: "projects" },
+    sessions,
+    { kind: "group", label: "Infrastructure" },
+    ...infrastructure,
+  ];
+});
 
 async function logout(): Promise<void> {
   await auth.logout();
@@ -57,23 +138,31 @@ async function logout(): Promise<void> {
       </div>
     </header>
     <aside>
+      <!--
+        Three groups, and the grouping is the *only* thing that changed: every
+        existing href is byte-identical, so bookmarks and the e2e suite still
+        resolve (ADR 0027, plan/16 D11).
+
+        `Projects` and `Sessions` are single-entry groups, so they render as plain
+        rows with no heading — a heading whose only child repeats it is two rows
+        saying one thing. Only `Infrastructure` is genuinely two levels, and it is
+        a divider with a small label rather than an indented block: children stay
+        flush left, which measured 147px at the widest against a 208px rail (61px
+        of headroom) and leaves room for the `Agents` entry V2.2 adds.
+
+        The group is never collapsible. Persisting that state, handling "the
+        current route is inside a collapsed group" and animating it is not worth
+        it for an eight-row rail.
+      -->
       <nav aria-label="Primary">
-        <RouterLink :to="{ name: 'dashboard' }"
-          >◈ <span>Dashboard</span></RouterLink
-        >
-        <RouterLink :to="{ name: 'nodes' }">▣ <span>Nodes</span></RouterLink>
-        <RouterLink :to="{ name: 'sessions' }"
-          >▷ <span>Sessions</span></RouterLink
-        >
-        <RouterLink v-if="canManageEnrollment" :to="{ name: 'enrollment' }">
-          ◉ <span>Enrollment</span>
-        </RouterLink>
-        <RouterLink v-if="canViewAudit" :to="{ name: 'audit' }">
-          ☰ <span>Audit</span>
-        </RouterLink>
-        <RouterLink v-if="canManageIntegrations" :to="{ name: 'integrations' }">
-          ⇄ <span>Integrations</span>
-        </RouterLink>
+        <template v-for="entry in entries" :key="entry.label">
+          <p v-if="entry.kind === 'group'" class="group" data-nav-group>
+            {{ entry.label }}
+          </p>
+          <RouterLink v-else :to="{ name: entry.route }">
+            {{ entry.icon }} <span>{{ entry.label }}</span>
+          </RouterLink>
+        </template>
       </nav>
     </aside>
     <main :data-fill="fill ? '' : undefined"><slot /></main>
@@ -186,6 +275,18 @@ nav a.router-link-active {
   color: var(--action-primary);
   font-weight: 600;
 }
+/* A divider with a label, not an indented block. Children stay flush left, so the
+ * hierarchy costs one row of height and no width — which is what keeps the rail at
+ * 208px while V2.2 adds a sixth entry underneath (plan/16 §1.3). */
+nav .group {
+  margin: 10px 0 2px;
+  padding: 8px 11px 0;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 /* The one scrolling container in the app. The header and the rail no longer
  * scroll away with the content, and no view has to leave room for them. */
 .shell > main {
@@ -210,6 +311,13 @@ nav a.router-link-active {
   }
   .shell > aside span {
     display: none;
+  }
+  /* The rail collapses to icons here, and a 64px column has no room for a word.
+   * The rule stays a divider, so the grouping survives without the label — the
+   * alternative, letting it wrap, would push every icon below it out of line. */
+  nav .group {
+    padding: 8px 0 0;
+    font-size: 0;
   }
 }
 </style>

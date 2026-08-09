@@ -18,6 +18,7 @@ from app.db.engine import get_session
 from app.db.models import User
 from app.services.auth import AuthService
 from app.services.ws_ticket import get_ws_ticket_service
+from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -27,6 +28,7 @@ async def login(
     body: LoginRequest,
     auth: AuthService = Depends(get_auth_service),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> LoginResponse:
     try:
         result = await auth.login(body.username, body.password)
@@ -43,7 +45,7 @@ async def login(
             access_token=result.tokens.access_token,
             refresh_token=result.tokens.refresh_token,
         ),
-        user=UserResponse.from_user(result.user),
+        user=UserResponse.from_user(result.user, settings=settings),
     )
 
 
@@ -68,8 +70,11 @@ async def logout(
 
 
 @router.get("/auth/me", response_model=UserResponse)
-async def me(user: User = Depends(get_current_user)) -> UserResponse:
-    return UserResponse.from_user(user)
+async def me(
+    user: User = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+) -> UserResponse:
+    return UserResponse.from_user(user, settings=settings)
 
 
 @router.post("/ws-ticket", response_model=WsTicketResponse)

@@ -83,6 +83,7 @@ describe("AuditView", () => {
       display_name: "Admin",
       role: "Admin",
       permissions: ["audit.view"],
+      features: [],
     };
   });
 

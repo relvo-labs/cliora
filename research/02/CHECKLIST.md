@@ -10,11 +10,11 @@
 
 | ☐ | 事項 | 為什麼急 |
 |---|---|---|
-| ☐ | 把 `1b3054e`（`.env` gitignore）cherry-pick 到 `dev` 與 `master` | 該規則目前只保護 `v2`，但問題在每條分支上都存在。`.env` 內有 JWT secret、token pepper、DB 密碼 |
-| ☐ | 對 `dev` 設 GitHub branch protection（required PR review） | 讓「合併需人工確認」（`10` §7）由平台強制，不只靠紀律 |
-| ☐ | 處理根目錄的 `package-lock.json`（untracked，且沒有對應的 `package.json`） | 看起來是誤留的檔案 |
-| ☐ | 審過前端 prototype（`research/prototype-v2/`）並回饋 | 七項待確認見該目錄 README |
-| ☐ | 決定 Design token 候選要不要進 `frontend/src/theme/tokens.css` | prototype 的「Design token 候選」畫面有色票與 hex |
+| ☐ | 把 `1b3054e`（`.env` gitignore）cherry-pick 到 `dev` | **已核對（2026-08-08）：`.env` 在 `dev`／`master`／`v2` 都沒有被追蹤，所以今天沒有洩漏。** 這是預防不是補救——那條 gitignore 規則目前只存在於 `v2`。低成本、不擋任何事，`master` 會從 `dev` 流過去 |
+| ☐ | 對 `dev` 設 GitHub branch protection | 讓「合併需人工確認」（`10` §7）由平台強制，不只靠紀律。**設定：required PR review ×1 ＋ 禁止 force push，但刻意不加 required status checks**——加了會讓「CI 綠了」在 GitHub UI 上長得像「可以合併了」，而 `10` §7 的整個意思是那兩件事不同 |
+| ☑ | ~~處理根目錄的 `package-lock.json`~~ | **已核對（2026-08-08）：檔案已不存在，`git ls-files` 也查無此檔。無需動作** |
+| ☑ | 審過前端 prototype（`research/prototype-v2/`）並回饋 | 第 1 項（導覽 208px）**已定案**：採 prototype 的無縮排分隔線做法，實測最寬 147px、餘裕 61px（`plan/16/08` §1）。其餘六項仍待回饋，但都不擋 V2.0 |
+| ☐ | 決定 Design token 候選要不要進 `frontend/src/theme/tokens.css` | prototype 的「Design token 候選」畫面有色票與 hex。**不擋 V2.0**：本期只用既有 token 組合，三個 Project status 徽章刻意不用綠（把綠留給 V2.1 的 stage 與 V2.2 的 run） |
 
 ---
 
@@ -37,13 +37,22 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 （D20 Git 存取、D22 機密管理、D14 離線行為已於 2026-08-08 裁決，不在此列。）
 
-☐ 一次全數採納，或逐條標記例外。
+☑ **2026-08-08 裁決：一次全數採納，三條例外。**（完整說明在 `01` §決策裁決表的註記）
+
+| 例外 | 決策 | 裁決 |
+|---|---|---|
+| 1 | **D7** | 採納，但**「代打第一行指令」整條刪除**，不留成 opt-in。它要付新的稽核語意、確認 UI、橫幅與一組時序條件，買到的是使用者少按一次 Enter；而 D7 自己已寫「Agent Run 路徑不需要它」 |
+| 2 | **D10** | 採納。內文的「平台代跑驗證命令否決」與裁決表的「改為允許」原本互相矛盾。**定案**：否決的是「讓呼叫端指名命令的 API」，允許的是「daemon 在 run 目錄內執行卡片宣告的驗證命令」。進 ADR 0032 |
+| 3 | **D13** | 採納，歸屬不變。但要寫明 `task.approve` 與 `task.update` 的**持有者集合刻意相同**——拆開是為了 token scope 而非角色分離。不寫這句，日後的「反正持有者一樣，合併吧」會靜默打開 Agent 自我核准的路 |
+
+另有一項對 **D30** 的階段修訂：**V2.0 不使用 Traqora**，用 `run-stack.sh` 既有的合成 workspace
+（V2.0 一行程式碼都不讀，Traqora 的價值從 V2.1 才開始兌現）。
 
 ### 1.3 開工前要有的量測（`10` §5）
 
 | ☐ | 編號 | 量什麼 | 卡住 |
 |---|---|---|---|
-| ☐ | M8 | sidebar 208px 在八列兩層下夠不夠 | V2.0 開工 |
+| ☑ | M8 | ~~sidebar 208px 在八列兩層下夠不夠~~ → **已量（2026-08-08）：最寬 `Integrations` 147px（無縮排分隔線版），208px 餘裕 61px，不用改。** `scripts/pj/measure-sidebar.mjs`，詳見 `plan/16/08` §1 | ~~V2.0 開工~~ |
 | ☐ | M1 | 200 張卡的看板 API 回應大小與耗時 | V2.1 開工 |
 | ☐ | M11 | 真實 repo 首次 clone vs worktree 耗時 | V2.3 開工 |
 | ☐ | M12 | run 目錄典型大小、3 個並行需要多少磁碟 | V2.3 開工 |
@@ -67,7 +76,13 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 | ☐ | PJ-06 | 前端：導覽重整三組 ＋ Project 列表／總覽 |
 | ☐ | PJ-07 | 驗證與出口（`10` §2.1 的 7 條） |
 
-**出口**：7 條（`10` §2.1）。**不動 daemon、不動 contract。**
+**出口**：9 條（`plan/16/06` §5——`10` §2.1 的 7 條，其中第 1、4 條依程式碼事實改寫，另加 2 條）。
+**不動 daemon、不動 contract。**
+
+> **執行計畫已寫在 [`plan/16/`](../../plan/16/README.md)**，含一張規劃裡沒有的閘門票 `PJ-00`
+> （基線擷取：OpenAPI、`pg_dump`、導覽截圖——那三份快照改完就再也取不到）。
+> `PJ-03` 與 `PJ-04` 在該計畫裡是**同一個 PR**（`test_every_action_is_enforced_somewhere`
+> 是文字掃描，而 D13 禁止用 `UNENFORCED_ACTIONS` 迴避）。
 
 ---
 

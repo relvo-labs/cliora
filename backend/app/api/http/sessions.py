@@ -31,6 +31,7 @@ from app.services.rbac import (
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.services.sessions import SessionService
 from app.services.ws_ticket import get_ws_ticket_service
+from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
@@ -51,8 +52,13 @@ async def create_session(
     user: User = Depends(require_action(SESSION_CREATE)),
     session: AsyncSession = Depends(get_session),
     registry: NodeConnectionRegistry = Depends(get_registry),
+    # Injected rather than read from the process-wide cache: `create` consults
+    # `projects_enabled`, and a service that resolves its own settings cannot be
+    # overridden per request — which is also how a test would silently exercise the
+    # wrong configuration.
+    settings: Settings = Depends(get_settings),
 ) -> SessionDetail:
-    service = SessionService(session, registry=registry)
+    service = SessionService(session, registry=registry, settings=settings)
     try:
         result = await service.create(
             actor_id=user.id,
@@ -62,6 +68,7 @@ async def create_session(
             workspace=body.workspace,
             rows=body.rows,
             columns=body.columns,
+            project_id=body.project_id,
         )
     except ApiError:
         # Persist a FAILED row + failure audit if one was created before the
@@ -75,17 +82,27 @@ async def create_session(
 @router.get("", response_model=list[SessionSummary])
 async def list_sessions(
     node_id: uuid.UUID | None = None,
+    # Three value ranges: absent means every session (identical to before the project
+    # layer existed), a uuid means that project's, and the literal `none` means the
+    # ad-hoc ones. The third exists so "how many sessions are actually ad-hoc" is
+    # answerable — the measurement that decides whether V2's defaults are right.
+    project_id: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
     user: User = Depends(require_action(SESSION_VIEW)),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> list[SessionSummary]:
     """Every `session.view` holder sees the whole fleet's sessions (ADR 0016: a
     Developer may see a colleague's session but not act on it). Per-row
     capability flags say which of those they may actually operate on."""
-    sessions = await SessionService(session).list(
-        node_id=node_id, status_filter=status_filter, limit=limit, offset=offset
+    sessions = await SessionService(session, settings=settings).list(
+        node_id=node_id,
+        project_id=project_id,
+        status_filter=status_filter,
+        limit=limit,
+        offset=offset,
     )
     return [SessionSummary.from_model(s, viewer=user) for s in sessions]
 

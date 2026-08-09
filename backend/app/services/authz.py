@@ -298,6 +298,27 @@ def authorize_node_manage(user: User) -> None:
         raise _forbidden(NODE_MANAGE, user, REASON_ACTION)
 
 
+def may_view_activity_actors(user: User) -> bool:
+    """Whether this caller may see *who* performed a project-timeline event.
+
+    Not a guard — a projection. The timeline itself is readable with `project.view`,
+    which all three roles hold; this decides only whether each row keeps its actor,
+    and `services/activity.py::redact_actors` applies it.
+
+    The rule is not new. `services/dashboard.py::project_for` already withholds actor
+    identity from the dashboard's recent activity for anyone without `audit.view`,
+    reasoning that knowing *that* a node was removed is operational context while
+    knowing *who* removed it is the audit trail (FR-AUTH-002). The project timeline is
+    the second surface with that shape, and it is the wider one — so without this it
+    would hand every Viewer the actor feed P4 deliberately closed.
+
+    Lives here rather than in the route because this is a question about a user's
+    reach, and `test_authorization_logic_is_confined_to_two_modules` is what keeps
+    that kind of question from spreading across route modules.
+    """
+    return has_action(user, AUDIT_VIEW)
+
+
 # --- Capability projection for the UI (ADR 0016) ---
 #
 # The browser must never re-implement these rules; it renders what the server

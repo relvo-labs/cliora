@@ -1,0 +1,58 @@
+name: V2 project flag matrix
+
+on: [push, pull_request]
+
+jobs:
+  full-suite:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        projects: ["true", "false"]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cliora
+          POSTGRES_PASSWORD: cliora
+          POSTGRES_DB: cliora_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora -d cliora_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
+      CLIORA_PROJECTS_ENABLED: ${{ matrix.projects }}
+      E2E_FULL_STACK: "1"
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+      E2E_PROJECTS: ${{ matrix.projects == 'true' && '1' || '0' }}
+      E2E_SECOND_NODE: ${{ matrix.projects == 'true' && '1' || '0' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: uv run --project backend alembic -c backend/alembic.ini upgrade head
+      - run: make check
+      - run: make test-db
+      - run: make integration
+      - name: complete live-stack browser suite
+        run: scripts/e2e/run-stack.sh bash -c 'cd frontend && npm run test:e2e -- --project=chromium --workers=1'

@@ -89,6 +89,10 @@
 <a id="scope-005"></a>
 <a id="scope-005-ac-01"></a>
 5. 不進行任務自動分派。
+    （範圍澄清 2026-08-08，ADR 0027：本條**不變且繼續有效**。V2 開放的是任務由 Agent
+    **自行認領**——平台掛出工單，Agent 依自己的容量與資格去領；平台仍不做自動指派、
+    排程最佳化與負載平衡。卡片上的「指定 Agent」是該 Agent 拉取查詢的一個過濾條件，
+    不是推送。見 SCOPE-014。）
 <a id="scope-006"></a>
 <a id="scope-006-ac-01"></a>
 6. 不提供 Web 端完整 IDE。
@@ -98,6 +102,10 @@
 <a id="scope-008"></a>
 <a id="scope-008-ac-01"></a>
 8. 不提供自動 Git Commit、Push 或 Merge Request。
+    （範圍變更 2026-08-08，ADR 0027：本條自 V2.3 起**部分撤銷**。Agent Run 得在受限條件下
+    commit 與 push，並得建立 PR／MR；**自動 Merge 仍完全不提供**。撤銷換上的四條約束由
+    SCOPE-014 承接，且各配一個實際的 gate。V2.0–V2.2 期間本條仍完全成立，
+    因為那三個階段沒有任何 git 程式碼。）
 <a id="scope-009"></a>
 <a id="scope-009-ac-01"></a>
 9. 不提供 CLI 對話內容的語意分析。
@@ -120,6 +128,19 @@
 13. 不由平台自建對外反向代理。埠轉發以第三方隧道服務整合交付：該路徑的流量不經過平台，
     平台因此不提供存取記錄、內容政策與頻寬計量；服務訂閱與帳號由使用者自行持有，平台不代管。
     （範圍新增 2026-08-01，ADR 0022；自建方案見 plan/10，已作廢。）
+<a id="scope-014"></a>
+14. Agent 自主執行的產出，每一種離開隔離環境的形式都必須落在**人看過才生效**的位置。
+    SCOPE-008 撤銷之後換上的四條約束如下，四條都寫死在 daemon 而非設定值：
+<a id="scope-014-ac-01"></a>
+    (a) Agent 只能推送到 `cliora/<card_ref>-<run_seq>` 命名空間的分支。
+<a id="scope-014-ac-02"></a>
+    (b) 永不推送到 base 分支、target 分支或受保護分支，即使任務卡如此宣告。
+<a id="scope-014-ac-03"></a>
+    (c) **永不自動 Merge**；PR／MR 一律由人審、由人合。
+<a id="scope-014-ac-04"></a>
+    (d) 派工是拉取式的：Agent 自行認領，平台不做自動指派、排程最佳化或負載平衡。
+    （範圍新增 2026-08-08，ADR 0027。四條約束在 V2.0 尚無任何程式碼，
+    各自的 gate 於 V2.2–V2.4 接上。）
 
 ---
 
@@ -1524,6 +1545,122 @@ Node 可自我診斷埠轉發的先決條件：用戶端存在、對外連線可
 
 <a id="fr-tunnel-004-ac-06"></a>
 整合的啟用、停用、憑證設定與 Node 設定變更均須留下稽核紀錄；憑證內容不得出現於紀錄中。
+
+---
+
+# 8.11 專案管理
+
+專案讓散落在不同 Node 上的 Workspace 成為一個可管理的整體：可以建立、可以綁定跨 Node 的
+工作目錄、可以從它進入 Session，並且看得到這個專案上發生過什麼。範圍與取捨見 ADR 0027。
+
+本節的能力由 `CLIORA_PROJECTS_ENABLED` 控制，預設關閉；關閉時系統行為與未導入專案層之前
+完全一致。
+
+> **Ad-hoc Session（不屬於任何 Project 的 Session）仍受完整支援，
+> 且不會被平台自動歸屬到任何 Project。** 一個 Workspace 路徑可以同時屬於多個 Project，
+> 所以由路徑反查專案沒有唯一解；「這是不是 Ad-hoc」必須是建立者的陳述，而不是平台的推論。
+
+<a id="fr-project-001"></a>
+## FR-PROJECT-001 Project 生命週期
+
+<a id="fr-project-001-ac-01"></a>
+使用者可建立 Project，指定名稱與可選的描述；建立者為擁有者。
+
+<a id="fr-project-001-ac-02"></a>
+每個 Project 有一個專案內識別碼（slug），全平台唯一、由名稱產生且可於建立時覆寫，
+**建立後不可變更**。
+
+<a id="fr-project-001-ac-03"></a>
+Project 狀態有三種：`active`、`paused`、`archived`。**沒有刪除。**
+
+<a id="fr-project-001-ac-04"></a>
+`archived` 的 Project 不得建立新的 Session，亦不得新增 Workspace 綁定；
+既有的 Session 與綁定一律不受影響，且解綁、改名與檢視歷史仍可進行。
+
+<a id="fr-project-001-ac-05"></a>
+建立、更新、狀態變更均須留下稽核紀錄。
+
+<a id="fr-project-002"></a>
+## FR-PROJECT-002 Project 與 Workspace 綁定
+
+<a id="fr-project-002-ac-01"></a>
+一個 Project 可綁定多個 Workspace，且可跨越不同的 Node；同一個 Workspace 路徑
+也可以同時屬於多個 Project。
+
+<a id="fr-project-002-ac-02"></a>
+綁定時須以該 Node 的啟用中 Workspace Root 驗證路徑；驗證失敗時拒絕綁定。
+
+<a id="fr-project-002-ac-03"></a>
+**綁定是捷徑而非授權。** 任何以綁定路徑發起的操作都必須重新執行同一次驗證，
+不得因為該路徑曾經合法而略過。
+
+<a id="fr-project-002-ac-04"></a>
+同一組（Project、Node、路徑）重複綁定為冪等操作，回傳既有的綁定而非錯誤。
+
+<a id="fr-project-002-ac-05"></a>
+一個 Project 至多有一個主要（primary）綁定。
+
+<a id="fr-project-002-ac-06"></a>
+解除綁定不得影響任何進行中的 Session。
+
+<a id="fr-project-002-ac-07"></a>
+Node 被移除後，其綁定不再出現於任何回應中；Project 本身不受影響。
+
+<a id="fr-project-002-ac-08"></a>
+綁定的可用性須逐列呈現，且至少能區分「Node 離線」與「Root 已停用」兩種原因。
+
+<a id="fr-project-003"></a>
+## FR-PROJECT-003 Project 與 Session 關聯
+
+<a id="fr-project-003-ac-01"></a>
+建立 Session 時可指定所屬 Project；該欄位為選填，**且永遠為選填**。
+
+<a id="fr-project-003-ac-02"></a>
+指定 Project 時，該 Session 的 Workspace 必須是該 Project 的綁定之一；
+不符時拒絕建立，不得靜默忽略該欄位。
+
+<a id="fr-project-003-ac-03"></a>
+未指定 Project 時，平台不得由 Workspace 推論所屬 Project。
+
+<a id="fr-project-003-ac-04"></a>
+Session 列表可依 Project 篩選，並可篩選出未屬於任何 Project 的 Session。
+
+<a id="fr-project-004"></a>
+## FR-PROJECT-004 專案活動時間軸
+
+<a id="fr-project-004-ac-01"></a>
+Project 建立與更新、Workspace 綁定與解綁、所屬 Session 的起訖，各產生一筆活動事件。
+
+<a id="fr-project-004-ac-02"></a>
+活動事件可依專案分頁查詢，順序穩定（同一時刻的事件不得重複出現或遺漏）。
+
+<a id="fr-project-004-ac-03"></a>
+不具稽核檢視權限者，取得的活動事件不含操作者身分，且回應須明示該資訊已被隱藏。
+
+<a id="fr-project-004-ac-04"></a>
+活動事件的內容不得包含檔案內容、搜尋關鍵字、密碼、權杖或私鑰。
+
+<a id="fr-project-004-ac-05"></a>
+活動事件為專案內容而非診斷紀錄，**不設保留期**；專案封存不移除其歷史。
+
+<a id="fr-project-005"></a>
+## FR-PROJECT-005 功能旗標與相容性
+
+<a id="fr-project-005-ac-01"></a>
+`CLIORA_PROJECTS_ENABLED` 關閉時，所有專案相關的 API 路徑一律回應 404。
+
+<a id="fr-project-005-ac-02"></a>
+旗標關閉時，建立 Session 的請求若攜帶專案欄位，須以驗證錯誤拒絕。
+
+<a id="fr-project-005-ac-03"></a>
+旗標關閉時，前端導覽與專案層導入前完全一致。
+
+<a id="fr-project-005-ac-04"></a>
+旗標的開關不得改變伺服器掛載的路由集合。
+
+<a id="fr-project-005-ac-05"></a>
+既有 API 的請求與回應不得移除欄位、改名、變更型別或變更必填性；
+專案層只以新增路徑與選填欄位的方式擴充。
 
 ---
 

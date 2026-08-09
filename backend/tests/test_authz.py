@@ -229,6 +229,21 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/enrollment-tokens"): rbac.ENROLLMENT_MANAGE,
     ("DELETE", "/api/enrollment-tokens/{token_id}"): rbac.ENROLLMENT_MANAGE,
     ("POST", "/api/sessions"): rbac.SESSION_CREATE,
+    # Project layer (ADR 0027). `project.view` is held by all three roles for the same
+    # reason `node.view` is: a Viewer may look at the shape of the fleet. The read it
+    # grants carries one obligation — the activity timeline strips actor identity
+    # unless the caller *also* holds `audit.view`, so a read every role has cannot
+    # become the actor feed `dashboard.project_for` exists to prevent.
+    ("GET", "/api/projects"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/activity"): rbac.PROJECT_VIEW,
+    # `project.manage` sits with enrollment and node management: which projects exist,
+    # and which machines and directories they cover, is an organisation-level call —
+    # and from V2.3 a binding also authorises a runner to draw that project's secrets.
+    ("POST", "/api/projects"): rbac.PROJECT_MANAGE,
+    ("PATCH", "/api/projects/{project_id}"): rbac.PROJECT_MANAGE,
+    ("POST", "/api/projects/{project_id}/workspaces"): rbac.PROJECT_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/workspaces/{binding_id}"): rbac.PROJECT_MANAGE,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

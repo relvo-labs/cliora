@@ -5694,6 +5694,298 @@
           "risk": "high"
         }
       ]
+    },
+    {
+      "id": "FR-PROJECT-001",
+      "kind": "functional",
+      "title": "Project 生命週期",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-project-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROJECT-001.AC-01",
+          "source_anchor": "fr-project-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-001.AC-02",
+          "source_anchor": "fr-project-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-001.AC-03",
+          "source_anchor": "fr-project-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-001.AC-04",
+          "source_anchor": "fr-project-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-001.AC-05",
+          "source_anchor": "fr-project-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROJECT-002",
+      "kind": "functional",
+      "title": "Project 與 Workspace 綁定",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-project-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROJECT-002.AC-01",
+          "source_anchor": "fr-project-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-02",
+          "source_anchor": "fr-project-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-03",
+          "source_anchor": "fr-project-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-04",
+          "source_anchor": "fr-project-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-05",
+          "source_anchor": "fr-project-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-06",
+          "source_anchor": "fr-project-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-07",
+          "source_anchor": "fr-project-002-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-002.AC-08",
+          "source_anchor": "fr-project-002-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROJECT-003",
+      "kind": "functional",
+      "title": "Project 與 Session 關聯",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-project-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROJECT-003.AC-01",
+          "source_anchor": "fr-project-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-003.AC-02",
+          "source_anchor": "fr-project-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-003.AC-03",
+          "source_anchor": "fr-project-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-003.AC-04",
+          "source_anchor": "fr-project-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROJECT-004",
+      "kind": "functional",
+      "title": "專案活動時間軸",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-project-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROJECT-004.AC-01",
+          "source_anchor": "fr-project-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-004.AC-02",
+          "source_anchor": "fr-project-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-004.AC-03",
+          "source_anchor": "fr-project-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-004.AC-04",
+          "source_anchor": "fr-project-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-004.AC-05",
+          "source_anchor": "fr-project-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROJECT-005",
+      "kind": "functional",
+      "title": "功能旗標與相容性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-project-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROJECT-005.AC-01",
+          "source_anchor": "fr-project-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROJECT-005.AC-02",
+          "source_anchor": "fr-project-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-005.AC-03",
+          "source_anchor": "fr-project-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-005.AC-04",
+          "source_anchor": "fr-project-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROJECT-005.AC-05",
+          "source_anchor": "fr-project-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "SCOPE-014",
+      "kind": "scope",
+      "title": "Agent 自主執行的出口約束（SCOPE-008 撤銷後換上的四條）",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "scope-014"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "product",
+      "criteria": [
+        {
+          "id": "SCOPE-014.AC-01",
+          "source_anchor": "scope-014-ac-01",
+          "verification_profile": "inspection",
+          "risk": "critical",
+          "lifecycle": "proposed"
+        },
+        {
+          "id": "SCOPE-014.AC-02",
+          "source_anchor": "scope-014-ac-02",
+          "verification_profile": "inspection",
+          "risk": "critical",
+          "lifecycle": "proposed"
+        },
+        {
+          "id": "SCOPE-014.AC-03",
+          "source_anchor": "scope-014-ac-03",
+          "verification_profile": "inspection",
+          "risk": "critical",
+          "lifecycle": "proposed"
+        },
+        {
+          "id": "SCOPE-014.AC-04",
+          "source_anchor": "scope-014-ac-04",
+          "verification_profile": "inspection",
+          "risk": "critical",
+          "lifecycle": "active"
+        }
+      ]
     }
   ]
 }

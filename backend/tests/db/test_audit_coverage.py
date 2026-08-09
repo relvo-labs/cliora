@@ -21,7 +21,16 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app.api.http.sessions import get_registry
-from app.db.models import AuditLog, Node, NodeCredential, NodeRuntime, NodeWorkspaceRoot, Role, User
+from app.db.models import (
+    AuditLog,
+    Node,
+    NodeCredential,
+    NodeRuntime,
+    NodeWorkspaceRoot,
+    Project,
+    Role,
+    User,
+)
 from app.main import app
 from app.protocol import ControlMessage
 from app.security.node_keys import valid_public_key
@@ -370,6 +379,27 @@ async def test_refused_mutation_is_audited_with_the_actor_and_request_id(api: tu
     # the audit row and the request's logs must be joinable.
     assert metadata["request_id"] == request_id
     _assert_row_shape(row)
+
+
+async def test_viewer_project_create_is_refused_audited_and_leaves_nothing(
+    api: tuple, projects_enabled: None
+) -> None:
+    """Exit condition 9 names this exact forged request, not merely any 403."""
+    client, maker = api
+    viewer_id, viewer, _ = await _actor(client, maker, "Viewer")
+
+    resp = await client.post("/api/projects", json={"name": "forged"}, headers=viewer)
+    assert resp.status_code == 403
+
+    rows = await _rows(maker, audit.AUTHZ_DENIED)
+    assert len(rows) == 1
+    assert rows[0].user_id == viewer_id
+    assert rows[0].audit_metadata["denied_action"] == "project.manage"
+    assert rows[0].audit_metadata["path"] == "/api/projects"
+    async with maker() as session:
+        assert (
+            await session.execute(sa.select(sa.func.count()).select_from(Project))
+        ).scalar() == 0
 
 
 async def test_cross_owner_refusal_is_audited_with_scope_reason(api: tuple) -> None:

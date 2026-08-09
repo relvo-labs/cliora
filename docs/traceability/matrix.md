@@ -185,6 +185,33 @@
 | FR-NODE-005 | [FR-NODE-005.AC-03](../../research/prd.md#fr-node-005-ac-03) | 不可建立新 Session。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/test_node_guard.py::test_disabled_node_is_refused_with_node_disabled<br>pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected |
 | FR-NODE-005 | [FR-NODE-005.AC-04](../../research/prd.md#fr-node-005-ac-04) | 既有 Session 是否中止由管理員選擇。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_with_the_flag_actually_terminates_its_sessions<br>pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_leaves_running_sessions_alone_by_default |
 | FR-NODE-005 | [FR-NODE-005.AC-05](../../research/prd.md#fr-node-005-ac-05) | 前端顯示 Disabled。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/db/test_favorites_api.py::test_disabling_the_node_makes_a_stored_favourite_unusable |
+| FR-PROJECT-001 | [FR-PROJECT-001.AC-01](../../research/prd.md#fr-project-001-ac-01) | 使用者可建立 Project，指定名稱與可選的描述；建立者為擁有者。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-001 | [FR-PROJECT-001.AC-02](../../research/prd.md#fr-project-001-ac-02) | 每個 Project 有一個專案內識別碼（slug），全平台唯一、由名稱產生且可於建立時覆寫， | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-001 | [FR-PROJECT-001.AC-03](../../research/prd.md#fr-project-001-ac-03) | Project 狀態有三種：active、paused、archived。沒有刪除。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-001 | [FR-PROJECT-001.AC-04](../../research/prd.md#fr-project-001-ac-04) | archived 的 Project 不得建立新的 Session，亦不得新增 Workspace 綁定； | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-001 | [FR-PROJECT-001.AC-05](../../research/prd.md#fr-project-001-ac-05) | 建立、更新、狀態變更均須留下稽核紀錄。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-01](../../research/prd.md#fr-project-002-ac-01) | 一個 Project 可綁定多個 Workspace，且可跨越不同的 Node；同一個 Workspace 路徑 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-02](../../research/prd.md#fr-project-002-ac-02) | 綁定時須以該 Node 的啟用中 Workspace Root 驗證路徑；驗證失敗時拒絕綁定。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-03](../../research/prd.md#fr-project-002-ac-03) | 綁定是捷徑而非授權。 任何以綁定路徑發起的操作都必須重新執行同一次驗證， | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-04](../../research/prd.md#fr-project-002-ac-04) | 同一組（Project、Node、路徑）重複綁定為冪等操作，回傳既有的綁定而非錯誤。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-05](../../research/prd.md#fr-project-002-ac-05) | 一個 Project 至多有一個主要（primary）綁定。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-06](../../research/prd.md#fr-project-002-ac-06) | 解除綁定不得影響任何進行中的 Session。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-07](../../research/prd.md#fr-project-002-ac-07) | Node 被移除後，其綁定不再出現於任何回應中；Project 本身不受影響。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-002 | [FR-PROJECT-002.AC-08](../../research/prd.md#fr-project-002-ac-08) | 綁定的可用性須逐列呈現，且至少能區分「Node 離線」與「Root 已停用」兩種原因。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_data_layer.py |
+| FR-PROJECT-003 | [FR-PROJECT-003.AC-01](../../research/prd.md#fr-project-003-ac-01) | 建立 Session 時可指定所屬 Project；該欄位為選填，且永遠為選填。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-003 | [FR-PROJECT-003.AC-02](../../research/prd.md#fr-project-003-ac-02) | 指定 Project 時，該 Session 的 Workspace 必須是該 Project 的綁定之一； | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-003 | [FR-PROJECT-003.AC-03](../../research/prd.md#fr-project-003-ac-03) | 未指定 Project 時，平台不得由 Workspace 推論所屬 Project。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-003 | [FR-PROJECT-003.AC-04](../../research/prd.md#fr-project-003-ac-04) | Session 列表可依 Project 篩選，並可篩選出未屬於任何 Project 的 Session。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-004 | [FR-PROJECT-004.AC-01](../../research/prd.md#fr-project-004-ac-01) | Project 建立與更新、Workspace 綁定與解綁、所屬 Session 的起訖，各產生一筆活動事件。 | plan:plan/16/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/activity.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-004 | [FR-PROJECT-004.AC-02](../../research/prd.md#fr-project-004-ac-02) | 活動事件可依專案分頁查詢，順序穩定（同一時刻的事件不得重複出現或遺漏）。 | plan:plan/16/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/activity.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-004 | [FR-PROJECT-004.AC-03](../../research/prd.md#fr-project-004-ac-03) | 不具稽核檢視權限者，取得的活動事件不含操作者身分，且回應須明示該資訊已被隱藏。 | plan:plan/16/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/activity.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-004 | [FR-PROJECT-004.AC-04](../../research/prd.md#fr-project-004-ac-04) | 活動事件的內容不得包含檔案內容、搜尋關鍵字、密碼、權杖或私鑰。 | plan:plan/16/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/activity.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-004 | [FR-PROJECT-004.AC-05](../../research/prd.md#fr-project-004-ac-05) | 活動事件為專案內容而非診斷紀錄，不設保留期；專案封存不移除其歷史。 | plan:plan/16/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/activity.py | pytest:backend/tests/db/test_projects_api.py |
+| FR-PROJECT-005 | [FR-PROJECT-005.AC-01](../../research/prd.md#fr-project-005-ac-01) | CLIORAPROJECTSENABLED 關閉時，所有專案相關的 API 路徑一律回應 404。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-005 | [FR-PROJECT-005.AC-02](../../research/prd.md#fr-project-005-ac-02) | 旗標關閉時，建立 Session 的請求若攜帶專案欄位，須以驗證錯誤拒絕。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-005 | [FR-PROJECT-005.AC-03](../../research/prd.md#fr-project-005-ac-03) | 旗標關閉時，前端導覽與專案層導入前完全一致。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-005 | [FR-PROJECT-005.AC-04](../../research/prd.md#fr-project-005-ac-04) | 旗標的開關不得改變伺服器掛載的路由集合。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROJECT-005 | [FR-PROJECT-005.AC-05](../../research/prd.md#fr-project-005-ac-05) | 既有 API 的請求與回應不得移除欄位、改名、變更型別或變更必填性； | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-01](../../research/prd.md#fr-runtime-001-ac-01) | Daemon 啟動時應偵測： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>gotest:daemon/internal/runtime#TestDetectAvailable<br>gotest:daemon/internal/runtime#TestDetectNotFound<br>gotest:daemon/internal/runtime#TestDetectNotExecutableOnError<br>gotest:daemon/internal/runtime#TestDetectTimeoutDoesNotHang |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-02](../../research/prd.md#fr-runtime-001-ac-02) | claude | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | — |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-03](../../research/prd.md#fr-runtime-001-ac-03) | codex | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | — |
@@ -394,13 +421,17 @@
 | SCOPE-004 | [SCOPE-004.AC-01](../../research/prd.md#scope-004-ac-01) | 不建立多 Agent 自動協作流程。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow |
 | SCOPE-005 | [SCOPE-005.AC-01](../../research/prd.md#scope-005-ac-01) | 不進行任務自動分派。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch |
 | SCOPE-006 | [SCOPE-006.AC-01](../../research/prd.md#scope-006-ac-01) | 不提供 Web 端完整 IDE。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide |
-| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface |
+| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive |
 | SCOPE-008 | [SCOPE-008.AC-01](../../research/prd.md#scope-008-ac-01) | 不提供自動 Git Commit、Push 或 Merge Request。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface |
 | SCOPE-009 | [SCOPE-009.AC-01](../../research/prd.md#scope-009-ac-01) | 不提供 CLI 對話內容的語意分析。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation |
 | SCOPE-010 | [SCOPE-010.AC-01](../../research/prd.md#scope-010-ac-01) | 不建立跨 Runtime 的統一 Agent 行為模型。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model |
 | SCOPE-011 | [SCOPE-011.AC-01](../../research/prd.md#scope-011-ac-01) | 前端不得指定任意 Shell Command 字串。前端只送 Runtime ID，實際 Binary 由 Node 自行解析； | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_011_the_front_end_cannot_name_a_command |
 | SCOPE-012 | [SCOPE-012.AC-01](../../research/prd.md#scope-012-ac-01) | 不將 VM 檔案系統直接掛載至中央伺服器。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_012_the_vm_filesystem_is_not_mounted_on_central |
 | SCOPE-013 | [SCOPE-013.AC-01](../../research/prd.md#scope-013-ac-01) | 不由平台自建對外反向代理。埠轉發以第三方隧道服務整合交付：該路徑的流量不經過平台， | adr:docs/adr/0022-third-party-tunnel-integration.md | — | plan:plan/11/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_013_central_does_not_proxy_to_a_node_http_service |
+| SCOPE-014 | [SCOPE-014.AC-01](../../research/prd.md#scope-014-ac-01) | (a) Agent 只能推送到 cliora/<cardref>-<runseq> 命名空間的分支。 | — | — | — |
+| SCOPE-014 | [SCOPE-014.AC-02](../../research/prd.md#scope-014-ac-02) | (b) 永不推送到 base 分支、target 分支或受保護分支，即使任務卡如此宣告。 | — | — | — |
+| SCOPE-014 | [SCOPE-014.AC-03](../../research/prd.md#scope-014-ac-03) | (c) 永不自動 Merge；PR／MR 一律由人審、由人合。 | — | — | — |
+| SCOPE-014 | [SCOPE-014.AC-04](../../research/prd.md#scope-014-ac-04) | (d) 派工是拉取式的：Agent 自行認領，平台不做自動指派、排程最佳化或負載平衡。 | — | — | pytest:backend/tests/test_scope_014_dispatch_is_pull_based.py::test_no_route_pushes_work_to_a_runner |
 | SEC-001 | [SEC-001.AC-01](../../research/prd.md#sec-001-ac-01) | 所有 Workspace 與檔案路徑必須： | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveContainmentMatrix |
 | SEC-001 | [SEC-001.AC-02](../../research/prd.md#sec-001-ac-02) | 使用 Absolute Path。 | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestResolveReturnsCanonicalPath |
 | SEC-001 | [SEC-001.AC-03](../../research/prd.md#sec-001-ac-03) | 解析 Symlink。 | source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestSymlinkSwapTOCTOU |
@@ -504,6 +535,11 @@
 - `gate:GATE-WF-NO-NAMING-CHANNEL` ← `FR-FILE-009.AC-03` (guards_scope)
 - `requirement:SCOPE-011.AC-01` ← `FR-SHELL-001.AC-03` (supersedes)
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
+- `code:backend/app/api/http/deps.py` ← `FR-PROJECT-005.AC-01` (implemented_by)
+- `code:backend/app/api/http/deps.py` ← `FR-PROJECT-005.AC-02` (implemented_by)
+- `code:backend/app/api/http/deps.py` ← `FR-PROJECT-005.AC-03` (implemented_by)
+- `code:backend/app/api/http/deps.py` ← `FR-PROJECT-005.AC-04` (implemented_by)
+- `code:backend/app/api/http/deps.py` ← `FR-PROJECT-005.AC-05` (implemented_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-009.AC-01` (implemented_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-010.AC-01` (implemented_by)
 - `code:backend/app/api/http/integrations.py` ← `FR-TUNNEL-004.AC-01` (implemented_by)
@@ -520,6 +556,11 @@
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-03.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-04.AC-01` (implemented_by)
 - `code:backend/app/security/tokens.py` ← `TECH-SEC-13.AC-01` (implemented_by)
+- `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-01` (implemented_by)
+- `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-02` (implemented_by)
+- `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-03` (implemented_by)
+- `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-04` (implemented_by)
+- `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-05` (implemented_by)
 - `code:backend/app/services/audit.py` ← `FR-SHELL-001.AC-06` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-01` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-02` (implemented_by)
@@ -598,6 +639,19 @@
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-03` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-04` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-05` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-01` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-02` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-03` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-04` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-05` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-01` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-02` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-03` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-04` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-05` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-06` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-07` (implemented_by)
+- `code:backend/app/services/projects.py` ← `FR-PROJECT-002.AC-08` (implemented_by)
 - `code:backend/app/services/rbac.py` ← `FR-AUTH-002.AC-01` (implemented_by)
 - `code:backend/app/services/rbac.py` ← `FR-AUTH-002.AC-02` (implemented_by)
 - `code:backend/app/services/rbac.py` ← `FR-AUTH-002.AC-03` (implemented_by)
@@ -619,6 +673,10 @@
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-07` (implemented_by)
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-08` (implemented_by)
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-09` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-01` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-02` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-03` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-04` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-001.AC-01` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-001.AC-02` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-001.AC-03` (implemented_by)
@@ -781,6 +839,24 @@
 - `pytest:backend/tests/db/test_permission_matrix.py::test_role_matrix_over_every_guarded_route` ← `FR-AUTH-002.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_permission_matrix.py::test_role_matrix_over_every_guarded_route` ← `FR-AUTH-002.AC-08` (verified_by)
 - `pytest:backend/tests/db/test_permission_matrix.py::test_seeded_roles_are_exactly_the_three_documented_roles` ← `FR-AUTH-002.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-001.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-001.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-001.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-001.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-001.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-004.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-004.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-004.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-004.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_projects_api.py` ← `FR-PROJECT-004.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-06` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-07` (verified_by)
+- `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-08` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-001.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-003.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-004.AC-01` (verified_by)
@@ -809,6 +885,15 @@
 - `pytest:backend/tests/db/test_sessions_api.py::test_terminating_the_cli_session_takes_its_terminal_with_it` ← `FR-SHELL-001.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_viewer_cannot_create` ← `FR-AUTH-002.AC-08` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py::test_viewer_is_refused_at_the_action_layer` ← `FR-SHELL-001.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-003.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-003.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-003.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-003.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-05` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected` ← `FR-NODE-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-06` (verified_by)
@@ -876,6 +961,7 @@
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-CONN-006.AC-07` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-SESSION-005.AC-05` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others` ← `FR-CONN-006.AC-08` (verified_by)
+- `pytest:backend/tests/test_scope_014_dispatch_is_pull_based.py::test_no_route_pushes_work_to_a_runner` ← `SCOPE-014.AC-04` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py` ← `FR-RUNTIME-003.AC-02` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events` ← `SCOPE-001.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism` ← `SCOPE-002.AC-01` (guards_scope)
@@ -883,7 +969,7 @@
 - `pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow` ← `SCOPE-004.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch` ← `SCOPE-005.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide` ← `SCOPE-006.AC-01` (guards_scope)
-- `pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface` ← `SCOPE-007.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive` ← `SCOPE-007.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface` ← `SCOPE-008.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation` ← `SCOPE-009.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model` ← `SCOPE-010.AC-01` (guards_scope)
@@ -1872,6 +1958,60 @@
 - `plan:plan/15/03-contract-central-and-rbac.md` ← `FR-FILE-010.AC-11` (planned_by)
 - `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-02` (planned_by)
 - `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-12` (planned_by)
+- `plan:plan/16/02-data-layer.md` ← `FR-PROJECT-004.AC-01` (planned_by)
+- `plan:plan/16/02-data-layer.md` ← `FR-PROJECT-004.AC-02` (planned_by)
+- `plan:plan/16/02-data-layer.md` ← `FR-PROJECT-004.AC-03` (planned_by)
+- `plan:plan/16/02-data-layer.md` ← `FR-PROJECT-004.AC-04` (planned_by)
+- `plan:plan/16/02-data-layer.md` ← `FR-PROJECT-004.AC-05` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-001.AC-01` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-001.AC-02` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-001.AC-03` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-001.AC-04` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-001.AC-05` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-01` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-02` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-03` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-04` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-05` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-06` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-07` (planned_by)
+- `plan:plan/16/03-rbac-and-project-api.md` ← `FR-PROJECT-002.AC-08` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-003.AC-01` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-003.AC-02` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-003.AC-03` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-003.AC-04` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-01` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-02` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-03` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-04` (planned_by)
+- `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-05` (planned_by)
+- `source:research/prd.md` ← `FR-PROJECT-001.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-001.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-001.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-001.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-001.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-06` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-07` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-002.AC-08` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-003.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-003.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-003.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-003.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-004.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-004.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-004.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-004.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-004.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-005.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-005.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-005.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-005.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-PROJECT-005.AC-05` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)

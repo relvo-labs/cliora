@@ -193,7 +193,9 @@ _QUERY = {
 
 
 @pytest.mark.parametrize("role", sorted(rbac.ROLE_ACTIONS))
-async def test_role_matrix_over_every_guarded_route(api: tuple, role: str) -> None:
+async def test_role_matrix_over_every_guarded_route(
+    api: tuple, role: str, projects_enabled: None
+) -> None:
     """The **action layer**, for every guarded route: a role holding the action must
     not be refused, and a role lacking it must get exactly 403 with the uniform
     code.
@@ -212,6 +214,10 @@ async def test_role_matrix_over_every_guarded_route(api: tuple, role: str) -> No
         "{node_id}": str(node_id),
         "{session_id}": str(session_id),
         "{token_id}": str(uuid.uuid4()),
+        # Ids that resolve to nothing: this test measures the *action* layer, and a
+        # 404 for a missing project still satisfies "a holder is not refused".
+        "{project_id}": str(uuid.uuid4()),
+        "{binding_id}": str(uuid.uuid4()),
     }
     registry = RecordingRegistry()
 

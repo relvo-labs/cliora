@@ -33,6 +33,8 @@ class SessionRepository:
         *,
         node_id: uuid.UUID | None = None,
         status: str | None = None,
+        project_id: uuid.UUID | None = None,
+        ad_hoc_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[TerminalSession]:
@@ -47,6 +49,10 @@ class SessionRepository:
             query = query.where(TerminalSession.node_id == node_id)
         if status is not None:
             query = query.where(TerminalSession.status == status)
+        if project_id is not None:
+            query = query.where(TerminalSession.project_id == project_id)
+        elif ad_hoc_only:
+            query = query.where(TerminalSession.project_id.is_(None))
         query = query.order_by(TerminalSession.created_at.desc()).limit(limit).offset(offset)
         result = await self._session.execute(query)
         return result.scalars().all()

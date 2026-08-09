@@ -32,6 +32,7 @@ from app.api.http.files import router as files_router
 from app.api.http.integrations import router as integrations_router
 from app.api.http.metrics import router as metrics_router
 from app.api.http.nodes import router as nodes_router
+from app.api.http.projects import router as projects_router
 from app.api.http.releases import router as releases_router
 from app.api.http.sessions import router as sessions_router
 from app.api.http.tunnels import router as tunnels_router
@@ -147,6 +148,10 @@ install_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(enrollment_router)
 app.include_router(nodes_router)
+# Mounted unconditionally; every route inside carries `require_projects_enabled`,
+# which answers 404 while the flag is off. Conditional mounting would make the
+# route matrix's verdict depend on the environment the suite ran in (ADR 0027).
+app.include_router(projects_router)
 app.include_router(sessions_router)
 app.include_router(tunnels_router)
 app.include_router(integrations_router)

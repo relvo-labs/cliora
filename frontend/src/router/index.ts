@@ -59,6 +59,22 @@ export const routes: RouteRecordRaw[] = [
 // The authenticated Session Workspace replaces the P0 terminal PoC (the P0 dev
 // gateway is superseded by the P2 relay, ADR/plan 03). The token showcase stays
 // as a dev-only design reference.
+// No permission guard, and none for the feature flag either — same reason as
+// /audit and /settings/integrations below: a client-side guard decides what
+// renders, not what is allowed. Reaching these without `project.view`, or in a
+// deployment with the layer switched off, shows the state driven by the server's
+// own 403 or 404 (ADR 0027).
+routes.push({
+  path: "/projects",
+  name: "projects",
+  component: () => import("../views/ProjectsView.vue"),
+});
+routes.push({
+  path: "/projects/:id",
+  name: "project-detail",
+  component: () => import("../views/ProjectDetailView.vue"),
+  props: true,
+});
 routes.push({
   path: "/sessions",
   name: "sessions",

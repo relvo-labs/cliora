@@ -22,7 +22,17 @@ export interface User {
   display_name: string;
   role: string;
   permissions: string[];
+  /** What this *deployment* has. **Not a permission** — `hasPermission` answers
+   *  that, and the server checks both independently. The UI rule is
+   *  `hasFeature(...) && hasPermission(...)`; neither alone is authorization.
+   *
+   *  It cannot live in `permissions`: seed migrations run unconditionally, so an
+   *  Admin holds `project.manage` even where the project layer is switched off. */
+  features: string[];
 }
+
+/** Feature keys carried by `User.features` (ADR 0027). V2.2 adds `agent_runs`. */
+export const FEATURE_PROJECTS = "projects";
 
 export interface LoginResponse {
   tokens: TokenPair;
@@ -210,6 +220,9 @@ export interface SessionSummary {
   ended_at: string | null;
   created_at: string;
   capabilities: SessionCapabilities;
+  /** `null` for an ad-hoc session, and for every session where the project layer
+   *  is switched off. Always present, so the shape does not depend on config. */
+  project_id: string | null;
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -516,6 +529,14 @@ export const AUDIT_ACTIONS = [
   "tunnel.close",
   "tunnel.public_acknowledged",
   "node.posture_changed",
+  // 專案層（ADR 0027）。`project.archive` 與 `project.update` 分開，理由與
+  // `node.enable`／`node.disable` 分開相同：「誰封存了那個專案」是一個會被單獨問的
+  // 問題，而在另一個動作的 metadata 裡過濾不是答案。綁定與解綁同理。
+  "project.create",
+  "project.update",
+  "project.archive",
+  "project.workspace_bind",
+  "project.workspace_unbind",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -705,3 +726,74 @@ export const ACTION_AUDIT_VIEW = "audit.view";
 export const ACTION_TUNNEL_VIEW = "tunnel.view";
 export const ACTION_TUNNEL_MANAGE = "tunnel.manage";
 export const ACTION_INTEGRATION_MANAGE = "integration.manage";
+// V2.0 project layer (ADR 0027). `project.view` is held by every role, like
+// `node.view`; `project.manage` is Admin-only, with enrollment and node
+// management, because it decides which projects exist and what they cover.
+export const ACTION_PROJECT_VIEW = "project.view";
+export const ACTION_PROJECT_MANAGE = "project.manage";
+
+// --- V2.0 project layer (ADR 0027) ---
+
+/** Why a binding cannot be used right now. Deliberately the *same* vocabulary as
+ *  `FavoriteUsability`: the question is identical — can this stored path start a
+ *  session on that node — and a parallel set of names would mean two ways of
+ *  saying the same thing.
+ *
+ *  `usable` does not promise the directory still exists. Detecting that needs a
+ *  round trip to the node, which V2.0 does not add; a deleted directory surfaces
+ *  when the session is created, exactly as for a hand-typed path. */
+export type BindingUsability = FavoriteUsability;
+
+export type ProjectStatus = "active" | "paused" | "archived";
+
+export interface ProjectWorkspace {
+  id: string;
+  node_id: string;
+  node_name: string;
+  node_enabled: boolean;
+  path: string;
+  label: string | null;
+  is_primary: boolean;
+  usability: BindingUsability;
+  created_at: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: ProjectStatus;
+  owner_user_id: string;
+  owner_name: string;
+  workspace_count: number;
+  node_count: number;
+  active_session_count: number;
+  last_activity_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  workspaces: ProjectWorkspace[];
+}
+
+export interface ActivityEvent {
+  id: string;
+  kind: string;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+  /** Both null together. Null means either a system-originated event *or* a
+   *  reader without `audit.view`; `ActivityPage.actors_hidden` is what tells the
+   *  two apart, and the UI must say which — a blank actor that silently means
+   *  "you may not see this" reads as "nobody did it". */
+  actor_id: string | null;
+  actor_name: string | null;
+  session_id: string | null;
+}
+
+export interface ActivityPage {
+  items: ActivityEvent[];
+  actors_hidden: boolean;
+  next_before: string | null;
+}
