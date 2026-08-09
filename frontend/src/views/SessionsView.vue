@@ -34,6 +34,7 @@ const prefill = computed(() => {
     typeof value === "string" && value !== "" ? value : undefined;
   const found = {
     projectId: asString(route.query.project_id),
+    taskId: asString(route.query.task_id),
     nodeId: asString(route.query.node_id),
     workspace: asString(route.query.workspace),
   };

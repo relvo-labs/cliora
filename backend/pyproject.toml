@@ -58,6 +58,10 @@ extend-immutable-calls = [
   "fastapi.Body",
   # RBAC guard factory: builds one shared dependency at definition time.
   "app.api.http.deps.require_action",
+  # Its agent-side counterpart (ADR 0028). Listed separately rather than by a
+  # wildcard: the point of this allowlist is that adding a factory here is a
+  # decision someone made, not a pattern that quietly grows.
+  "app.api.http.deps.require_agent_action",
 ]
 
 [tool.mypy]

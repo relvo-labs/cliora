@@ -46,6 +46,10 @@ def targets() -> list[Target]:
         # Present from P4-06 onward; a missing table is reported, not fatal, so the
         # command works on a database that has not reached that migration.
         Target("node_metric_samples", "sampled_at", settings.node_metric_retention_days),
+        # Only revoked credentials age out. NULL revoked_at rows are excluded by
+        # SQL comparison semantics, so an active session token is unreachable to
+        # this operator command even if it was issued long ago.
+        Target("session_tokens", "revoked_at", settings.session_token_retention_days),
     ]
 
 

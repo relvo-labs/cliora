@@ -5,6 +5,16 @@
 
 import type {
   ActivityPage,
+  AcceptProposalResult,
+  Board,
+  FeatureSpec,
+  ProcessDefinition,
+  Requirement,
+  RequirementDetail,
+  Roadmap,
+  Task,
+  TaskProposal,
+  TaskWrite,
   AttachTicket,
   AuditPage,
   AuditQuery,
@@ -276,15 +286,187 @@ export class ApiClient {
 
   listProjectActivity(
     id: string,
-    params?: { limit?: number; before?: string },
+    params?: { limit?: number; before?: string; task_id?: string },
   ): Promise<ActivityPage> {
     const query = new URLSearchParams();
     if (params?.limit) query.set("limit", String(params.limit));
     if (params?.before) query.set("before", params.before);
+    if (params?.task_id) query.set("task_id", params.task_id);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return this.request(
       "GET",
       `/api/projects/${encodeURIComponent(id)}/activity${suffix}`,
+    );
+  }
+
+  // --- V2.1 task layer (ADR 0028) ---
+  //
+  // Same 404-while-disabled rule as the project routes above: the browser knows from
+  // `User.features` rather than by probing.
+
+  getBoard(projectId: string): Promise<Board> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/board`,
+    );
+  }
+
+  getRoadmap(projectId: string): Promise<Roadmap> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/roadmap`,
+    );
+  }
+
+  getProcess(projectId: string): Promise<ProcessDefinition> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/process`,
+    );
+  }
+
+  getTask(taskId: string): Promise<Task> {
+    return this.request("GET", `/api/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  createEpic(projectId: string, input: { title: string }): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/epics`,
+      input,
+    );
+  }
+
+  createUserStory(
+    projectId: string,
+    input: { title: string; epic_id?: string },
+  ): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/user-stories`,
+      input,
+    );
+  }
+
+  updateEpic(id: string, input: Record<string, unknown>): Promise<Task> {
+    return this.request("PATCH", `/api/epics/${encodeURIComponent(id)}`, input);
+  }
+
+  updateUserStory(id: string, input: Record<string, unknown>): Promise<Task> {
+    return this.request(
+      "PATCH",
+      `/api/user-stories/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  createTask(
+    projectId: string,
+    input: Record<string, unknown>,
+  ): Promise<TaskWrite> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/tasks`,
+      input,
+    );
+  }
+
+  /** Every write carries the version it was read at. Not optional: an optional
+   *  precondition is the one every caller eventually forgets, and the failure it
+   *  prevents — two people dragging one card — is silent. */
+  updateTask(
+    taskId: string,
+    input: Record<string, unknown> & { version: number },
+  ): Promise<TaskWrite> {
+    return this.request(
+      "PATCH",
+      `/api/tasks/${encodeURIComponent(taskId)}`,
+      input,
+    );
+  }
+
+  addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/dependencies`,
+      { depends_on_task_id: dependsOnTaskId },
+    );
+  }
+
+  decideGate(taskId: string, gate: string, approved: boolean): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/gates/${encodeURIComponent(gate)}`,
+      { approved },
+    );
+  }
+
+  listRequirements(projectId: string): Promise<Requirement[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/requirements`,
+    );
+  }
+
+  getRequirement(id: string): Promise<RequirementDetail> {
+    return this.request("GET", `/api/requirements/${encodeURIComponent(id)}`);
+  }
+
+  createRequirement(
+    projectId: string,
+    input: { raw_text: string },
+  ): Promise<Requirement> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/requirements`,
+      input,
+    );
+  }
+
+  addSpec(
+    requirementId: string,
+    input: Record<string, unknown>,
+  ): Promise<FeatureSpec> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/specs`,
+      input,
+    );
+  }
+
+  approveRequirement(requirementId: string): Promise<Requirement> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/approve`,
+    );
+  }
+
+  createProposal(
+    requirementId: string,
+    tree: Record<string, unknown>,
+  ): Promise<TaskProposal> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/proposals`,
+      { tree },
+    );
+  }
+
+  acceptProposal(
+    proposalId: string,
+    input: { accept_ids?: string[] | null; note?: string | null } = {},
+  ): Promise<AcceptProposalResult> {
+    return this.request(
+      "POST",
+      `/api/proposals/${encodeURIComponent(proposalId)}/accept`,
+      input,
+    );
+  }
+
+  deleteProposal(proposalId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/proposals/${encodeURIComponent(proposalId)}`,
     );
   }
 
@@ -295,11 +477,13 @@ export class ApiClient {
     // A uuid scopes to one project; the literal "none" returns only the ad-hoc
     // sessions. Omitted means everything, exactly as before the project layer.
     project_id?: string;
+    task_id?: string;
   }): Promise<SessionSummary[]> {
     const query = new URLSearchParams();
     if (params?.node_id) query.set("node_id", params.node_id);
     if (params?.status) query.set("status", params.status);
     if (params?.project_id) query.set("project_id", params.project_id);
+    if (params?.task_id) query.set("task_id", params.task_id);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return this.request("GET", `/api/sessions${suffix}`);
   }
@@ -314,6 +498,10 @@ export class ApiClient {
 
   terminateSession(id: string): Promise<SessionDetail> {
     return this.request("POST", `/api/sessions/${id}/terminate`);
+  }
+
+  retryContextProjection(id: string): Promise<SessionDetail> {
+    return this.request("POST", `/api/sessions/${id}/context-projection`);
   }
 
   // Terminate fired from a page-unload handler — a reload, a closed tab, a

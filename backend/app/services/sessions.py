@@ -158,6 +158,7 @@ class SessionService:
         *,
         node_id: uuid.UUID | None = None,
         project_id: str | None = None,
+        task_id: uuid.UUID | None = None,
         status_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
@@ -187,6 +188,7 @@ class SessionService:
                 node_id=node_id,
                 status=status_filter,
                 project_id=scoped,
+                task_id=task_id,
                 ad_hoc_only=ad_hoc_only,
                 limit=limit,
                 offset=offset,
@@ -215,6 +217,7 @@ class SessionService:
         rows: int,
         columns: int,
         project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
     ) -> TerminalSession:
         node = await self._nodes.get(node_id)
         if node is None:
@@ -228,6 +231,7 @@ class SessionService:
         # refused on its own terms whether or not a project was named, so the caller
         # gets the same error for the same mistake either way.
         project = await self._resolve_project(project_id, node_id=node_id, workspace=workspace)
+        task = await self._resolve_task(task_id, project=project)
         if rows < 2 or rows > 300 or columns < 2 or columns > 500:
             raise ApiError("INVALID_TERMINAL_SIZE", "Terminal size out of range")
         active = await self._repo.active_count_for_node(node_id)
@@ -262,6 +266,7 @@ class SessionService:
             rows=rows,
             columns=columns,
             project_id=project.id if project is not None else None,
+            task_id=task.id if task is not None else None,
         )
         self._repo.add(session)
         await self._session.flush()
@@ -425,7 +430,7 @@ class SessionService:
             },
         )
         await self._terminate_children(session, actor_id=actor_id)
-        await self._record_ended(session, actor_user_id=actor_id)
+        await self._revoke_tokens_then_record_ended(session, actor_user_id=actor_id)
         return session
 
     async def _terminate_children(self, parent: TerminalSession, *, actor_id: uuid.UUID) -> None:
@@ -477,6 +482,19 @@ class SessionService:
             )
         await self._session.delete(session)
 
+    async def fail_for_removed_node(self, *, session: TerminalSession, actor_id: uuid.UUID) -> None:
+        """Close Central's side when a removed node cannot confirm a stop.
+
+        Removal is permanent for this node identity: its credentials are revoked and
+        it can never reconnect. Leaving a row active would therefore be a lie and
+        would keep consuming the owner's fleet-wide session allowance. We prefer a
+        confirmed ``terminated`` result when the daemon answers; this is the bounded
+        fallback for an offline or unresponsive node.
+        """
+        if session.status in TERMINAL_STATES:
+            return
+        await self._fail(session, "NODE_REMOVED", actor_id=actor_id)
+
     async def apply_status_changed(
         self, session_id: uuid.UUID, new_status: str, *, exit_code: int | None = None
     ) -> TerminalSession | None:
@@ -495,7 +513,7 @@ class SessionService:
             # (FR-SHELL-001.AC-04). `actor_id` is the session owner: nobody pressed
             # a button, so attributing it to the owner is the honest record.
             await self._terminate_children(session, actor_id=session.user_id)
-            await self._record_ended(session, actor_user_id=None)
+            await self._revoke_tokens_then_record_ended(session, actor_user_id=None)
         elif new_status == RUNNING:
             session.last_activity_at = now_utc()
         return session
@@ -537,6 +555,36 @@ class SessionService:
         await projects.authorize_session_workspace(project, node_id=node_id, workspace=workspace)
         return project
 
+    async def _resolve_task(self, task_id: uuid.UUID | None, *, project: Project | None):
+        """Validate an optional task association (FR-TASK-006).
+
+        Two refusals, and both are 400s rather than silent drops: a session created
+        "for" a card that quietly failed to attach would only be noticed much later, by
+        its absence from that card's history.
+
+        The platform never infers a task — not from the workspace, not from the
+        project. A project has many cards, so there is no unique answer, and an
+        ad-hoc-within-a-project session is a legitimate thing to want.
+        """
+        if task_id is None:
+            return None
+        if project is None:
+            raise ApiError(
+                "SESSION_PROJECT_MISMATCH",
+                "A task needs the project it belongs to",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        from app.repositories.tasks import TaskRepository
+
+        task = await TaskRepository(self._session).get(task_id)
+        if task is None or task.project_id != project.id:
+            raise ApiError(
+                "SESSION_PROJECT_MISMATCH",
+                "That task does not belong to this project",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        return task
+
     async def _record_started(self, session: TerminalSession) -> None:
         if session.project_id is None:
             return
@@ -547,6 +595,33 @@ class SessionService:
             session_id=session.id,
             payload={"runtime": session.runtime, "name": session.name},
         )
+
+    async def _revoke_tokens(
+        self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
+    ) -> None:
+        """A session's credential dies with the session (FR-TASK-008.AC-03).
+
+        Written here rather than in the four routes that can end a session, for the
+        same reason `_record_ended` is: there will be a fifth door, and the door that
+        forgets is the one that leaves a live credential in a workspace nobody is
+        watching any more.
+        """
+        from app.services.agent_auth import SessionTokenService
+
+        await SessionTokenService(self._session, settings=self._settings).revoke_for_session(
+            session.id, actor_id=actor_user_id
+        )
+
+    async def _revoke_tokens_then_record_ended(
+        self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
+    ) -> None:
+        """The single exit for a session that has stopped.
+
+        Revocation first: if the timeline write failed for some reason, a credential
+        that outlived its session would be the worse of the two losses.
+        """
+        await self._revoke_tokens(session, actor_user_id=actor_user_id)
+        await self._record_ended(session, actor_user_id=actor_user_id)
 
     async def _record_ended(
         self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
@@ -589,4 +664,4 @@ class SessionService:
             session_id=session.id,
             metadata={"error_code": code},
         )
-        await self._record_ended(session, actor_user_id=actor_id)
+        await self._revoke_tokens_then_record_ended(session, actor_user_id=actor_id)

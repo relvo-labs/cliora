@@ -49,6 +49,7 @@ export CLIORA_SECRET_ENCRYPTION_KEY="${CLIORA_SECRET_ENCRYPTION_KEY:-Y2xpb3JhLWU
 WORK="$(mktemp -d)"
 BIN="$WORK/bin"
 WORKSPACE="$WORK/workspace"
+export E2E_WORKSPACE_ROOT="$WORKSPACE"
 mkdir -p "$BIN" "$WORKSPACE"
 
 # P3 workspace fixtures: one previewable file per interesting policy branch, so

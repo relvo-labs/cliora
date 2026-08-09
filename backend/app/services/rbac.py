@@ -41,6 +41,10 @@ INTEGRATION_MANAGE = "integration.manage"
 # V2.0 project layer (ADR 0027, seed migration 0022).
 PROJECT_VIEW = "project.view"
 PROJECT_MANAGE = "project.manage"
+# V2.1 task layer (ADR 0028, seed migration 0025).
+TASK_CREATE = "task.create"
+TASK_UPDATE = "task.update"
+TASK_APPROVE = "task.approve"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -65,6 +69,23 @@ _VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE, PROJECT_VIEW}
 # the session, and nobody may attach to a shell they did not open.
 _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     SESSION_CREATE,
+    # The task layer's three actions sit with the session-shaped ones: writing down
+    # and moving work is day-to-day, in the way that deciding which projects exist is
+    # not (ADR 0028).
+    #
+    # `task.approve` and `task.update` have **deliberately identical holders**, and
+    # that is not an oversight waiting to be tidied up. Splitting them separates
+    # nothing at the role layer; the entire effect is that a session credential's
+    # scope can exclude approval — and an action that does not exist cannot be
+    # excluded from a scope (research/02/01 D13, ruling 3). Merging them because "the
+    # holders are the same anyway" would silently open the path to an agent approving
+    # its own work.
+    #
+    # Not raised to Admin either: a gate that needs an administrator for every card
+    # makes the internalised Review Gates something nobody can afford to use.
+    TASK_CREATE,
+    TASK_UPDATE,
+    TASK_APPROVE,
     # Image drop writes to the node's workspace, so it is deliberately NOT part of
     # `file.browse` — all three roles hold that one, and handing Viewer a write
     # would contradict the read-only viewer the rest of the system promises

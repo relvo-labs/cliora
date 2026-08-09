@@ -199,6 +199,7 @@ async def project_activity(
     project_id: uuid.UUID,
     limit: int = Query(default=DEFAULT_ACTIVITY_PAGE, ge=1, le=MAX_ACTIVITY_PAGE),
     before: str | None = Query(default=None),
+    task_id: uuid.UUID | None = Query(default=None),
     user: User = Depends(require_action(PROJECT_VIEW)),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
@@ -213,7 +214,10 @@ async def project_activity(
     service = _service(session, settings)
     await service.require(project_id)
     items = await service.activity(
-        project_id, limit=limit, before=_decode_cursor(before) if before else None
+        project_id,
+        limit=limit,
+        before=_decode_cursor(before) if before else None,
+        task_id=task_id,
     )
 
     can_view_audit = may_view_activity_actors(user)
@@ -231,6 +235,7 @@ async def project_activity(
                 actor_id=item.actor_id,
                 actor_name=item.actor_name,
                 session_id=item.session_id,
+                actor_kind=item.actor_kind,
             )
             for item in visible
         ],

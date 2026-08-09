@@ -2,108 +2,617 @@
   "version": 1,
   "notes": "accept/reject is the cross-language source of truth. Error codes differ by layer/language (e.g. Go maps wrong version to PROTOCOL_VERSION_UNSUPPORTED while the schema validator reports INVALID_MESSAGE), so `code` records the schema-authoritative (Python) code only. Payload-level rules (rows/columns bounds, forbidden keys) are part of the contract: consumers validate the full message, not just the envelope.",
   "json": [
-    {"path":"valid/session-start.json","accept":true,"type":"session.start"},
-    {"path":"valid/session-start-claude.json","accept":true,"type":"session.start"},
-    {"path":"valid/session-start-shell.json","accept":true,"type":"session.start"},
-    {"path":"valid/session-stop.json","accept":true,"type":"session.stop"},
-    {"path":"valid/session-list.json","accept":true,"type":"session.list"},
-    {"path":"valid/terminal-control-acquire.json","accept":true,"type":"terminal.control_acquire"},
-    {"path":"valid/session-attach.json","accept":true,"type":"session.attach"},
-    {"path":"valid/terminal-resize.json","accept":true,"type":"terminal.resize"},
-    {"path":"valid/size-min-boundary.json","accept":true,"type":"terminal.resize"},
-    {"path":"valid/node-challenge.json","accept":true,"type":"node.challenge"},
-    {"path":"valid/node-auth.json","accept":true,"type":"node.auth"},
-    {"path":"valid/node-register.json","accept":true,"type":"node.register"},
-    {"path":"valid/node-heartbeat.json","accept":true,"type":"node.heartbeat"},
-    {"path":"valid/node-runtime-status.json","accept":true,"type":"node.runtime_status"},
-    {"path":"valid/node-runtime-status-shell.json","accept":true,"type":"node.runtime_status"},
-    {"path":"valid/node-runtime-status-with-tunnel.json","accept":true,"type":"node.runtime_status"},
-    {"path":"valid/node-register-privileged.json","accept":true,"type":"node.register"},
-    {"path":"valid/node-runtime-status-codex-sandbox-enforced.json","accept":true,"type":"node.runtime_status"},
-    {"path":"valid/node-system-info.json","accept":true,"type":"node.system_info"},
-    {"path":"invalid/node-register-forbidden-field.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-start-with-args.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-start-with-sandbox-request.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-register-privileged-terminal-non-boolean.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-runtime-status-sandbox-bypass-non-boolean.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-register-bad-architecture.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-register-missing-hostname.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-runtime-status-bad-runtime.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-start-shell-with-binary.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/missing-request-id.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/extra-top-level-field.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/wrong-version.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/unknown-type.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/invalid-ulid.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/invalid-uuid.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/non-utc-time.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/size-out-of-range.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/forbidden-command.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-start-bad-runtime.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-start-missing-workspace.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/session-stop-bad-session.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/malformed-json.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/malformed-utf8.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"valid/filesystem-list.json","accept":true,"type":"filesystem.list"},
-    {"path":"valid/filesystem-read.json","accept":true,"type":"filesystem.read"},
-    {"path":"valid/filesystem-search.json","accept":true,"type":"filesystem.search"},
-    {"path":"valid/filesystem-entries.json","accept":true,"type":"filesystem.entries"},
-    {"path":"valid/filesystem-content-text.json","accept":true,"type":"filesystem.content"},
-    {"path":"valid/filesystem-content-denied.json","accept":true,"type":"filesystem.content"},
-    {"path":"valid/filesystem-search-result.json","accept":true,"type":"filesystem.search_result"},
-    {"path":"invalid/filesystem-list-absolute-path.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-list-parent-escape.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-read-bad-session.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-search-forbidden-arg.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-list-missing-path.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"valid/daemon-update.json","accept":true,"type":"daemon.update"},
-    {"path":"valid/daemon-update-prerelease.json","accept":true,"type":"daemon.update"},
-    {"path":"valid/daemon-update-result-succeeded.json","accept":true,"type":"daemon.update_result"},
-    {"path":"valid/daemon-update-result-rolled-back.json","accept":true,"type":"daemon.update_result"},
-    {"path":"invalid/daemon-update-with-url.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-with-binary-path.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-with-checksum.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-traversal-version.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-floating-version.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-missing-version.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-result-bad-status.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-result-bad-stage.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/daemon-update-result-bad-error-code.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"valid/tunnel-open-basic.json","accept":true,"type":"tunnel.open"},
-    {"path":"valid/tunnel-open-free-public.json","accept":true,"type":"tunnel.open"},
-    {"path":"valid/tunnel-opened.json","accept":true,"type":"tunnel.opened"},
-    {"path":"valid/tunnel-status-url-changed.json","accept":true,"type":"tunnel.status"},
-    {"path":"invalid/tunnel-open-credential-with-plus.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
-    {"path":"invalid/tunnel-open-privileged-port.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
-    {"path":"invalid/tunnel-open-colon-in-password.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
-    {"path":"invalid/tunnel-open-with-host-field.json","accept":false,"type":"tunnel.open","code":"INVALID_MESSAGE"},
-    {"path":"invalid/tunnel-opened-http-url.json","accept":false,"type":"tunnel.opened","code":"INVALID_MESSAGE"},
-    {"path":"valid/node-register-with-tunnel.json","accept":true,"type":"node.register"},
-    {"path":"invalid/node-register-tunnel-unknown-field.json","accept":false,"type":"node.register","code":"INVALID_MESSAGE"},
-    {"path":"valid/filesystem-upload.json","accept":true,"type":"filesystem.upload"},
-    {"path":"valid/filesystem-uploaded.json","accept":true,"type":"filesystem.uploaded"},
-    {"path":"valid/node-register-image-upload.json","accept":true,"type":"node.register"},
-    {"path":"invalid/filesystem-upload-with-filename.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-upload-with-path.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-upload-with-mime.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-upload-non-base64.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-upload-oversize.json","accept":false,"type":"filesystem.upload","code":"INVALID_MESSAGE"},
-    {"path":"valid/filesystem-store.json","accept":true,"type":"filesystem.store"},
-    {"path":"valid/filesystem-store-root.json","accept":true,"type":"filesystem.store"},
-    {"path":"valid/filesystem-stored.json","accept":true,"type":"filesystem.stored"},
-    {"path":"valid/node-register-file-upload.json","accept":true,"type":"node.register"},
-    {"path":"invalid/filesystem-store-filename-with-slash.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-store-with-overwrite.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
-    {"path":"invalid/filesystem-store-parent-escape.json","accept":false,"type":"filesystem.store","code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-register-file-upload-non-boolean.json","accept":false,"code":"INVALID_MESSAGE"},
-    {"path":"invalid/node-register-image-upload-non-boolean.json","accept":false,"type":"node.register","code":"INVALID_MESSAGE"}
+    {
+      "path": "valid/session-start.json",
+      "accept": true,
+      "type": "session.start"
+    },
+    {
+      "path": "valid/session-start-claude.json",
+      "accept": true,
+      "type": "session.start"
+    },
+    {
+      "path": "valid/session-start-shell.json",
+      "accept": true,
+      "type": "session.start"
+    },
+    {
+      "path": "valid/session-stop.json",
+      "accept": true,
+      "type": "session.stop"
+    },
+    {
+      "path": "valid/session-list.json",
+      "accept": true,
+      "type": "session.list"
+    },
+    {
+      "path": "valid/terminal-control-acquire.json",
+      "accept": true,
+      "type": "terminal.control_acquire"
+    },
+    {
+      "path": "valid/session-attach.json",
+      "accept": true,
+      "type": "session.attach"
+    },
+    {
+      "path": "valid/terminal-resize.json",
+      "accept": true,
+      "type": "terminal.resize"
+    },
+    {
+      "path": "valid/size-min-boundary.json",
+      "accept": true,
+      "type": "terminal.resize"
+    },
+    {
+      "path": "valid/node-challenge.json",
+      "accept": true,
+      "type": "node.challenge"
+    },
+    {
+      "path": "valid/node-auth.json",
+      "accept": true,
+      "type": "node.auth"
+    },
+    {
+      "path": "valid/node-register.json",
+      "accept": true,
+      "type": "node.register"
+    },
+    {
+      "path": "valid/node-heartbeat.json",
+      "accept": true,
+      "type": "node.heartbeat"
+    },
+    {
+      "path": "valid/node-runtime-status.json",
+      "accept": true,
+      "type": "node.runtime_status"
+    },
+    {
+      "path": "valid/node-runtime-status-shell.json",
+      "accept": true,
+      "type": "node.runtime_status"
+    },
+    {
+      "path": "valid/node-runtime-status-with-tunnel.json",
+      "accept": true,
+      "type": "node.runtime_status"
+    },
+    {
+      "path": "valid/node-register-privileged.json",
+      "accept": true,
+      "type": "node.register"
+    },
+    {
+      "path": "valid/node-runtime-status-codex-sandbox-enforced.json",
+      "accept": true,
+      "type": "node.runtime_status"
+    },
+    {
+      "path": "valid/node-system-info.json",
+      "accept": true,
+      "type": "node.system_info"
+    },
+    {
+      "path": "invalid/node-register-forbidden-field.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-start-with-args.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-start-with-sandbox-request.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-register-privileged-terminal-non-boolean.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-runtime-status-sandbox-bypass-non-boolean.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-register-bad-architecture.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-register-missing-hostname.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-runtime-status-bad-runtime.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-start-shell-with-binary.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/missing-request-id.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/extra-top-level-field.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/wrong-version.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/unknown-type.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/invalid-ulid.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/invalid-uuid.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/non-utc-time.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/size-out-of-range.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/forbidden-command.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-start-bad-runtime.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-start-missing-workspace.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/session-stop-bad-session.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/malformed-json.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/malformed-utf8.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/filesystem-list.json",
+      "accept": true,
+      "type": "filesystem.list"
+    },
+    {
+      "path": "valid/filesystem-read.json",
+      "accept": true,
+      "type": "filesystem.read"
+    },
+    {
+      "path": "valid/filesystem-search.json",
+      "accept": true,
+      "type": "filesystem.search"
+    },
+    {
+      "path": "valid/filesystem-entries.json",
+      "accept": true,
+      "type": "filesystem.entries"
+    },
+    {
+      "path": "valid/filesystem-content-text.json",
+      "accept": true,
+      "type": "filesystem.content"
+    },
+    {
+      "path": "valid/filesystem-content-denied.json",
+      "accept": true,
+      "type": "filesystem.content"
+    },
+    {
+      "path": "valid/filesystem-search-result.json",
+      "accept": true,
+      "type": "filesystem.search_result"
+    },
+    {
+      "path": "invalid/filesystem-list-absolute-path.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-list-parent-escape.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-read-bad-session.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-search-forbidden-arg.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-list-missing-path.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/daemon-update.json",
+      "accept": true,
+      "type": "daemon.update"
+    },
+    {
+      "path": "valid/daemon-update-prerelease.json",
+      "accept": true,
+      "type": "daemon.update"
+    },
+    {
+      "path": "valid/daemon-update-result-succeeded.json",
+      "accept": true,
+      "type": "daemon.update_result"
+    },
+    {
+      "path": "valid/daemon-update-result-rolled-back.json",
+      "accept": true,
+      "type": "daemon.update_result"
+    },
+    {
+      "path": "invalid/daemon-update-with-url.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-with-binary-path.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-with-checksum.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-traversal-version.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-floating-version.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-missing-version.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-result-bad-status.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-result-bad-stage.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/daemon-update-result-bad-error-code.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/tunnel-open-basic.json",
+      "accept": true,
+      "type": "tunnel.open"
+    },
+    {
+      "path": "valid/tunnel-open-free-public.json",
+      "accept": true,
+      "type": "tunnel.open"
+    },
+    {
+      "path": "valid/tunnel-opened.json",
+      "accept": true,
+      "type": "tunnel.opened"
+    },
+    {
+      "path": "valid/tunnel-status-url-changed.json",
+      "accept": true,
+      "type": "tunnel.status"
+    },
+    {
+      "path": "invalid/tunnel-open-credential-with-plus.json",
+      "accept": false,
+      "type": "tunnel.open",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/tunnel-open-privileged-port.json",
+      "accept": false,
+      "type": "tunnel.open",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/tunnel-open-colon-in-password.json",
+      "accept": false,
+      "type": "tunnel.open",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/tunnel-open-with-host-field.json",
+      "accept": false,
+      "type": "tunnel.open",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/tunnel-opened-http-url.json",
+      "accept": false,
+      "type": "tunnel.opened",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/node-register-with-tunnel.json",
+      "accept": true,
+      "type": "node.register"
+    },
+    {
+      "path": "invalid/node-register-tunnel-unknown-field.json",
+      "accept": false,
+      "type": "node.register",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/filesystem-upload.json",
+      "accept": true,
+      "type": "filesystem.upload"
+    },
+    {
+      "path": "valid/filesystem-uploaded.json",
+      "accept": true,
+      "type": "filesystem.uploaded"
+    },
+    {
+      "path": "valid/node-register-image-upload.json",
+      "accept": true,
+      "type": "node.register"
+    },
+    {
+      "path": "invalid/filesystem-upload-with-filename.json",
+      "accept": false,
+      "type": "filesystem.upload",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-upload-with-path.json",
+      "accept": false,
+      "type": "filesystem.upload",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-upload-with-mime.json",
+      "accept": false,
+      "type": "filesystem.upload",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-upload-non-base64.json",
+      "accept": false,
+      "type": "filesystem.upload",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-upload-oversize.json",
+      "accept": false,
+      "type": "filesystem.upload",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/filesystem-store.json",
+      "accept": true,
+      "type": "filesystem.store"
+    },
+    {
+      "path": "valid/filesystem-store-root.json",
+      "accept": true,
+      "type": "filesystem.store"
+    },
+    {
+      "path": "valid/filesystem-stored.json",
+      "accept": true,
+      "type": "filesystem.stored"
+    },
+    {
+      "path": "valid/node-register-file-upload.json",
+      "accept": true,
+      "type": "node.register"
+    },
+    {
+      "path": "invalid/filesystem-store-filename-with-slash.json",
+      "accept": false,
+      "type": "filesystem.store",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-store-with-overwrite.json",
+      "accept": false,
+      "type": "filesystem.store",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/filesystem-store-parent-escape.json",
+      "accept": false,
+      "type": "filesystem.store",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-register-file-upload-non-boolean.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/node-register-image-upload-non-boolean.json",
+      "accept": false,
+      "type": "node.register",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/context-project.json",
+      "accept": true,
+      "type": "context.project"
+    },
+    {
+      "path": "valid/context-project-context-only.json",
+      "accept": true,
+      "type": "context.project"
+    },
+    {
+      "path": "valid/context-project-reference.json",
+      "accept": true,
+      "type": "context.project"
+    },
+    {
+      "path": "valid/context-projected.json",
+      "accept": true,
+      "type": "context.projected"
+    },
+    {
+      "path": "invalid/context-project-outside-cliora.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-parent-escape.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-uploads.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-gitignore.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-bad-mode.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-oversize.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-too-many-files.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-no-files.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-extra-field.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    },
+    {
+      "path": "invalid/context-project-bad-process-version.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE",
+      "type": "context.project"
+    }
   ],
   "binary": [
-    {"name":"valid-output","accept":true,"version":1,"kind":2,"session_id":"00000000-0000-4000-8000-000000000002","payload_hex":"1b5b33316de4b8ade69687"},
-    {"name":"valid-input","accept":true,"version":1,"kind":1,"session_id":"00000000-0000-4000-8000-000000000002","payload_hex":"1b5b41"},
-    {"name":"short","accept":false,"hex":"0102","code":"INVALID_MESSAGE"},
-    {"name":"header-only","accept":false,"hex":"010200000000000040008000000000000002","code":"INVALID_MESSAGE"},
-    {"name":"unknown-kind","accept":false,"hex":"01030000000000004000800000000000000261","code":"INVALID_MESSAGE"},
-    {"name":"bad-version","accept":false,"hex":"02020000000000004000800000000000000261","code":"PROTOCOL_VERSION_UNSUPPORTED"}
+    {
+      "name": "valid-output",
+      "accept": true,
+      "version": 1,
+      "kind": 2,
+      "session_id": "00000000-0000-4000-8000-000000000002",
+      "payload_hex": "1b5b33316de4b8ade69687"
+    },
+    {
+      "name": "valid-input",
+      "accept": true,
+      "version": 1,
+      "kind": 1,
+      "session_id": "00000000-0000-4000-8000-000000000002",
+      "payload_hex": "1b5b41"
+    },
+    {
+      "name": "short",
+      "accept": false,
+      "hex": "0102",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "name": "header-only",
+      "accept": false,
+      "hex": "010200000000000040008000000000000002",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "name": "unknown-kind",
+      "accept": false,
+      "hex": "01030000000000004000800000000000000261",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "name": "bad-version",
+      "accept": false,
+      "hex": "02020000000000004000800000000000000261",
+      "code": "PROTOCOL_VERSION_UNSUPPORTED"
+    }
   ]
 }

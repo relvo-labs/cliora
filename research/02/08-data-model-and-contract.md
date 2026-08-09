@@ -19,7 +19,7 @@
 | 表 | 階段 | Migration |
 |---|---|---|
 | `projects`、`project_workspaces`、`activity_events` | V2.0 | 0021 |
-| `process_definitions`、`epics`、`user_stories`、`tasks`、`task_dependencies`、`task_sessions` | V2.1 | 0023 |
+| `process_definitions`、`epics`、`user_stories`、`tasks`、`task_dependencies` | V2.1 | 0023 |
 | **`requirements`、`feature_specs`、`task_proposals`** | **V2.1**（表與人工表單）／V2.5（Agent 驅動） | 0023 |
 | `session_tokens` | V2.1 | 0024 |
 | `agent_runners`、`project_agents`、`task_runs`、`run_logs`、`task_messages`、**`task_artifacts`** | V2.2 | 0026 |
@@ -28,7 +28,14 @@
 | `evidence_items` | V2.4 | 0029 |
 | `document_patch_proposals` | V2.5 | 0030 |
 
-seed migration 另計（各自獨立一支）：`0022`（`project.*`）、V2.1 的 `task.*`、V2.2 的 `agent.*`／`run.*`、V2.4 的 `process.manage`。
+> **2026-08-09 修訂**：`task_sessions` **不建表**（`plan/17/02-…md` §2.1）。
+> 「一張卡的歷史 Session」是 `terminal_sessions.task_id` 的一次索引查詢；
+> 多對多在這裡沒有語意，一個 Session 只可能屬於一張卡。
+> V2.1 另加三個既有表的新增欄：`terminal_sessions.task_id`、`projects.next_card_seq`、
+> **`activity_events.actor_kind`**（後者是規劃沒有的——沒有它，時間軸上
+> 「Agent 做的」「系統做的」「你沒有 `audit.view`」三種情況長得一模一樣）。
+
+seed migration 另計（各自獨立一支）：`0022`（`project.*`）、V2.1 的 `task.*`（`0025`）、V2.2 的 `agent.*`／`run.*`、V2.4 的 `process.manage`。
 
 ### `tasks` 的欄位
 
@@ -163,14 +170,26 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 
 | 訊息 | 階段 | Contract | `agentd` |
 |---|---|---|---|
-| （無） | V2.0 / V2.1 | v1.9.0 不變 | 0.7.0 不變 |
-| `runner.register` / `registered` / `poll` | V2.2 | v1.10.0 | 0.8.0 |
-| `run.offer` / `accept` / `decline` / `lease_renew` | V2.2 | v1.10.0 | 0.8.0 |
-| `run.progress` / `log_chunk` / `complete` / `failed` / `cancel` | V2.2 | v1.10.0 | 0.8.0 |
-| `run.artifact`（metadata ＋ 分塊上傳） | V2.2 | v1.10.0 | 0.8.0 |
-| `run.offer` 的 `spec` 擴充 `secrets` 與 `source` | V2.3 | v1.11.0 | 0.9.0 |
-| `run.complete` 的 `delivery_ref` | V2.4 | v1.12.0 | 0.10.0 |
-| （無） | **V2.5** | v1.12.0 不變 | **0.10.0 不變** |
+| （無） | V2.0 | v1.9.0 不變 | 0.7.0 不變 |
+| **`context.project` / `context.projected`** | **V2.1** | **v1.10.0** | **0.8.0** |
+| `runner.register` / `registered` / `poll` | V2.2 | v1.11.0 | 0.9.0 |
+| `run.offer` / `accept` / `decline` / `lease_renew` | V2.2 | v1.11.0 | 0.9.0 |
+| `run.progress` / `log_chunk` / `complete` / `failed` / `cancel` | V2.2 | v1.11.0 | 0.9.0 |
+| `run.artifact`（metadata ＋ 分塊上傳） | V2.2 | v1.11.0 | 0.9.0 |
+| `run.offer` 的 `spec` 擴充 `secrets` 與 `source` | V2.3 | v1.12.0 | 0.10.0 |
+| `run.complete` 的 `delivery_ref` | V2.4 | v1.13.0 | 0.11.0 |
+| （無） | **V2.5** | v1.13.0 不變 | **0.11.0 不變** |
+
+> **2026-08-09 修訂（採納 `plan/17` 的 D1／D2）：V2.1 動 contract 與 daemon，本表以下的版本號整體順移一格。**
+>
+> 原表寫 V2.1「不動 daemon、不改 contract」，那是規劃時的假設，讀了程式碼之後不成立：
+> `.cliora/` 是 daemon 明文保留給平台的子樹，既有的寫入 verb 對它一律回 `platform_owned`
+> （`daemon/internal/files/store_policy.go:83`），而且既有寫入路徑要求目的地目錄事先存在、
+> 協定裡沒有 mkdir（`store.go` 步驟 6）。所以 `.cliora/` 投影需要**一個新的寫入 verb 與
+> 一組新訊息**。同一份裁決也把 `cliora` CLI 的發行方式改為「就是 `agentd` 那支二進位」
+> （4 MiB 單檔上限、`.cliora/` 禁區、update 解壓器只取單一成員 `agentd`，三條各自足以否決投影）。
+>
+> 推導與被否決的替代方案見 `plan/17/00-execution-plan.md` D1／D2 與 `plan/17/05-…md`。
 
 **既有訊息一個位元組都不改。** 沿用 ADR 0026 讓 `filesystem.store` 與 `filesystem.upload` 並存的同一個判斷：一條已經正確的路徑不該為了對稱被改動。
 
@@ -251,10 +270,10 @@ daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 conf
 | 階段 | Contract | `agentd` | Central | 前端 | CLI |
 |---|---|---|---|---|---|
 | V2.0 | 不變 | 不變 | minor | minor | — |
-| V2.1 | 不變 | 不變 | minor | minor | 0.1.0（投影到 `.cliora/bin/`） |
-| V2.2 | v1.10.0 | 0.8.0 | minor | minor | 0.2.0（**改為隨 `agentd` 附帶**，路徑固定） |
-| V2.3 | v1.11.0 | 0.9.0 | minor | minor | 0.2.x |
-| V2.4 | v1.12.0 | 0.10.0 | minor | minor | 0.3.0（＋條件性的 `cliora mcp` stdio 外殼） |
+| V2.1 | **v1.10.0** | **0.8.0** | minor | minor | 0.1.0（**隨 `agentd` 附帶，就是同一支二進位**；不投影） |
+| V2.2 | v1.11.0 | 0.9.0 | minor | minor | 0.2.0（沿用 V2.1 的隨附方式，路徑固定） |
+| V2.3 | v1.12.0 | 0.10.0 | minor | minor | 0.2.x |
+| V2.4 | v1.13.0 | 0.11.0 | minor | minor | 0.3.0（＋條件性的 `cliora mcp` stdio 外殼） |
 | V2.5 | 不變 | **不變** | minor | minor | 0.4.0 |
 
 新 Central ＋ 舊 daemon：新訊息在舊 daemon 上是未知型別，被既有處理拒絕（fixture 已涵蓋）。Central 要轉成「此 node 的 agentd 需升級到 0.x 才能擔任 Agent Runner」的可行動訊息，**而不是 500，也不是讓該 node 從 runner 清單消失**。

@@ -125,6 +125,11 @@ function testRouter(): Router {
         name: "session-workspace",
         component: SessionWorkspaceView,
       },
+      {
+        path: "/projects/:id",
+        name: "project-detail",
+        component: { template: "<div/>" },
+      },
     ],
   });
 }
@@ -134,6 +139,14 @@ const shellApi = {
   terminateSession: vi.fn(async () => ({})),
   terminateSessionOnUnload: vi.fn(),
 };
+const retryContextProjection = vi.fn(async () =>
+  session({
+    project_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    task_id: null,
+    context_projection: "ok",
+    context_projection_detail: null,
+  }),
+);
 
 async function render(getSession: ReturnType<typeof vi.fn>) {
   vi.spyOn(auth, "api").mockReturnValue({
@@ -142,6 +155,8 @@ async function render(getSession: ReturnType<typeof vi.fn>) {
     openShell: shellApi.openShell,
     terminateSession: shellApi.terminateSession,
     terminateSessionOnUnload: shellApi.terminateSessionOnUnload,
+    retryContextProjection,
+    getTask: vi.fn(),
   } as never);
   const router = testRouter();
   router.push(`/sessions/${ID}`);
@@ -158,6 +173,7 @@ async function render(getSession: ReturnType<typeof vi.fn>) {
 }
 
 beforeEach(() => {
+  retryContextProjection.mockClear();
   setActivePinia(createPinia());
   shellApi.openShell.mockReset();
   shellApi.openShell.mockResolvedValue({
@@ -174,6 +190,33 @@ beforeEach(() => {
   });
 });
 afterEach(() => vi.restoreAllMocks());
+
+describe("SessionWorkspaceView — context projection", () => {
+  it("shows a failed projection and retries it without restarting the session", async () => {
+    const wrapper = await render(
+      vi.fn(async () =>
+        session({
+          project_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          task_id: null,
+          context_projection: "failed",
+          context_projection_detail: "TimeoutError",
+        }),
+      ),
+    );
+
+    expect(wrapper.get('[data-context-projection="failed"]').text()).toContain(
+      "任務情境未送達",
+    );
+    await wrapper
+      .get('[data-context-projection="failed"] button')
+      .trigger("click");
+    await flushPromises();
+    expect(retryContextProjection).toHaveBeenCalledWith(ID);
+    expect(wrapper.get('[data-context-projection="ok"]').text()).toContain(
+      ".cliora/context/",
+    );
+  });
+});
 
 describe("SessionWorkspaceView — centre tabs", () => {
   it("starts on CLI with no preview tab", async () => {

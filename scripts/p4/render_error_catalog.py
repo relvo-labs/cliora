@@ -147,6 +147,34 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Task layer",
+        (
+            "TASK_NOT_FOUND",
+            "TASK_VERSION_CONFLICT",
+            "TASK_DEPENDENCY_UNSATISFIED",
+            "TASK_DEPENDENCY_CYCLE",
+            "TASK_STAGE_INVALID",
+            "TASK_ACCEPTANCE_CRITERIA_INVALID",
+            "TASK_CONTEXT_TOO_LARGE",
+            "FORBIDDEN_FIELD",
+            "GATE_UNKNOWN",
+            "GATE_DISABLED",
+            "GATE_REQUIRES_HUMAN_ACTOR",
+        ),
+    ),
+    (
+        "Requirements and decomposition",
+        (
+            "REQUIREMENT_NOT_FOUND",
+            "REQUIREMENT_NOT_SPECIFIED",
+            "SPEC_HAS_OPEN_QUESTIONS",
+            "REQUIREMENT_ALREADY_APPROVED",
+            "REQUIREMENT_NOT_APPROVED",
+            "PROPOSAL_NOT_FOUND",
+            "PROPOSAL_ALREADY_DECIDED",
+        ),
+    ),
+    (
         "Workspace",
         (
             "WORKSPACE_OUTSIDE_ALLOWED_ROOT",

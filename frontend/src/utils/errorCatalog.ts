@@ -265,6 +265,112 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "重新整理專案頁面。",
     retryable: false,
   },
+  // --- 任務層（ADR 0028）---
+  //
+  // 兩組看起來像、其實不同：相依未滿足是「等一下就好」，循環相依是「這個圖永遠
+  // 滿足不了」；關卡不存在是打錯字，關卡被停用是這個部署的狀態。合併任何一組，
+  // 使用者就分不出該等待還是該去改東西。
+  TASK_NOT_FOUND: {
+    cause: "該卡片、Epic、User Story 或相依關係不存在於這個專案。",
+    nextStep: "重新整理看板。",
+    retryable: false,
+  },
+  TASK_VERSION_CONFLICT: {
+    cause:
+      "這張卡剛被別人改過。每次寫入都帶著讀取當下的版本，所以兩個人同時拖同一張卡不會互相覆蓋。",
+    // 不是 retryable：同一個請求原樣重送會再撞一次版本。要重來的是「讀新版 → 再拖」，
+    // 那是使用者的動作，不是一個重試按鈕。
+    nextStep: "看板已重新載入這張卡，請再拖一次。",
+    retryable: false,
+  },
+  TASK_DEPENDENCY_UNSATISFIED: {
+    cause:
+      "前置卡片尚未完成。進入「就緒」之後的車道等於宣告這張卡可以動工，而未完成的前置卡與這個宣告矛盾。",
+    nextStep: "先完成訊息中指名的卡片，或解除已經不成立的相依關係。",
+    retryable: false,
+  },
+  TASK_DEPENDENCY_CYCLE: {
+    cause:
+      "前置卡片已經（直接或間接）相依於這張卡，加上這條會形成一個永遠無法滿足的循環。",
+    nextStep: "先移除循環中的其中一條相依關係。",
+    retryable: false,
+  },
+  TASK_STAGE_INVALID: {
+    cause: "車道、風險、優先權、來源或交付模式不在流程定義的詞彙裡。",
+    nextStep: "查看該專案的流程定義所允許的值。",
+    retryable: false,
+  },
+  TASK_ACCEPTANCE_CRITERIA_INVALID: {
+    cause: "驗收標準必須是物件陣列，才能在卡片與 Agent 情境中逐項呈現。",
+    nextStep: "把每一項改成至少含有 text 欄位的物件。",
+    retryable: false,
+  },
+  TASK_CONTEXT_TOO_LARGE: {
+    cause: "驗收標準必須完整保留在 4 KB 任務情境包中，目前內容超過保留預算。",
+    nextStep: "縮短或合併驗收標準；描述類區塊會由系統自動省略。",
+    retryable: false,
+  },
+  FORBIDDEN_FIELD: {
+    cause:
+      "這個欄位不能用這種方式設定。被拒絕而不是被忽略，是因為靜默丟掉的欄位是使用者以為改成功的變更。審查關卡尤其如此：它有自己的端點與自己的權限。",
+    nextStep: "改用擁有該欄位的端點。",
+    retryable: false,
+  },
+  GATE_UNKNOWN: {
+    cause: "流程定義裡沒有這個關卡。",
+    nextStep: "查看該專案的流程定義所列的關卡。",
+    retryable: false,
+  },
+  GATE_DISABLED: {
+    cause:
+      "這個關卡依賴一項未啟用的整合（介面審查需要 tunnel 整合）。它在讀取時就被停用，而不是留著一個永遠無法通過的關卡——那是死鎖不是嚴謹。",
+    nextStep: "啟用該整合，或不經過這個關卡繼續。",
+    retryable: false,
+  },
+  GATE_REQUIRES_HUMAN_ACTOR: {
+    cause: "審查關卡必須由人核准；Agent 的輸出不等於核准。",
+    nextStep: "由具備核准權限的人在平台上勾選。",
+    retryable: false,
+  },
+  // --- 需求與拆解（D28）---
+  REQUIREMENT_NOT_FOUND: {
+    cause: "該需求不存在於這個專案。",
+    nextStep: "重新整理需求列表。",
+    retryable: false,
+  },
+  REQUIREMENT_NOT_SPECIFIED: {
+    cause: "核准是「核准某個東西」；還沒有任何規格版本時沒有東西可以核准。",
+    nextStep: "先新增一版規格。",
+    retryable: false,
+  },
+  SPEC_HAS_OPEN_QUESTIONS: {
+    cause:
+      "還有問題既沒有答案、也沒有被明確標為「已知未知」。規格在這種狀態下不得核准。",
+    nextStep: "逐一回答，或把它標記為已知未知，再核准。",
+    retryable: false,
+  },
+  REQUIREMENT_ALREADY_APPROVED: {
+    cause:
+      "規格版本在核准前只新增不修改；核准之後改變主意是一個新的需求，而不是把舊的改寫。",
+    nextStep: "另提一個需求。",
+    retryable: false,
+  },
+  REQUIREMENT_NOT_APPROVED: {
+    cause:
+      "拆解一個還沒有人同意的東西，產出的是會被丟掉的工作。這條由 API 強制，不是畫面隱藏——V2.5 的 Agent 走的是同一條路。",
+    nextStep: "先核准規格。",
+    retryable: false,
+  },
+  PROPOSAL_NOT_FOUND: {
+    cause: "該拆解提案不存在。",
+    nextStep: "重新整理需求頁面。",
+    retryable: false,
+  },
+  PROPOSAL_ALREADY_DECIDED: {
+    cause: "接受提案會建立真的卡片，所以只做一次；再決定一次會建出重複的卡。",
+    nextStep: "計畫有變的話，另建一個提案。",
+    retryable: false,
+  },
   SESSION_PROJECT_MISMATCH: {
     cause:
       "Session 指定專案時，其 Workspace 必須是該專案的綁定之一。比對是完全相等的，所以已綁定路徑的子目錄本身並未綁定。",

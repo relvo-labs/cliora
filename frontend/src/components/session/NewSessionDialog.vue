@@ -25,6 +25,11 @@ const props = defineProps<{
   // byte-for-byte the dialog that existed before the project layer.
   prefill?: {
     projectId?: string;
+    // Carried from a card's "開始工作" button. A **prefill**, not a second creation
+    // flow: node, runtime and workspace are still chosen and still validated, because
+    // the one thing a card cannot know is which machine the work happens on
+    // (`plan/17/07-…md` §5.1).
+    taskId?: string;
     nodeId?: string;
     workspace?: string;
   };
@@ -62,6 +67,7 @@ const showProjectField = computed(
     auth.hasPermission(ACTION_PROJECT_VIEW),
 );
 const projectId = ref("");
+const taskId = ref("");
 const prefillLocked = ref(false);
 const projectList = ref<ProjectSummary[]>([]);
 const projectDetail = ref<ProjectDetail | null>(null);
@@ -217,6 +223,11 @@ watch(
         prefillLocked.value = true;
         await nextTick();
       }
+      // After the project, because a task without its project is refused server-side
+      // and there is no reason to let the dialog send that request at all.
+      if (props.prefill?.taskId && projectId.value) {
+        taskId.value = props.prefill.taskId;
+      }
       if (props.prefill?.nodeId) {
         nodeId.value = props.prefill.nodeId;
         await nextTick();
@@ -271,6 +282,7 @@ watch(nodeId, async (id) => {
 
 function reset(): void {
   projectId.value = "";
+  taskId.value = "";
   prefillLocked.value = false;
   projectList.value = [];
   projectDetail.value = null;
@@ -286,6 +298,9 @@ function reset(): void {
 function changeToAdHoc(): void {
   prefillLocked.value = false;
   projectId.value = "";
+  // The card goes with the project: a session attached to a card but to no project is
+  // a state the server refuses, and offering it here would be offering a dead end.
+  taskId.value = "";
 }
 
 async function submit(): Promise<void> {
@@ -301,6 +316,7 @@ async function submit(): Promise<void> {
       // Omitted entirely when empty, so the request body of an ad-hoc session is
       // identical to the one this dialog sent before the project layer existed.
       ...(projectId.value ? { project_id: projectId.value } : {}),
+      ...(projectId.value && taskId.value ? { task_id: taskId.value } : {}),
     });
     emit("created", session);
   } catch (caught) {

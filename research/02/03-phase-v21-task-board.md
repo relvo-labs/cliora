@@ -4,6 +4,13 @@
 > **移除** ADR 0028／0029、`project.*` 與 `filesystem.replace` 四組 protocol 訊息、索引服務、投影表、卡片 JSON 解析、截斷語意。
 > **新增** 內化的流程定義、Epic／User Story 實體、`.cliora/` 投影機制、**`cliora` CLI 首發**。
 > 淨效果：daemon 與 contract **完全不動**，風險大幅下降；但 Agent 側從「零整合」變成「必須有工具」。
+>
+> **2026-08-09 修訂（不刪原文，加註記）：上一行「daemon 與 contract 完全不動」不成立。**
+> 執行計畫（[`plan/17`](../../plan/17/README.md)）讀了程式碼之後發現 `.cliora/` 是 daemon
+> 明文保留給平台的子樹、既有寫入 verb 對它一律拒絕，而且協定裡沒有 mkdir。所以 V2.1
+> **會**動 contract（**v1.10.0**：一組 `context.project` 訊息）與 daemon（**`agentd` 0.8.0**：
+> 一個新的寫入 verb ＋ `.cliora/` 清理迴圈）。連帶：V2.2–V2.4 的 contract／`agentd` 版本號
+> 與 ADR 編號各順移一格（已回寫本目錄各處）。本階段的 ADR 是 **0028**。
 
 ## 目標
 
@@ -84,7 +91,7 @@ POST   /api/tasks/{id}/dependencies                                        task.
 
 ### TK-05 — `.cliora/` 投影與情境包（D7／D8）
 
-Session 建立成功後，平台用**既有 `filesystem.store`** 寫入：
+Session 建立成功後，平台請 daemon 投影（**修訂：不是既有的 `filesystem.store`**，見下方註記）：
 
 ```text
 .cliora/context/<session_id>.md      情境包，≤4 KB，內容格式見 01 D8
@@ -99,6 +106,14 @@ Session 建立成功後，平台用**既有 `filesystem.store`** 寫入：
 2. 流程檔以**內容版本號當目錄名**，收到 `FILE_EXISTS` 視為成功（`07` §4）。不得因此想加 `overwrite`。
 3. `.cliora/` 是平台擁有的目的地，保留期 30 天由 daemon 清理（ADR 0024 W2）。
 4. token 檔權限與情境包相同；Session 結束即失效，即使檔案還在。
+
+> **2026-08-09 修訂：寫入機制改為新的 protocol 訊息 ＋ 新的 daemon 寫入 verb。**
+> 既有的 `filesystem.store` 做不到這件事，兩個各自獨立的原因都在程式碼裡：
+> ① `store_policy.go:83` 對使用者的寫入 verb 在 `.cliora/` 下一律回 `platform_owned`；
+> ② `store.go` 步驟 6 要求目的地目錄事先存在，而協定裡沒有任何 mkdir。
+> **不放寬既有 verb**——那會讓任何持有 `file.upload` 的使用者覆寫平台的情境包與 token 檔。
+> daemon 的 `Verb` 型別註解本來就寫著「`.cliora/` 的規則是 per-verb 的」，這正是它預留的擴充點。
+> 設計見 `plan/17/05-contract-and-daemon-projection.md`。
 
 **「代打第一行指令」**：V2.1 只做 Project 設定欄位與 UI，**不接上實作**——留到 V2.4 與 Plan 面板一起做。注意這只影響**互動式 Session**；Agent Run 路徑不需要它（平台本來就是啟動者）。
 
@@ -127,7 +142,13 @@ cliora task update <ref> --stage implementing --note "…"
    **第二句是重點**：平台掛掉不影響 CLI Agent 本身工作，那是 V1 的既有性質。回傳非零 exit code 但**不應讓 Agent 判斷「我沒辦法繼續」**——情境包要明寫這一點。
 4. 嘗試勾 gate 一律被 API 拒絕（scope 不含）。
 
-發行方式：**V2.1 用投影**（`.cliora/bin/`），因為本階段不升級 daemon；**V2.2 起改為隨 `agentd` 附帶**。
+~~發行方式：**V2.1 用投影**（`.cliora/bin/`），因為本階段不升級 daemon；**V2.2 起改為隨 `agentd` 附帶**。~~
+
+**2026-08-09 修訂：V2.1 就隨 `agentd` 附帶，而且 `cliora` 就是 `agentd` 那支二進位**
+（argv[0] 分派 ＋ 安裝時的 symlink）。投影一支二進位做不到：單檔上限 4 MiB
+（`daemon/internal/config/config.go:205`）、`.cliora/` 對使用者寫入 verb 是禁區、
+而 update 的解壓器**只取單一成員 `agentd`**（`update/files.go`，那是刻意最小化的解壓面）。
+附帶好處：D11 要的「MCP 設定要指向一個穩定可執行路徑」在 V2.1 就成立，V2.4 不必再搬一次。
 
 理由與 D11 的 stdio 裁決一致：MCP 設定要指向一個**穩定的可執行路徑**，隨 daemon 附帶才有固定路徑與跟著 daemon 走的版本。這個轉換要寫進 ADR 0028，否則 V2.4 做 MCP 時會發現路徑不固定。
 
@@ -150,7 +171,11 @@ cliora task update <ref> --stage implementing --note "…"
 
 ## 這一階段明確不做
 
-- **不新增任何 protocol 訊息、不升級 `agentd`、不改 contract。**
+- ~~**不新增任何 protocol 訊息、不升級 `agentd`、不改 contract。**~~
+  **2026-08-09 修訂**：改為「**只新增一組** protocol 訊息（`context.project`／`projected`）、
+  `agentd` 升到 0.8.0、contract 升到 v1.10.0」。**既有訊息一個位元組不改**，
+  既有 fixtures 逐檔 sha256 不變（`plan/17/08-…md` §4 的 `GATE-TK-CONTRACT-ADDITIVE`），
+  daemon 的 terminal／tmux／tunnel／既有檔案路徑零 diff（同節的 `GATE-TK-TOUCH-LIST`）。
 - **不做 Agent Runner 與任何自主執行**（V2.2）——本階段的 Agent 只在使用者開的互動式 Session 裡工作。
 - 不做 Execution Plan 與 Verification（V2.4）。
 - **不做離線佇列**（D14 已裁決：直接失敗）。
@@ -171,8 +196,11 @@ cliora task update <ref> --stage implementing --note "…"
 6. 兩個瀏覽器分頁同時拖同一張卡 → 後者 409、彈回、重新載入。
 7. **Central 停機時**，Session 中的 CLI Agent 仍可正常工作；`cliora context show` 仍可讀；`cliora task update` 失敗且訊息符合 D14。
 8. 同一個 workspace 開第二個 Session → 流程檔目錄已存在被跳過，不產生錯誤，情境包是新檔案。
-9. **`git status` 在使用者 repo 只看到 `.cliora/`**（且可 gitignore），沒有任何其他檔案被平台建立或修改。
-10. 旗標關閉時完整 V1 回歸全綠；**contract fixtures 與 daemon 測試無任何變更**。
+9. **`git status --porcelain` 完全為空**（修訂：比原本寫的「只看到 `.cliora/`」更強——
+   image drop 已經在 `.cliora/.gitignore` 寫入 `*`，整個子樹本來就被忽略），
+   沒有任何其他檔案被平台建立或修改。
+10. 旗標關閉時完整 V1 回歸全綠；**contract 的既有 fixtures 無任何變更**（新增檔案除外），
+    且 `agentd` 0.8.0 在旗標關閉的部署上行為與 0.7.0 相同。
 
 ## 風險
 

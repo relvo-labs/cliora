@@ -76,6 +76,18 @@ routes.push({
   props: true,
 });
 routes.push({
+  path: "/projects/:id/tasks/:taskId",
+  name: "task-detail",
+  component: () => import("../views/TaskDetailView.vue"),
+  props: true,
+});
+routes.push({
+  path: "/projects/:id/requirements/:requirementId",
+  name: "requirement-detail",
+  component: () => import("../views/RequirementDetailView.vue"),
+  props: true,
+});
+routes.push({
   path: "/sessions",
   name: "sessions",
   component: () => import("../views/SessionsView.vue"),

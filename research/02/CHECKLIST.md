@@ -42,7 +42,7 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 | 例外 | 決策 | 裁決 |
 |---|---|---|
 | 1 | **D7** | 採納，但**「代打第一行指令」整條刪除**，不留成 opt-in。它要付新的稽核語意、確認 UI、橫幅與一組時序條件，買到的是使用者少按一次 Enter；而 D7 自己已寫「Agent Run 路徑不需要它」 |
-| 2 | **D10** | 採納。內文的「平台代跑驗證命令否決」與裁決表的「改為允許」原本互相矛盾。**定案**：否決的是「讓呼叫端指名命令的 API」，允許的是「daemon 在 run 目錄內執行卡片宣告的驗證命令」。進 ADR 0032 |
+| 2 | **D10** | 採納。內文的「平台代跑驗證命令否決」與裁決表的「改為允許」原本互相矛盾。**定案**：否決的是「讓呼叫端指名命令的 API」，允許的是「daemon 在 run 目錄內執行卡片宣告的驗證命令」。進 ADR 0033 |
 | 3 | **D13** | 採納，歸屬不變。但要寫明 `task.approve` 與 `task.update` 的**持有者集合刻意相同**——拆開是為了 token scope 而非角色分離。不寫這句，日後的「反正持有者一樣，合併吧」會靜默打開 Agent 自我核准的路 |
 
 另有一項對 **D30** 的階段修訂：**V2.0 不使用 Traqora**，用 `run-stack.sh` 既有的合成 workspace
@@ -53,7 +53,7 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 | ☐ | 編號 | 量什麼 | 卡住 |
 |---|---|---|---|
 | ☑ | M8 | ~~sidebar 208px 在八列兩層下夠不夠~~ → **已量（2026-08-08）：最寬 `Integrations` 147px（無縮排分隔線版），208px 餘裕 61px，不用改。** `scripts/pj/measure-sidebar.mjs`，詳見 `plan/16/08` §1 | ~~V2.0 開工~~ |
-| ☐ | M1 | 200 張卡的看板 API 回應大小與耗時 | V2.1 開工 |
+| ☑ | M1 | ~~200 張卡的看板 API 回應大小與耗時~~ → **已量（2026-08-09）**：summary 74 KB／full 439 KB，**裁決不分頁**，改為把 AC 與 gates 明細移出摘要（`plan/17/10` §1） | ~~V2.1 開工~~ |
 | ☐ | M11 | 真實 repo 首次 clone vs worktree 耗時 | V2.3 開工 |
 | ☐ | M12 | run 目錄典型大小、3 個並行需要多少磁碟 | V2.3 開工 |
 | ☐ | M6 | `git status --porcelain` 在最大 repo 的耗時 | V2.4 開工 |
@@ -92,17 +92,28 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | Ticket | 內容 |
 |---|---|---|
-| ☐ | TK-01 | 內化流程定義（六車道、DoR 七項、Gates 六項、模板）＋ 標註 Monstrare 出處 |
-| ☐ | TK-01b | 需求與規格資料模型 ＋ **人工表單**（`version2.md` §17：先人工再 Agent） |
-| ☐ | TK-02 | 資料層 `0023`／`0024` |
-| ☐ | TK-03 | RBAC `task.create`／`task.update`／`task.approve` |
-| ☐ | TK-04 | Task API ＋ 進站／Done Gate（V2.1 只強制 `dependsOn`） |
-| ☐ | TK-05 | `.cliora/` 投影與情境包（≤4 KB） |
-| ☐ | **TK-06** | **`cliora` CLI 首發（本階段關鍵路徑）**——沒有它 Agent 無法記錄任何工作 |
-| ☐ | TK-07 | 前端：看板（可拖曳）、藍圖、任務詳情 |
-| ☐ | TK-08 | Task ↔ Session |
+| ☑ | TK-01 | 內化流程定義（六車道、DoR 七項、Gates 六項、模板）＋ 標註 Monstrare 出處 |
+| ☑ | TK-01b | 需求與規格資料模型 ＋ **人工表單**（`version2.md` §17：先人工再 Agent） |
+| ☑ | TK-02 | 資料層 `0023`／`0024` |
+| ☑ | TK-03 | RBAC `task.create`／`task.update`／`task.approve` |
+| ☑ | TK-04 | Task API ＋ 進站／Done Gate（V2.1 只強制 `dependsOn`） |
+| ☑ | TK-05 | `.cliora/` 投影與情境包（≤4 KB） |
+| ☑ | **TK-06** | **`cliora` CLI 首發（本階段關鍵路徑）**——沒有它 Agent 無法記錄任何工作 |
+| ☑ | TK-07 | 前端：看板（可拖曳）、藍圖、任務詳情 |
+| ☑ | TK-08 | Task ↔ Session |
 
-**出口**：11 條（`10` §2.2）。**不動 daemon、不動 contract。**
+**出口**：11 條（`10` §2.2）。~~**不動 daemon、不動 contract。**~~
+**2026-08-09 修訂：本階段動 contract v1.10.0 ＋ `agentd` 0.8.0**（`.cliora/` 投影需要新的寫入 verb；
+CLI 就是 `agentd` 那支二進位）。既有訊息與既有 fixtures 零變更。
+
+> **✅ 已實作（2026-08-09）**：`plan/17/` 的十二張票全部落地，`scripts/tk/evidence.sh` 10/10，
+> 十一條出口條件中十條有可重跑的證據、第 9 條的機制與單元證據齊備但**在 Traqora 上的實跑待做**。
+> **合併提案尚未提出。**
+>
+> **執行計畫已寫在 [`plan/17/`](../../plan/17/README.md)**，把本節的 8 張票展開成 12 張
+> （加一張閘門票 `TK-00`：基線擷取 ＋ M1；把 Session token／投影／CLI 拆成三張獨立的票）。
+> 該目錄另記了十處與本規劃的偏離，每一處都附程式碼依據。
+> **本階段的 ADR 是 0028**，V2.2 起的 ADR 編號因此各順移一格（見 §8）。
 
 ---
 
@@ -112,10 +123,10 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | Ticket | 內容 |
 |---|---|---|
-| ☐ | AR-01 | **ADR 0028**：Runner 模型與 run 生命週期 |
-| ☐ | AR-02 | **ADR 0029**：run 的兩種輸出（log 與產物），兩者保留期不同 |
-| ☐ | AR-03 | Contract v1.10.0：runner／run 訊息 ＋ fixtures |
-| ☐ | AR-04 | Daemon runner 模式（`agentd` 0.8.0） |
+| ☐ | AR-01 | **ADR 0029**：Runner 模型與 run 生命週期 |
+| ☐ | AR-02 | **ADR 0030**：run 的兩種輸出（log 與產物），兩者保留期不同 |
+| ☐ | AR-03 | Contract v1.11.0：runner／run 訊息 ＋ fixtures |
+| ☐ | AR-04 | Daemon runner 模式（`agentd` 0.9.0） |
 | ☐ | AR-05 | Central：run 生命週期、佇列、**原子認領**、租約 |
 | ☐ | AR-06 | 看板作為溝通管道（`task ask`／`say`／`messages`） |
 | ☐ | AR-06b | **任務卡產物**（存平台不存 node、三層配額、**預設下載不渲染**） |
@@ -133,11 +144,11 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | Ticket | 內容 |
 |---|---|---|
-| ☐ | **SC-01** | **ADR 0031：機密管理與 SEC-002 修訂（先寫這一份，它決定其餘能否開工）** |
-| ☐ | SC-02 | ADR 0030：隔離工作目錄與 git 存取（六條目錄規則 ＋ 五條 git 約束） |
+| ☐ | **SC-01** | **ADR 0032：機密管理與 SEC-002 修訂（先寫這一份，它決定其餘能否開工）** |
+| ☐ | SC-02 | ADR 0031：隔離工作目錄與 git 存取（六條目錄規則 ＋ 五條 git 約束） |
 | ☐ | SC-03 | Secret store `0027`（**寫入後永不可讀回**） |
 | ☐ | SC-04 | 下放與 **runner 端去識別** |
-| ☐ | SC-05 | Daemon：隔離目錄、配額、repo mirror、git（`agentd` 0.9.0） |
+| ☐ | SC-05 | Daemon：隔離目錄、配額、repo mirror、git（`agentd` 0.10.0） |
 | ☐ | SC-06 | 前端：Secrets、Repositories、卡片執行設定、Run 環境 |
 
 **出口**：11 條（`10` §2.5）。**V2 風險最高的一階段**——同時觸發機密流、新儲存面、git 寫入三條，安全審查要分三節寫。
@@ -150,7 +161,7 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | Ticket | 內容 |
 |---|---|---|
-| ☐ | DV-01 | ADR 0032：**五種** delivery 模式 ＋ 三個誠實性規則 |
+| ☐ | DV-01 | ADR 0033：**五種** delivery 模式 ＋ 三個誠實性規則 |
 | ☐ | DV-02 | PR／MR 建立（**永不自動合併**） |
 | ☐ | DV-03 | 執行計畫（append-only 版本列） |
 | ☐ | DV-04 | 驗證報告與 `source` 三級（**伺服器端判定**） |
@@ -169,7 +180,7 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | Ticket | 內容 |
 |---|---|---|
-| ☐ | RQ-01 | ADR 0033：釐清用既有管道、產出是提案、三個人工關卡、停止條件 |
+| ☐ | RQ-01 | ADR 0034：釐清用既有管道、產出是提案、三個人工關卡、停止條件 |
 | ☐ | RQ-02 | 資料模型 `0030` |
 | ☐ | RQ-03 | 釐清 run（**一次一個問題**） |
 | ☐ | RQ-04 | 拆解 run（每張提案自帶 DoR 七項 ＋ `source`／`delivery`） |
@@ -187,12 +198,13 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 | ☐ | ADR | 主題 | 階段 |
 |---|---|---|---|
 | ☐ | 0027 | V2 範圍、Monstrare 功能內化與真實來源；紅線 4 的撤銷與換上的四條約束 | V2.0 |
-| ☐ | 0028 | Agent Runner 模型與 run 生命週期 | V2.2 |
-| ☐ | 0029 | run 的兩種輸出：log 與卡片產物（保留期不同） | V2.2 |
-| ☐ | 0030 | 隔離工作目錄與 git 存取 | V2.3 |
-| ☐ | 0031 | 機密管理與 SEC-002 修訂 | V2.3 |
-| ☐ | 0032 | 交付模式與 PR 建立（紅線 5） | V2.4 |
-| ☐ | 0033 | 需求釐清與拆解的形狀 | V2.5 |
+| ☑ | **0028** | **任務層、Session Token 與平台投影**（`.cliora/` 的寫入面、Agent 憑證、內化閘門的邊界） | **V2.1** |
+| ☐ | 0029 | Agent Runner 模型與 run 生命週期 | V2.2 |
+| ☐ | 0030 | run 的兩種輸出：log 與卡片產物（保留期不同） | V2.2 |
+| ☐ | 0031 | 隔離工作目錄與 git 存取 | V2.3 |
+| ☐ | 0032 | 機密管理與 SEC-002 修訂 | V2.3 |
+| ☐ | 0033 | 交付模式與 PR 建立（紅線 5） | V2.4 |
+| ☐ | 0034 | 需求釐清與拆解的形狀 | V2.5 |
 
 每份都要有 **Alternatives rejected 表**——這個 repo 的 ADR 之所以有用，多半是因為那張表把「以後有人會再提一次的東西」先寫掉了。
 
@@ -202,16 +214,16 @@ D3 看板詞彙 · D4 Epic/US 升為實體 · D7 情境交付 · D8 情境預算
 
 | ☐ | 檔案 | 階段 |
 |---|---|---|
-| ☐ | `research/prd.md` — Project／Task／Verification 章節 | V2.0 |
-| ☐ | `.agent/skills/cliora-project-context/SKILL.md` — 範圍句精確化 | V2.0／V2.4 |
-| ☐ | `traceability/requirements.json` — 新需求註冊 | 各階段 |
-| ☐ | `docs/permission-matrix.md` — 11 個新動作 | 各階段 |
-| ☐ | `docs/error-catalog.md` — 新錯誤碼 | 各階段 |
+| ☑ | `research/prd.md` — Project（§8.11）／**Task（§8.12，V2.1 已補）**／Verification 章節 | V2.0／**V2.1** |
+| ☑ | `.agent/skills/cliora-project-context/SKILL.md` — 範圍句精確化（V2.0）＋ **任務層一段（V2.1）** | V2.0／**V2.1**／V2.4 |
+| ☑ | `traceability/requirements.json` — 新需求註冊（V2.1 的八筆已 `active`） | 各階段 |
+| ☑ | `docs/permission-matrix.md` — V2.1 的三個動作已重新產生 | 各階段 |
+| ☑ | `docs/error-catalog.md` — V2.1 的十六個新碼已重新產生 | 各階段 |
 | ☐ | `research/tech.md` §16.1、`research/style.md` §12 — 右欄 tab（**不刪原文，加註記**） | V2.4 |
-| ☐ | `contracts/CHANGELOG.md` — v1.10.0／v1.11.0／v1.12.0 | V2.2–V2.4 |
-| ☐ | `README.md`／`deploy/README.md` — 新環境變數、`agentd` 版本 | V2.2 起 |
-| ☐ | `docs/runbooks/` — `session-context.md`、run 與機密的處置 | V2.1／V2.3 |
-| ☐ | `.gitignore` 建議說明 — 使用者可把 `.cliora/` 加入 | V2.1 |
+| ☑ | `contracts/CHANGELOG.md` — **v1.10.0 已寫**／v1.11.0／v1.12.0／v1.13.0 | **V2.1**–V2.4 |
+| ◐ | `README.md`／`deploy/README.md` — 新環境變數、`agentd` 版本（**V2.1 已補 `CLIORA_SESSION_TOKEN_TTL_H` 到 `deploy/compose/.env.example` 與 `deploy/railway/env.md`**） | **V2.1** 起 |
+| ☑ | `docs/runbooks/` — **`session-context.md` 已寫**、run 與機密的處置 | **V2.1**／V2.3 |
+| ☑ | `.gitignore` 建議說明 — **不需要使用者做任何事**：`.cliora/.gitignore`（`*`）由 image drop 建立、投影缺少時補寫，所以 `git status` 本來就看不到（`docs/runbooks/session-context.md`） | **V2.1** |
 
 ---
 

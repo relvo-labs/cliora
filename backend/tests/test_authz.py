@@ -244,10 +244,50 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("PATCH", "/api/projects/{project_id}"): rbac.PROJECT_MANAGE,
     ("POST", "/api/projects/{project_id}/workspaces"): rbac.PROJECT_MANAGE,
     ("DELETE", "/api/projects/{project_id}/workspaces/{binding_id}"): rbac.PROJECT_MANAGE,
+    # Task layer (ADR 0028). Reads ride on `project.view` — a board is a view of a
+    # project — while the three writes split by *kind of authority*: creating and
+    # editing a card is day-to-day work, and approving a review gate is deliberately
+    # its own action even though the same two roles hold both. That split is what lets
+    # a session credential's scope exclude approval, and an action that does not exist
+    # cannot be excluded from a scope (research/02/01 D13).
+    ("GET", "/api/projects/{project_id}/process"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/board"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/roadmap"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/tasks"): rbac.PROJECT_VIEW,
+    ("GET", "/api/tasks/{task_id}"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/epics"): rbac.TASK_CREATE,
+    ("POST", "/api/projects/{project_id}/user-stories"): rbac.TASK_CREATE,
+    ("POST", "/api/projects/{project_id}/tasks"): rbac.TASK_CREATE,
+    ("PATCH", "/api/epics/{epic_id}"): rbac.TASK_UPDATE,
+    ("PATCH", "/api/user-stories/{story_id}"): rbac.TASK_UPDATE,
+    ("PATCH", "/api/tasks/{task_id}"): rbac.TASK_UPDATE,
+    ("POST", "/api/tasks/{task_id}/dependencies"): rbac.TASK_UPDATE,
+    ("DELETE", "/api/tasks/{task_id}/dependencies/{depends_on_id}"): rbac.TASK_UPDATE,
+    ("POST", "/api/tasks/{task_id}/gates/{gate_key}"): rbac.TASK_APPROVE,
+    # Requirements (D28). Approval and acceptance are `task.approve` rather than
+    # `task.update`: both are decisions, and a decision is precisely what a session
+    # credential's scope is written to exclude.
+    ("GET", "/api/projects/{project_id}/requirements"): rbac.PROJECT_VIEW,
+    ("GET", "/api/requirements/{requirement_id}"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/requirements"): rbac.TASK_CREATE,
+    ("POST", "/api/requirements/{requirement_id}/specs"): rbac.TASK_UPDATE,
+    ("POST", "/api/requirements/{requirement_id}/approve"): rbac.TASK_APPROVE,
+    ("POST", "/api/requirements/{requirement_id}/proposals"): rbac.TASK_CREATE,
+    ("POST", "/api/proposals/{proposal_id}/accept"): rbac.TASK_APPROVE,
+    ("DELETE", "/api/proposals/{proposal_id}"): rbac.TASK_APPROVE,
+    # The agent surface (ADR 0028 sec 3). `None`, like `/api/auth/login`, because these
+    # are not authorized by a *user* action at all: the caller is a session credential
+    # whose scope was fixed when it was issued, and it can never resolve into a user.
+    # `test_the_agent_surface_is_exactly_four_routes` is what keeps this set small.
+    ("GET", "/api/cli/tasks"): None,
+    ("GET", "/api/cli/tasks/{task_id}"): None,
+    ("PATCH", "/api/cli/tasks/{task_id}"): None,
+    ("GET", "/api/cli/process"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/terminate"): rbac.SESSION_TERMINATE,
+    ("POST", "/api/sessions/{session_id}/context-projection"): rbac.SESSION_CREATE,
     ("POST", "/api/sessions/{session_id}/shell"): rbac.TERMINAL_SHELL,
     ("DELETE", "/api/sessions/{session_id}"): rbac.SESSION_TERMINATE,
     ("GET", "/api/sessions/{session_id}/files/tree"): rbac.FILE_BROWSE,

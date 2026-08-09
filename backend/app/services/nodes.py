@@ -161,6 +161,7 @@ class RegisterNodeInput:
     # predates the field — and separate from image_upload, because a machine may
     # accept screenshots while refusing this.
     file_upload: bool = False
+    context_projection: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +283,7 @@ class NodeRegistrationService:
             node.privileged_terminal != data.privileged_terminal
             or node.image_upload != data.image_upload
             or node.file_upload != data.file_upload
+            or node.context_projection != data.context_projection
         )
         previous_posture = node.privileged_terminal
         previous_upload = node.image_upload
@@ -289,6 +291,7 @@ class NodeRegistrationService:
         node.privileged_terminal = data.privileged_terminal
         node.image_upload = data.image_upload
         node.file_upload = data.file_upload
+        node.context_projection = data.context_projection
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -302,6 +305,7 @@ class NodeRegistrationService:
                     "image_upload": data.image_upload,
                     "previous_image_upload": previous_upload,
                     "file_upload": data.file_upload,
+                    "context_projection": data.context_projection,
                     "previous_file_upload": previous_file_upload,
                 },
             )
@@ -539,6 +543,35 @@ class NodeManagementService:
             terminated.append(row.id)
         return terminated
 
+    async def _end_sessions_for_removal(
+        self, node_id: uuid.UUID, *, actor_id: uuid.UUID
+    ) -> tuple[int, int]:
+        """End every active session before the node identity is made unusable.
+
+        A reachable daemon gets a real ``session.stop`` first. If it cannot answer,
+        the durable row is failed locally: after credential revocation and soft
+        deletion this node id can never reconnect to deliver a later terminal state.
+
+        Returns ``(ended, forced)`` for the node.remove audit metadata.
+        """
+        from app.repositories.sessions import SessionRepository
+        from app.services.sessions import TERMINAL_STATES, SessionService
+
+        service = SessionService(self._session, self._registry)
+        rows = list(await SessionRepository(self._session).list_active_for_node(node_id))
+        forced = 0
+        for row in rows:
+            # A parent termination may already have ended its shell child.
+            if row.status in TERMINAL_STATES:
+                continue
+            try:
+                await service.terminate(actor_id=actor_id, session_id=row.id)
+            except ApiError:
+                if row.status not in TERMINAL_STATES:
+                    await service.fail_for_removed_node(session=row, actor_id=actor_id)
+                    forced += 1
+        return len(rows), forced
+
     async def revoke_credential(self, node_id: uuid.UUID, *, actor_id: uuid.UUID) -> None:
         """Revoke all active credentials and drop the live connection immediately
         (stronger than disable: the node must re-enroll to reconnect)."""
@@ -582,9 +615,15 @@ class NodeManagementService:
         return credential
 
     async def remove(self, node_id: uuid.UUID, *, actor_id: uuid.UUID) -> None:
-        """Soft delete: retain the record + audit, revoke credentials, sever the
-        live socket, and hide it from default queries."""
+        """Soft delete the node after closing everything tied to its identity.
+
+        Session rows remain as history, but none may remain active or visible in the
+        fleet list once this node can no longer reconnect.
+        """
         node = await self._require(node_id)
+        sessions_ended, sessions_forced = await self._end_sessions_for_removal(
+            node.id, actor_id=actor_id
+        )
         node.deleted_at = now_utc()
         await self._credentials.revoke_all(node.id, now_utc())
         await self._close_tunnels(node.id, actor_id=actor_id, reason="node_removed")
@@ -597,5 +636,10 @@ class NodeManagementService:
             audit.NODE_REMOVE,
             user_id=actor_id,
             node_id=node.id,
-            metadata={"credentials_revoked": True, "soft_delete": True},
+            metadata={
+                "credentials_revoked": True,
+                "soft_delete": True,
+                "sessions_ended": sessions_ended,
+                "sessions_forced": sessions_forced,
+            },
         )

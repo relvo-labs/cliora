@@ -1,5 +1,29 @@
 # Contract changelog
 
+## 1.10.0 — 2026-08-09 (compatible)
+
+**Added — the platform's context projection (ADR 0028, `plan/17`).**
+
+- `context.project` (Central → daemon) and `context.projected` (the reply). One
+  message carries the task context pack, the session credential and the process notes
+  into `.cliora/{context,process,reference}/`.
+- `node.register` gains an optional `context_projection` boolean, the same shape
+  `image_upload` and `file_upload` already use. **Absent means incapable**, which is
+  the correct reading of every daemon before 0.8.0: sessions there start and run
+  unchanged, and Central simply does not send the new message.
+
+**Nothing existing changed.** Every message, field and fixture that predates this
+release is byte-for-byte identical; `scripts/tk/contract_snapshot.py` asserts it per
+file.
+
+Two constraints are worth reading in the schema rather than here, because they are
+what make this a *narrow* addition rather than a general write path: the destination
+pattern admits only the three platform-owned subtrees (so `.cliora/uploads/`, a
+`.gitignore` the user may own, and anything outside `.cliora/` are unrepresentable),
+and `mode` has exactly one legal value.
+
+Requires `agentd` 0.8.0 on the node.
+
 ## 1.9.0 — 2026-08-03 (compatible)
 
 - **One new type pair and one additive report field** (`version` stays `1`): `filesystem.store` (Central → daemon), `filesystem.stored` (daemon → Central), and `node-register.file_upload`. Together they place one file, under a name the user chose, into a directory the user chose. See ADR 0026 and `plan/15`.

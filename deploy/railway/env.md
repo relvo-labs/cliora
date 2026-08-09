@@ -29,6 +29,7 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_ARTIFACTS_DIR` | ❌ **leave unset** | — | The image sets it to `/srv/artifacts`, which is where the image puts the release. Override it only to point at a different directory, and only if something is mounted there — a wrong path means `/api/downloads` and `/api/install-script` answer 404 and the manifest goes empty (not 404) |
 | `CLIORA_METRICS_ENABLED` | — | `false` | `true` without a ≥16-character `CLIORA_METRICS_SCRAPE_TOKEN` → startup fails (deliberate). The endpoint is also refused at the edge either way |
 | `CLIORA_PROJECTS_ENABLED` | — | `false` | The V2 project layer. Off means every `/api/projects*` path answers 404 and the rail is unchanged. On grants **every role** a new read: project names, bound node names and absolute workspace paths. No per-project membership yet — see `docs/release-note-project-layer.md` |
+| `CLIORA_SESSION_TOKEN_TTL_H` | — | `24` | Hours a session credential stays valid (V2.1, ADR 0028). It is revoked the moment its session ends, so this only bounds a session left open for days. The credential is readable by anyone who can read the workspace — see `docs/security-review-v21.md` §1 |
 | `CLIORA_METRICS_SCRAPE_TOKEN` | — | unset | See above |
 
 Build-time only (Docker build args, read by `deploy/backend.Dockerfile`):

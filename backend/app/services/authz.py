@@ -35,6 +35,7 @@ from app.services.rbac import (
     FILE_UPLOAD,
     INTEGRATION_MANAGE,
     NODE_MANAGE,
+    SESSION_CREATE,
     SESSION_TERMINATE,
     SESSION_VIEW,
     TERMINAL_OPERATE,
@@ -193,6 +194,14 @@ def authorize_session_terminate(user: User, session: TerminalSession) -> None:
         raise _forbidden(SESSION_TERMINATE, user, REASON_ACTION)
     if not may_terminate_session(user, session):
         raise _forbidden(SESSION_TERMINATE, user, REASON_SCOPE)
+
+
+def authorize_session_context_projection(user: User, session: TerminalSession) -> None:
+    """A projection retry mints a fresh session credential: owner or Admin only."""
+    if not has_action(user, SESSION_CREATE):
+        raise _forbidden(SESSION_CREATE, user, REASON_ACTION)
+    if not (is_owner(user, session) or has_action(user, NODE_MANAGE)):
+        raise _forbidden(SESSION_CREATE, user, REASON_SCOPE)
 
 
 def forbidden_shell(user: User, session: TerminalSession) -> ApiError:

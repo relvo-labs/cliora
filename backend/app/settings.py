@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     # than manual retention, and there is no other background job to attach to.
     audit_retention_days: int = 365
     node_metric_retention_days: int = 30
+    # Revoked session-token rows remain long enough for audit metadata's token_id
+    # to be attributable. Live/unrevoked rows have revoked_at NULL and are never
+    # selected by the retention command (plan/17 D9).
+    session_token_retention_days: int = 90
 
     # --- P4 audit query bounds (ADR 0016) ---
     audit_page_default: int = 50
@@ -153,6 +157,9 @@ class Settings(BaseSettings):
     # autonomous execution, which V2.2 introduces. A flag that switches nothing off
     # is a flag nobody dares touch six months later.
     projects_enabled: bool = False
+    # Ceiling on a session credential's life (ADR 0028 sec 3). The *first* condition is
+    # the session ending — this is the backstop for a session that stays open for days.
+    session_token_ttl_hours: int = 24
 
     # --- P4 metrics export (ADR 0018) ---
     # Off by default. An always-on metrics endpoint is a permanent read surface on the

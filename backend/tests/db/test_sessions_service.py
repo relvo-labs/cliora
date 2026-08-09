@@ -23,6 +23,7 @@ from app.db.models import (
     User,
 )
 from app.protocol import ControlMessage
+from app.repositories.sessions import SessionRepository
 from app.security.passwords import hash_password
 from app.services import audit
 from app.services.nodes import NodeManagementService
@@ -60,6 +61,10 @@ class FakeRegistry:
 
     def is_connected(self, node_id: uuid.UUID) -> bool:
         return self.connected
+
+    async def evict(self, node_id: uuid.UUID):
+        self.connected = False
+        return None
 
     async def request(self, node_id, type_, payload, *, timeout_seconds, request_id=None):
         self.sent.append((type_, payload))
@@ -431,6 +436,73 @@ async def test_re_enabling_a_node_never_terminates_anything(session) -> None:
 
     assert running.status == RUNNING
     assert not [type_ for type_, _ in registry.sent if type_ == "session.stop"]
+
+
+async def test_removing_a_node_stops_and_hides_its_sessions(session) -> None:
+    user_id, node_id = await _seed(session)
+    first = await _running_session(session, user_id, node_id, "s1")
+    second = await _running_session(session, user_id, node_id, "s2")
+
+    registry = FakeRegistry()
+    await NodeManagementService(session, registry=registry).remove(node_id, actor_id=user_id)
+    await session.flush()
+
+    assert first.status == TERMINATED
+    assert second.status == TERMINATED
+    stopped = [payload["session_id"] for type_, payload in registry.sent if type_ == "session.stop"]
+    assert sorted(stopped) == sorted([str(first.id), str(second.id)])
+    # History is retained in terminal_sessions, while the fleet list follows the
+    # soft-deleted node out of the product surface.
+    assert await SessionService(session, registry=registry).list() == []
+    row = await _latest_audit(session, audit.NODE_REMOVE)
+    assert row.audit_metadata["sessions_ended"] == 2
+    assert row.audit_metadata["sessions_forced"] == 0
+
+
+async def test_removing_an_unresponsive_node_forces_sessions_terminal(session) -> None:
+    user_id, node_id = await _seed(session)
+    running = await _running_session(session, user_id, node_id, "s1")
+
+    class OfflineRegistry(FakeRegistry):
+        async def request(self, node_id, type_, payload, *, timeout_seconds, request_id=None):
+            if type_ == "session.stop":
+                raise ApiError("NODE_OFFLINE", "gone", 409)
+            return await super().request(
+                node_id, type_, payload, timeout_seconds=timeout_seconds, request_id=request_id
+            )
+
+    await NodeManagementService(session, registry=OfflineRegistry()).remove(
+        node_id, actor_id=user_id
+    )
+    await session.flush()
+
+    assert running.status == FAILED
+    assert running.error_message == "NODE_REMOVED"
+    assert running.ended_at is not None
+    row = await _latest_audit(session, audit.NODE_REMOVE)
+    assert row.audit_metadata["sessions_ended"] == 1
+    assert row.audit_metadata["sessions_forced"] == 1
+
+
+async def test_legacy_active_session_on_removed_node_is_hidden_and_not_counted(session) -> None:
+    """Defence in depth for databases created before migration 0028.
+
+    Even before the data repair runs, a stale row on a soft-deleted node must not
+    appear in the fleet or consume the owner's global session allowance.
+    """
+    from app.clock import now_utc
+
+    user_id, node_id = await _seed(session)
+    running = await _running_session(session, user_id, node_id, "legacy")
+    node = await session.get(Node, node_id)
+    assert node is not None
+    node.deleted_at = now_utc()
+    await session.flush()
+
+    repo = SessionRepository(session)
+    assert running.status == RUNNING  # intentionally stale historical input
+    assert await repo.list() == []
+    assert await repo.active_count_for_user(user_id) == 0
 
 
 async def _latest_audit(session, action: str):

@@ -125,6 +125,10 @@ func BuildConfig(p Params, detected []runtime.DetectResult) (*config.Config, err
 				MaxScanned:     config.DefaultSearchMaxScanned,
 				TimeoutSeconds: config.DefaultSearchTimeoutSec,
 			},
+			Projection: config.ProjectionConfig{
+				RetentionDays:        config.DefaultProjectionRetentionDays,
+				CleanupIntervalHours: config.DefaultProjectionCleanupHours,
+			},
 		},
 		Session:   config.SessionConfig{Backend: "tmux", ScrollbackLimit: 5000},
 		Heartbeat: config.HeartbeatConfig{IntervalSeconds: heartbeat},

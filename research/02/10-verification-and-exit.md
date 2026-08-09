@@ -40,7 +40,10 @@
 8. 同一 workspace 開第二個 Session → 流程檔目錄已存在被跳過（`FILE_EXISTS` 視為成功），情境包是新檔案。
 9. **`git status` 在使用者 repo 只看到 `.cliora/`**（且可 gitignore），沒有其他檔案被平台建立或修改。
 10. `.cliora/` 保留期到期後由 daemon 清理，Session 仍可運作（過期只是少了投影，不是壞掉）。
-11. 旗標關閉：完整 V1 回歸全綠；**contract fixtures 與 daemon 測試無任何變更**。
+11. 旗標關閉：完整 V1 回歸全綠；**contract 的既有 fixtures 逐檔 sha256 無變更**（只允許新增檔案），
+    daemon 的 terminal／tmux／tunnel／既有檔案路徑零 diff，且 `agentd` 0.8.0 在旗標關閉時
+    行為與 0.7.0 相同。（2026-08-09 修訂：V2.1 動 contract v1.10.0 ＋ `agentd` 0.8.0，
+    原本寫的「無任何變更」改為「既有的無變更」。）
 
 ### 2.3 V2.2
 
@@ -140,7 +143,7 @@
 
 | 層 | 覆蓋 |
 |---|---|
-| Contract fixtures | V2.0／V2.1 **零變更**；V2.2 起每個新訊息 valid ＋ ≥6 invalid，**含「`secrets` 出現在非 offer 訊息」這一條** |
+| Contract fixtures | V2.0 **零變更**；**V2.1 新增一組 `context.project` 的 valid ×3 ＋ invalid ×8**（既有 fixtures 零變更）；V2.2 起每個新訊息 valid ＋ ≥6 invalid，**含「`secrets` 出現在非 offer 訊息」這一條** |
 | Daemon 單元 | 租約續租與逾時、容量控管、log 分塊與截斷、**去識別**、git 五條約束的 argv 組裝、run 目錄配額與隔離 |
 | Daemon 整合 | 真實 repo 的 clone／worktree／push 拒絕；真實程序的 cancel 與殘留檢查 |
 | Central 單元 | **原子認領**、重排上限、**資格判定五條件（含指定不覆蓋綁定）**、Done Gate 依 `delivery` 分歧、`source` 伺服器端判定、機密 allowlist 子集檢查 |
@@ -190,7 +193,7 @@ M1、M8（V2.1 前）、M11、M12（V2.3 前）、M6（V2.4 前）是**開工前
 
 | 階段 | 觸發原因 | 審查重點 |
 |---|---|---|
-| V2.1 | Session token | 發行、scope、失效、檔案落地與保留期 |
+| V2.1 | Session token **＋ `.cliora/` 的新寫入面** | 發行、scope、失效、檔案落地與保留期；投影 verb 的可寫集合與既有 verb 互斥；token 檔的敏感檔分類 |
 | V2.2 | 無人值守執行 ＋ run log ＋ **卡片產物** | 認領授權、租約、log 界線（D27）、cancel 可靠性、**產物提供路徑的 stored XSS**（D29 §4）、配額 |
 | **V2.3** | **機密流 ＋ 新儲存面 ＋ git 寫入** | 加密與金鑰、不可讀回、去識別、run 目錄隔離與配額、git 五條約束 |
 | V2.4 | 對外副作用（PR） | 交付模式邊界、無自動合併、供應商憑證 |

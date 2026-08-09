@@ -99,6 +99,11 @@ class CreateSessionRequest(BaseModel):
     # flag is set, because the OpenAPI document is static; the refusal happens at
     # run time.
     project_id: uuid.UUID | None = None
+    # Optional, and permanently so for the same reason `project_id` is (ADR 0028).
+    # Requires `project_id`: a card belongs to a project, and inferring one from the
+    # other would make "is this ad-hoc" a platform judgement instead of the caller's
+    # statement.
+    task_id: uuid.UUID | None = None
 
 
 class OpenShellRequest(BaseModel):
@@ -154,6 +159,7 @@ class SessionSummary(BaseModel):
     # whose presence depends on configuration gives the browser two response shapes
     # to type.
     project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
 
     @classmethod
     def from_model(cls, s: TerminalSession, *, viewer: User) -> SessionSummary:
@@ -177,17 +183,33 @@ class SessionSummary(BaseModel):
             created_at=s.created_at,
             capabilities=_capabilities(s, viewer),
             project_id=s.project_id,
+            task_id=s.task_id,
         )
 
 
 class SessionDetail(SessionSummary):
     exit_code: int | None = None
     error_message: str | None = None
+    context_projection: str | None = None
+    context_projection_detail: str | None = None
 
     @classmethod
-    def from_model(cls, s: TerminalSession, *, viewer: User) -> SessionDetail:
+    def from_model(
+        cls,
+        s: TerminalSession,
+        *,
+        viewer: User,
+        context_projection: str | None = None,
+        context_projection_detail: str | None = None,
+    ) -> SessionDetail:
         base = SessionSummary.from_model(s, viewer=viewer)
-        return cls(**base.model_dump(), exit_code=s.exit_code, error_message=s.error_message)
+        return cls(
+            **base.model_dump(),
+            exit_code=s.exit_code,
+            error_message=s.error_message,
+            context_projection=context_projection,
+            context_projection_detail=context_projection_detail,
+        )
 
 
 def _capabilities(s: TerminalSession, viewer: User) -> SessionCapabilities:
@@ -951,6 +973,10 @@ class ActivityEventDTO(BaseModel):
     actor_id: uuid.UUID | None
     actor_name: str | None
     session_id: uuid.UUID | None
+    # Survives redaction: it says what *kind* of actor, never which one. Without it a
+    # blank actor means three different things at once — the system, an agent, or a
+    # person the reader may not be told about (ADR 0028 sec 3).
+    actor_kind: str = "user"
 
 
 class ActivityPageDTO(BaseModel):
@@ -959,3 +985,356 @@ class ActivityPageDTO(BaseModel):
     # render the same sentence in both places.
     actors_hidden: bool
     next_before: str | None
+
+
+# --- V2.1: the task layer (ADR 0028) --------------------------------------------
+
+
+class GateDTO(BaseModel):
+    key: str
+    label: str
+    order: int
+    requires_human: bool
+    enabled: bool
+    # Set only when the gate is derived-disabled. A gate that is merely unapproved is
+    # available, not disabled — and a disabled one always says why, because a gate
+    # that quietly does not exist is worse than one that explains itself.
+    disabled_reason: str | None
+
+
+class ProcessDTO(BaseModel):
+    key: str
+    version: str
+    source: str
+    lanes: list[dict[str, Any]]
+    readiness: list[dict[str, Any]]
+    gates: list[GateDTO]
+    templates: dict[str, Any]
+
+
+class BoardCardDTO(BaseModel):
+    """One card as the board renders it.
+
+    **Deliberately without `acceptance_criteria` and without gate detail.** M1
+    measured the full shape at 439 KB for 200 cards and over a megabyte at 500, while
+    this shape is 74 KB and 180 KB (`plan/17/10-…md` §1). That measurement is what
+    replaced pagination, so `test_the_board_card_stays_a_summary` pins it: the day
+    someone adds one of those fields back "just for convenience", the board silently
+    becomes the thing the measurement ruled out.
+    """
+
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+    risk: str
+    priority: str
+    owner_user_id: uuid.UUID | None
+    owner_name: str | None
+    delivery: str
+    blocking_count: int
+    gates_approved_count: int
+    version: int
+    updated_at: datetime
+
+
+class BoardLaneDTO(BaseModel):
+    stage: str
+    label: str
+    wip_suggested: int | None
+    count: int
+    cards: list[BoardCardDTO]
+
+
+class BoardDTO(BaseModel):
+    lanes: list[BoardLaneDTO]
+    # Always false in V2.1. Present from the first release anyway: a field added later
+    # forces every existing client to handle its absence, while one that is always
+    # there makes a future move to paging a server-side change only.
+    has_more: bool = False
+
+
+class TaskDependencyDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+
+
+class TaskDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    card_ref: str
+    title: str
+    description: str | None
+    objective: str | None
+    scope: str | None
+    non_goals: str | None
+    stage: str
+    risk: str
+    priority: str
+    owner_user_id: uuid.UUID | None
+    epic_id: uuid.UUID | None
+    user_story_id: uuid.UUID | None
+    readiness: dict[str, Any]
+    # `{gate_key: {approved_by, approved_at}}` — never a boolean, because that cell
+    # is where "an agent's output is not an approval" lives (ADR 0028 sec 1).
+    gates: dict[str, Any]
+    acceptance_criteria: list[dict[str, Any]]
+    links: dict[str, Any]
+    required_labels: list[str]
+    version: int
+    # Declared, inert until V2.3/V2.4. The console labels this block accordingly:
+    # a card that says `pull_request` produces no pull request in this phase.
+    source: str
+    repository_id: uuid.UUID | None
+    base_branch: str | None
+    delivery: str
+    target_branch: str | None
+    existing_pr_ref: str | None
+    required_secrets: list[str]
+    assigned_runner_id: uuid.UUID | None
+    requirement_id: uuid.UUID | None
+    proposal_id: uuid.UUID | None
+    depends_on: list[TaskDependencyDTO]
+    blocking_refs: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskWriteDTO(BaseModel):
+    """A card plus anything the platform wants to say without refusing.
+
+    `warnings` is part of the success response rather than a log line: the Definition
+    of Ready reports through it, and a report nobody surfaces is no report.
+    """
+
+    task: TaskDTO
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateEpicRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+
+
+class CreateUserStoryRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    narrative: str | None = Field(default=None, max_length=8000)
+    epic_id: uuid.UUID | None = None
+
+
+class UpdateEpicRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+    order_index: int | None = Field(default=None, ge=0)
+    status: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class UpdateUserStoryRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    narrative: str | None = Field(default=None, max_length=8000)
+    epic_id: uuid.UUID | None = None
+    order_index: int | None = Field(default=None, ge=0)
+    status: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class CreateTaskRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+    objective: str | None = Field(default=None, max_length=4000)
+    scope: str | None = Field(default=None, max_length=4000)
+    non_goals: str | None = Field(default=None, max_length=4000)
+    stage: str = "backlog"
+    risk: str = "medium"
+    priority: str = "normal"
+    epic_id: uuid.UUID | None = None
+    user_story_id: uuid.UUID | None = None
+    owner_user_id: uuid.UUID | None = None
+    acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list)
+    readiness: dict[str, Any] = Field(default_factory=dict)
+    links: dict[str, Any] = Field(default_factory=dict)
+    required_labels: list[str] = Field(default_factory=list)
+    source: str = "repo"
+    delivery: str = "pull_request"
+    base_branch: str | None = None
+    target_branch: str | None = None
+
+
+class UpdateTaskRequest(BaseModel):
+    """A patch, and the version it was written against.
+
+    `version` is required rather than optional: an optional precondition is one every
+    caller eventually forgets, and the failure it prevents — two people dragging the
+    same card — is silent.
+
+    `model_extra` is refused rather than ignored, so a typo'd field name is an error
+    the caller can see instead of a change they believe they made.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    version: int
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    objective: str | None = None
+    scope: str | None = None
+    non_goals: str | None = None
+    stage: str | None = None
+    risk: str | None = None
+    priority: str | None = None
+    owner_user_id: uuid.UUID | None = None
+    epic_id: uuid.UUID | None = None
+    user_story_id: uuid.UUID | None = None
+    readiness: dict[str, Any] | None = None
+    acceptance_criteria: list[dict[str, Any]] | None = None
+    links: dict[str, Any] | None = None
+    required_labels: list[str] | None = None
+    source: str | None = None
+    delivery: str | None = None
+    base_branch: str | None = None
+    target_branch: str | None = None
+    existing_pr_ref: str | None = None
+    required_secrets: list[str] | None = None
+    assigned_runner_id: uuid.UUID | None = None
+
+
+class AddDependencyRequest(BaseModel):
+    depends_on_task_id: uuid.UUID
+
+
+class GateDecisionRequest(BaseModel):
+    approved: bool = True
+
+
+class RoadmapTaskDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+
+
+class RoadmapStoryDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    done_count: int
+    total_count: int
+    tasks: list[RoadmapTaskDTO]
+
+
+class RoadmapEpicDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    done_count: int
+    total_count: int
+    stories: list[RoadmapStoryDTO]
+    # Cards filed under this epic but under no story. Monstrare's semantics, kept
+    # deliberately: a card must never disappear because of how it was filed (D4).
+    unclassified: list[RoadmapTaskDTO]
+
+
+class RoadmapDTO(BaseModel):
+    epics: list[RoadmapEpicDTO]
+    # Stories with no epic, and — in `unclassified` — cards with neither.
+    orphan_stories: list[RoadmapStoryDTO]
+    unclassified: list[RoadmapTaskDTO]
+    done_count: int
+    total_count: int
+
+
+# --- V2.1: requirements, specs and proposals (TK-05, D28) ------------------------
+
+
+class FeatureSpecDTO(BaseModel):
+    id: uuid.UUID
+    seq: int
+    objective: str | None
+    scope: str | None
+    non_goals: str | None
+    acceptance_criteria: list[dict[str, Any]]
+    # `[{id, question, answer, resolved_as}]`. An entry with neither an answer nor an
+    # explicit `resolved_as` blocks approval — a known unknown is recorded, not
+    # pretended away.
+    open_questions: list[dict[str, Any]]
+    authored_by_kind: str
+    authored_by: uuid.UUID | None
+    created_at: datetime
+
+
+class RequirementSummaryDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    card_ref: str
+    raw_text: str
+    status: str
+    created_by: uuid.UUID | None
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
+    spec_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskProposalDTO(BaseModel):
+    id: uuid.UUID
+    seq: int
+    spec_id: uuid.UUID | None
+    tree: dict[str, Any]
+    status: str
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    created_at: datetime
+
+
+class RequirementDetailDTO(RequirementSummaryDTO):
+    specs: list[FeatureSpecDTO]
+    proposals: list[TaskProposalDTO]
+    # Which questions currently block approval. Sent with the requirement so the
+    # review screen can disable the button *and say why* in one response — a silently
+    # disabled control is the thing FR-TASK-005.AC-03 exists to prevent.
+    blocking_questions: list[str]
+
+
+class CreateRequirementRequest(BaseModel):
+    """Intake. One field, deliberately.
+
+    The flow begins with someone saying what they want in their own words; a form with
+    ten required fields at that moment is how it stops being used.
+    """
+
+    raw_text: str = Field(min_length=1, max_length=8000)
+
+
+class CreateSpecRequest(BaseModel):
+    objective: str | None = Field(default=None, max_length=8000)
+    scope: str | None = Field(default=None, max_length=8000)
+    non_goals: str | None = Field(default=None, max_length=8000)
+    acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list)
+    open_questions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateProposalRequest(BaseModel):
+    """The proposed tree. `{"tasks": [ … ]}` in V2.1; epics and stories join in V2.5."""
+
+    tree: dict[str, Any]
+
+
+class AcceptProposalRequest(BaseModel):
+    # `None` means "all of them". Partial acceptance is the normal case, so the field
+    # selects rather than confirms.
+    accept_ids: list[str] | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class AcceptProposalResultDTO(BaseModel):
+    created: list[TaskDTO]
+    # card_ref -> the readiness items it lacked. A card that landed in `backlog`
+    # instead of `ready` has to say why, on the same screen (FR-TASK-005.AC-06).
+    incomplete: dict[str, list[str]]

@@ -30,6 +30,7 @@ jobs:
       E2E_ADMIN_USER: e2e-admin
       E2E_ADMIN_PASSWORD: e2e-admin-pw
       E2E_PROJECTS: ${{ matrix.projects == 'true' && '1' || '0' }}
+      E2E_TASKS: ${{ matrix.projects == 'true' && '1' || '0' }}
       E2E_SECOND_NODE: ${{ matrix.projects == 'true' && '1' || '0' }}
     steps:
       - uses: actions/checkout@v4

@@ -121,6 +121,20 @@ PROJECT_ARCHIVE = "project.archive"
 # Bind and unbind are separate for the same reason. They are also separate from
 # `node.manage`'s actions: removing a machine and detaching a directory from a
 # project are different operations on different things.
+# V2.1 task layer (ADR 0028). Three actions rather than one: "created a card",
+# "changed a card" and "approved a review gate" are asked about separately, and a
+# filter over a merged action could not answer the third — which is the one an
+# auditor actually comes looking for.
+TASK_CREATE = "task.create"
+TASK_UPDATE = "task.update"
+TASK_GATE_APPROVE = "task.gate_approve"
+REQUIREMENT_CREATE = "requirement.create"
+REQUIREMENT_APPROVE = "requirement.approve"
+PROPOSAL_ACCEPT = "requirement.proposal_accept"
+# Issue and revoke each get a row, and both record only the token id — never the value.
+SESSION_TOKEN_ISSUE = "session_token.issue"
+SESSION_TOKEN_REVOKE = "session_token.revoke"
+SESSION_CONTEXT_PROJECTION = "session.context_project"
 PROJECT_WORKSPACE_BIND = "project.workspace_bind"
 PROJECT_WORKSPACE_UNBIND = "project.workspace_unbind"
 
@@ -163,6 +177,15 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         PROJECT_ARCHIVE,
         PROJECT_WORKSPACE_BIND,
         PROJECT_WORKSPACE_UNBIND,
+        TASK_CREATE,
+        TASK_UPDATE,
+        TASK_GATE_APPROVE,
+        REQUIREMENT_CREATE,
+        REQUIREMENT_APPROVE,
+        PROPOSAL_ACCEPT,
+        SESSION_TOKEN_ISSUE,
+        SESSION_TOKEN_REVOKE,
+        SESSION_CONTEXT_PROJECTION,
     }
 )
 

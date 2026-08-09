@@ -124,7 +124,7 @@
 | `research/style.md` | §12 版面圖補右欄 tab | V2.2 |
 | `.agent/skills/cliora-project-context/SKILL.md` | 範圍句精確化：任務**紀錄**≠任務派工；git **唯讀查詢**≠git 自動化；同一 Agent 走完流程≠多 Agent 編排 | V2.0（前兩項）／V2.3（git 那項） |
 | `docs/permission-matrix.md` | 六個新動作（`project.view`／`manage`、`task.create`／`update`／`approve`、`process.manage`） | 各階段 |
-| `contracts/CHANGELOG.md` | v1.10.0（**只有 V2.3 有變更**） | V2.3 |
+| `contracts/CHANGELOG.md` | v1.10.0（V2.1，`context.project`）／v1.11.0（V2.2）／v1.12.0（V2.3）／v1.13.0（V2.4） | V2.1 起每階段 |
 | `README.md` / `deploy/README.md` | 新環境變數、`agentd` 版本需求 | V2.1／V2.3 |
 | `docs/error-catalog.md` | 新錯誤碼（`TASK_VERSION_CONFLICT`、`TASK_BLOCKED_BY_DEPENDENCY`、`DONE_GATE_UNMET`、`TOKEN_SCOPE_DENIED`、需升級 agentd） | 各階段 |
 | `docs/runbooks/` | 新增 `session-context.md`（情境未送達、token 失效、`.cliora/` 清理的處置） | V2.1 |
@@ -134,13 +134,14 @@
 | ADR | 主題 | 階段 |
 |---|---|---|
 | 0027 | **V2 範圍、Monstrare 功能內化與真實來源**（D2／D1／D12／D13）：邊界表、投影規則、出處標註、**紅線 4 的撤銷與換上的四條約束** | V2.0 |
-| 0028 | **Agent Runner 模型與 run 生命週期**（D16／D17／D18／D24／D26）：拉取式認領、租約、run 不是 Session | V2.2 |
-| 0029 | **run 的兩種輸出：log 與卡片產物**（D27／D29）。核心是兩者**保留期不同**：log 是診斷、產物是交付物 | V2.2 |
-| 0030 | **隔離工作目錄與 git 存取**（D19／D20）：六條目錄規則、五條 git 約束 | V2.3 |
-| 0031 | **機密管理與 SEC-002 修訂**（D22／D23） | V2.3 |
-| 0032 | **交付模式與 PR 建立**（D21／D25）：`source` × `delivery`、紅線 5 | V2.4 |
+| **0028** | **任務層、Session Token 與平台投影**（D3／D4／D7／D8／D11／D13／D14／D15）：內化閘門的邊界、`.cliora/` 的寫入面為何不違反紅線 3、Agent 憑證是什麼／不是什麼、三種新儲存各自的保留期 | **V2.1** |
+| 0029 | **Agent Runner 模型與 run 生命週期**（D16／D17／D18／D24／D26）：拉取式認領、租約、run 不是 Session | V2.2 |
+| 0030 | **run 的兩種輸出：log 與卡片產物**（D27／D29）。核心是兩者**保留期不同**：log 是診斷、產物是交付物 | V2.2 |
+| 0031 | **隔離工作目錄與 git 存取**（D19／D20）：六條目錄規則、五條 git 約束 | V2.3 |
+| 0032 | **機密管理與 SEC-002 修訂**（D22／D23） | V2.3 |
+| 0033 | **交付模式與 PR 建立**（D21／D25）：`source` × `delivery`、紅線 5 | V2.4 |
 | — | **修訂 ADR 0022**：tunnel 也用於 run 的 mockup 預覽（Agent 提議 → 人核准 → 平台執行）；其範圍宣告不變且更強 | V2.5 |
-| 0033 | **需求釐清與拆解的形狀**（D28）：釐清用既有管道、產出是提案、三個人工關卡、停止條件內化 | V2.5 |
+| 0034 | **需求釐清與拆解的形狀**（D28）：釐清用既有管道、產出是提案、三個人工關卡、停止條件內化 | V2.5 |
 
 每份 ADR 沿用既有格式：Status／Date／Amends／Related／Requirements／Contract／Ships in／Plan，以及 **Alternatives rejected 表**——本 repo 的 ADR 之所以有用，多半是因為那張表把「以後有人會再提一次的東西」先寫掉了。
 

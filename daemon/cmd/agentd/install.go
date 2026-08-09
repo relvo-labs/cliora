@@ -22,10 +22,15 @@ import (
 
 const (
 	binaryInstallPath = "/usr/local/bin/agentd"
-	systemdUnitPath   = "/etc/systemd/system/agentd.service"
-	stateDir          = "/var/lib/agentd"
-	logDir            = "/var/log/agentd"
-	serviceName       = "agentd"
+	// The agent's CLI is the *same binary*, reached through a symlink (ADR 0028
+	// sec 4). A symlink rather than a copy so that an update — which replaces the
+	// file at `binaryInstallPath` in place — can never leave the two at different
+	// versions, and so the release archive keeps its single member.
+	cliInstallPath  = "/usr/local/bin/cliora"
+	systemdUnitPath = "/etc/systemd/system/agentd.service"
+	stateDir        = "/var/lib/agentd"
+	logDir          = "/var/log/agentd"
+	serviceName     = "agentd"
 )
 
 // newInstallCommand implements `agentd install` (P1-15). It runs under sudo,
@@ -183,7 +188,15 @@ func installFiles(cfg *config.Config, resp *install.RegisterResponse, privateKey
 			return fmt.Errorf("chown %s: %w", dir, err)
 		}
 	}
-	return copyExecutable(binaryInstallPath)
+	if err := copyExecutable(binaryInstallPath); err != nil {
+		return err
+	}
+	// Best-effort, and loud when it does not happen: the daemon is what the install is
+	// for, and `agentd cliora …` reaches the same code without the symlink.
+	if err := ensureCLISymlink(); err != nil {
+		fmt.Fprintf(os.Stderr, "note: %v (agent tools remain available as `agentd cliora`)\n", err)
+	}
+	return nil
 }
 
 // writeOwned creates the parent directory, writes the file at the given mode,
@@ -202,6 +215,30 @@ func writeOwned(path string, data []byte, mode os.FileMode, uid, gid int) error 
 		return fmt.Errorf("chown %s: %w", path, err)
 	}
 	return nil
+}
+
+// ensureCLISymlink puts `cliora` beside `agentd`, pointing at it.
+//
+// Three deliberate refusals, in order of how likely each is to bite:
+//
+//   - an existing symlink already pointing at agentd is success, not an error, so the
+//     installer stays re-runnable;
+//   - anything else already at that path is **left alone** and reported — silently
+//     replacing a file called `cliora` that somebody put there is not the installer's
+//     decision to make;
+//   - a failure here does not fail the install. The daemon is what the install is for,
+//     and `agentd cliora …` works either way.
+func ensureCLISymlink() error {
+	if target, err := os.Readlink(cliInstallPath); err == nil {
+		if target == binaryInstallPath {
+			return nil
+		}
+		return fmt.Errorf("%s already points at %s; leaving it alone", cliInstallPath, target)
+	}
+	if _, err := os.Lstat(cliInstallPath); err == nil {
+		return fmt.Errorf("%s already exists and is not a symlink; leaving it alone", cliInstallPath)
+	}
+	return os.Symlink(binaryInstallPath, cliInstallPath)
 }
 
 func copyExecutable(dst string) error {

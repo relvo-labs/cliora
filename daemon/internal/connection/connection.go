@@ -59,6 +59,11 @@ type Manager struct {
 	// files performs the P3 read-only filesystem relay (list/read/search),
 	// confined to a session's workspace via the workspace guard (ADR 0014).
 	files *files.Service
+	// processVersion is learned from the latest successful context.project and
+	// protects that process directory from the 30-day projection retention sweep.
+	// It is deliberately not inferred from directory names after restart.
+	projectionMu   sync.RWMutex
+	processVersion string
 
 	// P11 port forwarding (ADR 0022). The supervisor owns the ssh child processes; this
 	// manager only translates between it and the protocol. `tunnelSend` is set for the life
@@ -149,6 +154,16 @@ func (m *Manager) url() string {
 
 // Run connects and reconnects until the context is cancelled.
 func (m *Manager) Run(ctx context.Context) error {
+	// This loop is owned by Run: cancellation is shared with the connection
+	// lifecycle and the deferred receive proves the goroutine has exited before
+	// the manager returns (no orphan ticker across daemon restarts).
+	retentionDone := make(chan struct{})
+	go func() {
+		defer close(retentionDone)
+		m.projectionRetentionLoop(ctx)
+	}()
+	defer func() { <-retentionDone }()
+
 	for attempt := 0; ctx.Err() == nil; attempt++ {
 		conn, _, err := m.dialer.DialContext(ctx, m.url(), nil)
 		if err == nil {
@@ -403,16 +418,19 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		// and "may it put arbitrary files anywhere in my workspace" are
 		// different-sized grants, and a node owner is entitled to answer them
 		// differently (ADR 0026 §9).
-		"file_upload":     m.files.FileUploadEnabled(),
-		"name":            m.cfg.Node.Name,
-		"hostname":        hostname,
-		"os":              m.info.OS,
-		"os_version":      m.info.OSVersion,
-		"architecture":    m.info.Architecture,
-		"daemon_version":  m.version,
-		"run_user":        m.info.RunUser,
-		"runtimes":        runtimeItems(detected),
-		"workspace_roots": roots,
+		"file_upload": m.files.FileUploadEnabled(),
+		// Reported, never configured: this is a statement about what this binary can
+		// do, and 0.8.0 is the first that can (ADR 0028 sec 5).
+		"context_projection": true,
+		"name":               m.cfg.Node.Name,
+		"hostname":           hostname,
+		"os":                 m.info.OS,
+		"os_version":         m.info.OSVersion,
+		"architecture":       m.info.Architecture,
+		"daemon_version":     m.version,
+		"run_user":           m.info.RunUser,
+		"runtimes":           runtimeItems(detected),
+		"workspace_roots":    roots,
 	}
 }
 
@@ -514,6 +532,8 @@ func (m *Manager) dispatch(
 			m.handleFsUpload(env, data, send)
 		case "filesystem.store":
 			m.handleFsStore(env, data, send)
+		case "context.project":
+			m.handleContextProject(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
@@ -577,6 +597,7 @@ func (m *Manager) handleStart(
 	// hot path deliberately: a directory walk must never delay the reply that
 	// tells the browser its terminal is ready.
 	go m.pruneWorkspaceUploads(resolved)
+	go m.pruneWorkspaceProjection(resolved)
 	frame, _ := protocol.BuildResponse(
 		"session.started", m.creds.NodeID, env.RequestID, true,
 		map[string]any{"session_id": p.SessionID.String(), "runtime": p.Runtime, "workspace": resolved},
@@ -598,6 +619,71 @@ func (m *Manager) pruneWorkspaceUploads(workspacePath string) {
 		slog.Info("pruned expired workspace uploads",
 			"event", "filesystem.upload_prune", "removed", removed, "freed_bytes", freed)
 	}
+}
+
+// projectionRetentionLoop periodically sweeps only workspaces belonging to
+// live sessions. An immediate pass makes restart behaviour deterministic; the
+// normal cadence defaults to six hours and is operator-configurable.
+func (m *Manager) projectionRetentionLoop(ctx context.Context) {
+	hours := m.cfg.Filesystem.Projection.CleanupIntervalHours
+	if hours <= 0 {
+		hours = config.DefaultProjectionCleanupHours
+	}
+	m.pruneActiveWorkspaceProjections()
+	ticker := time.NewTicker(time.Duration(hours) * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.pruneActiveWorkspaceProjections()
+		}
+	}
+}
+
+func (m *Manager) pruneActiveWorkspaceProjections() {
+	for _, workspacePath := range m.sessions.Workspaces() {
+		m.pruneWorkspaceProjection(workspacePath)
+	}
+}
+
+// pruneWorkspaceProjection is best-effort housekeeping. Its file service has a
+// closed subtree allowlist, so uploads and .gitignore are unreachable here.
+func (m *Manager) pruneWorkspaceProjection(workspacePath string) {
+	root, err := m.guard.OpenWorkspace(workspacePath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	days := m.cfg.Filesystem.Projection.RetentionDays
+	if days <= 0 {
+		days = config.DefaultProjectionRetentionDays
+	}
+	m.projectionMu.RLock()
+	keepVersion := m.processVersion
+	m.projectionMu.RUnlock()
+	removed, err := m.files.ProjectRetention(
+		root, keepVersion, time.Duration(days)*24*time.Hour, m.now(),
+	)
+	if err != nil {
+		slog.Warn("workspace projection retention failed",
+			"event", "context.projection_prune", "error", safeErr(err))
+		return
+	}
+	if removed > 0 {
+		slog.Info("pruned expired workspace projections",
+			"event", "context.projection_prune", "removed", removed)
+	}
+}
+
+func (m *Manager) rememberProcessVersion(version string) {
+	if version == "" {
+		return
+	}
+	m.projectionMu.Lock()
+	m.processVersion = version
+	m.projectionMu.Unlock()
 }
 
 // terminalChunk keeps each binary frame within the 64 KiB control/binary cap;

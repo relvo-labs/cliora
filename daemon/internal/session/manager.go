@@ -190,6 +190,28 @@ func (m *Manager) ActiveCount() int {
 	return count
 }
 
+// Workspaces returns the unique canonical workspaces of live sessions. The
+// projection retention loop uses this snapshot instead of walking configured
+// allowed roots, which keeps housekeeping confined to workspaces Central has
+// actually opened and avoids scanning an operator's whole disk.
+func (m *Manager) Workspaces() []string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	seen := make(map[string]struct{})
+	workspaces := make([]string, 0, len(m.sessions))
+	for _, e := range m.sessions {
+		if e.workspace == "" || (e.state != Starting && e.state != Running) {
+			continue
+		}
+		if _, ok := seen[e.workspace]; ok {
+			continue
+		}
+		seen[e.workspace] = struct{}{}
+		workspaces = append(workspaces, e.workspace)
+	}
+	return workspaces
+}
+
 func (m *Manager) Input(id uuid.UUID, payload []byte) error {
 	m.mu.Lock()
 	current := m.sessions[id]

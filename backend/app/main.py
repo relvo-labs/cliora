@@ -34,7 +34,10 @@ from app.api.http.metrics import router as metrics_router
 from app.api.http.nodes import router as nodes_router
 from app.api.http.projects import router as projects_router
 from app.api.http.releases import router as releases_router
+from app.api.http.requirements import router as requirements_router
 from app.api.http.sessions import router as sessions_router
+from app.api.http.tasks import agent_router as agent_tasks_router
+from app.api.http.tasks import router as tasks_router
 from app.api.http.tunnels import router as tunnels_router
 from app.api.middleware import (
     AuthzDenialAuditMiddleware,
@@ -152,6 +155,12 @@ app.include_router(nodes_router)
 # which answers 404 while the flag is off. Conditional mounting would make the
 # route matrix's verdict depend on the environment the suite ran in (ADR 0027).
 app.include_router(projects_router)
+# Same unconditional mount, same router-level `require_projects_enabled` (ADR 0028).
+app.include_router(tasks_router)
+app.include_router(requirements_router)
+# The agent surface: four routes on their own prefix, authenticated by a session
+# credential rather than by a user session (ADR 0028 sec 3).
+app.include_router(agent_tasks_router)
 app.include_router(sessions_router)
 app.include_router(tunnels_router)
 app.include_router(integrations_router)

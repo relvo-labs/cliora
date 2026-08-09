@@ -124,6 +124,34 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `PROJECT_WORKSPACE_NOT_FOUND` | 404 | Workspace binding not found | The binding was already removed, or belongs to another project. | Reload the project. | no | no | central |
 | `SESSION_PROJECT_MISMATCH` | 400 | The workspace does not belong to this project | A session may name a project only when its workspace is one of that project's bindings. The match is exact, so a subdirectory of a bound path is not itself bound. | Pick a path from the project's bindings, bind this one first, or create the session without a project. | no | no | central |
 
+## Task layer
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `TASK_NOT_FOUND` | 404 | Task not found | The card, epic, story or dependency does not exist in this project. | Reload the board. | no | no | central |
+| `TASK_VERSION_CONFLICT` | 409 | This card was changed by someone else | Every write carries the version it was read at, so two people dragging one card cannot silently overwrite each other. The response carries the card's current version. | The board reloads the card; try the move again. | no | no | central |
+| `TASK_DEPENDENCY_UNSATISFIED` | 409 | A blocking card is not finished | Entering `ready` or a later lane claims the card is workable, and an unfinished dependency contradicts that. `details.blocking_refs` names the cards. | Finish the named cards, or drop the dependency if it no longer holds. | no | no | central |
+| `TASK_DEPENDENCY_CYCLE` | 409 | That would create a circular dependency | The blocking card already depends on this one, directly or through others. `details.path` shows the loop. | Remove one edge of the loop first. | no | no | central |
+| `TASK_STAGE_INVALID` | 422 | Unknown value | A lane, risk, priority, source or delivery outside the process definition's vocabulary. | Read the project's process definition for the accepted values. | no | no | central |
+| `TASK_ACCEPTANCE_CRITERIA_INVALID` | 422 | Acceptance criteria must be a list of objects | The task context renderer requires each criterion to be an object. | Send each criterion as an object with a text field. | no | no | central |
+| `TASK_CONTEXT_TOO_LARGE` | 422 | Acceptance criteria do not fit the task context budget | Acceptance criteria are preserved in full in the 4 KB agent context pack, so their rendered form has a fixed upper bound. | Shorten or combine acceptance criteria; optional task description sections are omitted automatically. | no | no | central |
+| `FORBIDDEN_FIELD` | 422 | That field cannot be set this way | Refused rather than ignored: a silently dropped field is a change the caller believes it made. Review gates in particular have their own endpoint and their own action. | Use the endpoint that owns the field. | no | no | central |
+| `GATE_UNKNOWN` | 404 | Unknown review gate | The process definition has no gate by that key. | Read the project's process definition for the gate keys. | no | no | central |
+| `GATE_DISABLED` | 409 | This gate is unavailable in this deployment | A gate may depend on an integration that is switched off — the mockup gate needs tunnel integration. It is disabled on read rather than left unsatisfiable, because a gate nobody can ever tick is a deadlock. | Enable the integration, or proceed without that gate. | no | no | central |
+| `GATE_REQUIRES_HUMAN_ACTOR` | 403 | A review gate must be approved by a person | An agent's output is not an approval. A session credential cannot reach this endpoint at all; this code is the second line of defence. | Approve it yourself in the console. | no | no | central |
+
+## Requirements and decomposition
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `REQUIREMENT_NOT_FOUND` | 404 | Requirement not found | The requirement does not exist in this project. | Reload the requirements list. | no | no | central |
+| `REQUIREMENT_NOT_SPECIFIED` | 409 | Write a specification before approving | Approval is approval *of* something: a requirement with no specification version has nothing to approve. | Add a specification version first. | no | no | central |
+| `SPEC_HAS_OPEN_QUESTIONS` | 409 | Unresolved questions remain | A specification cannot be approved while a question has neither an answer nor an explicit 'known unknown' marking. `details.questions` names them. | Answer them, or mark them as known unknowns, then approve. | no | no | central |
+| `REQUIREMENT_ALREADY_APPROVED` | 409 | This requirement is approved | Specification versions are append-only up to approval; after it, a change of mind is a new requirement rather than a rewritten one. | Raise a new requirement. | no | no | central |
+| `REQUIREMENT_NOT_APPROVED` | 409 | Approve the specification before decomposing it | Decomposing something nobody has agreed to produces work that will be thrown away. This is refused by the API rather than hidden in the UI, because V2.5 sends an agent down the same path. | Approve the specification first. | no | no | central |
+| `PROPOSAL_NOT_FOUND` | 404 | Proposal not found | The decomposition proposal does not exist. | Reload the requirement. | no | no | central |
+| `PROPOSAL_ALREADY_DECIDED` | 409 | This proposal was already decided | Acceptance creates real cards, so it happens once. A second decision would duplicate them. | Create a new proposal if the plan changed. | no | no | central |
+
 ## Workspace
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

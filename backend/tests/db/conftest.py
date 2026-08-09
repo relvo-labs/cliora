@@ -44,6 +44,19 @@ _CLEANUP_TABLES = (
     # cleared above, which releases its `SET NULL` reference first.
     "activity_events",
     "project_workspaces",
+    # The task layer (TK-02). Same ordering rule, one level deeper: `tasks` holds FKs
+    # to `epics`, `user_stories`, `requirements` and `task_proposals`, and
+    # `session_tokens` holds one to `projects` with an `ON DELETE RESTRICT` FK to
+    # `users` of its own. `terminal_sessions` is cleared above, which releases both
+    # its `SET NULL` reference to `tasks` and the cascade parent of `session_tokens`.
+    "session_tokens",
+    "task_dependencies",
+    "tasks",
+    "task_proposals",
+    "feature_specs",
+    "requirements",
+    "user_stories",
+    "epics",
     "projects",
     "node_metric_samples",
     "node_credentials",
