@@ -99,6 +99,7 @@ async function render(node: NodeDetail) {
     display_name: "Admin",
     role: "Admin",
     permissions: ["node.manage"],
+    features: [],
   };
   const router = testRouter();
   await router.push("/nodes/n-1");

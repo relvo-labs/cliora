@@ -242,6 +242,15 @@ class TerminalSession(Base):
     parent_session_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("terminal_sessions.id", ondelete="CASCADE"), nullable=True
     )
+    # Nullable, and permanently so (ADR 0027): a session belonging to no project is
+    # an *ad-hoc* session, which is part of the product rather than a transitional
+    # state. The platform never infers this from the workspace — one path may be
+    # bound to several projects, so there is no unique answer, and "is this ad-hoc"
+    # has to stay the caller's statement rather than ours. `task_id` joins it in
+    # V2.1's 0023, when `tasks` exists and it can be a real foreign key.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -289,6 +298,118 @@ class WorkspaceFavorite(Base):
     path: Mapped[str] = mapped_column(String(4096))
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Project(Base):
+    """A project: a name for work that spans workspaces on several nodes (ADR 0027).
+
+    Platform data, not files in the user's repository. That is the whole of decision
+    D1/D2 in one sentence — the repo holds code, the platform holds everything about
+    the work.
+
+    ``slug`` is fixed at creation while ``name`` is not, and the split is
+    load-bearing: V2.1 builds card references (``TASK-123``) on the slug and V2.3
+    namespaces secrets by it, so a mutable slug would strand both. Renaming is a
+    display concern and stays free.
+
+    There is no delete, only ``archived``. ``activity_events`` is history and
+    ``terminal_sessions.project_id`` points here, so deleting would either orphan
+    rows or erase something that really happened. Archiving refuses new sessions and
+    new bindings; everything already running is untouched.
+    """
+
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(128))
+    slug: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectWorkspace(Base):
+    """One workspace path on one node, bound to a project.
+
+    **A binding, never an authorization** — the same sentence, and the same rule, as
+    `WorkspaceFavorite`. `sessions.authorize_workspace()` runs when the binding is
+    created *and again on every use*, because roots get disabled and directories get
+    deleted: a path that was legal when bound may not be now (SEC-001). Two
+    implementations of one prefix rule would eventually disagree, and the day they
+    disagree is a security event rather than a bug.
+
+    Node removal is a soft delete (ADR 0011), so the `ON DELETE CASCADE` in the
+    migration is a safety net rather than the normal path; the service filters
+    soft-deleted nodes out of its listing instead.
+
+    Unique on `(project_id, node_id, path)`, which makes binding idempotent: a second
+    request for the same triple returns the existing row rather than a duplicate the
+    user would then have to unbind twice. At most one row per project may be
+    `is_primary`, enforced by a partial unique index rather than by application code,
+    because concurrency defeats the application-code version.
+    """
+
+    __tablename__ = "project_workspaces"
+    __table_args__ = (UniqueConstraint("project_id", "node_id", "path"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    path: Mapped[str] = mapped_column(String(4096))
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ActivityEvent(Base):
+    """What happened on a project (FR-PROJECT-004, ADR 0027 sec 7).
+
+    **Not a second audit log.** The two answer different questions and are cleaned up
+    differently, which is the distinction most easily lost:
+
+    ==================  ==============================  ==========================
+    .                   ``audit_logs``                  ``activity_events``
+    ==================  ==============================  ==========================
+    question            who did what, fleet-wide        what happened on *this*
+                                                        project
+    who may read it     metadata needs ``audit.view``   ``project.view`` — which
+                                                        **all three roles hold**
+    who cleans it up    existing retention              nobody; it lives as long
+                                                        as the project
+    ==================  ==============================  ==========================
+
+    Two consequences follow from the wider audience, and both are enforced rather
+    than documented: the audit module's forbidden-key list also guards this payload
+    (a constraint on a wider surface can only be tighter), and **actor identity is
+    redacted for callers without** ``audit.view`` — the same rule
+    ``services/dashboard.py::project_for`` already applies to the dashboard's recent
+    activity. Without that, this table would quietly reopen a channel P4 closed.
+
+    ``task_id``, ``session_id`` and ``actor_user_id`` carry no foreign key, matching
+    ``audit_logs``. ``task_id`` points at a table V2.1 creates; the other two are
+    deliberate, because a timeline is history and a hard-deleted session must not
+    blank out the row saying it once ran.
+    """
+
+    __tablename__ = "activity_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    kind: Mapped[str] = mapped_column(String(64))
+    activity_payload: Mapped[dict[str, Any]] = mapped_column("payload", JSONB, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class NodeMetricSample(Base):

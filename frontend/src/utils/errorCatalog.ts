@@ -228,6 +228,50 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
   },
 
   // --- Workspace ---
+  // --- 專案層（ADR 0027）---
+  //
+  // 旗標關閉時的 /api/projects* 刻意回一個沒有錯誤碼的 404，所以這裡沒有
+  // PROJECTS_DISABLED —— 一個具名的碼會洩漏「這個功能存在，只是關著」，
+  // 而那正是裸 404 要藏住的事。
+  PROJECT_NOT_FOUND: {
+    cause: "該專案不存在，或已被移除。",
+    nextStep: "回到專案列表重新整理。",
+    retryable: false,
+  },
+  PROJECT_SLUG_TAKEN: {
+    cause: "已有專案使用這個識別碼；識別碼在整個平台上唯一，且建立後不可變更。",
+    nextStep: "換一個識別碼。顯示名稱不受限制，可以維持原本想要的名字。",
+    retryable: false,
+  },
+  PROJECT_SLUG_INVALID: {
+    cause:
+      "識別碼只能用小寫英數字與連字號；若名稱全為非拉丁字元，系統無法自動推導。",
+    nextStep: "自行指定一個識別碼，例如 traqora-api。",
+    retryable: false,
+  },
+  PROJECT_STATUS_INVALID: {
+    cause: "專案狀態只有進行中、暫停、已封存三種。",
+    nextStep: "改用其中一種。",
+    retryable: false,
+  },
+  PROJECT_ARCHIVED: {
+    cause:
+      "已封存的專案不接受新的 Session 與新的 Workspace 綁定；既有的一律不受影響。",
+    nextStep: "先解除封存，或改用其他專案。",
+    retryable: false,
+  },
+  PROJECT_WORKSPACE_NOT_FOUND: {
+    cause: "該綁定已被解除，或屬於另一個專案。",
+    nextStep: "重新整理專案頁面。",
+    retryable: false,
+  },
+  SESSION_PROJECT_MISMATCH: {
+    cause:
+      "Session 指定專案時，其 Workspace 必須是該專案的綁定之一。比對是完全相等的，所以已綁定路徑的子目錄本身並未綁定。",
+    nextStep:
+      "從該專案的綁定清單中選一個路徑、先綁定這個路徑，或不要指定專案。",
+    retryable: false,
+  },
   WORKSPACE_OUTSIDE_ALLOWED_ROOT: {
     cause: "此路徑解析後落在該 Node 允許的所有根目錄之外。",
     nextStep: "改選允許根目錄內的路徑（agentd workspace list）。",

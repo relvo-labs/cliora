@@ -19,10 +19,28 @@ from app.db.engine import get_session
 from app.db.models import User
 from app.services.auth import AuthService
 from app.services.rbac import has_action
+from app.settings import Settings, get_settings
 
 
 async def get_auth_service(session: AsyncSession = Depends(get_session)) -> AuthService:
     return AuthService(session)
+
+
+def require_projects_enabled(settings: Settings = Depends(get_settings)) -> None:
+    """404 the project layer when `CLIORA_PROJECTS_ENABLED` is off (ADR 0027 sec 3).
+
+    **404, not 403.** A 403 says "this exists and you may not have it"; the layer
+    genuinely does not exist in this deployment, and a deployment that has never
+    enabled it should not be advertising a roadmap to anyone who probes a URL. For
+    the same reason it carries no error code — a body naming `PROJECTS_DISABLED`
+    would leak precisely the fact the bare 404 withholds.
+
+    Applied as a router-level dependency so it cannot be forgotten on a new route,
+    and so the route set stays identical whichever way the flag is set: the guard is
+    in the handler, never in `include_router`.
+    """
+    if not settings.projects_enabled:
+        raise ApiError("NOT_FOUND", "Not found", status.HTTP_404_NOT_FOUND)
 
 
 async def get_current_user(

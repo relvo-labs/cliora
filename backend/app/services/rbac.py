@@ -38,6 +38,9 @@ AUDIT_VIEW = "audit.view"
 TUNNEL_VIEW = "tunnel.view"
 TUNNEL_MANAGE = "tunnel.manage"
 INTEGRATION_MANAGE = "integration.manage"
+# V2.0 project layer (ADR 0027, seed migration 0022).
+PROJECT_VIEW = "project.view"
+PROJECT_MANAGE = "project.manage"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -49,7 +52,13 @@ VIEWER = "Viewer"
 # P2/ADR 0013) and file.browse (read-only browse + preview, ADR 0015). It holds
 # no mutation action, so a Viewer's forged create/terminate/takeover/enrollment
 # request fails at the action layer before any resource is loaded.
-_VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE})
+#
+# `project.view` joins the read-only set for the same reason `node.view` is in it:
+# a Viewer may look at the shape of the fleet, and a project is a name for part of
+# that shape. What it must *not* become is an actor feed — the project timeline is
+# readable with this action, so `services/activity.py:redact_actors` strips actor
+# identity from it unless the caller also holds `audit.view` (ADR 0027 sec 7).
+_VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE, PROJECT_VIEW})
 # `terminal.shell` sits with the other session-mutation actions rather than in the
 # Admin set (ADR 0021): a Developer already drives a CLI in their own session. The
 # boundary is ownership, not role — `authz.may_open_shell` requires the caller to own
@@ -83,6 +92,13 @@ _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
     NODE_MANAGE,
     AUDIT_VIEW,
     INTEGRATION_MANAGE,
+    # `project.manage` sits with enrollment and node management, not with the
+    # session-shaped Developer actions: deciding which projects exist, and which
+    # machines and directories they cover, is an organisation-level call rather than
+    # day-to-day work. From V2.3 a binding means more again — binding a runner to a
+    # project authorises it to draw that project's secrets — so this action must not
+    # begin life in Developer hands and be narrowed later (ADR 0027 sec 4).
+    PROJECT_MANAGE,
 }
 
 ROLE_ACTIONS: dict[str, frozenset[str]] = {

@@ -36,6 +36,7 @@ async function enableIntegration(page: Page): Promise<void> {
 
   const enable = page.getByRole("button", { name: "啟用埠轉發" });
   const disable = page.getByRole("button", { name: "停用埠轉發" });
+  await expect(enable.or(disable)).toBeVisible();
   if (await disable.isVisible().catch(() => false)) {
     return; // already on from an earlier run against the same database
   }
@@ -53,7 +54,12 @@ async function enableIntegration(page: Page): Promise<void> {
 // The stack's node id, from the nodes list. Returns "" when the stack has no online node,
 // which is how the interactive cases skip themselves instead of failing.
 async function onlineNodeId(page: Page): Promise<string> {
-  const response = await page.request.get("/api/nodes");
+  const token = await page.evaluate(() =>
+    localStorage.getItem("cliora.access_token"),
+  );
+  const response = await page.request.get("/api/nodes", {
+    headers: { authorization: `Bearer ${token}` },
+  });
   if (!response.ok()) {
     return "";
   }
@@ -93,6 +99,9 @@ test.describe("port forwarding", () => {
   }) => {
     await signIn(page);
     await enableIntegration(page);
+    await page.locator('input[type="password"]').fill("E2EFAKETOKEN1234");
+    await page.getByRole("button", { name: "儲存憑證" }).click();
+    await expect(page.getByText("憑證已儲存")).toBeVisible();
     const nodeId = await onlineNodeId(page);
     test.skip(nodeId === "", "the stack has no online node");
 
@@ -117,13 +126,14 @@ test.describe("port forwarding", () => {
     // acknowledgement with a 422, and the form grows the four statements.
     await form.getByRole("button", { name: "建立" }).click();
     const firstTime = page.getByText("這是你在這台節點上的第一條隧道");
+    const dialog = page.getByRole("dialog", { name: "隧道已建立" });
+    await expect(firstTime.or(dialog)).toBeVisible();
     if (await firstTime.isVisible().catch(() => false)) {
       await page.getByText("我了解並同意上述內容").click();
       await form.getByRole("button", { name: "建立" }).click();
     }
 
     // The one-time dialog, then the row.
-    const dialog = page.getByRole("dialog", { name: "隧道已建立" });
     await expect(dialog).toBeVisible();
     const url = await dialog.getByRole("link").getAttribute("href");
     expect(url).toMatch(/^https:\/\/[a-z0-9-]+\.tunnel\.example\.invalid$/);
@@ -144,11 +154,13 @@ test.describe("port forwarding", () => {
     // Closing removes it from the live list. The confirmation says what the platform cannot
     // promise: the provider decides when the URL stops answering.
     await row.getByRole("button", { name: "關閉" }).click();
-    await expect(page.getByText("網址的有效性由服務商決定")).toBeVisible();
-    await page
-      .getByRole("dialog")
-      .getByRole("button", { name: "關閉" })
-      .click();
+    const confirm = page.getByRole("dialog", { name: "關閉隧道" });
+    await expect(confirm).toContainText("網址的有效性由服務商決定");
+    await confirm.getByRole("button", { name: "關閉" }).click();
+    await expect(confirm).toBeHidden({ timeout: 20_000 });
+    await expect(page.getByText("隧道已關閉。", { exact: true })).toBeVisible({
+      timeout: 20_000,
+    });
     await expect(page.getByText("這台節點目前沒有隧道")).toBeVisible();
   });
 

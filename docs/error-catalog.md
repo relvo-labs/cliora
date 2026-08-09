@@ -112,6 +112,18 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `INVALID_TERMINAL_SIZE` | 400 | Terminal size is out of range | The requested rows/columns are outside the accepted bounds. | Resize the window and retry. | no | no | daemon |
 | `TERMINAL_ALREADY_CONTROLLED` | 409 | Terminal already has a writer | Someone else holds the writer role for this terminal. | Attach read-only, or take over if you have permission. | no | no | daemon |
 
+## Project layer
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `PROJECT_NOT_FOUND` | 404 | Project not found | The project does not exist, or was archived and then removed from view. | Reload the project list. | no | no | central |
+| `PROJECT_SLUG_TAKEN` | 409 | A project with this slug already exists | Slugs are unique across the platform, and fixed once the project exists. | Choose a different slug. The display name can still be whatever you like. | no | no | central |
+| `PROJECT_SLUG_INVALID` | 422 | Slug must be lowercase letters, digits and hyphens | The supplied slug has an unusable character, or a name written entirely in non-Latin script left nothing to derive one from. | Supply a slug explicitly, for example `traqora-api`. | no | no | central |
+| `PROJECT_STATUS_INVALID` | 422 | Unknown project status | A project is active, paused or archived; nothing else. | Use one of the three states. | no | no | central |
+| `PROJECT_ARCHIVED` | 409 | This project is archived | An archived project accepts no new sessions and no new workspace bindings. Everything already running is untouched. | Un-archive the project first, or use a different one. | no | no | central |
+| `PROJECT_WORKSPACE_NOT_FOUND` | 404 | Workspace binding not found | The binding was already removed, or belongs to another project. | Reload the project. | no | no | central |
+| `SESSION_PROJECT_MISMATCH` | 400 | The workspace does not belong to this project | A session may name a project only when its workspace is one of that project's bindings. The match is exact, so a subdirectory of a bound path is not itself bound. | Pick a path from the project's bindings, bind this one first, or create the session without a project. | no | no | central |
+
 ## Workspace
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

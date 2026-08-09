@@ -135,6 +135,18 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Project layer",
+        (
+            "PROJECT_NOT_FOUND",
+            "PROJECT_SLUG_TAKEN",
+            "PROJECT_SLUG_INVALID",
+            "PROJECT_STATUS_INVALID",
+            "PROJECT_ARCHIVED",
+            "PROJECT_WORKSPACE_NOT_FOUND",
+            "SESSION_PROJECT_MISMATCH",
+        ),
+    ),
+    (
         "Workspace",
         (
             "WORKSPACE_OUTSIDE_ALLOWED_ROOT",

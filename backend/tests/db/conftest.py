@@ -36,6 +36,15 @@ _CLEANUP_TABLES = (
     "tunnel_integration",
     "session_connections",
     "terminal_sessions",
+    # The project layer (PJ-02). Order matters for the same reason the tunnel tables
+    # above it do: `activity_events` and `project_workspaces` hold FKs to `projects`,
+    # and `projects` holds an `ON DELETE RESTRICT` FK to `users` — so a leftover
+    # project makes the `users` delete below fail, and that surfaces several tests
+    # later as an unrelated duplicate-username error. `terminal_sessions` is already
+    # cleared above, which releases its `SET NULL` reference first.
+    "activity_events",
+    "project_workspaces",
+    "projects",
     "node_metric_samples",
     "node_credentials",
     "node_workspace_roots",
@@ -67,6 +76,42 @@ async def session(db_url: str) -> AsyncIterator[AsyncSession]:
         await trans.rollback()
         await conn.close()
         await engine.dispose()
+
+
+@pytest.fixture
+def projects_enabled():
+    """Turn the project layer on for a test, and off again afterwards.
+
+    `CLIORA_PROJECTS_ENABLED` defaults to false, and `require_projects_enabled`
+    answers **404 before** the action guard runs — deliberately, because a 403 would
+    tell a caller that a feature the deployment never enabled exists (ADR 0027).
+
+    That ordering means authorization for these routes is only observable with the
+    flag on: without this fixture the RBAC matrix would record "Viewer is refused"
+    while actually measuring "the route does not exist", which is the shape of a test
+    that passes for the wrong reason. Flag-*off* behaviour has its own tests.
+    """
+    from app.main import app
+    from app.settings import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(projects_enabled=True)
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.fixture
+def projects_disabled():
+    """Pin the flag off so the same suite is hermetic in both CI matrix legs."""
+    from app.main import app
+    from app.settings import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(projects_enabled=False)
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
 
 
 @pytest_asyncio.fixture

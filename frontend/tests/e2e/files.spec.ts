@@ -50,7 +50,20 @@ async function openWorkspace(page: Page, name: string): Promise<boolean> {
   if (nodes === 0) {
     return false;
   }
-  await dialog.locator("select").first().selectOption({ index: 1 });
+  const nodeSelect = dialog.locator("select").first();
+  // The two-node V2 project matrix also runs this pre-existing file suite. Its
+  // fixtures live on `e2e-node`; selecting index 1 can nondeterministically pick
+  // `e2e-node-2`, whose deliberately different workspace proves cross-node
+  // semantics but cannot satisfy these fixture assertions.
+  const primaryValue = await nodeSelect
+    .locator("option")
+    .filter({ hasText: /^e2e-node \(/ })
+    .getAttribute("value");
+  if (primaryValue) {
+    await nodeSelect.selectOption(primaryValue);
+  } else {
+    await nodeSelect.selectOption({ index: 1 });
+  }
   const runtime = dialog.locator("select").nth(1);
   await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
   await runtime.selectOption({ index: 1 });

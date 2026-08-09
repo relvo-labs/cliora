@@ -37,6 +37,12 @@ PRD_ROWS: list[tuple[str, str]] = [
     ("終止 Session / Terminate session", rbac.SESSION_TERMINATE),
     ("瀏覽檔案 / Browse & preview files", rbac.FILE_BROWSE),
     ("查看 Audit Log / View audit log", rbac.AUDIT_VIEW),
+    # V2.0 project layer (ADR 0027). `project.view` is held by every role, like
+    # `node.view`; `project.manage` is Admin-only, alongside enrollment and node
+    # management, because it decides which projects exist and which machines and
+    # directories they cover.
+    ("查看專案 / View projects", rbac.PROJECT_VIEW),
+    ("管理專案 / Manage projects & workspace bindings", rbac.PROJECT_MANAGE),
 ]
 
 ROLES = (rbac.ADMIN, rbac.DEVELOPER, rbac.VIEWER)

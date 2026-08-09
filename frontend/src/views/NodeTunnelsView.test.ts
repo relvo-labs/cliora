@@ -141,6 +141,7 @@ describe("NodeTunnelsView", () => {
       display_name: "Alice",
       role: "Developer",
       permissions: ["tunnel.view", "tunnel.manage"],
+      features: [],
     };
   });
 

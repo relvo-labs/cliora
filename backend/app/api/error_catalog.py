@@ -414,6 +414,71 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "Attach read-only, or take over if you have permission.",
             origin=DAEMON,
         ),
+        # --- Project layer (ADR 0027) ---
+        #
+        # There is deliberately no `PROJECT_*` code for "the project layer is
+        # disabled". With the flag off those paths answer a bare 404, because a body
+        # naming the feature would leak exactly what the 404 withholds — that the
+        # capability exists and is merely switched off (deps.require_projects_enabled).
+        #
+        # There is also no new code for a rejected workspace path: binding reuses
+        # `WORKSPACE_OUTSIDE_ALLOWED_ROOT` below. A second, synonymous code would give
+        # "why is this path not allowed" two answers depending on which endpoint the
+        # user happened to reach.
+        _entry(
+            "PROJECT_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Project not found",
+            "The project does not exist, or was archived and then removed from view.",
+            "Reload the project list.",
+        ),
+        _entry(
+            "PROJECT_SLUG_TAKEN",
+            status.HTTP_409_CONFLICT,
+            "A project with this slug already exists",
+            "Slugs are unique across the platform, and fixed once the project exists.",
+            "Choose a different slug. The display name can still be whatever you like.",
+        ),
+        _entry(
+            "PROJECT_SLUG_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Slug must be lowercase letters, digits and hyphens",
+            "The supplied slug has an unusable character, or a name written entirely "
+            "in non-Latin script left nothing to derive one from.",
+            "Supply a slug explicitly, for example `traqora-api`.",
+        ),
+        _entry(
+            "PROJECT_STATUS_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown project status",
+            "A project is active, paused or archived; nothing else.",
+            "Use one of the three states.",
+        ),
+        _entry(
+            "PROJECT_ARCHIVED",
+            status.HTTP_409_CONFLICT,
+            "This project is archived",
+            "An archived project accepts no new sessions and no new workspace "
+            "bindings. Everything already running is untouched.",
+            "Un-archive the project first, or use a different one.",
+        ),
+        _entry(
+            "PROJECT_WORKSPACE_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Workspace binding not found",
+            "The binding was already removed, or belongs to another project.",
+            "Reload the project.",
+        ),
+        _entry(
+            "SESSION_PROJECT_MISMATCH",
+            status.HTTP_400_BAD_REQUEST,
+            "The workspace does not belong to this project",
+            "A session may name a project only when its workspace is one of that "
+            "project's bindings. The match is exact, so a subdirectory of a bound "
+            "path is not itself bound.",
+            "Pick a path from the project's bindings, bind this one first, or create "
+            "the session without a project.",
+        ),
         # --- Workspace ---
         _entry(
             "WORKSPACE_OUTSIDE_ALLOWED_ROOT",

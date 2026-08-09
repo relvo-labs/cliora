@@ -138,6 +138,22 @@ class Settings(BaseSettings):
     dashboard_recent_activity_limit: int = 20
     dashboard_unhealthy_limit: int = 10
 
+    # --- V2.0 project layer (ADR 0027) ---
+    # Off by default. With it off the system behaves exactly as it did before the
+    # project layer existed: every `/api/projects*` path answers 404, `features` is
+    # empty, and the navigation rail is unchanged.
+    #
+    # Enforced **inside the handlers**, never by mounting the router conditionally.
+    # `tests/test_authz.py::test_every_mounted_route_is_in_the_matrix` reads
+    # `app.routes`, which is fixed at import time, so conditional mounting would make
+    # `make check` pass or fail according to the environment it ran in — and a gate
+    # whose verdict depends on a `.env` file is not a gate.
+    #
+    # `CLIORA_AGENT_RUNS_ENABLED` is deliberately **not** here yet: it gates
+    # autonomous execution, which V2.2 introduces. A flag that switches nothing off
+    # is a flag nobody dares touch six months later.
+    projects_enabled: bool = False
+
     # --- P4 metrics export (ADR 0018) ---
     # Off by default. An always-on metrics endpoint is a permanent read surface on the
     # control plane, and most deployments do not scrape at all — so it is opt-in rather
