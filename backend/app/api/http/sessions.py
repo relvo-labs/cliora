@@ -8,6 +8,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -20,8 +21,10 @@ from app.api.http.schemas import (
     SessionSummary,
 )
 from app.db.engine import get_session
-from app.db.models import User
+from app.db.models import ActivityEvent, TerminalSession, User
+from app.repositories.nodes import NodeRepository
 from app.services import authz
+from app.services.context_projection import ProjectionOutcome
 from app.services.rbac import (
     SESSION_CREATE,
     SESSION_TERMINATE,
@@ -69,6 +72,7 @@ async def create_session(
             rows=body.rows,
             columns=body.columns,
             project_id=body.project_id,
+            task_id=body.task_id,
         )
     except ApiError:
         # Persist a FAILED row + failure audit if one was created before the
@@ -76,7 +80,98 @@ async def create_session(
         await session.commit()
         raise
     await session.commit()
-    return SessionDetail.from_model(result, viewer=user)
+    # The context projection is a **second** round trip, after the session is already
+    # running and committed (ADR 0028 sec 5, `plan/17` D8). Two consequences, both
+    # deliberate: `session.start` has already succeeded, so nothing here can roll it
+    # back; and a failure is recorded rather than raised, because context is an
+    # addition and the session is the product.
+    outcome = None
+    if result.project_id is not None:
+        outcome = await _project_context(
+            session, registry, settings, terminal=result, actor_id=user.id
+        )
+        await session.commit()
+    return SessionDetail.from_model(
+        result,
+        viewer=user,
+        context_projection=outcome.status if outcome else None,
+        context_projection_detail=outcome.detail if outcome else None,
+    )
+
+
+async def _project_context(
+    session: AsyncSession,
+    registry: NodeConnectionRegistry,
+    settings: Settings,
+    *,
+    terminal: TerminalSession,
+    actor_id: uuid.UUID,
+) -> ProjectionOutcome:
+    from app.services import audit
+    from app.services.activity import SESSION_CONTEXT_PROJECTION, ActivityService
+    from app.services.audit import AuditService
+    from app.services.context_projection import ContextProjectionService
+
+    node = await NodeRepository(session).get(terminal.node_id)
+    if node is None or terminal.project_id is None:  # pragma: no cover
+        return ProjectionOutcome(status="failed", written=[], skipped=[], detail="node missing")
+    project_id = terminal.project_id
+    outcome = await ContextProjectionService(session, settings=settings).project(
+        terminal=terminal, node=node, actor_id=actor_id, registry=registry
+    )
+    # Record every outcome, not only failure. Session detail derives its durable
+    # status from the latest row, so a successful retry supersedes an earlier fault.
+    await ActivityService(session).record(
+        SESSION_CONTEXT_PROJECTION,
+        project_id=project_id,
+        actor_user_id=actor_id,
+        session_id=terminal.id,
+        task_id=terminal.task_id,
+        payload={"context_projection": outcome.status, "detail": outcome.detail},
+    )
+    await AuditService(session).record(
+        audit.SESSION_CONTEXT_PROJECTION,
+        user_id=actor_id,
+        session_id=terminal.id,
+        metadata={"status": outcome.status, "project_id": str(project_id)},
+    )
+    return outcome
+
+
+async def _projection_state(
+    session: AsyncSession, terminal: TerminalSession
+) -> tuple[str | None, str | None]:
+    if terminal.project_id is None:
+        return None, None
+    row = (
+        await session.execute(
+            select(ActivityEvent)
+            .where(
+                ActivityEvent.session_id == terminal.id,
+                ActivityEvent.kind == "session.context_projection",
+            )
+            .order_by(ActivityEvent.occurred_at.desc(), ActivityEvent.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        return "pending", None
+    payload = row.activity_payload or {}
+    return str(payload.get("context_projection") or "failed"), (
+        str(payload["detail"]) if payload.get("detail") else None
+    )
+
+
+async def _session_detail(
+    session: AsyncSession, terminal: TerminalSession, user: User
+) -> SessionDetail:
+    projection, detail = await _projection_state(session, terminal)
+    return SessionDetail.from_model(
+        terminal,
+        viewer=user,
+        context_projection=projection,
+        context_projection_detail=detail,
+    )
 
 
 @router.get("", response_model=list[SessionSummary])
@@ -87,6 +182,7 @@ async def list_sessions(
     # ad-hoc ones. The third exists so "how many sessions are actually ad-hoc" is
     # answerable — the measurement that decides whether V2's defaults are right.
     project_id: str | None = Query(default=None),
+    task_id: uuid.UUID | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -100,6 +196,7 @@ async def list_sessions(
     sessions = await SessionService(session, settings=settings).list(
         node_id=node_id,
         project_id=project_id,
+        task_id=task_id,
         status_filter=status_filter,
         limit=limit,
         offset=offset,
@@ -115,7 +212,35 @@ async def get_session_detail(
 ) -> SessionDetail:
     result = await SessionService(session).get(session_id)
     authz.authorize_session_view(user, result)
-    return SessionDetail.from_model(result, viewer=user)
+    return await _session_detail(session, result, user)
+
+
+@router.post("/{session_id}/context-projection", response_model=SessionDetail)
+async def retry_context_projection(
+    session_id: uuid.UUID,
+    user: User = Depends(require_action(SESSION_CREATE)),
+    session: AsyncSession = Depends(get_session),
+    registry: NodeConnectionRegistry = Depends(get_registry),
+    settings: Settings = Depends(get_settings),
+) -> SessionDetail:
+    service = SessionService(session, settings=settings)
+    terminal = await service.get(session_id)
+    authz.authorize_session_context_projection(user, terminal)
+    if terminal.project_id is None:
+        raise ApiError(
+            "SESSION_INVALID_STATE",
+            "This session has no project context",
+            status.HTTP_409_CONFLICT,
+        )
+    if terminal.ended_at is not None:
+        raise ApiError(
+            "SESSION_INVALID_STATE",
+            "An ended session cannot receive new context",
+            status.HTTP_409_CONFLICT,
+        )
+    await _project_context(session, registry, settings, terminal=terminal, actor_id=user.id)
+    await session.commit()
+    return await _session_detail(session, terminal, user)
 
 
 @router.post("/{session_id}/terminate", response_model=SessionDetail)
@@ -132,7 +257,7 @@ async def terminate_session(
     authz.authorize_session_terminate(user, existing)
     result = await service.terminate(actor_id=user.id, session_id=session_id)
     await session.commit()
-    return SessionDetail.from_model(result, viewer=user)
+    return await _session_detail(session, result, user)
 
 
 @router.post(
@@ -169,7 +294,7 @@ async def open_shell(
         await session.commit()
         raise
     await session.commit()
-    return SessionDetail.from_model(result, viewer=user)
+    return await _session_detail(session, result, user)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

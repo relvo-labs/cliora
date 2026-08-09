@@ -128,9 +128,18 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # requirement set `active`. AC-01..03 are about git pushes and have no code until
     # V2.3; they stay `proposed`, because a criterion counted as covered by a gate
     # that does not exist is worse than one openly outstanding.
+    #
+    # 2026-08-09 (plan/17 TK-11): +43 for `FR-TASK-001`…`008`, the V2.1 task layer.
+    # Same two-step registration as the project layer: TK-01 registered them
+    # `proposed`, and they turn `active` here with all four primary link types
+    # pointing at files that now exist. All 43 are `verifiable` — every one has an
+    # automated assertion, including the two the plan first listed as manual: the
+    # 4 KB context budget became a `measurement` (it is a byte count) and the
+    # `git status` check became an integration test (a machine decides it better
+    # than a person).
     assert result["summary"] == {
-        "total": 468,
-        "verifiable": 335,
+        "total": 511,
+        "verifiable": 378,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

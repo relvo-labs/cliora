@@ -51,6 +51,22 @@ WORKSPACE_BOUND = "workspace.bound"
 WORKSPACE_UNBOUND = "workspace.unbound"
 SESSION_STARTED = "session.started"
 SESSION_ENDED = "session.ended"
+SESSION_CONTEXT_PROJECTION = "session.context_projection"
+
+# --- V2.1: the task layer (ADR 0028) ---
+EPIC_CREATED = "epic.created"
+USER_STORY_CREATED = "user_story.created"
+TASK_CREATED = "task.created"
+# Split from `task.updated` on purpose: a reader scanning a project's history is
+# asking "what moved", and a title edit and a lane change are not the same event
+# to them even though they are the same request to us.
+TASK_UPDATED = "task.updated"
+TASK_STAGE_CHANGED = "task.stage_changed"
+TASK_GATE_APPROVED = "task.gate_approved"
+REQUIREMENT_CREATED = "requirement.created"
+REQUIREMENT_SPEC_ADDED = "requirement.spec_added"
+REQUIREMENT_APPROVED = "requirement.approved"
+PROPOSAL_ACCEPTED = "requirement.proposal_accepted"
 
 # The closed vocabulary. V2.1 adds task kinds, V2.2 adds run kinds.
 ALL_KINDS: frozenset[str] = frozenset(
@@ -61,8 +77,29 @@ ALL_KINDS: frozenset[str] = frozenset(
         WORKSPACE_UNBOUND,
         SESSION_STARTED,
         SESSION_ENDED,
+        SESSION_CONTEXT_PROJECTION,
+        EPIC_CREATED,
+        USER_STORY_CREATED,
+        TASK_CREATED,
+        TASK_UPDATED,
+        TASK_STAGE_CHANGED,
+        TASK_GATE_APPROVED,
+        REQUIREMENT_CREATED,
+        REQUIREMENT_SPEC_ADDED,
+        REQUIREMENT_APPROVED,
+        PROPOSAL_ACCEPTED,
     }
 )
+
+# Who did it, as opposed to *whether the reader may see who*. The distinction is the
+# reason this field exists: ``actor_user_id IS NULL`` already means "the system", and
+# :func:`redact_actors` produces the same NULL for a user event the reader lacks
+# ``audit.view`` for. Without a third field an agent's write is indistinguishable from
+# both (ADR 0028 sec 3).
+ACTOR_USER = "user"
+ACTOR_AGENT = "agent"
+ACTOR_SYSTEM = "system"
+ACTOR_KINDS = frozenset({ACTOR_USER, ACTOR_AGENT, ACTOR_SYSTEM})
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +117,8 @@ class ActivityItem:
     actor_id: uuid.UUID | None
     actor_name: str | None
     session_id: uuid.UUID | None
+    # Survives redaction deliberately — see :func:`redact_actors`.
+    actor_kind: str = ACTOR_USER
 
 
 def redact_actors(items: list[ActivityItem], *, can_view_audit: bool) -> list[ActivityItem]:
@@ -101,6 +140,10 @@ def redact_actors(items: list[ActivityItem], *, can_view_audit: bool) -> list[Ac
     """
     if can_view_audit:
         return items
+    # ``actor_kind`` is deliberately *not* cleared. "An agent did this" is the nature
+    # of the event rather than an actor's identity, and stripping it would collapse
+    # three different rows — a system event, an agent's write, and a person's write
+    # the reader may not attribute — into one indistinguishable blank.
     return [replace(item, actor_id=None, actor_name=None) for item in items]
 
 
@@ -114,6 +157,7 @@ class ActivityService:
         *,
         project_id: uuid.UUID,
         actor_user_id: uuid.UUID | None = None,
+        actor_kind: str = ACTOR_USER,
         session_id: uuid.UUID | None = None,
         task_id: uuid.UUID | None = None,
         payload: dict[str, Any] | None = None,
@@ -129,6 +173,8 @@ class ActivityService:
         them differently — a blank actor on a system event is correct, a blank actor
         on a user action means "you need `audit.view`".
         """
+        if actor_kind not in ACTOR_KINDS:
+            raise ValueError(f"unknown actor kind: {actor_kind!r}")
         if kind not in ALL_KINDS:
             # A typo would otherwise create a row no filter can ever find.
             raise ValueError(f"unknown activity kind: {kind!r}")
@@ -147,6 +193,7 @@ class ActivityService:
                 task_id=task_id,
                 session_id=session_id,
                 actor_user_id=actor_user_id,
+                actor_kind=actor_kind,
                 kind=kind,
                 activity_payload=redact_mapping(body) if body else {},
             )

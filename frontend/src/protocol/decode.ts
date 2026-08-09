@@ -40,6 +40,8 @@ const TYPES = new Set([
   "filesystem.uploaded",
   "filesystem.store",
   "filesystem.stored",
+  "context.project",
+  "context.projected",
   "node.challenge",
   "node.auth",
   "node.authenticated",
@@ -526,6 +528,89 @@ function validateFsStorePayload(payload: Record<string, unknown>): void {
     reject("INVALID_MESSAGE", "Invalid upload payload");
 }
 
+// The projection (ADR 0028). The browser never sends or receives this message — it
+// is Central → daemon — and it is validated here anyway, for the reason the whole
+// three-consumer contract suite exists: a rule that only one implementation enforces
+// is a rule that drifts. The two properties worth reading are the confinement to the
+// three platform-owned subtrees and the single legal mode.
+const PROJECT_PATH =
+  // eslint-disable-next-line no-control-regex
+  /^\.cliora\/(context|process|reference)\/[^/\u0000-\u001f]+(\/[^/\u0000-\u001f]+)*$/;
+const PROCESS_VERSION = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const PROJECT_MAX_BASE64 = 87384;
+
+function validateContextProjectPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["session_id", "process_version", "files"]), [
+    "session_id",
+    "process_version",
+    "files",
+  ]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  if (
+    typeof payload.process_version !== "string" ||
+    payload.process_version.length > 32 ||
+    !PROCESS_VERSION.test(payload.process_version)
+  )
+    reject("INVALID_MESSAGE", "Invalid process version");
+  const files = payload.files;
+  if (!Array.isArray(files) || files.length === 0 || files.length > 32)
+    reject("INVALID_MESSAGE", "Invalid file list");
+  for (const entry of files as unknown[]) {
+    if (typeof entry !== "object" || entry === null)
+      reject("INVALID_MESSAGE", "Invalid projected file");
+    const file = entry as Record<string, unknown>;
+    requireKeys(file, new Set(["path", "mode", "data"]), [
+      "path",
+      "mode",
+      "data",
+    ]);
+    if (
+      typeof file.path !== "string" ||
+      file.path.length > 4096 ||
+      file.path.split("/").includes("..") ||
+      !PROJECT_PATH.test(file.path)
+    )
+      reject("INVALID_MESSAGE", "Invalid projected path");
+    if (file.mode !== "0600") reject("INVALID_MESSAGE", "Invalid mode");
+    if (
+      typeof file.data !== "string" ||
+      file.data.length > PROJECT_MAX_BASE64 ||
+      (file.data !== "" && !BASE64.test(file.data))
+    )
+      reject("INVALID_MESSAGE", "Invalid projected payload");
+  }
+}
+
+function validateContextProjectedPayload(
+  payload: Record<string, unknown>,
+): void {
+  requireKeys(payload, new Set(["session_id", "written", "skipped", "bytes"]), [
+    "session_id",
+    "written",
+    "skipped",
+    "bytes",
+  ]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  for (const key of ["written", "skipped"] as const) {
+    const list = payload[key];
+    if (!Array.isArray(list) || list.length > 32)
+      reject("INVALID_MESSAGE", "Invalid projection result");
+    for (const item of list as unknown[]) {
+      if (typeof item !== "string" || item.length === 0 || item.length > 4096)
+        reject("INVALID_MESSAGE", "Invalid projection result");
+    }
+  }
+  if (
+    typeof payload.bytes !== "number" ||
+    !Number.isInteger(payload.bytes) ||
+    payload.bytes < 0 ||
+    payload.bytes > 2097152
+  )
+    reject("INVALID_MESSAGE", "Invalid projection size");
+}
+
 function validateFsStoredPayload(payload: Record<string, unknown>): void {
   requireKeys(payload, new Set(["path", "size", "modified_at"]), [
     "path",
@@ -910,6 +995,10 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
     validateFsUploadedPayload(data.payload);
   if (data.type === "filesystem.store") validateFsStorePayload(data.payload);
   if (data.type === "filesystem.stored") validateFsStoredPayload(data.payload);
+  if (data.type === "context.project")
+    validateContextProjectPayload(data.payload);
+  if (data.type === "context.projected")
+    validateContextProjectedPayload(data.payload);
   if (data.type === "node.register") validateRegisterPayload(data.payload);
   if (data.type === "node.heartbeat") validateHeartbeatPayload(data.payload);
   if (data.type === "node.runtime_status")

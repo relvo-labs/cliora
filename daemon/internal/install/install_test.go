@@ -236,6 +236,10 @@ func TestGeneratedConfigCarriesFilesystemPolicy(t *testing.T) {
 		cfg.Filesystem.Search.TimeoutSeconds != config.DefaultSearchTimeoutSec {
 		t.Errorf("search bounds = %+v", cfg.Filesystem.Search)
 	}
+	if cfg.Filesystem.Projection.RetentionDays != config.DefaultProjectionRetentionDays ||
+		cfg.Filesystem.Projection.CleanupIntervalHours != config.DefaultProjectionCleanupHours {
+		t.Errorf("projection retention = %+v", cfg.Filesystem.Projection)
+	}
 
 	// Round trip exactly as enrollment does: marshal to config.yaml, load back.
 	out, err := MarshalConfig(cfg)

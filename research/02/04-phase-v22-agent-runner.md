@@ -12,11 +12,11 @@
 
 - V2.1 出口條件全數通過。
 - D16、D17、D17b、D18、D24、D26、D27 已裁決。
-- ADR 0028（Agent Runner 模型與 run 生命週期）、**ADR 0029（run 的輸出：log 與產物）** 已撰寫並接受。
+- ADR 0029（Agent Runner 模型與 run 生命週期）、**ADR 0030（run 的輸出：log 與產物）** 已撰寫並接受。
 
 ## 工作包
 
-### AR-01 — ADR 0028：Runner 模型
+### AR-01 — ADR 0029：Runner 模型
 
 要寫清楚的五件事：
 
@@ -26,7 +26,7 @@
 4. **Agent Run 不是 Session**：不進 `terminal_sessions`、不走 Terminal relay、不佔 writer 名額、沒有 tmux 持久化。兩條路徑在程式碼上分開。
 5. **Alternatives rejected**：平台推送式派工（會長成排程引擎，且違反紅線 4 的「不自動指派」）、把 run 建成一種 Session（生命週期不同，會污染既有狀態機）、新做一支 runner binary（重複整條信任鏈）。
 
-### AR-02 — ADR 0029：run 的兩種輸出（log 與產物）
+### AR-02 — ADR 0030：run 的兩種輸出（log 與產物）
 
 一份 ADR 涵蓋兩者，因為它們是同一個問題的兩半：**run 產生的東西怎麼離開 node、存多久、誰清。**
 
@@ -40,7 +40,7 @@
 
 **兩者的保留期不同，這是本 ADR 最重要的一句**：log 是**診斷**（保留期到期即刪），產物是**交付物**（跟著卡片走）。混為一談會讓卡片上出現死連結。
 
-### AR-03 — Contract：runner 與 run 訊息（contract v1.10.0）
+### AR-03 — Contract：runner 與 run 訊息（contract v1.11.0）
 
 ```text
 runner.register    { runner_id, runtime, labels[], max_concurrent }
@@ -61,7 +61,7 @@ run.cancel         { run_id, reason }        ← 平台 → runner
 
 fixtures：每個訊息 valid ＋ invalid（缺 `run_id`、未知 phase、`log_chunk` 超過大小、`capacity` 為負、非 UTC 時間、未知型別）。
 
-### AR-04 — Daemon：runner 模式（`agentd` 0.8.0）
+### AR-04 — Daemon：runner 模式（`agentd` 0.9.0）
 
 - `agentd serve --runner` 或設定檔開關；一個 node 可跑多個 runner（不同 runtime）。
 - 容量控管：`max_concurrent`，滿了就不 poll。

@@ -8,6 +8,7 @@ package files
 
 import (
 	"bytes"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode/utf8"
@@ -36,6 +37,13 @@ func NewPolicy(fs config.FilesystemConfig) *Policy {
 // 0014). A path segment matching a denied directory denies everything beneath
 // it; otherwise the base name is matched (glob) against the denied patterns.
 func (p *Policy) SensitiveClassification(relPath string) string {
+	// Session credentials are platform-defined secrets, not an operator-tunable
+	// filename convention. Keep this check ahead of the configured policy so an
+	// empty/replaced denied_patterns list can never make a projected token
+	// previewable (plan/17 D14, SEC-001).
+	if isProjectedToken(relPath) {
+		return "sensitive"
+	}
 	segments := strings.Split(filepath.ToSlash(relPath), "/")
 	for _, seg := range segments[:max(0, len(segments)-1)] {
 		for _, d := range p.deniedDirs {
@@ -56,6 +64,17 @@ func (p *Policy) SensitiveClassification(relPath string) string {
 		}
 	}
 	return ""
+}
+
+// isProjectedToken identifies the credential files produced by context.project.
+// The scope is deliberately the closed platform-owned .cliora tree: a user's
+// ordinary source file named foo.token is still governed by their configured
+// policy, while every .cliora/**/*.token remains denied regardless of config.
+func isProjectedToken(relPath string) bool {
+	clean := path.Clean(filepath.ToSlash(relPath))
+	return clean != "." &&
+		strings.HasPrefix(clean, clioraDir+"/") &&
+		strings.HasSuffix(strings.ToLower(path.Base(clean)), ".token")
 }
 
 // classify maps a denied base name to an audit category. It inspects only the

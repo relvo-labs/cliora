@@ -110,7 +110,14 @@
 
 階段是 release gate，不是團隊分工。每階段內部照 `research/01` 的既有節奏：契約先定稿，四邊並行。
 
-**node 升級節奏**：V2.0／V2.1 不動 daemon；V2.2／V2.3／V2.4 各一次（`agentd` 0.8.0 / 0.9.0 / 0.10.0）；**V2.5 不動 daemon**（它只是一種 `delivery: none` 的 run）。
+**node 升級節奏**（2026-08-09 修訂）：V2.0 不動 daemon；**V2.1／V2.2／V2.3／V2.4 各一次**
+（`agentd` 0.8.0 / 0.9.0 / 0.10.0 / 0.11.0）；**V2.5 不動 daemon**（它只是一種 `delivery: none` 的 run）。
+
+> 原本寫的是「V2.0／V2.1 不動 daemon」。V2.1 之所以要動，是因為 `.cliora/` 投影在既有的
+> 寫入路徑上做不到（`.cliora/` 對使用者的寫入 verb 是禁區、協定裡沒有 mkdir），
+> 而 `cliora` CLI 也無法用投影發行。推導見 `plan/17/00-execution-plan.md` D1／D2。
+> **V2.1 的 daemon 變更範圍很窄**：一個新的寫入 verb、一個清理迴圈、一個 argv[0] 分派；
+> terminal、tmux、tunnel、既有檔案路徑零 diff，由 gate 斷言。
 
 ## 7. 紅線：撤銷了什麼、換上什麼
 

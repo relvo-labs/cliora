@@ -54,7 +54,40 @@ def test_scope_001_no_surface_parses_runtime_internal_events() -> None:
 
 
 def test_scope_002_no_central_approval_mechanism() -> None:
-    assert _no_surface_for("approve", "approval", "consent", "authoriz") == []
+    """SCOPE-002 forbids the platform standing between an agent and its own actions.
+
+    V2.1 adds `task.approve` and `POST /api/tasks/{id}/gates/{gate}`, and both contain
+    the word this guard used to scan for — so the guard has to say what it means
+    rather than what it matches. The two are different mechanisms:
+
+    * **The forbidden one** gates *execution*: a request the agent's runtime makes,
+      held until Central says yes. That would need an approval surface on the session,
+      terminal or filesystem path, and a way for the daemon to ask and wait.
+    * **The task-layer one** gates *governance*: a person ticks a review gate on a
+      card. Nothing is held, nothing is waiting on it, and it cannot stop or permit a
+      single byte the agent runs — in V2.1 nothing executes at all (ADR 0028 sec 1).
+
+    So the assertion narrows to the execution path and keeps its teeth there, and the
+    task layer is named explicitly rather than allowed by an unexamined word list.
+    """
+    execution_surface = " ".join(
+        sorted(
+            path
+            for path in _route_paths()
+            if "/sessions" in path or "/nodes" in path or "/tunnels" in path
+        )
+        + sorted(_message_names())
+        + sorted(
+            action for action in rbac.ALL_ACTIONS if not action.startswith(("task.", "project."))
+        )
+    ).lower()
+    hits = [
+        word for word in ("approve", "approval", "consent", "authoriz") if word in execution_surface
+    ]
+    assert hits == []
+    # And the governance one stays where it is: on a card, never on a session.
+    assert "task.approve" in rbac.ALL_ACTIONS
+    assert not [path for path in _route_paths() if "gates" in path and "/sessions" in path]
 
 
 def test_scope_003_nothing_intercepts_the_cli_native_permission_prompt() -> None:

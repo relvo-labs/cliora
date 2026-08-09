@@ -11,7 +11,7 @@ import {
 import { useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
-import type { NodeDetail, SessionDetail } from "../api/dto";
+import type { NodeDetail, SessionDetail, Task } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import AsyncState from "../components/common/AsyncState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
@@ -252,12 +252,17 @@ const host = ref<HTMLElement | null>(null);
 const terminateOpen = ref(false);
 const actionError = ref("");
 const busy = ref(false);
+const projectionBusy = ref(false);
+const taskContext = ref<Task | null>(null);
 
 const resource = useAsyncResource<SessionDetail>(async () => {
   const detail = await sessions.fetchSession(props.id);
   // Posture is fetched alongside, not awaited into the critical path's failure
   // modes: a node read that fails must not make the workspace unopenable.
   void loadNodePosture(detail.node_id);
+  taskContext.value = detail.task_id
+    ? await api().getTask(detail.task_id)
+    : null;
   return detail;
 });
 
@@ -460,6 +465,19 @@ async function confirmTerminate(): Promise<void> {
     busy.value = false;
   }
 }
+
+async function retryProjection(): Promise<void> {
+  projectionBusy.value = true;
+  actionError.value = "";
+  try {
+    await sessions.retryContextProjection(props.id);
+  } catch (caught) {
+    actionError.value =
+      caught instanceof ApiError ? caught.message : "情境投影重試失敗。";
+  } finally {
+    projectionBusy.value = false;
+  }
+}
 </script>
 
 <template>
@@ -473,6 +491,31 @@ async function confirmTerminate(): Promise<void> {
     <div class="workspace">
       <header v-if="session" class="head">
         <div class="meta">
+          <nav
+            v-if="session.project_id"
+            class="breadcrumbs"
+            aria-label="Breadcrumb"
+          >
+            <RouterLink
+              :to="{
+                name: 'project-detail',
+                params: { id: session.project_id },
+              }"
+            >
+              Project
+            </RouterLink>
+            <template v-if="taskContext">
+              <span>/</span>
+              <RouterLink
+                :to="{
+                  name: 'task-detail',
+                  params: { id: session.project_id, taskId: taskContext.id },
+                }"
+              >
+                {{ taskContext.card_ref }}
+              </RouterLink>
+            </template>
+          </nav>
           <h1>{{ session.name }}</h1>
           <span class="dim">{{ session.runtime }}</span>
           <span class="dim" :title="session.workspace">{{
@@ -520,6 +563,43 @@ async function confirmTerminate(): Promise<void> {
           </button>
         </div>
       </header>
+
+      <p
+        v-if="session?.context_projection === 'ok'"
+        class="banner projection-ok"
+        role="status"
+        data-context-projection="ok"
+      >
+        任務情境已送達 <code>.cliora/context/</code>。
+      </p>
+      <p
+        v-else-if="session?.context_projection === 'failed'"
+        class="banner"
+        role="alert"
+        data-context-projection="failed"
+      >
+        任務情境未送達。{{ session.context_projection_detail ?? "" }}
+        <button
+          class="link"
+          :disabled="projectionBusy"
+          @click="retryProjection"
+        >
+          {{ projectionBusy ? "重試中…" : "重試" }}
+        </button>
+      </p>
+      <p
+        v-else-if="session?.context_projection === 'node_unsupported'"
+        class="banner"
+        role="status"
+        data-context-projection="node_unsupported"
+      >
+        此 node 的 agentd 需升級到 0.8.0 才能送出任務情境。
+        <RouterLink
+          :to="{ name: 'node-detail', params: { id: session.node_id } }"
+        >
+          前往更新
+        </RouterLink>
+      </p>
 
       <p v-if="actionError" class="banner" role="alert">{{ actionError }}</p>
       <p

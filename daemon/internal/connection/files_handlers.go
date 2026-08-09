@@ -392,6 +392,82 @@ type fsUploadPayload struct {
 // makes it useful (ADR 0026 §2). Still absent, and still enforced by the wire
 // schema's additionalProperties:false: overwrite, mode, mime, precondition,
 // revision. Nothing in this struct can ask to replace something.
+// handleContextProject writes the platform's own files into `.cliora/` (ADR 0028).
+//
+// A separate handler from handleFsStore, not a mode of it, for the same reason the
+// daemon has two write verbs: the two differ in *who may write where*, and one
+// handler with a boolean would put that difference behind a parameter someone can
+// pass wrongly. Here the caller names every path, and the schema plus
+// `ProjectableClassification` are what confine it.
+func (m *Manager) handleContextProject(env protocol.Envelope, data []byte, send func([]byte) error) {
+	if protocol.ValidateControl(data) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	var p contextProjectPayload
+	if json.Unmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	root, code, ok := m.openSessionWorkspace(p.SessionID)
+	if !ok {
+		m.replyError(send, env.RequestID, orSessionNotFound(code))
+		return
+	}
+	defer root.Close()
+
+	started := time.Now()
+	res, err := m.files.Project(root, p.Files, m.now())
+	if err != nil {
+		code := workspaceCode(err)
+		metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "project", "code": code})
+		m.replyError(send, env.RequestID, code)
+		return
+	}
+	if res.Denied {
+		metrics.Increment(metrics.FilesystemRequestTotal,
+			map[string]string{"op": "project", "code": res.Code})
+		slog.Info("context projection refused",
+			"event", "context.project", "request_id", env.RequestID,
+			"session_id", p.SessionID.String(), "code", res.Code, "reason", res.Reason,
+			"duration_ms", time.Since(started).Milliseconds())
+		m.replyError(send, env.RequestID, res.Code)
+		return
+	}
+	m.rememberProcessVersion(p.ProcessVersion)
+	// A projection gives us both an active workspace and the process version to
+	// preserve. Sweep asynchronously rather than making a stale directory walk
+	// part of the projection latency.
+	go m.pruneWorkspaceProjection(root.Canonical())
+	metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "project", "code": "OK"})
+	// Paths and counts only. The context pack's *contents* are a task's description and
+	// a credential, and neither has any business in a log line.
+	slog.Info("context projected",
+		"event", "context.project", "request_id", env.RequestID,
+		"session_id", p.SessionID.String(), "written", len(res.Written),
+		"skipped", len(res.Skipped), "bytes", res.Bytes,
+		"duration_ms", time.Since(started).Milliseconds())
+
+	frame, buildErr := protocol.BuildResponse("context.projected", m.creds.NodeID, env.RequestID,
+		true, map[string]any{
+			"session_id": p.SessionID.String(),
+			"written":    res.Written,
+			"skipped":    res.Skipped,
+			"bytes":      res.Bytes,
+		}, m.now())
+	if buildErr != nil {
+		m.replyError(send, env.RequestID, "FRAME_TOO_LARGE")
+		return
+	}
+	_ = send(frame)
+}
+
+type contextProjectPayload struct {
+	SessionID      uuid.UUID           `json:"session_id"`
+	ProcessVersion string              `json:"process_version"`
+	Files          []files.ProjectFile `json:"files"`
+}
+
 type fsStorePayload struct {
 	SessionID uuid.UUID `json:"session_id"`
 	Directory string    `json:"directory"`

@@ -283,6 +283,49 @@
 | FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
 | FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py<br>code:frontend/src/views/SessionWorkspaceView.vue | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path<br>pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused |
 | FR-SHELL-001 | [FR-SHELL-001.AC-09](../../research/prd.md#fr-shell-001-ac-09) | 系統終端機可經 sudo 取得 root 時，介面須明示該 Node 的提權姿態。 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:frontend/src/views/SessionWorkspaceView.vue | vitest:frontend/src/views/NodeDetailPosture.test.ts |
+| FR-TASK-001 | [FR-TASK-001.AC-01](../../research/prd.md#fr-task-001-ac-01) | 一個 Project 內可建立 Epic、User Story 與 Task 三層；Task 可指定所屬 User Story， | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-001 | [FR-TASK-001.AC-02](../../research/prd.md#fr-task-001-ac-02) | 每個 Epic、User Story 與 Task 有一個專案內唯一、人類可讀的編號（如 TASK-12）， | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-001 | [FR-TASK-001.AC-03](../../research/prd.md#fr-task-001-ac-03) | 指定了 Epic 但未指定 User Story 的 Task，須在藍圖中呈現於該 Epic 的未分類群組； | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-001 | [FR-TASK-001.AC-04](../../research/prd.md#fr-task-001-ac-04) | 封存的 Project 不得建立新的 Epic、User Story 或 Task，亦不得修改既有卡片； | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-001 | [FR-TASK-001.AC-05](../../research/prd.md#fr-task-001-ac-05) | 建立與更新均須留下稽核紀錄，並在該 Project 的活動時間軸產生對應事件。 | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-002 | [FR-TASK-002.AC-01](../../research/prd.md#fr-task-002-ac-01) | 車道有六個：待辦、阻塞、就緒、進行中、驗證中、完成；卡片可在任意兩個車道之間移動。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/api/http/tasks.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-002 | [FR-TASK-002.AC-02](../../research/prd.md#fr-task-002-ac-02) | 卡片進入「就緒」或其後任一車道時，其所有前置任務必須均已完成； | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/api/http/tasks.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-002 | [FR-TASK-002.AC-03](../../research/prd.md#fr-task-002-ac-03) | 就緒條件（七項）未齊備時不阻擋移動，但回應須攜帶警告，且畫面須逐項標示缺項。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/api/http/tasks.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-002 | [FR-TASK-002.AC-04](../../research/prd.md#fr-task-002-ac-04) | 車道的建議並行上限超標時，僅以視覺提示呈現，不得阻擋。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/api/http/tasks.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-002 | [FR-TASK-002.AC-05](../../research/prd.md#fr-task-002-ac-05) | 看板回應不得包含驗收標準全文與審查關卡明細；那是任務詳情的內容。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/api/http/tasks.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-003 | [FR-TASK-003.AC-01](../../research/prd.md#fr-task-003-ac-01) | 更新一張卡片須攜帶其版本；版本不符時拒絕，且不得寫入任何一部分變更。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-003 | [FR-TASK-003.AC-02](../../research/prd.md#fr-task-003-ac-02) | 版本衝突的回應須附上該卡片的現值，使呼叫端不需再次查詢即可重新呈現。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-003 | [FR-TASK-003.AC-03](../../research/prd.md#fr-task-003-ac-03) | 相依關係不得形成循環；建立時偵測並拒絕，錯誤須指出形成循環的路徑。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-003 | [FR-TASK-003.AC-04](../../research/prd.md#fr-task-003-ac-04) | 一張卡片不得相依於自己。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
+| FR-TASK-004 | [FR-TASK-004.AC-01](../../research/prd.md#fr-task-004-ac-01) | 就緒條件七項與審查關卡六項由平台提供的流程定義決定；本階段為全域單一定義，不可由專案覆寫。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/process.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-004 | [FR-TASK-004.AC-02](../../research/prd.md#fr-task-004-ac-02) | 勾選審查關卡須具備核准權限，且操作者必須是人類；非人類憑證一律拒絕。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/process.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-004 | [FR-TASK-004.AC-03](../../research/prd.md#fr-task-004-ac-03) | 每個已勾選的關卡須記錄核准者與核准時間，並可於畫面上看到。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/process.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-004 | [FR-TASK-004.AC-04](../../research/prd.md#fr-task-004-ac-04) | 取消核准與核准同權限，且同樣留下稽核紀錄。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/process.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-004 | [FR-TASK-004.AC-05](../../research/prd.md#fr-task-004-ac-05) | 未啟用第三方隧道整合時，涉及畫面預覽的關卡須自動停用（不得倚賴管理者手動關閉）， | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/process.py | pytest:backend/tests/db/test_tasks_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-01](../../research/prd.md#fr-task-005-ac-01) | 使用者可以一句自然語言的敘述提出需求，不強制填寫其他欄位。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-02](../../research/prd.md#fr-task-005-ac-02) | 規格為版本列，只新增不修改；每一版記錄撰寫者與時間。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-03](../../research/prd.md#fr-task-005-ac-03) | 規格存在未解決的開放問題時不得核准，且拒絕須指名是哪幾個問題。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-04](../../research/prd.md#fr-task-005-ac-04) | 未核准的規格不得被拆解為任務提案；此限制須由 API 強制，不得僅由畫面隱藏。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-05](../../research/prd.md#fr-task-005-ac-05) | 任務提案可全部、部分或編輯後接受；被拒絕的提案須保留其理由。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-06](../../research/prd.md#fr-task-005-ac-06) | 接受提案所建立的卡片，其就緒條件若不齊備，須落在待辦而非就緒，並說明原因。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-005 | [FR-TASK-005.AC-07](../../research/prd.md#fr-task-005-ac-07) | 由提案建立的卡片須可回溯至來源需求與提案。 | plan:plan/17/03-process-rbac-and-task-api.md<br>source:research/prd.md | code:backend/app/services/requirements.py | pytest:backend/tests/db/test_requirements_api.py |
+| FR-TASK-006 | [FR-TASK-006.AC-01](../../research/prd.md#fr-task-006-ac-01) | 建立 Session 時可指定所屬 Task；該欄位為選填，且永遠為選填。 | plan:plan/17/07-frontend-board-and-requirements.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-TASK-006 | [FR-TASK-006.AC-02](../../research/prd.md#fr-task-006-ac-02) | 指定 Task 時必須同時指定 Project，且該 Task 必須屬於該 Project；不符時拒絕建立。 | plan:plan/17/07-frontend-board-and-requirements.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-TASK-006 | [FR-TASK-006.AC-03](../../research/prd.md#fr-task-006-ac-03) | 平台不得由 Workspace 或 Session 反查所屬 Task。 | plan:plan/17/07-frontend-board-and-requirements.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-TASK-006 | [FR-TASK-006.AC-04](../../research/prd.md#fr-task-006-ac-04) | 任務詳情須顯示其歷史 Session（含已結束者）；Session 詳情須顯示所屬 Task。 | plan:plan/17/07-frontend-board-and-requirements.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-TASK-007 | [FR-TASK-007.AC-01](../../research/prd.md#fr-task-007-ac-01) | Session 建立後，平台將任務情境、流程說明與該 Session 的憑證寫入工作目錄下的 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-02](../../research/prd.md#fr-task-007-ac-02) | 情境包須包含任務目標、範圍、逐項驗收標準、相依任務與其狀態，且不得超過 4 KB； | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-03](../../research/prd.md#fr-task-007-ac-03) | 投影不得覆寫任何既有檔案；同版本的流程說明已存在時視為成功。 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-04](../../research/prd.md#fr-task-007-ac-04) | 投影失敗不得使 Session 建立失敗；失敗須記錄並在畫面上提供重試。 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-05](../../research/prd.md#fr-task-007-ac-05) | Node 的 daemon 版本不支援投影時，Session 須照常建立，並顯示可行動的升級說明。 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-06](../../research/prd.md#fr-task-007-ac-06) | 投影產生的檔案有保留期並由 daemon 清理；清理不得觸及使用者上傳的檔案與 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-007 | [FR-TASK-007.AC-07](../../research/prd.md#fr-task-007-ac-07) | 投影完成後，於使用者的版本控制中不得出現任何未被忽略的新檔案。 | plan:plan/17/05-contract-and-daemon-projection.md<br>source:research/prd.md | code:daemon/internal/files/project.go | gotest:daemon/internal/files/project_test.go |
+| FR-TASK-008 | [FR-TASK-008.AC-01](../../research/prd.md#fr-task-008-ac-01) | 每個 Session 發行至多一枚憑證，範圍限於該 Session 所屬的單一 Project。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
+| FR-TASK-008 | [FR-TASK-008.AC-02](../../research/prd.md#fr-task-008-ac-02) | 憑證的權限範圍在發行時固定，且永遠不含審查關卡核准、專案管理、檔案與終端相關動作。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
+| FR-TASK-008 | [FR-TASK-008.AC-03](../../research/prd.md#fr-task-008-ac-03) | Session 進入任一終止狀態時憑證立即失效；憑證另有效期上限。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
+| FR-TASK-008 | [FR-TASK-008.AC-04](../../research/prd.md#fr-task-008-ac-04) | 憑證只以不可逆的形式儲存；任何 API 回應、日誌、稽核紀錄或畫面都不得出現憑證值。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
+| FR-TASK-008 | [FR-TASK-008.AC-05](../../research/prd.md#fr-task-008-ac-05) | 以憑證進行的寫入，其稽核與活動紀錄須標示為非人類操作者，不得冒用任何人類身分。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
+| FR-TASK-008 | [FR-TASK-008.AC-06](../../research/prd.md#fr-task-008-ac-06) | 平台不可用時，使用憑證的工具須直接失敗而非排隊補送，且其訊息須說明 Session 本身可繼續工作。 | plan:plan/17/04-session-token-and-agent-principal.md<br>source:research/prd.md | code:backend/app/services/agent_auth.py | pytest:backend/tests/db/test_agent_credential.py |
 | FR-TERM-001 | [FR-TERM-001.AC-01](../../research/prd.md#fr-term-001-ac-01) | 前端使用 xterm.js 顯示完整 ANSI Terminal。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#initializes exactly one Terminal with three addons<br>playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate |
 | FR-TERM-001 | [FR-TERM-001.AC-02](../../research/prd.md#fr-term-001-ac-02) | ANSI 色彩 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-03](../../research/prd.md#fr-term-001-ac-03) | Cursor | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -543,6 +586,11 @@
 - `code:backend/app/api/http/files.py` ← `FR-FILE-009.AC-01` (implemented_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-010.AC-01` (implemented_by)
 - `code:backend/app/api/http/integrations.py` ← `FR-TUNNEL-004.AC-01` (implemented_by)
+- `code:backend/app/api/http/tasks.py` ← `FR-TASK-002.AC-01` (implemented_by)
+- `code:backend/app/api/http/tasks.py` ← `FR-TASK-002.AC-02` (implemented_by)
+- `code:backend/app/api/http/tasks.py` ← `FR-TASK-002.AC-03` (implemented_by)
+- `code:backend/app/api/http/tasks.py` ← `FR-TASK-002.AC-04` (implemented_by)
+- `code:backend/app/api/http/tasks.py` ← `FR-TASK-002.AC-05` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-001.AC-02` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-002.AC-04` (implemented_by)
 - `code:backend/app/db/migrations/versions/0020_node_file_upload.py` ← `FR-FILE-010.AC-11` (implemented_by)
@@ -561,6 +609,12 @@
 - `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-03` (implemented_by)
 - `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-04` (implemented_by)
 - `code:backend/app/services/activity.py` ← `FR-PROJECT-004.AC-05` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-01` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-02` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-03` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-04` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-05` (implemented_by)
+- `code:backend/app/services/agent_auth.py` ← `FR-TASK-008.AC-06` (implemented_by)
 - `code:backend/app/services/audit.py` ← `FR-SHELL-001.AC-06` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-01` (implemented_by)
 - `code:backend/app/services/audit.py` ← `SEC-006.AC-02` (implemented_by)
@@ -639,6 +693,11 @@
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-03` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-04` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-005.AC-05` (implemented_by)
+- `code:backend/app/services/process.py` ← `FR-TASK-004.AC-01` (implemented_by)
+- `code:backend/app/services/process.py` ← `FR-TASK-004.AC-02` (implemented_by)
+- `code:backend/app/services/process.py` ← `FR-TASK-004.AC-03` (implemented_by)
+- `code:backend/app/services/process.py` ← `FR-TASK-004.AC-04` (implemented_by)
+- `code:backend/app/services/process.py` ← `FR-TASK-004.AC-05` (implemented_by)
 - `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-01` (implemented_by)
 - `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-02` (implemented_by)
 - `code:backend/app/services/projects.py` ← `FR-PROJECT-001.AC-03` (implemented_by)
@@ -673,6 +732,13 @@
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-07` (implemented_by)
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-08` (implemented_by)
 - `code:backend/app/services/registry.py` ← `FR-NODE-002.AC-09` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-01` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-02` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-03` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-04` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-05` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-06` (implemented_by)
+- `code:backend/app/services/requirements.py` ← `FR-TASK-005.AC-07` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-01` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-02` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-PROJECT-003.AC-03` (implemented_by)
@@ -720,7 +786,20 @@
 - `code:backend/app/services/sessions.py` ← `FR-SESSION-007.AC-04` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SHELL-001.AC-04` (implemented_by)
 - `code:backend/app/services/sessions.py` ← `FR-SHELL-001.AC-07` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-TASK-006.AC-01` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-TASK-006.AC-02` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-TASK-006.AC-03` (implemented_by)
+- `code:backend/app/services/sessions.py` ← `FR-TASK-006.AC-04` (implemented_by)
 - `code:backend/app/services/shell_reaper.py` ← `FR-SHELL-001.AC-08` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-001.AC-01` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-001.AC-02` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-001.AC-03` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-001.AC-04` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-001.AC-05` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-003.AC-01` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-003.AC-02` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-003.AC-03` (implemented_by)
+- `code:backend/app/services/tasks.py` ← `FR-TASK-003.AC-04` (implemented_by)
 - `code:backend/app/services/tunnels.py` ← `FR-TUNNEL-001.AC-01` (implemented_by)
 - `code:backend/app/services/tunnels.py` ← `FR-TUNNEL-001.AC-03` (implemented_by)
 - `code:backend/app/services/tunnels.py` ← `FR-TUNNEL-001.AC-05` (implemented_by)
@@ -740,6 +819,12 @@
 - `pytest:backend/tests/contract/test_contract.py::test_json_manifest` ← `SEC-002.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py::test_json_manifest` ← `TECH-SEC-07.AC-01` (verified_by)
 - `pytest:backend/tests/contract/test_contract.py::test_oversize_control_and_binary_are_rejected` ← `TECH-SEC-15.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_agent_credential.py` ← `FR-TASK-008.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `FR-SHELL-001.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `MVP-AC-20.AC-01` (validated_by)
 - `pytest:backend/tests/db/test_audit_coverage.py` ← `SEC-006.AC-01` (verified_by)
@@ -857,6 +942,13 @@
 - `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_projects_data_layer.py` ← `FR-PROJECT-002.AC-08` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-06` (verified_by)
+- `pytest:backend/tests/db/test_requirements_api.py` ← `FR-TASK-005.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-001.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-003.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_api.py` ← `FR-SESSION-004.AC-01` (verified_by)
@@ -894,6 +986,10 @@
 - `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-PROJECT-005.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-TASK-006.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-TASK-006.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-TASK-006.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_sessions_project_link.py` ← `FR-TASK-006.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected` ← `FR-NODE-005.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_create_missing_runtime_rejected` ← `FR-RUNTIME-002.AC-06` (verified_by)
@@ -902,6 +998,25 @@
 - `pytest:backend/tests/db/test_sessions_service.py::test_session_limit_reached` ← `TECH-SEC-14.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_terminate_already_ended_rejected` ← `FR-SESSION-005.AC-07` (verified_by)
 - `pytest:backend/tests/db/test_sessions_service.py::test_terminate_transitions_to_terminated` ← `FR-SESSION-005.AC-07` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-001.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-001.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-001.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-001.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-001.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-003.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-003.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-003.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_task_data_layer.py` ← `FR-TASK-003.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-002.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-002.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-002.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-002.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-002.AC-05` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-004.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-004.AC-02` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-004.AC-03` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-004.AC-04` (verified_by)
+- `pytest:backend/tests/db/test_tasks_api.py` ← `FR-TASK-004.AC-05` (verified_by)
 - `pytest:backend/tests/db/test_tunnel_schema.py::test_a_port_below_the_floor_cannot_be_stored_at_all` ← `FR-TUNNEL-001.AC-03` (verified_by)
 - `pytest:backend/tests/db/test_tunnels_api.py::test_a_developer_cannot_close_someone_elses_tunnel_but_an_admin_can` ← `FR-TUNNEL-002.AC-04` (verified_by)
 - `pytest:backend/tests/db/test_tunnels_api.py::test_a_new_url_from_the_node_replaces_the_old_one_and_is_counted` ← `FR-TUNNEL-001.AC-06` (verified_by)
@@ -1157,6 +1272,20 @@
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-02` (verified_by)
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-03` (verified_by)
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-04` (measured_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-01` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-02` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-03` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-04` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-05` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-06` (implemented_by)
+- `code:daemon/internal/files/project.go` ← `FR-TASK-007.AC-07` (implemented_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-01` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-02` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-03` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-04` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-05` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-06` (verified_by)
+- `gotest:daemon/internal/files/project_test.go` ← `FR-TASK-007.AC-07` (verified_by)
 - `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-04` (implemented_by)
 - `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-05` (implemented_by)
 - `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-08` (implemented_by)
@@ -1985,6 +2114,49 @@
 - `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-03` (planned_by)
 - `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-04` (planned_by)
 - `plan:plan/16/04-session-association-and-feature-flag.md` ← `FR-PROJECT-005.AC-05` (planned_by)
+- `plan:plan/17/02-data-layer.md` ← `FR-TASK-001.AC-01` (planned_by)
+- `plan:plan/17/02-data-layer.md` ← `FR-TASK-001.AC-02` (planned_by)
+- `plan:plan/17/02-data-layer.md` ← `FR-TASK-001.AC-03` (planned_by)
+- `plan:plan/17/02-data-layer.md` ← `FR-TASK-001.AC-04` (planned_by)
+- `plan:plan/17/02-data-layer.md` ← `FR-TASK-001.AC-05` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-002.AC-01` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-002.AC-02` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-002.AC-03` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-002.AC-04` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-002.AC-05` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-003.AC-01` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-003.AC-02` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-003.AC-03` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-003.AC-04` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-004.AC-01` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-004.AC-02` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-004.AC-03` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-004.AC-04` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-004.AC-05` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-01` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-02` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-03` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-04` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-05` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-06` (planned_by)
+- `plan:plan/17/03-process-rbac-and-task-api.md` ← `FR-TASK-005.AC-07` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-01` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-02` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-03` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-04` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-05` (planned_by)
+- `plan:plan/17/04-session-token-and-agent-principal.md` ← `FR-TASK-008.AC-06` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-01` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-02` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-03` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-04` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-05` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-06` (planned_by)
+- `plan:plan/17/05-contract-and-daemon-projection.md` ← `FR-TASK-007.AC-07` (planned_by)
+- `plan:plan/17/07-frontend-board-and-requirements.md` ← `FR-TASK-006.AC-01` (planned_by)
+- `plan:plan/17/07-frontend-board-and-requirements.md` ← `FR-TASK-006.AC-02` (planned_by)
+- `plan:plan/17/07-frontend-board-and-requirements.md` ← `FR-TASK-006.AC-03` (planned_by)
+- `plan:plan/17/07-frontend-board-and-requirements.md` ← `FR-TASK-006.AC-04` (planned_by)
 - `source:research/prd.md` ← `FR-PROJECT-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-PROJECT-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-PROJECT-001.AC-03` (specified_by)
@@ -2019,6 +2191,49 @@
 - `source:research/prd.md` ← `FR-SHELL-001.AC-06` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-07` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-08` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-001.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-001.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-001.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-001.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-001.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-002.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-002.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-002.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-002.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-002.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-003.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-003.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-003.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-003.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-004.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-004.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-004.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-004.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-004.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-06` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-005.AC-07` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-006.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-006.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-006.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-006.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-06` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-007.AC-07` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-01` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-02` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-03` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-04` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-05` (specified_by)
+- `source:research/prd.md` ← `FR-TASK-008.AC-06` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-03` (specified_by)

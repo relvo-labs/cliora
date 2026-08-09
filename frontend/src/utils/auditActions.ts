@@ -44,6 +44,15 @@ const LABELS: Record<string, string> = {
   "project.archive": "封存專案",
   "project.workspace_bind": "綁定 Workspace",
   "project.workspace_unbind": "解綁 Workspace",
+  "task.create": "建立任務",
+  "task.update": "更新任務",
+  "task.gate_approve": "審查關卡核准",
+  "requirement.create": "提出需求",
+  "requirement.approve": "核准規格",
+  "requirement.proposal_accept": "接受任務提案",
+  "session_token.issue": "發行 Session 憑證",
+  "session_token.revoke": "撤銷 Session 憑證",
+  "session.context_project": "投影 Session 任務情境",
   // 單獨一個動作而不是 tunnel.create 的一個欄位：「誰同意這個 port 對任何拿到網址的人開放」
   // 是事後會被問到的問題，而藏在別的動作裡的欄位無法被篩選。
   "tunnel.public_acknowledged": "確認開放無保護預覽",
@@ -89,6 +98,20 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "project.archive",
       "project.workspace_bind",
       "project.workspace_unbind",
+    ],
+  },
+  {
+    title: "任務 / Task",
+    actions: [
+      "task.create",
+      "task.update",
+      "task.gate_approve",
+      "requirement.create",
+      "requirement.approve",
+      "requirement.proposal_accept",
+      "session_token.issue",
+      "session_token.revoke",
+      "session.context_project",
     ],
   },
   {

@@ -58,6 +58,13 @@ func (s *Service) Search(ctx context.Context, root *workspace.Root, keyword, sta
 			}
 			return nil
 		}
+		// Search is also a read surface. In particular it must not disclose the
+		// projected session credential filename; applying the same central policy
+		// here prevents future sensitive patterns from drifting between preview
+		// and search.
+		if s.policy.SensitiveClassification(p) != "" {
+			return nil
+		}
 		scanned++
 		if scanned > s.search.MaxScanned {
 			stopped = "scanned"

@@ -10,11 +10,11 @@
 
 - V2.2 出口條件全數通過。
 - D19、D20、D21、D22、D23 已裁決。**2026-08-08 補齊**：主金鑰放**環境變數**；git 認證**同時支援 fine-grained PAT 與 SSH key**。
-- ADR 0030（隔離工作目錄與 git 存取）、ADR 0031（機密管理與 SEC-002 修訂）已撰寫並接受。
+- ADR 0031（隔離工作目錄與 git 存取）、ADR 0032（機密管理與 SEC-002 修訂）已撰寫並接受。
 
 ## 工作包
 
-### SC-01 — ADR 0031：機密管理與 SEC-002 修訂（**先寫這一份**）
+### SC-01 — ADR 0032：機密管理與 SEC-002 修訂（**先寫這一份**）
 
 放在最前面，因為它決定其餘工作包能不能開工。
 
@@ -30,7 +30,7 @@
 
 4. **Alternatives rejected**：卡片直接寫 env 值（機密會進資料庫明文欄位與 UI）、runner 從 node 本機 `.env` 讀（平台無法稽核也無法撤銷）、與 `tunnel_integration` 共用一張表（風險等級不同，混用會讓規則互相污染）、**主金鑰放 KMS**（本次否決的理由是新增雲端依賴且自架部署做不到，**不是因為它比較差**——這句要寫，否則日後看起來像是沒想過）。
 
-### SC-02 — ADR 0030：隔離工作目錄與 git 存取
+### SC-02 — ADR 0031：隔離工作目錄與 git 存取
 
 **目錄**（D19）：`<agentd_state_dir>/runs/<run_id>/`，daemon 擁有，**不在任何 allowed root 內**，既有檔案瀏覽 API 不得觸及。六條規則（不在 root 內、每次新建、配額、repo 快取、誰清理、`artifacts/` 是列舉不是瀏覽器）逐條寫進 Decision。
 
@@ -75,11 +75,11 @@ migration `0027` — `project_secrets`：`id`、`project_id`、`name`、`kind`�
   **不得**寫一個 0600 私鑰檔再刪除——違反不落檔規則，且刪除失敗就留在磁碟上。
   加上 **known_hosts pinning** 與 `StrictHostKeyChecking=yes`（沿用 `fix/update-healthcheck-known-hosts` 的既有做法）。
 
-> **socket 不是金鑰。** 這是對「機密不落檔」的細化，要明寫進 ADR 0031，否則實作時很容易退回「寫個 0600 檔案就好」。
+> **socket 不是金鑰。** 這是對「機密不落檔」的細化，要明寫進 ADR 0032，否則實作時很容易退回「寫個 0600 檔案就好」。
 
 **一個必須在 UI 就擋下來的後果**：SSH 只有 git 傳輸、沒有 API，所以用 SSH 認證的 repo 若卡片 `delivery: pull_request`，**必定還需要一枚 `provider_token`**。設定 repository 時就檢查並提示——不要等 run 跑到最後一步才失敗，那時分支已經推上去了。
 
-### SC-05 — Daemon：隔離目錄與 git（`agentd` 0.9.0）
+### SC-05 — Daemon：隔離目錄與 git（`agentd` 0.10.0）
 
 - 目錄建立、權限、配額檢查（單 run 上限、node 總量上限；超過就停止 poll 並回報）。
 - **repo 快取**：`<state>/mirrors/<repo_hash>/` 放 bare mirror，run 目錄用 `git worktree add` 或淺 clone 掛出來。mirror 定期 `git remote update`，也有保留期。

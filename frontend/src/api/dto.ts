@@ -223,11 +223,14 @@ export interface SessionSummary {
   /** `null` for an ad-hoc session, and for every session where the project layer
    *  is switched off. Always present, so the shape does not depend on config. */
   project_id: string | null;
+  task_id: string | null;
 }
 
 export interface SessionDetail extends SessionSummary {
   exit_code: number | null;
   error_message: string | null;
+  context_projection: "pending" | "ok" | "failed" | "node_unsupported" | null;
+  context_projection_detail: string | null;
 }
 
 export interface CreateSessionInput {
@@ -237,6 +240,10 @@ export interface CreateSessionInput {
   workspace: string;
   rows?: number;
   columns?: number;
+  project_id?: string;
+  /** Optional, and permanently so. Requires `project_id`: a card belongs to a
+   *  project, and the platform never infers one from the other (FR-TASK-006). */
+  task_id?: string;
 }
 
 export interface AttachTicket {
@@ -537,6 +544,18 @@ export const AUDIT_ACTIONS = [
   "project.archive",
   "project.workspace_bind",
   "project.workspace_unbind",
+  // 任務層（ADR 0028）。三個動作而不是一個：「建了一張卡」「改了一張卡」「核准了一個
+  // 審查關卡」是分開被問的問題，而第三個正是稽核最常來找的那一個——在合併後的動作
+  // metadata 裡過濾不是答案。
+  "task.create",
+  "task.update",
+  "task.gate_approve",
+  "requirement.create",
+  "requirement.approve",
+  "requirement.proposal_accept",
+  "session_token.issue",
+  "session_token.revoke",
+  "session.context_project",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -732,6 +751,14 @@ export const ACTION_INTEGRATION_MANAGE = "integration.manage";
 export const ACTION_PROJECT_VIEW = "project.view";
 export const ACTION_PROJECT_MANAGE = "project.manage";
 
+// V2.1 task layer (ADR 0028). `task.approve` is separate from `task.update` even
+// though the same two roles hold both: that split is what lets a session
+// credential's scope exclude approval, and an action that does not exist cannot be
+// excluded from a scope. Do not merge them.
+export const ACTION_TASK_CREATE = "task.create";
+export const ACTION_TASK_UPDATE = "task.update";
+export const ACTION_TASK_APPROVE = "task.approve";
+
 // --- V2.0 project layer (ADR 0027) ---
 
 /** Why a binding cannot be used right now. Deliberately the *same* vocabulary as
@@ -790,10 +817,228 @@ export interface ActivityEvent {
   actor_id: string | null;
   actor_name: string | null;
   session_id: string | null;
+  /** `user` / `agent` / `system` — what *kind* of actor, never which one, so it
+   *  survives redaction. Without it those three render identically (ADR 0028). */
+  actor_kind: "user" | "agent" | "system";
 }
 
 export interface ActivityPage {
   items: ActivityEvent[];
   actors_hidden: boolean;
   next_before: string | null;
+}
+
+// --- V2.1 task layer (ADR 0028) -------------------------------------------------
+
+export type TaskStage =
+  | "backlog"
+  | "blocked"
+  | "ready"
+  | "implementing"
+  | "verify"
+  | "done";
+
+/** A card as the *board* renders it. Deliberately without acceptance criteria and
+ *  without gate detail: M1 measured the full card at 439 KB for 200 cards against
+ *  74 KB for this shape, and that measurement is what replaced pagination
+ *  (`plan/17/10-…md` §1). Widening this type is how that decision gets undone. */
+export interface BoardCard {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+  risk: string;
+  priority: string;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  delivery: string;
+  blocking_count: number;
+  gates_approved_count: number;
+  version: number;
+  updated_at: string;
+}
+
+export interface BoardLane {
+  stage: TaskStage;
+  label: string;
+  wip_suggested: number | null;
+  count: number;
+  cards: BoardCard[];
+}
+
+export interface Board {
+  lanes: BoardLane[];
+  /** Always false in V2.1, and present anyway: a field added later would force
+   *  every existing client to handle its absence. */
+  has_more: boolean;
+}
+
+export interface ProcessGate {
+  key: string;
+  label: string;
+  order: number;
+  requires_human: boolean;
+  enabled: boolean;
+  /** Set only when the gate is *derived*-disabled — the mockup gate without tunnel
+   *  integration. A gate that quietly does not exist is worse than one that says
+   *  why (D31), so the console shows this rather than hiding the row. */
+  disabled_reason: string | null;
+}
+
+export interface ProcessDefinition {
+  key: string;
+  version: string;
+  source: string;
+  lanes: Array<{
+    stage: TaskStage;
+    label: string;
+    order: number;
+    wip_suggested: number | null;
+  }>;
+  readiness: Array<{ key: string; label: string; hint: string }>;
+  gates: ProcessGate[];
+  templates: Record<string, unknown>;
+}
+
+export interface TaskDependency {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  card_ref: string;
+  title: string;
+  description: string | null;
+  objective: string | null;
+  scope: string | null;
+  non_goals: string | null;
+  stage: TaskStage;
+  risk: string;
+  priority: string;
+  owner_user_id: string | null;
+  epic_id: string | null;
+  user_story_id: string | null;
+  readiness: Record<string, boolean>;
+  /** `{gate: {approved_by, approved_at}}` — never a boolean, because that cell is
+   *  where "an agent's output is not an approval" lives. */
+  gates: Record<string, { approved_by: string; approved_at: string } | null>;
+  acceptance_criteria: Array<Record<string, unknown>>;
+  links: Record<string, unknown>;
+  required_labels: string[];
+  version: number;
+  /** Declared, and inert until V2.3/V2.4. The console labels this block so that a
+   *  card saying `pull_request` does not read as a promise (ADR 0028 sec 9). */
+  source: string;
+  repository_id: string | null;
+  base_branch: string | null;
+  delivery: string;
+  target_branch: string | null;
+  existing_pr_ref: string | null;
+  required_secrets: string[];
+  assigned_runner_id: string | null;
+  requirement_id: string | null;
+  proposal_id: string | null;
+  depends_on: TaskDependency[];
+  /** The cards still blocking this one, by reference — the same list the refusal
+   *  message names, so the board can show it before the user tries. */
+  blocking_refs: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskWrite {
+  task: Task;
+  /** Definition-of-Ready reporting. Never a refusal (ADR 0028 sec 1). */
+  warnings: Array<{ code: string; missing?: string[] }>;
+}
+
+export interface RoadmapTask {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+}
+
+export interface RoadmapStory {
+  id: string;
+  card_ref: string;
+  title: string;
+  done_count: number;
+  total_count: number;
+  tasks: RoadmapTask[];
+}
+
+export interface RoadmapEpic {
+  id: string;
+  card_ref: string;
+  title: string;
+  done_count: number;
+  total_count: number;
+  stories: RoadmapStory[];
+  /** Cards filed under this epic but under no story. Monstrare's semantics, kept
+   *  because a card must never disappear because of how it was filed (D4). */
+  unclassified: RoadmapTask[];
+}
+
+export interface Roadmap {
+  epics: RoadmapEpic[];
+  orphan_stories: RoadmapStory[];
+  unclassified: RoadmapTask[];
+  done_count: number;
+  total_count: number;
+}
+
+export interface Requirement {
+  id: string;
+  project_id: string;
+  card_ref: string;
+  raw_text: string;
+  status: string;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  spec_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeatureSpec {
+  id: string;
+  seq: number;
+  objective: string | null;
+  scope: string | null;
+  non_goals: string | null;
+  acceptance_criteria: Array<Record<string, unknown>>;
+  open_questions: Array<Record<string, unknown>>;
+  authored_by_kind: string;
+  authored_by: string | null;
+  created_at: string;
+}
+
+export interface TaskProposal {
+  id: string;
+  seq: number;
+  spec_id: string | null;
+  tree: Record<string, unknown>;
+  status: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+export interface RequirementDetail extends Requirement {
+  specs: FeatureSpec[];
+  proposals: TaskProposal[];
+  /** Why the approve button is disabled, in the same response that disables it. */
+  blocking_questions: string[];
+}
+
+export interface AcceptProposalResult {
+  created: Task[];
+  incomplete: Record<string, string[]>;
 }

@@ -10,6 +10,10 @@ const DEFAULT_PRODUCT_NAME = "Cliora";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const productName = env.VITE_PRODUCT_NAME || DEFAULT_PRODUCT_NAME;
+  const allowedHosts = (env.VITE_ALLOWED_HOSTS || "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
   return {
     plugins: [
       vue(),
@@ -21,6 +25,9 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       host: "0.0.0.0",
+      // Comma-separated exact hosts for development tunnels. Avoid wildcard tunnel
+      // domains: keeping the allowlist explicit preserves Vite's Host protection.
+      allowedHosts,
       // Same-origin API/WS in dev: the typed client uses relative URLs, so proxy
       // them to the local Central. Override the backend target with VITE_API_BASE_URL.
       proxy: {

@@ -189,9 +189,10 @@ class ProjectService:
         *,
         limit: int = DEFAULT_ACTIVITY_PAGE,
         before: tuple[datetime, uuid.UUID] | None = None,
+        task_id: uuid.UUID | None = None,
     ) -> list[ActivityItem]:
         return await self._repo.list_activity(
-            project_id, limit=min(limit, MAX_ACTIVITY_PAGE), before=before
+            project_id, limit=min(limit, MAX_ACTIVITY_PAGE), before=before, task_id=task_id
         )
 
     # --- writes ---------------------------------------------------------- #

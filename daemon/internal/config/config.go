@@ -85,9 +85,18 @@ type FilesystemConfig struct {
 	// pattern (e.g. ".ssh"). Empty → defaults.
 	DeniedDirectories []string     `yaml:"denied_directories"`
 	Search            SearchConfig `yaml:"search"`
+	// Projection controls retention for platform-owned context packs. It is
+	// separate from Upload because uploads are user content with a different
+	// lifecycle and must never be touched by this sweep (ADR 0028).
+	Projection ProjectionConfig `yaml:"projection"`
 	// Upload bounds both write paths into the workspace: image drop (ADR 0024)
 	// and general file upload (ADR 0026, the nested Files block).
 	Upload UploadConfig `yaml:"upload"`
+}
+
+type ProjectionConfig struct {
+	RetentionDays        int `yaml:"retention_days"`
+	CleanupIntervalHours int `yaml:"cleanup_interval_hours"`
 }
 
 // UploadConfig bounds image drop, the one path by which anything may be written
@@ -215,6 +224,8 @@ const (
 	DefaultFileUploadMaxSessionBytes int64 = 256 * 1024 * 1024
 	DefaultFileUploadMaxFilesPerDay        = 200
 	DefaultFileUploadMinFreeBytes    int64 = 512 * 1024 * 1024
+	DefaultProjectionRetentionDays         = 30
+	DefaultProjectionCleanupHours          = 6
 )
 
 type SessionConfig struct {
@@ -452,6 +463,13 @@ func (c *Config) applyFilesystemDefaults() {
 	if s.TimeoutSeconds == 0 {
 		s.TimeoutSeconds = DefaultSearchTimeoutSec
 	}
+	p := &c.Filesystem.Projection
+	if p.RetentionDays == 0 {
+		p.RetentionDays = DefaultProjectionRetentionDays
+	}
+	if p.CleanupIntervalHours == 0 {
+		p.CleanupIntervalHours = DefaultProjectionCleanupHours
+	}
 	u := &c.Filesystem.Upload
 	if u.Enabled == nil {
 		// Record that nobody chose this. "The operator asked for it" and "an
@@ -631,6 +649,10 @@ func (c *Config) Validate() error {
 	s := c.Filesystem.Search
 	if s.MaxDepth < 0 || s.MaxResults < 0 || s.MaxScanned < 0 || s.TimeoutSeconds < 0 {
 		return errors.New("filesystem.search bounds must not be negative")
+	}
+	p := c.Filesystem.Projection
+	if p.RetentionDays < 0 || p.CleanupIntervalHours < 0 {
+		return errors.New("filesystem.projection retention and cleanup interval must not be negative")
 	}
 	if c.Session.Backend != "" && c.Session.Backend != "tmux" {
 		return fmt.Errorf("session.backend %q is not supported", c.Session.Backend)

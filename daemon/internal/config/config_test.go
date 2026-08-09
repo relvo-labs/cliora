@@ -272,6 +272,33 @@ func TestExplicitDeniedListsReplaceDefaults(t *testing.T) {
 	}
 }
 
+func TestProjectionRetentionDefaultsAndOverrides(t *testing.T) {
+	cfg, err := Load(writeFile(t, "config.yaml", validConfig, 0o600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Filesystem.Projection.RetentionDays != DefaultProjectionRetentionDays ||
+		cfg.Filesystem.Projection.CleanupIntervalHours != DefaultProjectionCleanupHours {
+		t.Fatalf("projection defaults = %+v", cfg.Filesystem.Projection)
+	}
+
+	content := validConfig + "\nfilesystem:\n  projection:\n    retention_days: 45\n    cleanup_interval_hours: 12\n"
+	cfg, err = Load(writeFile(t, "config-custom.yaml", content, 0o600))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Filesystem.Projection.RetentionDays != 45 || cfg.Filesystem.Projection.CleanupIntervalHours != 12 {
+		t.Fatalf("projection override = %+v", cfg.Filesystem.Projection)
+	}
+}
+
+func TestProjectionRetentionRejectsNegativeValues(t *testing.T) {
+	content := validConfig + "\nfilesystem:\n  projection:\n    retention_days: -1\n"
+	if _, err := Load(writeFile(t, "config.yaml", content, 0o600)); err == nil {
+		t.Fatal("expected negative projection retention to be rejected")
+	}
+}
+
 // excluded_directories is an ignore rule, not a security control: an explicit
 // empty list means "load everything" and must be honoured.
 func TestExplicitEmptyExcludedDirectoriesIsHonoured(t *testing.T) {

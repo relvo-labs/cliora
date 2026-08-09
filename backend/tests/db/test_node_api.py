@@ -7,7 +7,7 @@ import uuid
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Node, Role, User
+from app.db.models import Node, Role, TerminalSession, User
 from app.security.passwords import hash_password
 from app.security.tokens import issue_access_token
 from app.services.enrollment import EnrollmentService
@@ -114,14 +114,38 @@ async def test_remove_soft_deletes_and_hides(api: tuple) -> None:
     node_id = await _seed_node(maker, "vm1")
     headers = await _login(client)
 
+    # Reproduces the user-visible bug: this row used to remain `running` in the
+    # Sessions table after its node disappeared.
+    async with maker() as session:
+        user = (await session.execute(sa.select(User).where(User.username == "u"))).scalar_one()
+        running = TerminalSession(
+            node_id=node_id,
+            user_id=user.id,
+            name="must-leave-the-fleet-list",
+            runtime="claude",
+            workspace="/home/neil/work",
+            status="running",
+            rows=24,
+            columns=80,
+        )
+        session.add(running)
+        await session.commit()
+        running_id = running.id
+
     assert (await client.delete(f"/api/nodes/{node_id}", headers=headers)).status_code == 204
     # Hidden from list and detail...
     assert (await client.get("/api/nodes", headers=headers)).json() == []
     assert (await client.get(f"/api/nodes/{node_id}", headers=headers)).status_code == 404
+    assert (await client.get("/api/sessions", headers=headers)).json() == []
     # ...but the row and its audit are retained.
     async with maker() as session:
         node = await session.get(Node, node_id)
         assert node is not None and node.deleted_at is not None
+        historical = await session.get(TerminalSession, running_id)
+        assert historical is not None
+        assert historical.status == "failed"
+        assert historical.error_message == "NODE_REMOVED"
+        assert historical.ended_at is not None
 
 
 async def test_viewer_cannot_manage(api: tuple) -> None:

@@ -5986,6 +5986,400 @@
           "lifecycle": "active"
         }
       ]
+    },
+    {
+      "id": "FR-TASK-001",
+      "kind": "functional",
+      "title": "任務層級與生命週期",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-001"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-001.AC-01",
+          "source_anchor": "fr-task-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-001.AC-02",
+          "source_anchor": "fr-task-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-001.AC-03",
+          "source_anchor": "fr-task-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-001.AC-04",
+          "source_anchor": "fr-task-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-001.AC-05",
+          "source_anchor": "fr-task-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-002",
+      "kind": "functional",
+      "title": "看板與車道",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-002"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-002.AC-01",
+          "source_anchor": "fr-task-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-002.AC-02",
+          "source_anchor": "fr-task-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-002.AC-03",
+          "source_anchor": "fr-task-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-002.AC-04",
+          "source_anchor": "fr-task-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-002.AC-05",
+          "source_anchor": "fr-task-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-003",
+      "kind": "functional",
+      "title": "併發與相依",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-003"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-003.AC-01",
+          "source_anchor": "fr-task-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-003.AC-02",
+          "source_anchor": "fr-task-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-003.AC-03",
+          "source_anchor": "fr-task-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-003.AC-04",
+          "source_anchor": "fr-task-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-004",
+      "kind": "functional",
+      "title": "就緒條件與審查關卡",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-004"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-004.AC-01",
+          "source_anchor": "fr-task-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-004.AC-02",
+          "source_anchor": "fr-task-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-004.AC-03",
+          "source_anchor": "fr-task-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-004.AC-04",
+          "source_anchor": "fr-task-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-004.AC-05",
+          "source_anchor": "fr-task-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-005",
+      "kind": "functional",
+      "title": "需求、規格與拆解（人工流程）",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-005"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-005.AC-01",
+          "source_anchor": "fr-task-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-02",
+          "source_anchor": "fr-task-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-03",
+          "source_anchor": "fr-task-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-04",
+          "source_anchor": "fr-task-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-05",
+          "source_anchor": "fr-task-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-06",
+          "source_anchor": "fr-task-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-005.AC-07",
+          "source_anchor": "fr-task-005-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-006",
+      "kind": "functional",
+      "title": "Task 與 Session 關聯",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-TASK-006.AC-01",
+          "source_anchor": "fr-task-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-006.AC-02",
+          "source_anchor": "fr-task-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-006.AC-03",
+          "source_anchor": "fr-task-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-TASK-006.AC-04",
+          "source_anchor": "fr-task-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-007",
+      "kind": "functional",
+      "title": "任務情境投影",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-TASK-007.AC-01",
+          "source_anchor": "fr-task-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-02",
+          "source_anchor": "fr-task-007-ac-02",
+          "verification_profile": "measurement",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-03",
+          "source_anchor": "fr-task-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-04",
+          "source_anchor": "fr-task-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-05",
+          "source_anchor": "fr-task-007-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-06",
+          "source_anchor": "fr-task-007-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TASK-007.AC-07",
+          "source_anchor": "fr-task-007-ac-07",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-TASK-008",
+      "kind": "functional",
+      "title": "Session 憑證",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-task-008"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-TASK-008.AC-01",
+          "source_anchor": "fr-task-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TASK-008.AC-02",
+          "source_anchor": "fr-task-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TASK-008.AC-03",
+          "source_anchor": "fr-task-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TASK-008.AC-04",
+          "source_anchor": "fr-task-008-ac-04",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TASK-008.AC-05",
+          "source_anchor": "fr-task-008-ac-05",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-TASK-008.AC-06",
+          "source_anchor": "fr-task-008-ac-06",
+          "verification_profile": "automated",
+          "risk": "critical"
+        }
+      ]
     }
   ]
 }

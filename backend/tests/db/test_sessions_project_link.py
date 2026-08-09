@@ -328,6 +328,41 @@ async def test_the_session_list_filters_three_ways(api: tuple, projects_enabled:
     assert bad.json()["error"]["code"] == "INVALID_QUERY"
 
 
+async def test_task_link_and_projection_status_are_durable_and_filterable(
+    api: tuple, projects_enabled: None
+) -> None:
+    client, maker = api
+    _, headers = await _admin(client, maker)
+    node_id = await _node(maker)  # old daemon shape: context_projection is false
+    project_id = await _project_with_binding(client, headers, node_id)
+    task_response = await client.post(
+        f"/api/projects/{project_id}/tasks", json={"title": "Linked task"}, headers=headers
+    )
+    task = task_response.json()["task"]
+
+    with _connected():
+        created = await client.post(
+            "/api/sessions",
+            json={
+                "node_id": str(node_id),
+                "runtime": "claude",
+                "name": "linked-to-task",
+                "workspace": BOUND,
+                "project_id": project_id,
+                "task_id": task["id"],
+            },
+            headers=headers,
+        )
+    assert created.status_code == 201, created.text
+    assert created.json()["task_id"] == task["id"]
+    assert created.json()["context_projection"] == "node_unsupported"
+
+    detail = await client.get(f"/api/sessions/{created.json()['id']}", headers=headers)
+    assert detail.json()["context_projection"] == "node_unsupported"
+    filtered = await client.get("/api/sessions", params={"task_id": task["id"]}, headers=headers)
+    assert [item["id"] for item in filtered.json()] == [created.json()["id"]]
+
+
 async def test_an_ad_hoc_session_writes_no_timeline_row_anywhere(
     api: tuple, projects_enabled: None
 ) -> None:

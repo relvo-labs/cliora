@@ -462,6 +462,160 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "bindings. Everything already running is untouched.",
             "Un-archive the project first, or use a different one.",
         ),
+        # --- Task layer (ADR 0028) ---
+        #
+        # Two pairs here look similar and are not, and the difference is what makes
+        # them worth separate codes: `TASK_DEPENDENCY_UNSATISFIED` is a card that will
+        # be movable later, `TASK_DEPENDENCY_CYCLE` is a graph that can never be
+        # satisfied; `GATE_UNKNOWN` is a typo, `GATE_DISABLED` is a state of the
+        # deployment. Collapsing either pair would leave the user unable to tell
+        # "wait" from "fix something".
+        _entry(
+            "TASK_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Task not found",
+            "The card, epic, story or dependency does not exist in this project.",
+            "Reload the board.",
+        ),
+        _entry(
+            "TASK_VERSION_CONFLICT",
+            status.HTTP_409_CONFLICT,
+            "This card was changed by someone else",
+            "Every write carries the version it was read at, so two people dragging "
+            "one card cannot silently overwrite each other. The response carries the "
+            "card's current version.",
+            "The board reloads the card; try the move again.",
+        ),
+        _entry(
+            "TASK_DEPENDENCY_UNSATISFIED",
+            status.HTTP_409_CONFLICT,
+            "A blocking card is not finished",
+            "Entering `ready` or a later lane claims the card is workable, and an "
+            "unfinished dependency contradicts that. `details.blocking_refs` names "
+            "the cards.",
+            "Finish the named cards, or drop the dependency if it no longer holds.",
+        ),
+        _entry(
+            "TASK_DEPENDENCY_CYCLE",
+            status.HTTP_409_CONFLICT,
+            "That would create a circular dependency",
+            "The blocking card already depends on this one, directly or through "
+            "others. `details.path` shows the loop.",
+            "Remove one edge of the loop first.",
+        ),
+        _entry(
+            "TASK_STAGE_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown value",
+            "A lane, risk, priority, source or delivery outside the process "
+            "definition's vocabulary.",
+            "Read the project's process definition for the accepted values.",
+        ),
+        _entry(
+            "TASK_ACCEPTANCE_CRITERIA_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Acceptance criteria must be a list of objects",
+            "The task context renderer requires each criterion to be an object.",
+            "Send each criterion as an object with a text field.",
+        ),
+        _entry(
+            "TASK_CONTEXT_TOO_LARGE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Acceptance criteria do not fit the task context budget",
+            "Acceptance criteria are preserved in full in the 4 KB agent context pack, "
+            "so their rendered form has a fixed upper bound.",
+            "Shorten or combine acceptance criteria; optional task description sections "
+            "are omitted automatically.",
+        ),
+        _entry(
+            "FORBIDDEN_FIELD",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That field cannot be set this way",
+            "Refused rather than ignored: a silently dropped field is a change the "
+            "caller believes it made. Review gates in particular have their own "
+            "endpoint and their own action.",
+            "Use the endpoint that owns the field.",
+        ),
+        _entry(
+            "GATE_UNKNOWN",
+            status.HTTP_404_NOT_FOUND,
+            "Unknown review gate",
+            "The process definition has no gate by that key.",
+            "Read the project's process definition for the gate keys.",
+        ),
+        _entry(
+            "GATE_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "This gate is unavailable in this deployment",
+            "A gate may depend on an integration that is switched off — the mockup "
+            "gate needs tunnel integration. It is disabled on read rather than left "
+            "unsatisfiable, because a gate nobody can ever tick is a deadlock.",
+            "Enable the integration, or proceed without that gate.",
+        ),
+        _entry(
+            "GATE_REQUIRES_HUMAN_ACTOR",
+            status.HTTP_403_FORBIDDEN,
+            "A review gate must be approved by a person",
+            "An agent's output is not an approval. A session credential cannot reach "
+            "this endpoint at all; this code is the second line of defence.",
+            "Approve it yourself in the console.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Requirement not found",
+            "The requirement does not exist in this project.",
+            "Reload the requirements list.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_SPECIFIED",
+            status.HTTP_409_CONFLICT,
+            "Write a specification before approving",
+            "Approval is approval *of* something: a requirement with no specification "
+            "version has nothing to approve.",
+            "Add a specification version first.",
+        ),
+        _entry(
+            "SPEC_HAS_OPEN_QUESTIONS",
+            status.HTTP_409_CONFLICT,
+            "Unresolved questions remain",
+            "A specification cannot be approved while a question has neither an "
+            "answer nor an explicit 'known unknown' marking. `details.questions` "
+            "names them.",
+            "Answer them, or mark them as known unknowns, then approve.",
+        ),
+        _entry(
+            "REQUIREMENT_ALREADY_APPROVED",
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved",
+            "Specification versions are append-only up to approval; after it, a "
+            "change of mind is a new requirement rather than a rewritten one.",
+            "Raise a new requirement.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_APPROVED",
+            status.HTTP_409_CONFLICT,
+            "Approve the specification before decomposing it",
+            "Decomposing something nobody has agreed to produces work that will be "
+            "thrown away. This is refused by the API rather than hidden in the UI, "
+            "because V2.5 sends an agent down the same path.",
+            "Approve the specification first.",
+        ),
+        _entry(
+            "PROPOSAL_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Proposal not found",
+            "The decomposition proposal does not exist.",
+            "Reload the requirement.",
+        ),
+        _entry(
+            "PROPOSAL_ALREADY_DECIDED",
+            status.HTTP_409_CONFLICT,
+            "This proposal was already decided",
+            "Acceptance creates real cards, so it happens once. A second decision "
+            "would duplicate them.",
+            "Create a new proposal if the plan changed.",
+        ),
         _entry(
             "PROJECT_WORKSPACE_NOT_FOUND",
             status.HTTP_404_NOT_FOUND,

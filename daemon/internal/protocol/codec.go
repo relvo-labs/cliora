@@ -2,6 +2,7 @@ package protocol
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"path"
@@ -42,11 +43,15 @@ var LargeFrameTypes = map[string]bool{
 	// which is 5.33 MiB of base64 and still inside the 8 MiB already granted
 	// above. Its response, filesystem.stored, is a path and two scalars.
 	"filesystem.store": true,
+	// context.project (ADR 0028) shares the wider bound without moving it: its schema
+	// caps a file at the base64 length of 64 KiB and the array at 32, which is well
+	// inside the room already granted. Its response is two short arrays and a scalar.
+	"context.project": true,
 }
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "context.project": true, "context.projected": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -153,6 +158,70 @@ type fsUploadFields struct {
 //
 // Still absent, and still enforced by DisallowUnknownFields: overwrite, mode,
 // mime, precondition, revision. Nothing here can ask to replace something.
+type contextProjectFields struct {
+	SessionID      uuid.UUID            `json:"session_id"`
+	ProcessVersion string               `json:"process_version"`
+	Files          []contextProjectFile `json:"files"`
+}
+
+type contextProjectFile struct {
+	Path string `json:"path"`
+	Mode string `json:"mode"`
+	Data string `json:"data"`
+}
+
+// validProjectPath accepts only the three platform-owned subtrees, with no traversal
+// segment anywhere. The user-facing areas under `.cliora/` — `uploads/` and
+// `.gitignore` — are outside this by construction rather than by an exclusion list.
+func validProjectPath(rel string) bool {
+	if rel == "" || len(rel) > 4096 || strings.ContainsRune(rel, 0) {
+		return false
+	}
+	if path.Clean(rel) != rel {
+		return false
+	}
+	for _, seg := range strings.Split(rel, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+		for _, r := range seg {
+			if r < 0x20 || r == 0x7f {
+				return false
+			}
+		}
+	}
+	return strings.HasPrefix(rel, ".cliora/context/") ||
+		strings.HasPrefix(rel, ".cliora/process/") ||
+		strings.HasPrefix(rel, ".cliora/reference/")
+}
+
+// validProcessVersion bounds the one field that becomes a directory name.
+func validProcessVersion(value string) bool {
+	if value == "" || len(value) > 32 {
+		return false
+	}
+	for i, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case (r == '.' || r == '_' || r == '-') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validProjectData caps a projected file at the base64 length of 64 KiB — far below
+// filesystem.store's ceiling, because a projection large enough to need more is one
+// that should be handing the agent a path instead of a payload (D8).
+func validProjectData(data string) bool {
+	if len(data) > 87384 {
+		return false
+	}
+	_, err := base64.StdEncoding.Strict().DecodeString(data)
+	return err == nil
+}
+
 type fsStoreFields struct {
 	SessionID uuid.UUID `json:"session_id"`
 	Directory string    `json:"directory"`
@@ -235,6 +304,11 @@ type registerFields struct {
 	// workspace (contract 1.9.0, ADR 0026 §9). Separate from ImageUpload because
 	// the two grants are different sizes; absent means "no", never "unknown".
 	FileUpload *bool `json:"file_upload,omitempty"`
+	// ContextProjection reports that this daemon can receive a task context pack
+	// (contract 1.10.0, ADR 0028 §5). Absent means "no", which is the right reading
+	// for every daemon before 0.8.0: the message type does not exist there, so
+	// Central simply does not send it and the session runs exactly as before.
+	ContextProjection *bool `json:"context_projection,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -666,6 +740,24 @@ func ValidateControl(raw []byte) error {
 			!validRelPath(p.Directory) || !validStoreFilename(p.Filename) ||
 			!validStoreData(p.Data) {
 			return errors.New("INVALID_MESSAGE")
+		}
+	case "context.project":
+		// The daemon re-validates rather than trusting Central (SEC-001, defence in
+		// depth). Three properties, and each one is unrepresentable rather than
+		// merely refused downstream: the destination is inside one of the three
+		// platform-owned subtrees, there is no `..` segment anywhere, and the mode is
+		// the single value the projection is allowed to write.
+		var p contextProjectFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!validProcessVersion(p.ProcessVersion) ||
+			len(p.Files) == 0 || len(p.Files) > 32 {
+			return errors.New("INVALID_MESSAGE")
+		}
+		for _, file := range p.Files {
+			if file.Mode != "0600" || !validProjectPath(file.Path) ||
+				!validProjectData(file.Data) {
+				return errors.New("INVALID_MESSAGE")
+			}
 		}
 	case "tunnel.open":
 		var p tunnelOpenFields

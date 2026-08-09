@@ -31,6 +31,10 @@ _logger = get_logger("cliora.api")
 denial_var: ContextVar[tuple[str, str] | None] = ContextVar("authz_denial", default=None)
 # Set by `get_current_user` so a refusal can name its actor.
 actor_var: ContextVar[uuid.UUID | None] = ContextVar("authz_actor", default=None)
+# Set by `get_agent_principal` (V2.1). A **separate** variable rather than reusing
+# `actor_var`, because the two hold different kinds of identity: a refused agent must
+# be recorded as a token, never as the person who opened its session (ADR 0028 sec 3).
+agent_var: ContextVar[uuid.UUID | None] = ContextVar("authz_agent_token", default=None)
 
 # Only refusals of a *mutation*, or a cross-owner ("scope") refusal of any method,
 # are recorded (ADR 0016). Plain read 403s are frequent and uninteresting;
@@ -140,6 +144,7 @@ class AuthzDenialAuditMiddleware:
 
         denial_token = denial_var.set(None)
         actor_token = actor_var.set(None)
+        agent_token = agent_var.set(None)
         status_code = 0
 
         async def send_wrapper(message: Message) -> None:
@@ -151,16 +156,27 @@ class AuthzDenialAuditMiddleware:
         try:
             await self.app(scope, receive, send_wrapper)
             denial = denial_var.get()
-            if status_code == 403 and denial is not None:
+            # A valid session credential deliberately receives 401 on the human
+            # authentication surface. When that refused request is a mutation it is
+            # still an authorization denial worth auditing (especially gate probes).
+            if status_code in {401, 403} and denial is not None:
                 method = scope.get("method", "")
                 if method in _MUTATING_METHODS or denial[1] == "scope":
-                    await self._record(method, scope.get("path", ""), denial, actor_var.get())
+                    await self._record(
+                        method, scope.get("path", ""), denial, actor_var.get(), agent_var.get()
+                    )
         finally:
             denial_var.reset(denial_token)
             actor_var.reset(actor_token)
+            agent_var.reset(agent_token)
 
     async def _record(
-        self, method: str, path: str, denial: tuple[str, str], actor_id: uuid.UUID | None
+        self,
+        method: str,
+        path: str,
+        denial: tuple[str, str],
+        actor_id: uuid.UUID | None,
+        agent_token_id: uuid.UUID | None = None,
     ) -> None:
         from app import metrics
         from app.db.engine import get_database
@@ -180,6 +196,14 @@ class AuthzDenialAuditMiddleware:
                         # exactly what an investigation needs; it is never a
                         # filesystem path.
                         "path": path[:256],
+                        # Present only when the refused caller was a session's agent.
+                        # The token **id**, never its value — and never the issuing
+                        # user, because an agent must not be recorded as a person.
+                        **(
+                            {"actor_kind": "session_agent", "token_id": str(agent_token_id)}
+                            if agent_token_id is not None
+                            else {}
+                        ),
                     },
                 )
                 await session.commit()

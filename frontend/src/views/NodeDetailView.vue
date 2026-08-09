@@ -14,12 +14,14 @@ import {
 } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
+import { useSessionsStore } from "../stores/sessions";
 import { formatDuration, formatInstant } from "../utils/time";
 
 const props = defineProps<{ id: string }>();
 
 const auth = useAuthStore();
 const nodes = useNodesStore();
+const sessions = useSessionsStore();
 const router = useRouter();
 
 const canManage = computed(() => auth.hasPermission(ACTION_NODE_MANAGE));
@@ -175,6 +177,7 @@ async function runAction(): Promise<void> {
   try {
     if (action === "remove") {
       await nodes.remove(props.id);
+      sessions.removeForNode(props.id);
       await router.push({ name: "nodes" });
     } else {
       await nodes.setEnabled(props.id, action === "enable");
@@ -190,7 +193,7 @@ async function runAction(): Promise<void> {
 
 const confirmMessage = computed(() => {
   if (confirm.value === "remove") {
-    return "The node record and audit history are kept (soft delete) and its credential is revoked. The node id can never be reused.";
+    return "All active sessions and tunnels on this node will end and leave the fleet lists. Their historical records and audit trail are retained. The credential is revoked and this node id can never be reused.";
   }
   if (confirm.value === "disable") {
     return "The daemon stays connected but new operations are rejected until it is re-enabled.";

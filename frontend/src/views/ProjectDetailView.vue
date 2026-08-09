@@ -1,10 +1,18 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { RouterLink, useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
-import { ACTION_PROJECT_MANAGE } from "../api/dto";
+import {
+  ACTION_PROJECT_MANAGE,
+  ACTION_TASK_CREATE,
+  ACTION_TASK_UPDATE,
+} from "../api/dto";
 import type {
+  Board,
+  ProcessDefinition,
+  Requirement,
+  Roadmap,
   BindingUsability,
   NodeDetail,
   NodeSummary,
@@ -12,9 +20,11 @@ import type {
   ProjectWorkspace,
 } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
+import TaskBoard from "../components/project/TaskBoard.vue";
+import TaskRoadmap from "../components/project/TaskRoadmap.vue";
 import AsyncState from "../components/common/AsyncState.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
-import { useAuthStore } from "../stores/auth";
+import { api, useAuthStore } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
 import { useProjectsStore } from "../stores/projects";
 import { kindLabel } from "../utils/activityKinds";
@@ -28,7 +38,103 @@ const projects = useProjectsStore();
 const router = useRouter();
 
 const canManage = computed(() => auth.hasPermission(ACTION_PROJECT_MANAGE));
-const tab = ref<"overview" | "activity">("overview");
+const canWriteTasks = computed(() => auth.hasPermission(ACTION_TASK_UPDATE));
+const canCreateTasks = computed(() => auth.hasPermission(ACTION_TASK_CREATE));
+// In the query string, so a reload lands where the user was rather than back on
+// Overview — a board is a place people leave open.
+const tab = ref<
+  "overview" | "board" | "roadmap" | "requirements" | "activity" | "settings"
+>(
+  (router.currentRoute.value.query.tab as
+    | "overview"
+    | "board"
+    | "roadmap"
+    | "requirements"
+    | "activity"
+    | "settings") ?? "overview",
+);
+watch(tab, (value) => {
+  void router.replace({
+    query: { ...router.currentRoute.value.query, tab: value },
+  });
+});
+
+const board = ref<Board | null>(null);
+const roadmap = ref<Roadmap | null>(null);
+const processDefinition = ref<ProcessDefinition | null>(null);
+const requirements = ref<Requirement[]>([]);
+const intakeText = ref("");
+const taskTitle = ref("");
+const epicTitle = ref("");
+const storyTitle = ref("");
+const taskError = ref("");
+
+/** One reload for the whole task layer.
+ *
+ * Board *and* roadmap, because a card that moved changed both, and leaving one stale
+ * is how a user ends up trusting neither. Three requests on a tab switch is cheaper
+ * than a wrong number on a screen. */
+async function reloadTasks(): Promise<void> {
+  const [nextBoard, nextRoadmap, nextProcess] = await Promise.all([
+    api().getBoard(props.id),
+    api().getRoadmap(props.id),
+    api().getProcess(props.id),
+  ]);
+  board.value = nextBoard;
+  roadmap.value = nextRoadmap;
+  processDefinition.value = nextProcess;
+}
+
+async function createEpic(): Promise<void> {
+  await api().createEpic(props.id, { title: epicTitle.value });
+  epicTitle.value = "";
+  await reloadTasks();
+}
+
+async function createStory(): Promise<void> {
+  await api().createUserStory(props.id, { title: storyTitle.value });
+  storyTitle.value = "";
+  await reloadTasks();
+}
+
+async function openCard(taskId: string): Promise<void> {
+  await router.push({ name: "task-detail", params: { id: props.id, taskId } });
+}
+
+async function createTask(): Promise<void> {
+  taskError.value = "";
+  try {
+    await api().createTask(props.id, { title: taskTitle.value });
+    taskTitle.value = "";
+    await reloadTasks();
+  } catch (error) {
+    taskError.value = error instanceof ApiError ? error.message : "建立失敗。";
+  }
+}
+
+async function submitIntake(): Promise<void> {
+  taskError.value = "";
+  try {
+    await api().createRequirement(props.id, { raw_text: intakeText.value });
+    intakeText.value = "";
+    requirements.value = await api().listRequirements(props.id);
+  } catch (error) {
+    taskError.value = error instanceof ApiError ? error.message : "建立失敗。";
+  }
+}
+
+watch(
+  tab,
+  async (value) => {
+    if (value === "board" || value === "roadmap" || value === "settings") {
+      if (!board.value) await reloadTasks();
+    }
+    if (value === "requirements" && requirements.value.length === 0) {
+      requirements.value = await api().listRequirements(props.id);
+    }
+  },
+  { immediate: true },
+);
 
 const resource = useAsyncResource(async () => {
   await projects.fetchProject(props.id);
@@ -283,10 +389,136 @@ function recordActionError(error: unknown, fallback: string): void {
         <button :data-active="tab === 'overview'" @click="tab = 'overview'">
           Overview
         </button>
+        <button
+          :data-active="tab === 'board'"
+          data-tab="board"
+          @click="tab = 'board'"
+        >
+          Board
+        </button>
+        <button
+          :data-active="tab === 'roadmap'"
+          data-tab="roadmap"
+          @click="tab = 'roadmap'"
+        >
+          Roadmap
+        </button>
+        <button
+          :data-active="tab === 'requirements'"
+          data-tab="requirements"
+          @click="tab = 'requirements'"
+        >
+          Requirements
+        </button>
         <button :data-active="tab === 'activity'" @click="tab = 'activity'">
           Activity
         </button>
+        <button
+          :data-active="tab === 'settings'"
+          data-tab="settings"
+          @click="tab = 'settings'"
+        >
+          Settings
+        </button>
       </nav>
+
+      <section v-if="tab === 'board'">
+        <div v-if="canCreateTasks && !isArchived" class="quick-create">
+          <input v-model="taskTitle" placeholder="新卡片的標題" data-new-task />
+          <button class="ghost" :disabled="!taskTitle" @click="createTask">
+            建立
+          </button>
+        </div>
+        <p v-if="taskError" class="notice error" role="alert">
+          {{ taskError }}
+        </p>
+        <TaskBoard
+          v-if="board"
+          :board="board"
+          :client="api()"
+          :can-write="canWriteTasks && !isArchived"
+          @changed="reloadTasks"
+          @open="openCard"
+        />
+      </section>
+
+      <section v-else-if="tab === 'roadmap'">
+        <div v-if="canCreateTasks && !isArchived" class="quick-create">
+          <input v-model="epicTitle" placeholder="新 Epic" data-new-epic />
+          <button class="ghost" :disabled="!epicTitle" @click="createEpic">
+            建立 Epic
+          </button>
+          <input
+            v-model="storyTitle"
+            placeholder="新 User Story"
+            data-new-story
+          />
+          <button class="ghost" :disabled="!storyTitle" @click="createStory">
+            建立 User Story
+          </button>
+        </div>
+        <TaskRoadmap v-if="roadmap" :roadmap="roadmap" />
+      </section>
+
+      <section v-else-if="tab === 'requirements'">
+        <!-- Intake is one field on purpose: it accepts a vague sentence, which is the
+             premise of the whole flow (D28). A form with ten required fields at this
+             moment is how the flow stops being used. -->
+        <div v-if="canCreateTasks && !isArchived" class="quick-create">
+          <input
+            v-model="intakeText"
+            placeholder="用一句話說你想要什麼"
+            data-new-requirement
+          />
+          <button class="ghost" :disabled="!intakeText" @click="submitIntake">
+            提出
+          </button>
+        </div>
+        <ul class="requirements">
+          <li
+            v-for="item in requirements"
+            :key="item.id"
+            :data-status="item.status"
+          >
+            <RouterLink
+              :to="{
+                name: 'requirement-detail',
+                params: { id: props.id, requirementId: item.id },
+              }"
+            >
+              <span class="ref">{{ item.card_ref }}</span>
+              {{ item.raw_text }}
+            </RouterLink>
+            <span class="status">{{ item.status }}</span>
+          </li>
+          <li v-if="requirements.length === 0" class="empty">
+            還沒有需求。丟一句模糊的話進來就可以開始。
+          </li>
+        </ul>
+      </section>
+
+      <section v-else-if="tab === 'settings'">
+        <h2>生效中的流程定義</h2>
+        <p class="muted">唯讀；流程由平台種子管理，專案不能在這裡改寫。</p>
+        <dl v-if="processDefinition" class="process-settings">
+          <dt>版本</dt>
+          <dd>{{ processDefinition.version }}</dd>
+          <dt>來源</dt>
+          <dd>{{ processDefinition.source }}</dd>
+          <template v-for="gate in processDefinition.gates" :key="gate.key">
+            <dt>{{ gate.label }}</dt>
+            <dd>
+              {{ gate.enabled ? "啟用" : `停用：${gate.disabled_reason}` }}
+              <RouterLink
+                v-if="gate.key === 'ui' && !gate.enabled"
+                to="/settings/integrations"
+              >
+                前往整合設定
+              </RouterLink>
+            </dd>
+          </template>
+        </dl>
+      </section>
 
       <section v-if="tab === 'overview'">
         <p v-if="project.description" class="description">

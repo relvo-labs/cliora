@@ -20,6 +20,20 @@ const LABELS: Record<string, string> = {
   "workspace.unbound": "解綁 Workspace",
   "session.started": "Session 開始",
   "session.ended": "Session 結束",
+  "session.context_projection": "任務情境投影",
+  // V2.1, the task layer. `task.updated` and `task.stage_changed` are separate for
+  // the reader's sake, not the writer's: someone scanning a project's history is
+  // asking what moved, and a title edit is not that.
+  "epic.created": "建立 Epic",
+  "user_story.created": "建立 User Story",
+  "task.created": "建立任務",
+  "task.updated": "更新任務",
+  "task.stage_changed": "任務換車道",
+  "task.gate_approved": "審查關卡核准",
+  "requirement.created": "提出需求",
+  "requirement.spec_added": "新增規格版本",
+  "requirement.approved": "核准規格",
+  "requirement.proposal_accepted": "接受任務提案",
 };
 
 /** The raw kind is the fallback, so a kind added on the server stays readable

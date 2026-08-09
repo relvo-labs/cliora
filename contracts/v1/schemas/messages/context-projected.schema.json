@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Response to context.project (ADR 0028). `skipped` is not a failure list: a process-notes directory that already exists means a second session in the same workspace found the same version already there, and treating that as success is what lets the projection stay `O_EXCL` with no overwrite flag anywhere in the protocol.",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "written", "skipped", "bytes"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "written": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
+    "skipped": {"type": "array", "maxItems": 32, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
+    "bytes": {"type": "integer", "minimum": 0, "maximum": 2097152}
+  }
+}

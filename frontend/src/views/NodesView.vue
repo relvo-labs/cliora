@@ -11,10 +11,12 @@ import StatusBadge from "../components/common/StatusBadge.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useAuthStore } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
+import { useSessionsStore } from "../stores/sessions";
 import { formatInstant } from "../utils/time";
 
 const auth = useAuthStore();
 const nodes = useNodesStore();
+const sessions = useSessionsStore();
 const router = useRouter();
 
 const canManage = computed(() => auth.hasPermission(ACTION_NODE_MANAGE));
@@ -83,6 +85,7 @@ async function confirmRemove(): Promise<void> {
   actionError.value = "";
   try {
     await nodes.remove(id);
+    sessions.removeForNode(id);
     removeTarget.value = null;
   } catch (caught) {
     actionError.value =
@@ -218,7 +221,7 @@ function open(id: string): void {
       :busy="actingId === removeTarget?.id"
       danger
       title="Remove node"
-      :message="`Remove ${removeTarget?.name}? The node record and its audit history are kept (soft delete) and its credential is revoked. The node id can never be reused, and it must re-enrol to reconnect.`"
+      :message="`Remove ${removeTarget?.name}? All active sessions and tunnels on it will end and leave the fleet lists. Their historical records and audit trail are retained. The credential is revoked, the node id cannot be reused, and the machine must re-enrol to reconnect.`"
       confirm-label="Remove node"
       @confirm="confirmRemove"
       @cancel="removeTarget = null"

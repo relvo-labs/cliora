@@ -199,6 +199,7 @@ class ProjectRepository:
         *,
         limit: int,
         before: tuple[datetime, uuid.UUID] | None,
+        task_id: uuid.UUID | None = None,
     ) -> list[ActivityItem]:
         """One page of the timeline, newest first.
 
@@ -220,6 +221,8 @@ class ProjectRepository:
                 func.row(ActivityEvent.occurred_at, ActivityEvent.id)
                 < func.row(occurred_at, last_id)
             )
+        if task_id is not None:
+            stmt = stmt.where(ActivityEvent.task_id == task_id)
         rows = (await self._session.execute(stmt)).all()
         return [
             ActivityItem(
@@ -230,6 +233,10 @@ class ProjectRepository:
                 actor_id=event.actor_user_id,
                 actor_name=actor_name,
                 session_id=event.session_id,
+                # Carried through redaction: it says what *kind* of actor, never which
+                # one, and without it an agent's write is indistinguishable from a
+                # system event and from a user event the reader may not attribute.
+                actor_kind=event.actor_kind,
             )
             for event, actor_name in rows
         ]

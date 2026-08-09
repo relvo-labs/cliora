@@ -9,16 +9,17 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 
-from fastapi import Depends, Header, status
+from fastapi import Depends, Header, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import metrics
 from app.api.errors import ApiError
-from app.api.middleware import actor_var, denial_var
+from app.api.middleware import actor_var, agent_var, denial_var
 from app.db.engine import get_session
 from app.db.models import User
+from app.services.agent_auth import TOKEN_PREFIX, AgentPrincipal, SessionTokenService
 from app.services.auth import AuthService
-from app.services.rbac import has_action
+from app.services.rbac import TASK_APPROVE, has_action
 from app.settings import Settings, get_settings
 
 
@@ -44,12 +45,41 @@ def require_projects_enabled(settings: Settings = Depends(get_settings)) -> None
 
 
 async def get_current_user(
+    request: Request,
     authorization: str | None = Header(default=None),
     auth: AuthService = Depends(get_auth_service),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
         raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
-    user = await auth.authenticate_access(authorization[len("Bearer ") :])
+    presented = authorization[len("Bearer ") :]
+    if presented.startswith(TOKEN_PREFIX):
+        # A session credential must never become a `User`. `require_action` answers
+        # with a user's *entire* action set, so a token that resolved into one would
+        # inherit `task.approve` and every terminal action along with it — and the
+        # scope list would become the only thing standing in the way (ADR 0028 sec 3).
+        #
+        # Resolve only for refusal attribution. The result can set agent_var for an
+        # audit row, but this branch can never return it (or manufacture a User), so
+        # the two authentication paths remain structurally disjoint. Invalid,
+        # expired and revoked values still produce the identical public answer.
+        principal = await SessionTokenService(session, settings=settings).resolve(presented)
+        route = getattr(request.scope.get("route"), "path", "")
+        if principal is not None and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            agent_var.set(principal.token_id)
+            action = TASK_APPROVE if "/gates/" in route else "human_authentication"
+            denial_var.set((action, "credential_type"))
+            metrics.increment(
+                metrics.AUTHZ_DENIED_TOTAL,
+                action=action,
+                role="session_agent",
+                reason="credential_type",
+            )
+        # The same 401 as any other bad token, with no hint that the token type was
+        # the problem: a distinguishable answer is something a prober can use.
+        raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
+    user = await auth.authenticate_access(presented)
     # Publish the actor so an authorization refusal can name who was refused
     # (app/api/middleware.py).
     actor_var.set(user.id)
@@ -69,5 +99,61 @@ def require_action(action: str) -> Callable[[User], Awaitable[User]]:
                 "FORBIDDEN", "You do not have permission for this action", status.HTTP_403_FORBIDDEN
             )
         return user
+
+    return dependency
+
+
+async def get_agent_principal(
+    authorization: str | None = Header(default=None),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AgentPrincipal:
+    """Authenticate a session credential. The second, disjoint authentication path.
+
+    Refuses anything that is not a session token — including a perfectly valid user
+    JWT — so the two paths cannot be reached through each other. Only the four
+    endpoints the CLI needs depend on this (`plan/17/04-…md` §2.3).
+
+    404 is not an option here and 403 is not either: this is authentication, and the
+    caller presented nothing this path recognises.
+    """
+    if not settings.projects_enabled:
+        # Not a 404: a 404 belongs to a resource, and this is a credential nobody in
+        # this deployment can hold.
+        raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
+    if not authorization or not authorization.startswith("Bearer "):
+        raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
+    principal = await SessionTokenService(session, settings=settings).resolve(
+        authorization[len("Bearer ") :]
+    )
+    if principal is None:
+        raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
+    agent_var.set(principal.token_id)
+    return principal
+
+
+def require_agent_action(action: str) -> Callable[[AgentPrincipal], Awaitable[AgentPrincipal]]:
+    """The agent-side counterpart of `require_action`.
+
+    The metrics label says `session_agent` rather than a role name, and the token id
+    never becomes a label — one would make the metric's cardinality grow with every
+    session ever opened.
+    """
+
+    async def dependency(
+        principal: AgentPrincipal = Depends(get_agent_principal),
+    ) -> AgentPrincipal:
+        if not principal.holds(action):
+            denial_var.set((action, "action"))
+            metrics.increment(
+                metrics.AUTHZ_DENIED_TOTAL,
+                action=action,
+                role="session_agent",
+                reason="action",
+            )
+            raise ApiError(
+                "FORBIDDEN", "You do not have permission for this action", status.HTTP_403_FORBIDDEN
+            )
+        return principal
 
     return dependency
