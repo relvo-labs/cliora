@@ -56,6 +56,18 @@ SCHEMES = frozenset({"https", "ssh"})
 EDITABLE_RUNNER_FIELDS = frozenset({"name", "enabled", "max_concurrent", "max_waiting", "labels"})
 
 
+def _bounded(value: Any, *, default: int) -> int:
+    """A node-reported capacity, clamped rather than trusted.
+
+    The daemon computes these from its own config, but the value arrives over the
+    wire; a negative or absurd number would turn one machine's misconfiguration into
+    the queue's problem.
+    """
+    if not isinstance(value, int) or isinstance(value, bool):
+        return default
+    return max(0, min(64, value))
+
+
 @dataclass(frozen=True, slots=True)
 class RunnerView:
     """A runner plus the facts that are not on its row.
@@ -154,6 +166,70 @@ class RunnerService:
             bucket = "waiting" if run_status == "waiting_for_input" else "active"
             out[(runner_id, bucket)] = out.get((runner_id, bucket), 0) + int(count)
         return out
+
+    async def register(self, node_id: uuid.UUID, payload: dict[str, Any]) -> AgentRunner:
+        """Upsert the one runner row for a node, from `runner.register`.
+
+        Everything here is the machine's report about itself, and none of it is
+        editable through the API — which is the same posture `node.register` already
+        takes for `image_upload` and the codex sandbox flag (ADR 0023 D3).
+
+        A node whose CLIs are installed but too old registers **successfully with an
+        empty `runtimes`**, rather than failing. A failed registration reads as "the
+        machine is broken"; an empty set plus the reason on the Agents page reads as
+        what it is (ADR 0029 sec 7).
+
+        `enabled` is deliberately *not* taken from the payload: whether a runner may
+        take work is an administrator's decision, and letting a re-registration reset
+        it would mean a daemon restart silently re-enabling something switched off.
+        """
+        runtimes = payload.get("runtimes")
+        labels = payload.get("labels")
+        runner = await self.for_node(node_id)
+        node = await self._session.get(Node, node_id)
+        name = payload.get("name")
+        if not isinstance(name, str) or not name.strip():
+            name = node.name if node is not None else str(node_id)
+        runtimes_value = (
+            sorted({item for item in runtimes if isinstance(item, str)})
+            if isinstance(runtimes, list)
+            else []
+        )
+        labels_value = (
+            sorted({item for item in labels if isinstance(item, str)})
+            if isinstance(labels, list)
+            else []
+        )
+        values: dict[str, Any] = {
+            "name": name[:128],
+            "runtimes": runtimes_value,
+            "labels": labels_value,
+            "max_concurrent": _bounded(payload.get("max_concurrent"), default=1),
+            "max_waiting": _bounded(payload.get("max_waiting"), default=5),
+            "dedicated": bool(payload.get("dedicated", False)),
+        }
+        if runner is None:
+            runner = AgentRunner(id=uuid.uuid4(), node_id=node_id, **values)
+            self._session.add(runner)
+        else:
+            for field, value in values.items():
+                setattr(runner, field, value)
+            runner.last_registered_at = now_utc()
+        await self._session.flush()
+        await self._audit.record(
+            audit_actions.AGENT_REGISTER,
+            user_id=None,
+            node_id=node_id,
+            metadata={
+                "runner_id": str(runner.id),
+                "runtimes": runtimes_value,
+                # Recorded because it is the one condition of "dedicated runner" the
+                # platform can check, and because a node that stops being dedicated
+                # should leave a trace (ADR 0031 sec 6).
+                "dedicated": bool(values["dedicated"]),
+            },
+        )
+        return runner
 
     async def update(
         self, *, runner: AgentRunner, changes: dict[str, Any], actor_id: uuid.UUID

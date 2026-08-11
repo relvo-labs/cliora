@@ -25,11 +25,11 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import status
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -48,7 +48,9 @@ from app.services.activity import (
     ACTOR_AGENT,
     ACTOR_SYSTEM,
     ACTOR_USER,
+    RUN_CLAIMED,
     RUN_DISPATCHED,
+    RUN_FINISHED,
     TASK_MESSAGE_POSTED,
     ActivityService,
 )
@@ -62,6 +64,14 @@ ACTIVE_STATUSES = ("queued", "claimed", "running", "waiting_for_input")
 # is alive and renewing, and a person is the thing being waited on. Its own timer is
 # `waiting_since` (ADR 0029 sec 5).
 LEASED_STATUSES = ("claimed", "running")
+
+# `(run_id, runner_id) -> when the cooldown ends`. **The only state in this phase that
+# is not in the database**, and that is written here rather than discovered later: it
+# does not need to survive a Central restart, because the worst case after one is a
+# single extra decline. Its job is to stop a runner that just declined from picking the
+# same run straight back up on its next poll.
+_DECLINE_COOLDOWN: dict[tuple[uuid.UUID, uuid.UUID | None], datetime] = {}
+DECLINE_COOLDOWN_SECONDS = 60
 
 # Declarations the phase cannot honour. Refused at dispatch rather than accepted and
 # silently ignored — a declaration the platform ignores is worse than one it refuses
@@ -346,6 +356,286 @@ class RunService:
             )
         ).scalars()
         return list(rows)
+
+    # --- poll and claim ------------------------------------------------------
+
+    async def poll(self, *, runner: AgentRunner, capacity: int) -> RunOffer | None:
+        """Answer one `runner.poll`. **The claim happens here**, not at `run.accept`.
+
+        Three steps, and the middle one is the whole design: find candidates by the
+        four conditions, then try to claim them one at a time until one sticks. A
+        candidate that has just been taken by another runner returns zero rows and the
+        loop moves on, so the race is resolved inside a single statement rather than
+        across a handshake (ADR 0029 sec 2).
+        """
+        if not runner.enabled or capacity <= 0:
+            return None
+        candidates = await self._eligible(runner=runner, limit=max(1, min(capacity, 10)))
+        for run in candidates:
+            if self._declined_recently(run.id, runner.id):
+                continue
+            if not await claim(
+                self._session,
+                run_id=run.id,
+                runner_id=runner.id,
+                runtime=run.runtime or self._first_runtime(runner),
+                lease_seconds=self._settings.run_lease_timeout_seconds,
+            ):
+                continue
+            await self._session.refresh(run)
+            task = await self._session.get(Task, run.task_id)
+            repository = (
+                await self._session.get(ProjectRepository, run.repository_id)
+                if run.repository_id is not None
+                else None
+            )
+            if task is None:  # pragma: no cover - the FK makes this unreachable
+                continue
+            await self._activity.record(
+                RUN_CLAIMED,
+                project_id=run.project_id,
+                task_id=run.task_id,
+                actor_kind=ACTOR_AGENT,
+                payload={
+                    "run_id": str(run.id),
+                    "card_ref": task.card_ref,
+                    "runner": runner.name,
+                    "attempt": run.attempt,
+                },
+            )
+            return RunOffer(run=run, task=task, repository=repository)
+        return None
+
+    async def _eligible(self, *, runner: AgentRunner, limit: int) -> list[TaskRun]:
+        """The four conditions, as one query (ADR 0029 sec 3).
+
+        Two joins a reader of the V2.3 plan would expect are absent, and their absence
+        is the phase's posture rather than an omission:
+
+        * `project_agents` — there is no binding in V2.2, so **any enrolled node's
+          runner sees every project's queued work**. V2.3 adds the join, and it goes
+          **first**, because by then it authorises secrets.
+        * `required_labels ⊆ labels` — label matching is a later feature. The columns
+          exist and are displayed; nothing compares them.
+
+        `ORDER BY queued_at` is the only ordering there is. No priority, no load
+        balancing, no round-robin between projects — that clause is what "the platform
+        does not schedule" looks like in code, and a test asserts it by queueing a
+        `high` risk card second and expecting it second.
+        """
+        runtimes = list(runner.runtimes or [])
+        blocked = (
+            select(TaskDependency.task_id)
+            .join(Task, Task.id == TaskDependency.depends_on_task_id)
+            .where(Task.stage != "done")
+        )
+        query = (
+            select(TaskRun)
+            .join(Task, Task.id == TaskRun.task_id)
+            .where(
+                TaskRun.status == "queued",
+                Task.stage == "ready",
+                TaskRun.task_id.notin_(blocked),
+                or_(
+                    TaskRun.assigned_runner_id.is_(None),
+                    TaskRun.assigned_runner_id == runner.id,
+                ),
+            )
+            .order_by(TaskRun.queued_at)
+            .limit(limit)
+        )
+        if runtimes:
+            query = query.where(or_(TaskRun.runtime.is_(None), TaskRun.runtime.in_(runtimes)))
+        else:
+            # A node that reported no usable runtime can still claim work that asks for
+            # none. Registering successfully with an empty set is deliberate (ADR 0029
+            # sec 7); silently making such a node eligible for *everything* would not be.
+            query = query.where(TaskRun.runtime.is_(None))
+        return list((await self._session.execute(query)).scalars())
+
+    def _first_runtime(self, runner: AgentRunner) -> str | None:
+        runtimes = list(runner.runtimes or [])
+        return runtimes[0] if runtimes else None
+
+    def _declined_recently(self, run_id: uuid.UUID, runner_id: uuid.UUID) -> bool:
+        expiry = _DECLINE_COOLDOWN.get((run_id, runner_id))
+        return expiry is not None and expiry > now_utc()
+
+    # --- events from the runner ----------------------------------------------
+
+    async def apply_event(self, *, node_id: uuid.UUID, message_type: str, payload: dict) -> None:
+        """`run.accept`, `run.decline`, `run.lease_renew`, `run.progress`.
+
+        All four are one-way frames. None of them may reply on the socket, and none of
+        them may reach back to the node — see this module's docstring.
+        """
+        run = await self._run_for_node(node_id, payload)
+        if run is None:
+            return
+        if message_type == "run.accept":
+            if run.status == "claimed":
+                run.status = "running"
+                run.started_at = now_utc()
+                run.last_event_at = now_utc()
+                self._renew(run)
+        elif message_type == "run.decline":
+            # A release, not a failure: the runner may simply have filled up between
+            # polling and being offered. `attempt` is untouched, and a short in-memory
+            # cooldown stops the same runner picking it straight back up in a hot loop.
+            _DECLINE_COOLDOWN[(run.id, run.runner_id)] = now_utc() + timedelta(
+                seconds=DECLINE_COOLDOWN_SECONDS
+            )
+            run.status = "queued"
+            run.runner_id = None
+            run.claimed_at = None
+            run.lease_expires_at = None
+        elif message_type == "run.lease_renew":
+            # **Unconditional, on purpose.** Making renewal depend on child activity
+            # would make "the runner died" and "the child hung" look identical to
+            # Central, and those converge along different paths (ADR 0029 sec 4).
+            self._renew(run)
+        elif message_type == "run.progress":
+            self._renew(run)
+            run.last_event_at = now_utc()
+            phase = payload.get("phase")
+            commit_sha = payload.get("commit_sha")
+            if phase == "checked_out" and isinstance(commit_sha, str) and len(commit_sha) == 40:
+                run.commit_sha = commit_sha
+            if payload.get("waiting_for_input") is True and run.status == "running":
+                run.status = "waiting_for_input"
+                run.waiting_since = now_utc()
+            elif payload.get("waiting_for_input") is False and run.status == "waiting_for_input":
+                run.status = "running"
+                run.waiting_since = None
+        await self._session.flush()
+
+    async def finish(self, *, node_id: uuid.UUID, message_type: str, payload: dict) -> None:
+        """`run.complete` / `run.failed`. Terminal, and the log's clock starts here."""
+        run = await self._run_for_node(node_id, payload)
+        if run is None:
+            return
+        succeeded = message_type == "run.complete"
+        result = payload.get("result")
+        run.status = "succeeded" if succeeded else "failed"
+        run.result = result if isinstance(result, str) else ("succeeded" if succeeded else "failed")
+        run.error_code = payload.get("error_code") if not succeeded else None
+        summary = payload.get("summary")
+        run.summary = summary if isinstance(summary, str) else None
+        disk_bytes = payload.get("disk_bytes")
+        if isinstance(disk_bytes, int):
+            run.disk_bytes = disk_bytes
+        run.finished_at = now_utc()
+        run.last_event_at = now_utc()
+        # The two retentions of ADR 0030, as one line: a failed run's log is the one
+        # somebody will come back to.
+        run.logs_expire_at = now_utc() + timedelta(days=3 if succeeded else 14)
+        await self._session.flush()
+        task = await self._session.get(Task, run.task_id)
+        if task is not None:
+            await self._activity.record(
+                RUN_FINISHED,
+                project_id=run.project_id,
+                task_id=run.task_id,
+                actor_kind=ACTOR_AGENT,
+                payload={
+                    "run_id": str(run.id),
+                    "card_ref": task.card_ref,
+                    "result": run.result,
+                    "attempt": run.attempt,
+                },
+            )
+
+    async def _run_for_node(self, node_id: uuid.UUID, payload: dict) -> TaskRun | None:
+        """Resolve `payload.run_id` **and check it belongs to this node's runner**.
+
+        Without the second half, any connected node could drive any run by guessing an
+        id. Answering `None` rather than raising: this is a one-way frame with nowhere
+        to send an error, and the unmatched-message warning already covers the
+        diagnostic side.
+        """
+        raw = payload.get("run_id")
+        if not isinstance(raw, str):
+            return None
+        try:
+            run_id = uuid.UUID(raw)
+        except ValueError:
+            return None
+        run = await self._session.get(TaskRun, run_id)
+        if run is None or run.runner_id is None:
+            return None
+        runner = await self._session.get(AgentRunner, run.runner_id)
+        if runner is None or runner.node_id != node_id:
+            return None
+        return run
+
+    def _renew(self, run: TaskRun) -> None:
+        run.lease_expires_at = now_utc() + timedelta(
+            seconds=self._settings.run_lease_timeout_seconds
+        )
+
+    # --- re-queue ------------------------------------------------------------
+
+    async def requeue_lost(self, run: TaskRun) -> TaskRun | None:
+        """`lost` is terminal; a retry is a **new row** (ADR 0029 sec 4).
+
+        Reusing the row would erase where the previous attempt failed, and the Run
+        detail page's whole job is to show that. Returns the new run, or `None` when
+        the attempts are used up — in which case the card, not the run, is what changes.
+        """
+        run.status = "lost"
+        run.result = "lost"
+        run.finished_at = now_utc()
+        run.logs_expire_at = now_utc() + timedelta(days=14)
+        task = await self._session.get(Task, run.task_id)
+        if task is None:  # pragma: no cover - the FK makes this unreachable
+            return None
+
+        if run.attempt >= self._settings.run_max_attempts:
+            task.stage = "blocked"
+            runner_name = None
+            if run.assigned_runner_id is not None:
+                assigned = await self._session.get(AgentRunner, run.assigned_runner_id)
+                runner_name = assigned.name if assigned is not None else None
+            # Two different sentences, for the same reason the dispatch copy has two:
+            # "the machine you chose keeps failing" and "no machine could finish this"
+            # lead a person to do different things.
+            body = (
+                f"指定的 Agent「{runner_name}」連續 {run.attempt} 次未能完成這張卡。"
+                if runner_name
+                else f"連續 {run.attempt} 次未能完成這張卡。"
+            )
+            await MessageService(self._session).post_event(
+                task=task, body=body, event_kind="run.attempts_exhausted"
+            )
+            await self._activity.record(
+                RUN_FINISHED,
+                project_id=run.project_id,
+                task_id=task.id,
+                actor_kind=ACTOR_SYSTEM,
+                payload={"run_id": str(run.id), "card_ref": task.card_ref, "result": "lost"},
+            )
+            await self._session.flush()
+            return None
+
+        retry = TaskRun(
+            id=uuid.uuid4(),
+            task_id=run.task_id,
+            project_id=run.project_id,
+            seq=run.seq + 1,
+            status="queued",
+            attempt=run.attempt + 1,
+            # From the **run's snapshot**, not from the card: a person editing the card
+            # mid-run changes the next dispatch, never this retry (ADR 0029 sec 3).
+            assigned_runner_id=run.assigned_runner_id,
+            repository_id=run.repository_id,
+            source_kind=run.source_kind,
+            source_ref=run.source_ref,
+            runtime=run.runtime,
+            created_by=run.created_by,
+        )
+        self._session.add(retry)
+        await self._session.flush()
+        return retry
 
     # --- cancel --------------------------------------------------------------
 

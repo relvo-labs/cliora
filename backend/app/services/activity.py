@@ -73,6 +73,11 @@ PROPOSAL_ACCEPTED = "requirement.proposal_accepted"
 # fails in both directions, so a kind added ahead of its writer is as loud as a missing
 # one — `run.claimed` and `run.finished` arrive with the queue service that emits them.
 RUN_DISPATCHED = "run.dispatched"
+# Written by the atomic claim and by the finish/lost paths. Both carry
+# `actor_kind="agent"` or `"system"` rather than a user: an unattended run has no
+# person behind it, and attributing one would be a lie the timeline cannot correct.
+RUN_CLAIMED = "run.claimed"
+RUN_FINISHED = "run.finished"
 # A card's conversation is also stored in `task_messages`; this kind is the project
 # timeline's view of the same act. The two have different readers, which is why both
 # exist (ADR 0029). System events are **not** posted here — they already are activity.
@@ -99,6 +104,8 @@ ALL_KINDS: frozenset[str] = frozenset(
         REQUIREMENT_APPROVED,
         PROPOSAL_ACCEPTED,
         RUN_DISPATCHED,
+        RUN_CLAIMED,
+        RUN_FINISHED,
         TASK_MESSAGE_POSTED,
     }
 )

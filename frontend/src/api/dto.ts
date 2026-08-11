@@ -558,6 +558,7 @@ export const AUDIT_ACTIONS = [
   "session.context_project",
   // Agent Runner（ADR 0029）。派工與取消不併進 `task.update`：掛上佇列會在一台機器上
   // clone 一個 repo 並跑一個程序，與改一個欄位不是同一個量級，而稽核要分得出來。
+  "agent.register",
   "agent.update",
   "run.dispatch",
   "run.cancel",

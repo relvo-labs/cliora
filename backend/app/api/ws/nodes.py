@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import json
 import secrets
 import uuid
@@ -24,7 +25,7 @@ from app.clock import now_utc
 from app.db.engine import get_session
 from app.logging import get_logger
 from app.protocol import ProtocolError, decode_binary, decode_control
-from app.security.node_keys import new_challenge_id
+from app.security.node_keys import new_challenge_id, new_request_id
 from app.services.node_update import NodeUpdateService, outcome_from_payload
 from app.services.nodes import (
     NodeRegistrationService,
@@ -34,6 +35,9 @@ from app.services.nodes import (
     WorkspaceRootInput,
 )
 from app.services.registry import get_node_registry
+from app.services.run_logs import get_run_log_buffer
+from app.services.runners import RunnerService
+from app.services.runs import RunService
 from app.services.sessions import SessionService
 from app.services.terminal_relay import get_terminal_relay
 from app.services.tunnels import TunnelService
@@ -43,8 +47,50 @@ from app.settings import get_settings
 # the session's browser subscribers rather than matched to a pending request.
 _TERMINAL_EVENTS = frozenset({"terminal.gap", "terminal.exited", "terminal.error"})
 
+# V2.2 run events, all node→central and all **one-way** (ADR 0029 D2). Every one of
+# them needs an explicit branch below, because the last branch of the control loop is
+# `resolve_response()` and anything that reaches it is dropped with a warning — so a
+# missing type looks like "the message vanished, with no error", which is the hardest
+# bug in this phase to find. `GATE-AR-DISPATCH-COVERAGE` checks this set against the
+# contract's own type list.
+_RUN_EVENTS = frozenset({"run.accept", "run.decline", "run.lease_renew", "run.progress"})
+_RUN_TERMINAL_EVENTS = frozenset({"run.complete", "run.failed"})
+
 router = APIRouter()
 _logger = get_logger("cliora.node_ws")
+
+
+async def _absorb_log_chunk(session: AsyncSession, node_id: uuid.UUID, payload: Any) -> None:
+    """Buffer one `run.log_chunk`, and write a row only when it is worth a round trip.
+
+    The cap is enforced here rather than in the buffer so that the *decision* to start
+    truncating — and the byte count that goes with it — is visible on the path that
+    also owns the database write.
+    """
+    raw = payload.get("run_id") if isinstance(payload, dict) else None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    seq = payload.get("seq") if isinstance(payload, dict) else None
+    if not isinstance(raw, str) or not isinstance(data, str) or not isinstance(seq, int):
+        return
+    try:
+        run_id = uuid.UUID(raw)
+    except ValueError:
+        return
+    buffer = get_run_log_buffer()
+    limit = get_settings().run_log_max_bytes
+    if buffer.total_bytes(run_id) >= limit and not buffer.is_truncating(run_id):
+        buffer.begin_truncating(run_id)
+    now = asyncio.get_running_loop().time()
+    if buffer.append(run_id, seq, data, now=now):
+        if await buffer.flush(session, run_id, now=now):
+            await session.commit()
+
+
+async def _flush_run_log(session: AsyncSession, run_id: uuid.UUID) -> None:
+    buffer = get_run_log_buffer()
+    now = asyncio.get_running_loop().time()
+    await buffer.flush(session, run_id, now=now)
+    buffer.discard(run_id)
 
 
 def _frame(type_: str, node_id: uuid.UUID, request_id: str, payload: dict[str, Any]) -> str:
@@ -114,6 +160,10 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         # Absent on every daemon before 0.8.0, which is exactly the answer we want:
         # missing means incapable, and the session still starts (ADR 0028 sec 5).
         context_projection=bool(payload.get("context_projection", False)),
+        # Absent on every daemon before 0.9.0, and the same answer applies: missing
+        # means incapable, sessions are unaffected, and the node is simply never
+        # offered a run (ADR 0029 sec 7).
+        agent_runner=bool(payload.get("agent_runner", False)),
     )
 
 
@@ -266,6 +316,61 @@ async def node_gateway(
                 # the provider issues a new URL on every reconnect, so this branch is the
                 # only thing keeping the platform's copy of the URL true.
                 await TunnelService(session).apply_status(node_id, message.payload)
+                await session.commit()
+            elif message.type == "runner.register":
+                runner = await RunnerService(session).register(node_id, message.payload)
+                await session.commit()
+                await websocket.send_text(
+                    _frame(
+                        "runner.registered",
+                        node_id,
+                        message.request_id,
+                        {"runner_id": str(runner.id), "enabled": runner.enabled},
+                    )
+                )
+            elif message.type == "runner.poll":
+                # **The claim happens here.** `run.offer` therefore means "this card is
+                # already yours and the lease has started", not "would you like it".
+                #
+                # It is answered with a fresh one-way frame rather than a correlated
+                # reply, because the daemon keeps no pending map for requests it sends
+                # (`connection.go:494` is a single switch) — and because awaiting
+                # anything from inside this loop is a guaranteed timeout (ADR 0029 D1).
+                polling = await RunnerService(session).for_node(node_id)
+                offer = None
+                if polling is not None:
+                    capacity = message.payload.get("capacity")
+                    offer = await RunService(session).poll(
+                        runner=polling,
+                        capacity=capacity if isinstance(capacity, int) else 1,
+                    )
+                await session.commit()
+                await websocket.send_text(
+                    _frame(
+                        "run.offer",
+                        node_id,
+                        new_request_id(),
+                        offer.spec() if offer is not None else {"run_id": None},
+                    )
+                )
+            elif message.type in _RUN_EVENTS:
+                await RunService(session).apply_event(
+                    node_id=node_id, message_type=message.type, payload=message.payload
+                )
+                await session.commit()
+            elif message.type == "run.log_chunk":
+                # Deliberately **not** committed per chunk: this socket also carries
+                # interactive terminal output, and a database round trip per chunk buys
+                # an agent's debug log with the terminal's responsiveness (ADR 0030).
+                await _absorb_log_chunk(session, node_id, message.payload)
+            elif message.type in _RUN_TERMINAL_EVENTS:
+                run_id = message.payload.get("run_id")
+                if isinstance(run_id, str):
+                    with contextlib.suppress(ValueError):
+                        await _flush_run_log(session, uuid.UUID(run_id))
+                await RunService(session).finish(
+                    node_id=node_id, message_type=message.type, payload=message.payload
+                )
                 await session.commit()
             elif message.type in _TERMINAL_EVENTS:
                 sid = message.payload.get("session_id")

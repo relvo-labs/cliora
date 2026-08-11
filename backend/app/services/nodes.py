@@ -162,6 +162,11 @@ class RegisterNodeInput:
     # accept screenshots while refusing this.
     file_upload: bool = False
     context_projection: bool = False
+    # The node's own report that its agentd can run agent work unattended (0.9.0+,
+    # ADR 0029 §7). The fourth capability of the same shape, and false for anything
+    # older — which is the correct reading: that daemon has no runner mode, so it is
+    # never offered a run and the console says which version would be needed.
+    agent_runner: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -284,6 +289,7 @@ class NodeRegistrationService:
             or node.image_upload != data.image_upload
             or node.file_upload != data.file_upload
             or node.context_projection != data.context_projection
+            or node.agent_runner != data.agent_runner
         )
         previous_posture = node.privileged_terminal
         previous_upload = node.image_upload
@@ -292,6 +298,8 @@ class NodeRegistrationService:
         node.image_upload = data.image_upload
         node.file_upload = data.file_upload
         node.context_projection = data.context_projection
+        previous_agent_runner = node.agent_runner
+        node.agent_runner = data.agent_runner
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -307,6 +315,8 @@ class NodeRegistrationService:
                     "file_upload": data.file_upload,
                     "context_projection": data.context_projection,
                     "previous_file_upload": previous_file_upload,
+                    "agent_runner": data.agent_runner,
+                    "previous_agent_runner": previous_agent_runner,
                 },
             )
         return node

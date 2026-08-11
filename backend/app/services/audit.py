@@ -143,6 +143,9 @@ PROJECT_WORKSPACE_UNBIND = "project.workspace_unbind"
 # deliberately separate from `task.update`: queueing work spends compute, and an
 # auditor filtering for "who started a run on a machine" cannot get that from a merged
 # action.
+# Written by the node gateway when a daemon registers, so its actor is the system
+# rather than a person — `audit_logs.user_id` has been nullable since V2.1.
+AGENT_REGISTER = "agent.register"
 AGENT_UPDATE = "agent.update"
 RUN_DISPATCH = "run.dispatch"
 RUN_CANCEL = "run.cancel"
@@ -186,6 +189,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         PROJECT_ARCHIVE,
         PROJECT_WORKSPACE_BIND,
         PROJECT_WORKSPACE_UNBIND,
+        AGENT_REGISTER,
         AGENT_UPDATE,
         RUN_DISPATCH,
         RUN_CANCEL,

@@ -37,6 +37,8 @@ const LABELS: Record<string, string> = {
   // V2.2, the agent runner. `run.dispatched` is a person's action; the claim and the
   // finish are the runner's and the system's, and they arrive with the queue service.
   "run.dispatched": "派給 Agent",
+  "run.claimed": "Agent 領取任務",
+  "run.finished": "Agent 執行結束",
   "task.message_posted": "卡片留言",
 };
 

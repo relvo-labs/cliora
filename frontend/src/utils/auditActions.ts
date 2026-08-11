@@ -60,6 +60,7 @@ const LABELS: Record<string, string> = {
   "daemon.update_result": "Daemon 更新結果",
   // Agent Runner（ADR 0029）。派工與取消與 task.update 分開記：掛上佇列會在一台機器上
   // clone 一個 repo 並跑一個程序，而「誰讓某台機器開始跑東西」是會被單獨查的問題。
+  "agent.register": "Agent Runner 註冊",
   "agent.update": "更新 Agent 設定",
   "run.dispatch": "派工給 Agent",
   "run.cancel": "取消 Run",
@@ -117,6 +118,7 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "session_token.issue",
       "session_token.revoke",
       "session.context_project",
+      "agent.register",
       "agent.update",
       "run.dispatch",
       "run.cancel",
