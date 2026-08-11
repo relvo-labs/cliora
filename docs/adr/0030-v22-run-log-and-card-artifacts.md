@@ -1,8 +1,8 @@
 # ADR 0030 — What a run emits: a diagnostic log that expires and a deliverable that does not
 
-- Status: **proposed** — written form of the rulings of 2026-08-10 and 2026-08-11
-  (`plan/18/README.md` §裁決紀錄); acceptance is a human action and is **gate
-  three** for the tables in migration `0029` (`plan/18/00-…md` §4).
+- Status: **accepted** (2026-08-11) — written form of the rulings of 2026-08-10 and
+  2026-08-11 (`plan/18/README.md` §裁決紀錄). Acceptance clears **gate three**, the
+  one the tables in migration `0029` wait on (`plan/18/00-…md` §4).
 - Date: 2026-08-11
 - Amends: nothing. It answers, for this phase, the question ADR 0024 §W2 asks of
   every new store — *who cleans this up, and when* — and it gives **three

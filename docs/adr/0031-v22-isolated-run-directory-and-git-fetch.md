@@ -1,10 +1,16 @@
 # ADR 0031 — The isolated run directory, and how a run gets its code (fetch half)
 
-- Status: **proposed** — written form of the two rulings of 2026-08-10
-  (`plan/18/README.md` §裁決紀錄); acceptance is a human action and is **gate
-  four**: `AR-03` (schema) and `AR-07b` (the daemon's directory work) both wait on
-  it, because it decides where the run root lives, what a quota means, and who
-  reclaims the space (`plan/18/00-…md` §4).
+- Status: **accepted** (2026-08-11) — written form of the two rulings of 2026-08-10
+  (`plan/18/README.md` §裁決紀錄). Acceptance clears **gate four**, which `AR-03`
+  (schema) and `AR-07b` (the daemon's directory work) both waited on, because this
+  decides where the run root lives, what a quota means, and who reclaims the space
+  (`plan/18/00-…md` §4).
+
+  > **One decision inside this document is still open**, and it is named as such in
+  > §Alternatives: whether the bare-mirror layer exists at all. M11 has since been
+  > measured (`plan/18/10-…md` §1.2) and it leans toward a shallow clone; the
+  > choice belongs to `AR-07b` and changes only the directory layout, not anything
+  > accepted here.
 
   > **This version covers only the *fetch* half of git.** The send-back half —
   > push, the `cliora/<card_ref>-<run_seq>` branch namespace, the five hard
@@ -335,7 +341,7 @@ quota. Whether to keep them is a person's call.
 | A run directory inside an allowed root | The two authorization models would interconnect: the agent's intermediate files appear in the user's file browser, and the user's `filesystem.store` can write into the run directory |
 | `RuntimeDirectory` (`/run/agentd`) | tmpfs — it does not survive a reboot, and a failed run's directory must last 14 days |
 | A Go git library | mirror and worktree are its weakest area, and the agent uses real `git` anyway, so two implementations would see different states |
-| A full clone every run, no mirror | **Not rejected — pending measurement.** If M11 says a shallow clone is fast enough at Traqora's size, the mirror is a cache nobody needed |
+| A full clone every run, no mirror | **Not rejected, and M11 now leans this way.** Measured 2026-08-11 (`plan/18/10-…md` §1.2): over the network the mirror saves **1.5 s per run** at this repository size, and almost all of its per-run cost is the no-op `remote update --prune` — one network round trip, 2.40 s, largely independent of repository size. A cache that saves 1.5 s but adds lock contention, corruption handling and a 30-day reclamation pass is a poor trade. Two things would flip it back: Traqora measuring an order of magnitude larger than `cliora` (it was **not** measured — no clone on the machine), or a run rate high enough for 1.5 s to matter (M-AR-7). **`AR-07b` picks one**; dropping the mirror removes `mirrors/` from the layout in §1 and the third row of §4's retention table |
 | A token inside the remote URL | It surfaces in `git remote -v`, the reflog and error messages. The URL is stored in three columns so userinfo cannot be represented |
 | Removing `origin` after clone | Withdrawn by the second ruling of 2026-08-10: it breaks fetch and pull along with the push that is now permitted. Observability replaced it |
 | Recommending read-only git credentials on runner nodes | Withdrawn by the same ruling. The runbook says instead: whatever this machine can reach, the agent can reach — so a runner node should be dedicated |

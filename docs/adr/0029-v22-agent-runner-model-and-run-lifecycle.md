@@ -1,10 +1,9 @@
 # ADR 0029 — The V2.2 Agent Runner: a mode of `agentd`, a pull-based claim, and a run that is not a session
 
-- Status: **proposed** — the decisions below are the written form of the rulings of
-  2026-08-10 and 2026-08-11 (`plan/18/README.md` §裁決紀錄), but acceptance is a
-  human action and it is **gate two** of the phase: `backend/`, `frontend/`,
-  `daemon/` and `contracts/` stay untouched until this is accepted
-  (`plan/18/00-…md` §4).
+- Status: **accepted** (2026-08-11). The decisions below are the written form of
+  the rulings of 2026-08-10 and 2026-08-11 (`plan/18/README.md` §裁決紀錄).
+  Acceptance clears **gate two** of the phase: `backend/`, `frontend/`, `daemon/`
+  and `contracts/` were held untouched until this point (`plan/18/00-…md` §4).
 - Date: 2026-08-11
 - Amends: nothing. ADR 0027 made the platform the source of truth for the work,
   ADR 0028 turned that work into cards a person can move. This records who moves

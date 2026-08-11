@@ -20,23 +20,23 @@ D11／D13／D15–D20。
 | 類別 | 剩下什麼 |
 |---|---|
 | **擋開工** | **無。** 基線點、紅線措辭、成本上限三項均已裁決；`AR-00` 的六份基線已擷取（§1.1），閘門一解除 |
-| **擋波次 1–2**（`AR-03` 起） | **人工核准三份 ADR**（0029／0030／0031，Status 均為 `proposed`）。這是 `00-…md` §4 的閘門二與閘門三：核准前不得動 `backend/`／`frontend/`／`daemon/`／`contracts/`。文件已寫完，等的是一個人的決定，不是更多工作 |
+| **擋波次 1–2**（`AR-03` 起） | **無。** 三份 ADR 已於 2026-08-11 人工核准，閘門二／三／四同時解除 |
 | **擋波次 3**（`AR-07`／`AR-07b`） | **M11／M12 已量**（§1.2，`AR-07b` 不再被它們擋，但 mirror-vs-淺-clone 要先決定）。剩下：**M-AR-2**（要改 `daemon/cmd/fakecli`，所以它同時被閘門二擋著）、**M-AR-9 的尾巴**（要一台可以無人值守執行 `Bash` 的機器） |
 | **排在 `AR-07` 第一件事** | 兩項要一次真的 run 才知道：`claude --permission-mode dontAsk` 的語意、`codex exec -s workspace-write` 的 landlock 實際範圍 |
 | **V2.3 開工前** | `isolate_ambient_credentials` 的**值**（形狀已定：預設取代、可關成疊加）。M-AR-6 會影響它 |
 | **人工、與設計無關** | `plan/17` 的合併提案、出口條件 9 在 Traqora 實跑、`agentd` 0.8.0 的發布時機 |
 
 **量測擋的是節點半，不是閘門票、ADR、資料層、API 與佇列。**
-2026-08-11 之後唯一擋在波次 1 前面的是**三份 ADR 的人工核准**。
+三份 ADR 已於 2026-08-11 核准，波次 1 可以開工。
 
 ## 1. Ticket 狀態
 
 | Ticket | 標題 | 狀態 | 證據 |
 |---|---|---|---|
 | `AR-00` | 基線擷取（**實際基線點 `dc61006`**，見 §3 第 1 條）＋ **M-AR-1／M11／M12（已量）、M-AR-9（部分）、M-AR-2（未做）** | ◐ | 六份基線在 `artifacts/ar/local/baseline/`（§1.1）；量測在 `artifacts/ar/local/measurements/`（§1.2）。擷取器與量測器：`scripts/ar/{capture-baseline.sh,frontend_routes.py,measure_terminal_latency.py,measure_clone.py,measure_event_intervals.py}` |
-| `AR-01` | ADR 0029、PRD §8.13、skill、traceability | ◐ **文件已寫，待人工核准** | `docs/adr/0029-v22-agent-runner-model-and-run-lifecycle.md`（**Status: proposed**）；`research/prd.md` §8.13（FR-AGENT-001、003–013，共 12 條、58 個 AC）；`.agent/skills/cliora-project-context/SKILL.md` 三面補述 ＋ Git automation 那一句改寫；`traceability/requirements.json` 12 筆 `proposed`，`scripts/trace validate --level static`／`--level selectors`／`coverage --strict` 全綠，`docs/traceability/{matrix,owners}.md` 已 render |
-| `AR-02` | ADR 0030（log 與產物的兩種保留期） | ◐ **文件已寫，待人工核准** | `docs/adr/0030-v22-run-log-and-card-artifacts.md`（**Status: proposed**）。§Part A 的「掉最後 ≤64 KiB」三句寫在 Consequences 與 Decision 兩處 |
-| `AR-02b` | 🆕 ADR 0031（隔離目錄 ＋ git 取得 ＋ Agent 的 git 自由）**＋ 紅線 4 措辭修訂** | ◐ **文件已寫，待人工核准**；紅線 4 **已於 2026-08-10／11 改好**（見 §3 第 5 條） | `docs/adr/0031-v22-isolated-run-directory-and-git-fetch.md`（**Status: proposed**，Status 段已寫明 V2.3 會 amend 本文件） |
+| `AR-01` | ADR 0029、PRD §8.13、skill、traceability | ✅ **ADR 0029 已於 2026-08-11 人工核准** | `docs/adr/0029-v22-agent-runner-model-and-run-lifecycle.md`（**Status: accepted**）；`research/prd.md` §8.13（FR-AGENT-001、003–013，共 12 條、58 個 AC）；`.agent/skills/cliora-project-context/SKILL.md` 三面補述 ＋ Git automation 那一句改寫；`traceability/requirements.json` 12 筆 `proposed`，`scripts/trace validate --level static`／`--level selectors`／`coverage --strict` 全綠，`docs/traceability/{matrix,owners}.md` 已 render |
+| `AR-02` | ADR 0030（log 與產物的兩種保留期） | ✅ **已於 2026-08-11 人工核准** | `docs/adr/0030-v22-run-log-and-card-artifacts.md`（**Status: accepted**）。§Part A 的「掉最後 ≤64 KiB」三句寫在 Consequences 與 Decision 兩處 |
+| `AR-02b` | 🆕 ADR 0031（隔離目錄 ＋ git 取得 ＋ Agent 的 git 自由）**＋ 紅線 4 措辭修訂** | ✅ **已於 2026-08-11 人工核准**；紅線 4 **已於 2026-08-10／11 改好**（見 §3 第 5 條） | `docs/adr/0031-v22-isolated-run-directory-and-git-fetch.md`（**Status: accepted**，Status 段已寫明 V2.3 會 amend 本文件，以及 mirror-vs-淺-clone 這一項仍開放） |
 | `AR-03` | migration `0029`／`0030`／`0031` ＋ 模型 | ⬜ | |
 | `AR-04` | RBAC 四動作 ＋ Agents／**Repositories**／Dispatch API（同一個 PR） | ⬜ | |
 | `AR-05` | 資格查詢、claim-then-offer、租約 sweep、重排 | ⬜ | |
@@ -68,7 +68,7 @@ D11／D13／D15–D20。
 「run log 不得讓互動終端變頓」——`AR-07` 要在同一台 node 上讓一個 run 全速輸出時重量一次，
 判準是 **p95 不比 0.980 ms 高 20% 以上**。
 
-**四項擋波次 3 的量測（M-AR-2／M-AR-9／M11／M12）尚未進行。** 它們不擋波次 0–2。
+四項擋波次 3 的量測見下一節。
 
 ### 1.2 `AR-00` 的四項量測（2026-08-11）
 
@@ -140,7 +140,7 @@ D11／D13／D15–D20。
    「平台代表卡片執行的 push」，而且帶著一段「2026-08-10 裁決衍生、2026-08-11 核准的修訂」
    的說明。`AR-01` 做的是**引用它**（ADR 0031 §5「紅線措辭」那一段），不是再改一次。
 
-6. **三份 ADR 的 Status 都是 `proposed` 而不是 `accepted`。**
+6. **三份 ADR 一開始是 `proposed` 而不是 `accepted`，2026-08-11 才由人翻成 `accepted`。**
    計畫沒有指定，而既有的 ADR 0027／0028 都是 `accepted`。
    選 `proposed` 的理由是閘門本身：`00-…md` §4 的閘門二與閘門三寫的是
    「**核准前**不得動 `backend/`／`frontend/`／`daemon/`／`contracts/`」，
