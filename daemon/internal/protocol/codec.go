@@ -827,16 +827,21 @@ func validCloneURL(value string) bool {
 		if !ok {
 			return false
 		}
+		// The canonical ssh clone form needs a user name, and `git` is the only one
+		// Central can produce — it assembles the URL from three stored columns.
+		rest = strings.TrimPrefix(rest, "git@")
 	}
 	if rest == "" || strings.ContainsAny(rest, " \t\r\n") {
 		return false
 	}
-	// Anywhere, not only before the first slash: `@` in the authority is the
-	// credential form, and a host component never legitimately contains one.
-	if strings.Contains(rest, "@") {
+	// No further userinfo, and no colon-bearing form at all: a **password** is what
+	// must be unrepresentable, because it would surface in `git remote -v`, the reflog
+	// and error messages.
+	authority, path, found := strings.Cut(rest, "/")
+	if !found || authority == "" || strings.Contains(authority, "@") {
 		return false
 	}
-	return strings.Contains(rest, "/")
+	return path != "" || strings.HasSuffix(rest, "/")
 }
 
 func validRunSource(source RunSource) bool {

@@ -751,6 +751,16 @@
       "path": "invalid/run-offer-source-missing-ref.json",
       "accept": false,
       "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/run-offer-source-ssh.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "invalid/run-offer-source-other-ssh-user.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
     }
   ],
   "binary": [

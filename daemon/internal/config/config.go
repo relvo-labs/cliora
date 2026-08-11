@@ -177,6 +177,105 @@ func (f FileUploadConfig) MinFree() int64 {
 // (see D8: default true, acquired by upgrade, announced in the release note).
 func (u UploadConfig) UploadEnabled() bool { return u.Enabled == nil || *u.Enabled }
 
+// RunnerConfig bounds the agent runner (ADR 0029/0031). Every field here answers a
+// question about **this machine**, never about the work: what it may fetch, how much
+// disk it will lend, and how long it keeps the evidence.
+//
+// The one field with no default worth arguing about is WorkDir. It defaults to
+// systemd's StateDirectory, and wherever it points, the daemon **refuses to start in
+// runner mode if it overlaps any allowed root** (§3.6). That is a refusal rather than
+// a warning because the failure mode is two authorization models becoming reachable
+// from each other, and a daemon that warns and starts anyway leaves that live for
+// months.
+type RunnerConfig struct {
+	// Enabled turns runner mode on. Absent means off: a machine does not start
+	// running unattended work because it was upgraded.
+	Enabled bool `yaml:"enabled"`
+	// WorkDir is the run root. Empty means <StateDirectory>/.cliora/runs, i.e.
+	// /var/lib/agentd/.cliora/runs. The `.cliora` segment is kept deliberately: the
+	// ruling asked for a hidden directory by that name, and it inherits an accidental
+	// benefit — image drop already writes a `.cliora/.gitignore` containing `*`, so a
+	// work_dir that lands inside a repository is ignored by git anyway. A softened
+	// worst case, not something the design leans on.
+	WorkDir string `yaml:"work_dir"`
+	// MaxConcurrent runs at once, and MaxWaiting runs parked on a human's reply. Two
+	// numbers because a run in waiting_for_input holds no process and must not occupy
+	// execution capacity (ADR 0029 §5).
+	MaxConcurrent int `yaml:"max_concurrent"`
+	MaxWaiting    int `yaml:"max_waiting"`
+	// PollIntervalSeconds between polls when there is spare capacity. A runner at
+	// capacity simply stops polling — backpressure is structural, and there is no
+	// "capacity: 0" frame.
+	PollIntervalSeconds int `yaml:"poll_interval_seconds"`
+	// IdleTimeoutSeconds is the **primary liveness judgement**: how long the child may
+	// go without emitting an event on its JSONL stream. **Do not lower this without a
+	// measurement.** Killing an agent that is working re-queues the card, so one wrong
+	// kill is usually three (ADR 0029 §4, M-AR-9).
+	IdleTimeoutSeconds int `yaml:"idle_timeout_seconds"`
+	// RunQuotaBytes caps one run directory; TotalQuotaBytes caps all of them together.
+	// Exceeding the first fails that run; exceeding the second **stops polling** and
+	// reports why — "out of disk" and "machine is gone" are different facts and a
+	// person reacts differently to each.
+	RunQuotaBytes   int64 `yaml:"run_quota_bytes"`
+	TotalQuotaBytes int64 `yaml:"total_quota_bytes"`
+	// MinFreeBytes is the free-space floor, and it deliberately reuses image drop's
+	// default: the agent's clones and the user's uploads compete for one disk, and two
+	// different floors would let one starve the other.
+	MinFreeBytes *int64 `yaml:"min_free_bytes"`
+	// RetentionSuccessDays / RetentionFailedDays are how long a finished run's
+	// directory is kept. A failed run's is kept far longer because that is the one
+	// somebody comes back to look at.
+	RetentionSuccessDays int `yaml:"retention_success_days"`
+	RetentionFailedDays  int `yaml:"retention_failed_days"`
+
+	Git RunnerGitConfig `yaml:"git"`
+}
+
+// RunnerGitConfig is the node's own half of the two-layer host check. Central has a
+// deployment-wide allowlist and this is the machine's; **both must pass**, the same
+// split `authorize_workspace` and the daemon's own path containment already use —
+// Central is the coarse filter, the node is the final authority.
+type RunnerGitConfig struct {
+	AllowedHosts []string `yaml:"allowed_hosts"`
+	// KnownHostsPath pins ssh host keys. A separate file from the tunnel's, because
+	// the host lists are different, but the same posture: pin the keys rather than
+	// turn strict host key checking off. (Spelling the disabling form out here would
+	// trip `test_no_source_disables_provider_host_key_verification`, which scans the
+	// whole tree for it — and that guard is right to.)
+	KnownHostsPath string `yaml:"known_hosts_path"`
+	// FetchTimeoutSeconds bounds one clone. Missing credentials are meant to fail in
+	// seconds, not to hang until the wall clock — the idle timer cannot save that case
+	// because the clone happens before there is any event stream to measure.
+	FetchTimeoutSeconds int `yaml:"fetch_timeout_seconds"`
+}
+
+// Runner defaults. The two quotas come from M11/M12 (plan/18/10-…md §1.3): a checkout
+// is ~17 MB, but a run that installs its dependencies is ~390 MB — so the order of
+// magnitude is GB, not MB, and the headroom above the measured figure is a judgement
+// rather than a measurement.
+const (
+	DefaultRunnerMaxConcurrent         = 1
+	DefaultRunnerMaxWaiting            = 5
+	DefaultRunnerPollInterval          = 5
+	DefaultRunnerIdleTimeout           = 300
+	DefaultRunnerRunQuotaBytes   int64 = 2 * 1024 * 1024 * 1024
+	DefaultRunnerTotalQuotaBytes int64 = 8 * 1024 * 1024 * 1024
+	DefaultRunnerRetentionOK           = 3
+	DefaultRunnerRetentionFailed       = 14
+	DefaultRunnerFetchTimeout          = 900
+	// DefaultRunnerStateDir is where systemd's StateDirectory=agentd lands.
+	DefaultRunnerStateDir = "/var/lib/agentd"
+)
+
+// MinFree is the free-space floor, with an absent key meaning image drop's default
+// and an explicit 0 meaning "do not check".
+func (r RunnerConfig) MinFree() int64 {
+	if r.MinFreeBytes == nil {
+		return DefaultFileUploadMinFreeBytes
+	}
+	return *r.MinFreeBytes
+}
+
 // SearchConfig bounds filename search so a request cannot walk an unbounded
 // tree (tech §11.8, ADR 0015).
 type SearchConfig struct {
@@ -288,6 +387,7 @@ type Config struct {
 	Session    SessionConfig            `yaml:"session"`
 	Heartbeat  HeartbeatConfig          `yaml:"heartbeat"`
 	Tunnel     TunnelConfig             `yaml:"tunnel"`
+	Runner     RunnerConfig             `yaml:"runner"`
 
 	// ShellFromDefault reports that runtime.shell was absent and defaulted to
 	// enabled, rather than being written by an operator. Never serialised.
@@ -367,10 +467,49 @@ func Load(path string) (*Config, error) {
 	cfg.applyRuntimeDefaults()
 	cfg.applySessionDefaults()
 	cfg.applyTunnelDefaults()
+	cfg.applyRunnerDefaults()
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// applyRunnerDefaults fills the absent runner keys. It never flips `enabled`: a
+// machine must not begin running unattended work because it was upgraded, which is
+// the opposite of the image-drop default and deliberately so — that grant lets the
+// platform put a file somewhere, this one starts a process.
+func (c *Config) applyRunnerDefaults() {
+	r := &c.Runner
+	if r.WorkDir == "" {
+		r.WorkDir = filepath.Join(DefaultRunnerStateDir, ".cliora", "runs")
+	}
+	if r.MaxConcurrent <= 0 {
+		r.MaxConcurrent = DefaultRunnerMaxConcurrent
+	}
+	if r.MaxWaiting <= 0 {
+		r.MaxWaiting = DefaultRunnerMaxWaiting
+	}
+	if r.PollIntervalSeconds <= 0 {
+		r.PollIntervalSeconds = DefaultRunnerPollInterval
+	}
+	if r.IdleTimeoutSeconds <= 0 {
+		r.IdleTimeoutSeconds = DefaultRunnerIdleTimeout
+	}
+	if r.RunQuotaBytes <= 0 {
+		r.RunQuotaBytes = DefaultRunnerRunQuotaBytes
+	}
+	if r.TotalQuotaBytes <= 0 {
+		r.TotalQuotaBytes = DefaultRunnerTotalQuotaBytes
+	}
+	if r.RetentionSuccessDays <= 0 {
+		r.RetentionSuccessDays = DefaultRunnerRetentionOK
+	}
+	if r.RetentionFailedDays <= 0 {
+		r.RetentionFailedDays = DefaultRunnerRetentionFailed
+	}
+	if r.Git.FetchTimeoutSeconds <= 0 {
+		r.Git.FetchTimeoutSeconds = DefaultRunnerFetchTimeout
+	}
 }
 
 // applyRuntimeDefaults enables the system terminal when the config says nothing

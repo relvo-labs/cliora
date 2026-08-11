@@ -7,11 +7,11 @@
   "properties": {
     "kind": {"enum": ["none", "repo", "existing_branch"]},
     "url": {
-      "$comment": "No `@` before the host: that is the machine form of ADR 0031's rule against tokens in remote URLs.",
+      "$comment": "The only userinfo that may appear is the literal `git@`, and only on ssh — that is the canonical ssh clone form and ssh needs a user name. **A colon is what is unrepresentable**, so a password cannot be expressed at all, which is the machine form of ADR 0031's rule against credentials in remote URLs. Central assembles this from three stored columns and emits exactly `ssh://git@host/path`, so the accepted set is the set it can produce.",
       "type": "string",
       "minLength": 8,
       "maxLength": 2048,
-      "pattern": "^(https|ssh)://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?/[^@\\s]*$"
+      "pattern": "^(https://|ssh://(git@)?)[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?/[^@\\s]*$"
     },
     "ref": {
       "$comment": "A branch or a tag. May not begin with `-`: the closed argv table cannot protect a value that *is* a flag.",

@@ -1108,8 +1108,13 @@ const RUN_FAILURE_CODES = new Set([
 // No leading `-`: a closed argv table cannot protect a value that *is* a flag.
 const GIT_REF = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
 const COMMIT_SHA = /^[0-9a-f]{40}$/;
+// The only userinfo accepted is the literal `git@`, and only on ssh: that is the
+// canonical ssh clone form and ssh needs a user name. What stays unrepresentable is
+// a **password**, which is what would leak into `git remote -v`, the reflog and error
+// messages. Central assembles this from three stored columns, so the accepted set is
+// exactly the set it can produce.
 const CLONE_URL =
-  /^(https|ssh):\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?\/[^@\s]*$/;
+  /^(https:\/\/|ssh:\/\/(git@)?)[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?\/[^@\s]*$/;
 
 function requireUuid(value: unknown, field: string): void {
   if (typeof value !== "string" || !UUID.test(value))
