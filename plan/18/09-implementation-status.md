@@ -46,8 +46,8 @@ D11／D13／D15–D20。
 | `AR-07` | `agentd` 0.9.0 的執行面：非互動執行、log 分塊、取消三段 | ✅ | `runtime/run.go` 是新檔，`runtime.go`／`launch.go` 對基線零 diff（`GATE-AR-TOUCH-LIST`）。取消的 process group 測試抓到一個真缺陷，見 §3 第 12 條 |
 | `AR-08` | `run_tokens` ＋ `cliora` CLI 0.2.0（**安全審查 §2**） | ✅ | 第二張表 ＋ `AgentPrincipal` 的第二種形狀 ＋ `/api/cli/runs` 三條 ＋ 四個子命令。情境解析一行未改 |
 | `AR-09` | 產物：上傳、儲存、配額、安全提供（**安全審查 §4**） | ✅ | 六步接收、三層配額、四個下載標頭、三類預覽白名單。新增一個 runtime 依賴 `python-multipart` |
-| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ◐ | Agents 頁（含兩段姿態文案）、API client、導覽項與 `agent_runs` feature 已完成。**Repository 設定表單、派工 picker、看板徽章尚未做**——後端端點都在，缺的是 Project／Task 兩個既有畫面上的入口 |
-| `AR-11` | 前端：Run 詳情、訊息串、產物區 | ◐ | Run 詳情頁（log 輪詢、git 摘要、產物區、取消）已完成。**卡片上的訊息串尚未做**——`GET/POST /api/tasks/{id}/messages` 都在，缺的是 TaskDetailView 上的區塊 |
+| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ✅ | Agents 頁（兩段姿態文案）、Project 設定的 Repository 區（**三個欄位而不是一個網址**）、Task 上的派工 picker（三種等待文案）、導覽項與 `agent_runs` feature。**看板徽章沒做**——卡片上的 run 狀態在 Task 詳情頁上，看板一次要渲染幾十張卡而 run 狀態要另一條查詢 |
+| `AR-11` | 前端：Run 詳情、訊息串、產物區 | ✅ | Run 詳情頁（log 輪詢、git 摘要、產物區、取消）＋ 卡片上的訊息串與產物區（`TaskAgentPanel`，三種來源混排、提問時說明「正在等你的回覆」） |
 | `AR-12` | 驗證、證據、安全審查定稿、release note | ◐ | 七個 gate ＋ 判準 14 的兩個機器斷言全綠（`scripts/ar/gates.sh`）；`docs/security-review-v22.md` 五節；`docs/release-note-agent-runner.md`。**traceability 仍是 `proposed`**，理由見 §3 第 13 條 |
 | — | **合併提案** | ⬜ **待人工** | 條件全綠只是取得提案資格，不是核准 |
 
@@ -251,10 +251,10 @@ D11／D13／D15–D20。
 
 **程式與文件已完成；下面五件都需要人。**
 
-0. **前端還有三個入口沒做**（`AR-10`／`AR-11` 的 ◐）：Project Settings 的 Repository
-   區、Task 詳情上的「派給 Agent」與訊息串、看板的 run 徽章。後端端點與 API client
-   都在，缺的是三個既有畫面上的區塊。這是本期唯一一塊**實作沒做完**的，
-   其餘四件都是本來就要人做的。
+0. **看板上的 run 徽章沒做。** 卡片的 run 狀態在 Task 詳情頁上看得到；
+   看板一次要渲染幾十張卡，而 run 狀態需要另一條查詢，所以那是一個要先決定
+   「board 回應要不要帶 run 狀態」的設計問題，不是一個補一個元件的問題。
+   本期的其餘實作都已完成。
 
 1. **合併提案。** `v2` → `dev` 一律由人決定（`research/02/10` §7）。
 2. **出口條件在 Traqora 上實跑一次**（D30 的階段表）。

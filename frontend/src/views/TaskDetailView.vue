@@ -13,6 +13,7 @@ import {
 } from "../api/dto";
 import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
+import TaskAgentPanel from "../components/project/TaskAgentPanel.vue";
 import TaskDetail from "../components/project/TaskDetail.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
@@ -102,6 +103,15 @@ onMounted(() => resource.run());
         :actor-names="actorNames"
         @changed="resource.run"
         @start-session="startSession"
+      />
+      <!-- Its own panel rather than a section inside TaskDetail: it is the only part
+           of this page that talks to a different half of the system, and it disappears
+           entirely when the deployment has agent runs switched off. -->
+      <TaskAgentPanel
+        v-if="task"
+        :project-id="id"
+        :task-id="task.id"
+        :stage="task.stage"
       />
     </main>
   </AppLayout>

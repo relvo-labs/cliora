@@ -20,6 +20,7 @@ import type {
   ProjectWorkspace,
 } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
+import ProjectRepositories from "../components/project/ProjectRepositories.vue";
 import TaskBoard from "../components/project/TaskBoard.vue";
 import TaskRoadmap from "../components/project/TaskRoadmap.vue";
 import AsyncState from "../components/common/AsyncState.vue";
@@ -524,6 +525,11 @@ function recordActionError(error: unknown, fallback: string): void {
         <p v-if="project.description" class="description">
           {{ project.description }}
         </p>
+
+        <!-- Above Workspaces on purpose: after the 2026-08-10 ruling a run does not
+             use a workspace binding at all, so "where does this project's code live"
+             is now the question a person answers first. -->
+        <ProjectRepositories :project-id="id" :can-manage="canManage" />
 
         <div class="section-head">
           <h2>Workspaces</h2>
