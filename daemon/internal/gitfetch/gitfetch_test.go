@@ -207,3 +207,98 @@ func TestClassifyDistinguishesTheThreeCauses(t *testing.T) {
 		t.Fatal("an unrelated failure was classified as a credential problem")
 	}
 }
+
+// The existence of this test is the record of a decision.
+//
+// The run directory is isolated from the operator's workspaces, and it would have been
+// easy to read that as "the agent may not reach the network either" — remove `origin`
+// after cloning, or hand the child the same prompt-free environment the daemon uses for
+// its own git calls. The decision went the other way: **an agent may push.** A card that
+// says "open a PR" is a card the agent has to be able to finish, and a run whose push is
+// silently blocked fails in a way that looks like the remote's fault.
+//
+// So this asserts the permission rather than the prohibition, and it goes red on the
+// day somebody "tidies up" by dropping the remote or by tightening the child's
+// environment — which is exactly when someone should have to read this comment.
+func TestAnAgentCanPushFromItsRunDirectory(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed; it is a runner-mode prerequisite, not a test-suite one")
+	}
+	// The environment the *child* is given is `os.Environ()` (`run_handlers.go`), not
+	// `fetchEnv` — only the daemon's own calls get the prompt-free one. Pushing with
+	// `GIT_ASKPASS=/bin/false` would fail the moment a credential were needed.
+	childEnv := append(os.Environ(),
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+	for _, banned := range []string{"GIT_ASKPASS=/bin/false", "GIT_TERMINAL_PROMPT=0"} {
+		for _, entry := range childEnv {
+			if entry == banned {
+				t.Fatalf("the child inherited %s; a push needing a credential would fail", banned)
+			}
+		}
+	}
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir, cmd.Env = dir, childEnv
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v in %s: %v: %s", args, dir, err, out)
+		}
+		return string(out)
+	}
+
+	root := t.TempDir()
+	scratch := filepath.Join(root, "scratch.git")
+	git(root, "init", "-q", "--bare", "-b", "main", scratch)
+
+	// A checkout laid out the way a run's is: `repo/` beside `.cliora/`.
+	repo := filepath.Join(root, "runs", "a", "repo")
+	if err := os.MkdirAll(repo, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	git(root, "clone", "-q", scratch, repo)
+	if err := os.WriteFile(filepath.Join(repo, "work.txt"), []byte("done\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	fetcher := Fetcher{Timeout: 30 * time.Second, Env: os.Environ()}
+	ctx := context.Background()
+	if err := fetcher.SetRunIdentity(ctx, repo, "Dev-VM 01"); err != nil {
+		t.Fatalf("identity: %v", err)
+	}
+	git(repo, "add", "work.txt")
+	git(repo, "commit", "-qm", "the agent's commit")
+
+	// Before: the summary reports one commit that exists nowhere else.
+	before, err := fetcher.UnpushedCommits(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before != 1 {
+		t.Fatalf("unpushed before push = %d, want 1", before)
+	}
+
+	git(repo, "push", "-q", "origin", "HEAD:refs/heads/main") // must not be blocked
+
+	if got := strings.TrimSpace(git(scratch, "log", "--oneline", "-1")); !strings.Contains(got, "the agent's commit") {
+		t.Fatalf("the scratch remote did not receive the commit: %q", got)
+	}
+	after, err := fetcher.UnpushedCommits(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after != 0 {
+		// The same counter the run summary carries, so a wrong answer here is a wrong
+		// answer on the Run detail page.
+		t.Fatalf("unpushed after push = %d, want 0", after)
+	}
+	remotes, err := fetcher.Remotes(ctx, repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(remotes) == 0 {
+		t.Fatal("the run's checkout has no remote; an agent asked to open a PR cannot")
+	}
+}

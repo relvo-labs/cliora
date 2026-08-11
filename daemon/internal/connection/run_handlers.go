@@ -3,6 +3,7 @@ package connection
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"sort"
@@ -185,8 +186,22 @@ func (m *Manager) executeRun(
 	runID := offer.RunID.String()
 	spec := offer.Spec
 
+	// Optional string fields are **omitted when empty**, never sent as "". The
+	// contract gives them `minLength: 1`, because an empty string is not a summary —
+	// and a frame that fails validation is dropped by the receiver *silently*
+	// (ADR 0029 D2). `summary` is empty on the common path: a run with nothing awkward
+	// to report has nothing to say, so sending "" would have meant that **every clean
+	// run's completion frame vanished** and the lease expired instead.
+	//
+	// Caught by `GATE-AR-DISPATCH-COVERAGE` rather than by a person, which is what
+	// that gate is for.
 	send := func(kind string, payload map[string]any) {
 		payload["run_id"] = runID
+		for _, key := range []string{"summary", "message"} {
+			if value, ok := payload[key].(string); ok && value == "" {
+				delete(payload, key)
+			}
+		}
 		_ = write(kind, protocol.NewID(), payload)
 	}
 
@@ -286,6 +301,28 @@ func (m *Manager) executeRun(
 
 	send("run.progress", map[string]any{"phase": "finishing"})
 	summary := m.runner.Inspect(ctx, layout, source.Kind != "none")
+
+	// **The honesty rule, before the token is dropped** (ADR 0031 §7). If the card
+	// declared no delivery and the tree changed anyway, that work disappears when the
+	// directory is reclaimed and nobody would know it had existed. The upload uses the
+	// same endpoint and the same credential `cliora task attach` uses.
+	//
+	// A failure here does not fail the run — but it is **said out loud** in the
+	// summary, because an artifact that silently failed to attach is the exact thing
+	// this rule exists to prevent.
+	summaryText := runner.SummaryText(offer.Delivery, summary)
+	if runner.ShouldAttachDiff(offer.Delivery, summary) {
+		uploader := runner.Uploader{
+			APIBase:    runner.APIBaseFromWebsocketURL(m.cfg.Server.URL),
+			Credential: spec.Credential,
+		}
+		name := fmt.Sprintf("changes-%s.patch", runID)
+		if _, err := uploader.AttachDiff(ctx, name, summary.Diff,
+			"本卡宣告不交付，但工作目錄有變更；這是那份變更的 diff。"); err != nil {
+			slog.Warn("could not attach the run's diff", "run_id", runID, "error", err)
+			summaryText += " ⚠ diff 未能附加為產物；那份變更只存在於這台機器上，而執行目錄有保留期。"
+		}
+	}
 	_ = runner.DropToken(layout)
 
 	if pumpErr != nil {
@@ -293,7 +330,7 @@ func (m *Manager) executeRun(
 		send("run.failed", map[string]any{
 			"error_code": pumpErr.Error(),
 			"message":    "the run was stopped by the daemon",
-			"summary":    runner.SummaryText(offer.Delivery, summary),
+			"summary":    summaryText,
 			"disk_bytes": summary.DiskBytes,
 		})
 		return
@@ -303,7 +340,7 @@ func (m *Manager) executeRun(
 		send("run.failed", map[string]any{
 			"error_code": outcome.ErrorCode,
 			"message":    "the runtime exited non-zero",
-			"summary":    runner.SummaryText(offer.Delivery, summary),
+			"summary":    summaryText,
 			"disk_bytes": summary.DiskBytes,
 		})
 		return
@@ -318,7 +355,7 @@ func (m *Manager) executeRun(
 	_ = runner.MarkFinished(layout, "succeeded", time.Now())
 	send("run.complete", map[string]any{
 		"result":           result,
-		"summary":          runner.SummaryText(offer.Delivery, summary),
+		"summary":          summaryText,
 		"disk_bytes":       summary.DiskBytes,
 		"git_remotes":      summary.Remotes,
 		"unpushed_commits": summary.UnpushedCommits,

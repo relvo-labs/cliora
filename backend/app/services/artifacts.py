@@ -60,7 +60,19 @@ _MAGIC = {
 # What may be shown inline. Markdown is served as **plain text**: rendering it would
 # execute embedded HTML, and a file called `report.md` whose content is HTML passes
 # every text check there is.
-PREVIEWABLE = {"image/png", "image/jpeg", "image/gif", "image/webp", "text/plain"}
+PREVIEWABLE = {
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "text/plain",
+    # Markdown **is** previewable, and the preview handler serves it as `text/plain`.
+    # Leaving it out would have made the second most common artifact download-only,
+    # which is the same mistake as excluding `.patch`: it quietly teaches people to
+    # stop attaching things. `application/json` is deliberately *not* here — it has no
+    # reader in the console, and an unread preview is a surface with no purpose.
+    "text/markdown",
+}
 BINARY = "application/octet-stream"
 
 
@@ -218,10 +230,16 @@ class ArtifactService:
             task_id=task.id,
             actor_user_id=user_id,
             actor_kind=ACTOR_USER if uploader_kind == "user" else ACTOR_AGENT,
+            # **No filename.** It is on `FORBIDDEN_METADATA_KEYS` with the path keys,
+            # and the guard is right: the project timeline is a project-wide feed that
+            # every role can read, while the filename belongs on the card's own
+            # artifact list. Putting it here would be a small, silent widening — which
+            # is how the actor-identity channel P4 closed got reopened once already.
             payload={
                 "card_ref": task.card_ref,
-                "filename": artifact.filename,
+                "artifact_id": str(artifact.id),
                 "size": artifact.size,
+                "content_type": artifact.content_type,
             },
         )
         return artifact
