@@ -79,12 +79,26 @@ Overview 內容：描述、綁定的 workspace 清單（node 名稱 ＋ 線上�
 
 ### 4.3b `Agents` — Runner 管理（V2.2，Infrastructure 群組）
 
-清單：runner 名稱、所在 node（連結到既有 node 詳情）、runtime、labels、`max_concurrent` 與目前負載、**綁定的 Project 清單**、線上狀態、啟用開關。
+清單：runner 名稱、所在 node（連結到既有 node 詳情）、runtimes、labels、`max_concurrent` 與目前負載、**run 目錄配額用量**、線上狀態、啟用開關。
 
 - 線上狀態就是 node 的線上狀態（D16），不另做一套指示燈。
-- 綁定 Project 的 UI 要說清楚它的意義：**綁定＝授權該 runner 取用該專案的機密**。這不是一個隨手勾的核取方塊。
-- 容量用盡（run 目錄配額）時顯示原因，不是顯示成離線。
+- **V2.2 沒有「綁定的 Project」欄**（2026-08-10 裁決把 D18 延後到 V2.3）。取而代之要有一行說明：
+  **「任何 runner 都可以領取任何專案的卡片。授權邊界是 enrollment。」**
+  這句話不寫，使用者會以為有一個他沒找到的綁定設定。
+- **V2.3 起**才有綁定欄，而那時 UI 要說清楚它的意義：**綁定＝授權該 runner 取用該專案的機密**。這不是一個隨手勾的核取方塊。
+- labels **顯示但不比對**（比對是後續功能），欄位旁要註明「目前僅供辨識」。
+- 容量或 **run 目錄配額**用盡時顯示原因，**不是顯示成離線**。
+- 🆕 **「用途姿態」一欄**（`dedicated`）：`✔ 專用 runner` 或
+  **`⚠ 混合用途（此 node 也提供互動式 Session；Agent 可讀取那些目錄）`**。
+  這是本頁唯一承載安全語意的欄位——「Agent 讀不到使用者的 workspace」
+  平台沒有技術上的隔離，只有在 `allowed_roots` 為空的 node 上才恆真
+  （`plan/18/04b-run-directory-and-git.md` §3.4／§2.5）。琥珀色不是紅色：
+  混合用途是一個合理的選擇，這一格的工作是讓它**被看見**。
 - 每個 runner 顯示「目前被指定的卡片數」，讓人看得出某台機器是不是被綁死了。
+
+**V2.2 另需一個 Project Settings 區塊：Repository**（登記 host／path／default branch），
+因為 Agent 要自己 clone，平台就得知道 repo 在哪。該區要明示
+**「clone 使用該 node 上既有的 git 認證；V2.3 起改為平台管理」**（`04` AR-04b）。
 
 ### 4.4 `Roadmap` — 藍圖（V2.1）
 
@@ -149,10 +163,15 @@ Epic → User Story → Task 三層摺疊，每層顯示完成度（`stage === '
 
 ### 4.7 Run 詳情頁（V2.2 起）
 
-- 狀態、所屬 Task 與 Project、執行的 runner、attempt 次數。
+- 狀態、所屬 Task 與 Project、執行的 runner、attempt 次數與這是第幾次 run（`seq`／`attempt` 是兩個數字）。
 - 時間軸：queued → claimed → running → …，每一段的耗時。
 - **Log 串流**：可跟隨、可搜尋、**明示截斷位元組數**、明示保留期到期時間。
-- V2.3 起：checkout 的 commit、用了哪幾個機密的**名稱**、工作目錄大小。
+- **V2.2 起**（2026-08-10 裁決提前）：**clone 的 repo 與 `commit_sha`**、**run 目錄大小**、清理時間。
+- 🆕 **「最後動靜：3 分鐘前」**（`task_runs.last_event_at`）。這一行回答使用者真正在問的問題
+  ——「它是卡住了還是還在做？」——而那個問題原本只有一個數小時後才會有的答案。
+- 🆕 **log 是 JSONL 事件不是純文字**：每行渲染成「事件型別 ＋ 摘要」，原始 JSON 收在可展開處。
+  **不做 xterm.js，也不把 JSON 直接倒在畫面上。**
+- V2.3 起：用了哪幾個機密的**名稱**、推出去的分支。
 - V2.4 起：交付結果（**卡片產物**／PR／分支連結、`diff --stat`、或「無變更」、或「宣告不交付但偵測到變更，diff 已附為產物」）。
 - 取消按鈕（`run.cancel`）。
 

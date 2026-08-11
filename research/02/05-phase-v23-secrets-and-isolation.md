@@ -1,16 +1,32 @@
-# V2.3 — 機密下放與隔離工作目錄（ticket 前綴 `SC-`）
+# V2.3 — 機密下放、git 送回與綁定授權（ticket 前綴 `SC-`）
+
+> **2026-08-10 裁決改寫本階段的範圍。**
+> 隔離工作目錄（D19）與 git 的**取得**半邊（D20）已經在 **V2.2** 交付——
+> Agent 自己把專案拉到 `<state>/.cliora/runs/<run_id>/`，workspace 綁定只服務互動式 Session。
+>
+> | 從 V2.3 移出（已在 V2.2） | 移入 V2.3（原本在 V2.2） |
+> |---|---|
+> | run 目錄的六條規則、配額、清理、mirror 快取 | **`project_agents` 綁定**（D18）——它授權的是機密，所以與機密同一份 ADR |
+> | `clone`／`fetch`／`checkout`／`worktree add` | **labels 比對**仍是後續，不在 V2.3 |
+> | host allowlist、known_hosts pinning | |
+>
+> 搬動表見 `04-phase-v22-agent-runner.md` §0。**本階段仍是 V2 安全面最重的一階段**：
+> 它要把 V2.2 那份「用 node 上 ambient git 憑證」的權宜作法換成平台管理、範圍受限、可撤銷的憑證。
 
 ## 目標
 
-把 V2.2 的 run 從「在使用者的 workspace 上無人值守地執行」變成「在每次執行專屬的隔離目錄裡，從 git 拉到它該有的程式碼，帶著它該有的機密」。
+把 V2.2 的 run 從「在隔離目錄裡用**機器本來就有的** git 認證拉程式碼、成果只能附成產物」
+變成「帶著**平台下放的、範圍受限的、可撤銷的**機密，而且能把分支推回去」。
 
-這是 V2 安全面最重的一階段，兩份必然觸發的安全審查都在這裡。
+三件事：**機密**（新的儲存面）、**git 送回**（新的對外副作用）、
+**綁定授權**（讓「哪個 runner 可以碰哪個專案的機密」成為一列真實資料）。
 
 ## 前置條件
 
-- V2.2 出口條件全數通過。
-- D19、D20、D21、D22、D23 已裁決。**2026-08-08 補齊**：主金鑰放**環境變數**；git 認證**同時支援 fine-grained PAT 與 SSH key**。
-- ADR 0031（隔離工作目錄與 git 存取）、ADR 0032（機密管理與 SEC-002 修訂）已撰寫並接受。
+- V2.2 出口條件全數通過（**含隔離目錄與 clone 的那七條**）。
+- D18、D20（送回半邊）、D21、D22、D23 已裁決。**2026-08-08 補齊**：主金鑰放**環境變數**；git 認證**同時支援 fine-grained PAT 與 SSH key**。
+- **ADR 0031 已在 V2.2 發佈**（目錄六條規則 ＋ git 取得）；本階段**增補**它的送回半邊。
+- ADR 0032（機密管理與 SEC-002 修訂）已撰寫並接受。
 
 ## 工作包
 
@@ -30,9 +46,38 @@
 
 4. **Alternatives rejected**：卡片直接寫 env 值（機密會進資料庫明文欄位與 UI）、runner 從 node 本機 `.env` 讀（平台無法稽核也無法撤銷）、與 `tunnel_integration` 共用一張表（風險等級不同，混用會讓規則互相污染）、**主金鑰放 KMS**（本次否決的理由是新增雲端依賴且自架部署做不到，**不是因為它比較差**——這句要寫，否則日後看起來像是沒想過）。
 
-### SC-02 — ADR 0031：隔離工作目錄與 git 存取
+### SC-02 — ADR 0031 的增補：git 送回 ＋ 綁定授權
 
-**目錄**（D19）：`<agentd_state_dir>/runs/<run_id>/`，daemon 擁有，**不在任何 allowed root 內**，既有檔案瀏覽 API 不得觸及。六條規則（不在 root 內、每次新建、配額、repo 快取、誰清理、`artifacts/` 是列舉不是瀏覽器）逐條寫進 Decision。
+**目錄六條規則已在 V2.2 的 ADR 0031 定稿**（`04` AR-02b），本階段不重寫，只 amend 兩段：
+
+**一、`project_agents` 綁定是機密的授權邊界**（D18，從 V2.2 移入）。
+綁定表在這裡才第一次授權了某個東西，所以三層要在這份 amend 裡講清楚：
+綁定（授權，Admin）／labels（能力，後續功能）／`assigned_runner_id`（意圖）。
+**第三層永遠不能覆蓋第一層**，而 D17b 邊界 1 的測試在這裡才第一次有東西可測。
+
+**二、平台憑證加進來，而 ambient 憑證藏不藏是一個設定（2026-08-11 已裁決預設值）。**
+
+V2.2 的 clone 用機器本來就有的認證，而 2026-08-10 的第二次裁決明確
+**那不是權宜作法，是刻意給 Agent 的自由**（`04` AR-04b 第 3 點）。
+所以本階段**不能理所當然地假設它必須消失**。兩個選項，ADR 0032 要選一個並寫理由：
+
+| | A：平台憑證**取代** ambient（隔離 `HOME`／`GIT_CONFIG_GLOBAL`） | B：平台憑證**疊加**在 ambient 之上 |
+|---|---|---|
+| 機密的可撤銷性 | 完整——run 只能用平台給的 | 部分——Agent 仍可用機器的 |
+| 與第二次裁決的關係 | **收回了那個自由** | 保留 |
+| 五條 git 硬約束的實效 | 對平台的 push 完整有效；Agent 也無路可繞 | 對平台有效，Agent 仍可繞 |
+| 適用場景 | 共用的 runner node | 專用的 runner node |
+
+**已裁決（2026-08-11）：做成 node 層設定 `runner.git.isolate_ambient_credentials`，
+預設 A（取代），可關成 B（疊加）。**
+
+理由：V2.3 引入的是**可撤銷**的機密，而「可撤銷」如果旁邊還有一份不可撤銷的憑證，
+那個保證就打了折——所以預設要是 A。但 2026-08-10 第二次裁決給 Agent 的 git 自由
+是真的需求，所以留一個開關而不是直接拿掉。
+
+**V2.3 開工前要複核的是值不是形狀**：若 M-AR-6（clone 失敗原因分布）顯示
+ambient 憑證在實務上根本拉不動私有 repo，那 A 就不是「收回自由」而是「唯一可行的路」，
+預設值的爭議會自己消失。
 
 **git 的五條硬約束**（D20，寫死在 daemon，各配一條測試）：
 
@@ -79,17 +124,26 @@ migration `0027` — `project_secrets`：`id`、`project_id`、`name`、`kind`�
 
 **一個必須在 UI 就擋下來的後果**：SSH 只有 git 傳輸、沒有 API，所以用 SSH 認證的 repo 若卡片 `delivery: pull_request`，**必定還需要一枚 `provider_token`**。設定 repository 時就檢查並提示——不要等 run 跑到最後一步才失敗，那時分支已經推上去了。
 
-### SC-05 — Daemon：隔離目錄與 git（`agentd` 0.10.0）
+### SC-05 — Daemon：機密與 git 送回（`agentd` 0.10.0）
 
-- 目錄建立、權限、配額檢查（單 run 上限、node 總量上限；超過就停止 poll 並回報）。
-- **repo 快取**：`<state>/mirrors/<repo_hash>/` 放 bare mirror，run 目錄用 `git worktree add` 或淺 clone 掛出來。mirror 定期 `git remote update`，也有保留期。
-- 依卡片的 `source`（D21）：
-  - `none` → 不建 `repo/`，Agent 沒有程式碼可讀（這是刻意的）。
-  - `repo` → checkout `base_branch`，新建 `cliora/<card_ref>-<run_seq>`。
+**已在 0.9.0 交付、本階段不重做**：run 目錄的建立與權限、兩層配額、mirror 快取與
+`git worktree`、`.cliora/` 直接寫入（目錄是 daemon 自己的，不需要 `filesystem.store`）、
+清理迴圈、隔離驗證。以下只列本階段新增的：
+
+- **機密的接收與落地**：隨 `run.offer` 收到該卡宣告的那幾個，**只放記憶體**，
+  以環境變數傳給 CLI 程序，**不寫進任何檔案**（例外是 `ssh-agent` 的 socket，見 SC-04b）。
+- **去識別真的開始工作**：0.9.0 的 `Redactor` 掛勾點是 no-op，本階段換成真的值比對替換。
+- **ambient 憑證的隔離（依 SC-02 的裁決）**：選 A 時，run 程序的 `HOME`／
+  `GIT_CONFIG_GLOBAL` 指向 run 目錄內的一份最小設定，讓機器原本的 credential helper
+  與 ssh key 對它不可見；選 B 時只疊加平台憑證。
+  **開關是 `runner.git.isolate_ambient_credentials`，預設 A**（SC-02 第二點）。
+- 依卡片的 `source`（D21）新增分支動作：
+  - `repo` → checkout `base_branch`，**新建 `cliora/<card_ref>-<run_seq>`**（0.9.0 只 checkout，不建分支）。
   - `existing_branch` → checkout 既有分支，不新建。
-- 投影 `.cliora/`（情境包、流程、reference、token）到 run 目錄——**這裡不需要 `filesystem.store`**，目錄是 daemon 自己的，直接寫。
-- 清理：成功 3 天、失敗 14 天（可設定），由既有的清理迴圈負責（可參考 `shell_reaper` 的做法）。
-- **隔離驗證**：run 程序的工作目錄與可及路徑收斂在 run 目錄內；不得讀寫任何 allowed root。
+  - `none` → 不建 `repo/`（0.9.0 已成立）。
+- **push**：只推 `cliora/` 前綴，五條硬約束寫死在 daemon。
+  **`origin` remote 在此重新出現**——0.9.0 刻意在 clone 之後移除它（`04` AR-04b），
+  本階段改為保留但只允許一條 refspec。
 
 ### SC-06 — 前端
 
@@ -107,6 +161,8 @@ migration `0027` — `project_secrets`：`id`、`project_id`、`name`、`kind`�
 - 不做 push 以外的任何 git 寫入。
 - 不開放瀏覽 run 目錄。要看產物就用 V2.2 的卡片產物（已上傳到平台的那些）。
 - 不把 run 目錄接進既有的檔案瀏覽 API。
+- **不重做隔離目錄與 clone**（V2.2 已交付）。本階段只增補分支、push 與機密。
+- **不做 labels 比對**（後續功能）。本階段加回來的只有 `project_agents` 綁定。
 - 不做機密的自動輪替、不接外部 secret manager（先做自己的，需求明確後再評估）。
 
 ## 出口條件

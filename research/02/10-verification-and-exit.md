@@ -45,7 +45,12 @@
     行為與 0.7.0 相同。（2026-08-09 修訂：V2.1 動 contract v1.10.0 ＋ `agentd` 0.8.0，
     原本寫的「無任何變更」改為「既有的無變更」。）
 
-### 2.3 V2.2
+### 2.3 V2.4（計畫與驗證）
+
+> **2026-08-10 更正**：本節原本的標題是「V2.2」，但內容（`plan snapshot`、驗證報告、
+> 證據可信度、Done Gate、Admin `--force`）對應的是 **FR-PLAN／FR-VERIFY**，
+> 那是 **V2.4** 的工作包（`11` §2）。V2.2 的出口條件在 §2.4，V2.4 的其餘出口條件在 §2.6。
+> 不更正的話，V2.2 的收尾 ticket 會對著一份不屬於它的清單交差。
 
 1. `cliora plan snapshot` 寫三次 → Plan 面板顯示最新、Task Detail 顯示三次歷史與每次 `note`。
 2. `result: failed` 的報告 → 失敗 check 與 AC 預設展開且**不可摺疊隱藏**。
@@ -59,36 +64,55 @@
 
 ### 2.4 V2.2（Agent Runner）
 
-1. runner 綁兩個 Project → 兩邊都能領；**沒綁的第三個永遠不會被 offer**。
-2. 未指定 agent 的卡片：任一符合資格者可領。
-3. **指定 agent 的卡片：只有那一個 runner 領得到。**
-4. 指定一個沒綁該 Project 的 runner → dispatch **回 409 不入佇列**（指定不繞過授權）。
-5. 指定的 runner 離線 → 入佇列並顯示「等待指定的 Agent（離線）」，**文案與「沒有可用的 Agent」不同**。
-6. 兩個 runner 同時 poll 同一張卡 → **只有一個領到**，`task_runs` 沒有兩列。
-7. kill runner 程序 → 租約逾時標 `lost`、重排、完成；**被指定的卡重排仍只給原本那個 runner**。
-8. 重排三次都失敗 → 卡片進 `blocked`，原因寫明，**不無限重試**。
-9. `run.cancel` → 程序真的停止，`ps` 驗證無殘留。
-10. Run log 超過上限 → 截斷並**明示位元組數**。
-11. `cliora task ask` → 卡片顯示「等待你的回覆」；回覆後 Agent 拉得到；24h 未回覆自動退 `blocked`。
-12. **互動式 Session 完全不受影響**；`terminal_sessions` 沒有 run 的列。
-13. 執行中 `cliora task attach` → 訊息與產物同時出現在卡片；**run 目錄被清掉後產物仍可下載**。
-14. `.html` 產物下載時帶 `Content-Disposition: attachment` ＋ `nosniff`；**應用 origin 內沒有任何路徑會渲染它**。
-15. 專案產物配額用盡 → runner 收到明確錯誤並顯示在卡片，**不是靜默失敗**。
-16. 已附加的產物**沒有任何 API 可以修改**；刪除只有 `project.manage`，需理由 ＋ audit。
-17. 旗標關閉：完整 V1 回歸全綠。
+> **2026-08-10 裁決改寫本節。** Agent 自己把專案拉到 daemon 擁有的隱藏目錄；
+> workspace 綁定從此只服務互動式 Session；`project_agents` 綁定與 label 比對延後到 V2.3／後續。
+> **完整的 23 條清單見 `04-phase-v22-agent-runner.md` §出口條件**，本節列其中改動最大的十條，
+> 其餘不變。搬動了什麼、為什麼，見 `04` §0。
+
+1. **未指定** agent 的卡片：任一 runner 都領得到（本期沒有綁定，「任一」就是字面意思）。
+2. **指定** agent 的卡片：只有那一個 runner 領得到。
+3. 指定一個**已停用**或**runtime 不符**的 runner → dispatch **回 409 不入佇列**，訊息指名是哪一條。
+   （原本這一條的例子是「沒綁該 Project」。D18 延後之後例子換了，
+   **而「不符資格要在 dispatch 當下擋下」這條規則不變**。）
+4. 指定的 runner 離線 → 入佇列並顯示「等待指定的 Agent（離線）」，
+   **文案與「沒有可用的 Agent」不同**。
+5. 兩個 runner 同時 poll 同一張卡 → **只有一個領到**，`task_runs` 沒有兩列。
+6. 🆕 **`source: repo` 的卡被領走後，run 目錄裡出現一份 clone**，`commit_sha` 回報並顯示在 Run 詳情頁。
+7. 🆕 **run 目錄不在任何 allowed root 內**：既有檔案瀏覽 API 讀不到它；
+   daemon 在 run root 落在 allowed root 內時**拒絕以 runner 模式啟動並指名**。
+8. 🆕 **平台的任何路徑都沒有碰使用者的 workspace**：run 進行中與結束後對 workspace 做
+   `git status --porcelain` **完全為空**。⚠️ **不是「Agent 讀不到」**——
+   那件事平台沒有實作（`04` AR-02b 規則 1 的 2026-08-10 更正）。
+   替代條件：**`allowed_roots` 非空的 node 在 Agents 頁顯示「⚠ 混合用途」**。
+9. 🆕 **clone 之後 `git remote -v` 是空的**；一次 `git push` 在 run 目錄裡直接失敗。
+10. 🆕 缺 git 憑證時 clone **快速失敗**（秒級 `run.failed`，不掛在密碼提示上直到牆鐘兜底）。
+10b. 🆕 **一個「還在跑但很慢」的 run 不會被誤殺**（每 60 秒一個事件、共 20 分鐘 → 正常完成）；
+    **一個真的掛住的 child 在 idle 上限內被收掉**（`RUN_IDLE_TIMEOUT`，不是等牆鐘）；
+    **runner 掛了（`lost` → 重排）與 child 掛了（不重排）是兩種不同結果**。
+    存活判定靠事件流不靠牆鐘（`04` AR-04 的三個計時器）。
+11. 🆕 **`delivery: none` 的卡在工作目錄留下變更 → `git diff` 被附成一件產物**，不是靜默丟棄。
+12. 🆕 **run 目錄配額用盡 → runner 停止領取新工作並回報原因**，
+    平台顯示為「磁碟用盡」而非「離線」。
+13. `run.cancel` → 程序真的停止，**process group 下無殘留**
+    （原本寫「`ps` 驗證」；改為掃 pgid，因為 `ps` 目視不是可重跑的斷言）。
+14. 其餘（重排、log 截斷、`task ask`、互動式 Session 不受影響、產物的四條、旗標關閉）
+    與原清單相同，見 `04` §出口條件 11–23。
 
 ### 2.5 V2.3（機密與隔離）
 
 1. 建立機密後**任何 API 都讀不回值**（OpenAPI schema 斷言 ＋ 實際回應斷言，兩條）。
 2. 機密值出現在 CLI 輸出 → 平台收到的 log 是 `***`；**原值從未離開 node**（Central 端斷言）。
 3. `accept_secrets: false` 的 node → 其 runner 永不被 offer 需要機密的卡片。
-4. `source: repo` → run 目錄有 `repo/`、在正確 base branch、分支名 `cliora/<card_ref>-<run_seq>`。
-5. `source: none` → **沒有** `repo/`，Agent 讀不到程式碼。
-6. daemon 嘗試推 `main`／非 `cliora/` 前綴／force push／allowlist 外的 host → **四種全部在 daemon 內被拒**。
-7. run 結束依保留期清理；第二次 run 用 mirror，**不重新完整 clone**（比對耗時）。
-8. run 程序嘗試讀寫任何 allowed root → 失敗。
-9. 配額用盡的 node 停止 poll 並顯示原因，其他 node 照常。
-10. 刪除機密後下次 run 拿不到；進行中的 run 不受影響。
+4. `source: repo` → run 目錄的 `repo/` 在正確 base branch，**分支名 `cliora/<card_ref>-<run_seq>`**
+   （目錄與 clone 本身已在 V2.2 交付；本期新增的是**分支命名空間**）。
+5. daemon 嘗試推 `main`／非 `cliora/` 前綴／force push／allowlist 外的 host → **四種全部在 daemon 內被拒**。
+6. **`project_agents` 綁定成為機密的授權邊界**：沒綁該 Project 的 runner 拿不到它的卡片，
+   也拿不到它的機密；指定一個沒綁的 runner → dispatch 回 409（指定不繞過授權）。
+7. **平台管理的憑證取代 node 的 ambient git 憑證**：`clone` 用的是下放的 PAT／SSH key，
+   而且 run 環境裡讀不到機器原本的 git 憑證。
+8. 刪除機密後下次 run 拿不到；進行中的 run 不受影響。
+9. `source: none` → **沒有** `repo/`，Agent 讀不到程式碼（V2.2 已成立，本期回歸）。
+10. run 結束依保留期清理；第二次 run 用 mirror，**不重新完整 clone**（V2.2 已成立，本期回歸）。
 11. 旗標關閉：完整 V1 回歸全綠。
 
 ### 2.6 V2.4（交付與驗證）
@@ -144,9 +168,9 @@
 | 層 | 覆蓋 |
 |---|---|
 | Contract fixtures | V2.0 **零變更**；**V2.1 新增一組 `context.project` 的 valid ×3 ＋ invalid ×8**（既有 fixtures 零變更）；V2.2 起每個新訊息 valid ＋ ≥6 invalid，**含「`secrets` 出現在非 offer 訊息」這一條** |
-| Daemon 單元 | 租約續租與逾時、容量控管、log 分塊與截斷、**去識別**、git 五條約束的 argv 組裝、run 目錄配額與隔離 |
-| Daemon 整合 | 真實 repo 的 clone／worktree／push 拒絕；真實程序的 cancel 與殘留檢查 |
-| Central 單元 | **原子認領**、重排上限、**資格判定五條件（含指定不覆蓋綁定）**、Done Gate 依 `delivery` 分歧、`source` 伺服器端判定、機密 allowlist 子集檢查 |
+| Daemon 單元 | 租約續租與逾時、容量控管、log 分塊與截斷、**去識別**、**非互動 argv（prompt 走 stdin，不進 argv）**、run 目錄配額與隔離（V2.2）；git 五條約束的 argv 組裝（V2.3） |
+| Daemon 整合 | 真實 repo 的 clone／worktree（V2.2）與 push 拒絕（V2.3）；真實程序的 cancel 與 process group 殘留檢查 |
+| Central 單元 | **原子認領**、重排上限、**資格判定（V2.2 是四條件；V2.3 加回綁定並測「指定不覆蓋綁定」）**、Done Gate 依 `delivery` 分歧、`source` 伺服器端判定、機密 allowlist 子集檢查 |
 | Central DB | migration 上下行、`version` 樂觀鎖併發、**併發認領**、RBAC 矩陣 |
 | CLI | 每個子命令一條測試；`task ask`／`say`／`messages` 的往返；**離線行為**（失敗訊息內容、非零 exit code、`context show` 免連線） |
 | 前端單元 | 看板分組、藍圖聚合（含未分類桶）、run 狀態徽章、訊息串三種來源、機密欄位無顯示值路徑 |
@@ -162,8 +186,8 @@
 |---|---|---|---|
 | M1 | 一個 200 張卡的專案，看板 API 的回應大小與耗時？ | 是否需要分頁 | V2.1 開工前用假資料測 |
 | M10 | 一次典型 run 的 log 有多大？100 個 run 之後 `run_logs` 多大？ | 是否要改物件儲存（AR-05 先進 PostgreSQL） | V2.2 上線後統計 |
-| M11 | 一個真實 repo 的首次 clone 與後續 worktree 各要多久？ | run 的啟動延遲是否可接受；mirror 策略 | **V2.3 開工前** |
-| M12 | run 目錄的典型大小？一個 node 跑 3 個並行需要多少磁碟？ | 配額預設值與 node 的部署規格建議 | V2.3 開工前 |
+| M11 | 一個真實 repo 的首次 clone 與後續 worktree 各要多久？ | run 的啟動延遲是否可接受；mirror 策略 | **V2.2 開工前**（2026-08-10 裁決把 clone 提前到 V2.2） |
+| M12 | run 目錄的典型大小？一個 node 跑 3 個並行需要多少磁碟？ | 配額預設值與 node 的部署規格建議 | **V2.2 開工前**（同上） |
 | M13 | `waiting_for_input` 的實際等待時間分布？ | 24h 逾時是否合理；Agent 是不是問太多 | V2.2 上線後觀察 |
 | M14 | **V2.1 的人工規格／拆解表單有沒有人用？** | **V2.5 值不值得做的早期訊號**（D28 §4）。沒人用人工流程，Agent 版也不會有人用 | V2.1 上線後持續觀察 |
 | M15 | 一次釐清平均要問幾輪？使用者回覆的中位時間？ | 「一次一個問題」是否可行；逾時值 | V2.5 上線後觀察 |
@@ -178,7 +202,7 @@
 | M7 | 有多少 Session 實際上是 Ad-hoc？ | 決定 V2 的預設值該不該變 | V2.1 起持續觀察 |
 | M8 | sidebar 208px 在七列兩層下是否還夠？ | `07` §3 | V2.0 開工時 |
 
-M1、M8（V2.1 前）、M11、M12（V2.3 前）、M6（V2.4 前）是**開工前**要有答案的；**M2 是 V2.1 上線後最重要的一項**——它驗證的是內化路線的核心假設（Agent 會用工具回報）。其餘是上線後觀察，答案回填到對應階段的 `plan/NN/0X-open-measurements.md`。
+M1、M8（V2.1 前）、**M11、M12、M-AR-1（V2.2 前）**、M6（V2.4 前）是**開工前**要有答案的；**M2 是 V2.1 上線後最重要的一項**——它驗證的是內化路線的核心假設（Agent 會用工具回報）。其餘是上線後觀察，答案回填到對應階段的 `plan/NN/0X-open-measurements.md`。
 
 ## 6. 每階段的安全審查觸發條件
 
@@ -194,12 +218,12 @@ M1、M8（V2.1 前）、M11、M12（V2.3 前）、M6（V2.4 前）是**開工前
 | 階段 | 觸發原因 | 審查重點 |
 |---|---|---|
 | V2.1 | Session token **＋ `.cliora/` 的新寫入面** | 發行、scope、失效、檔案落地與保留期；投影 verb 的可寫集合與既有 verb 互斥；token 檔的敏感檔分類 |
-| V2.2 | 無人值守執行 ＋ run log ＋ **卡片產物** | 認領授權、租約、log 界線（D27）、cancel 可靠性、**產物提供路徑的 stored XSS**（D29 §4）、配額 |
-| **V2.3** | **機密流 ＋ 新儲存面 ＋ git 寫入** | 加密與金鑰、不可讀回、去識別、run 目錄隔離與配額、git 五條約束 |
+| V2.2 | 無人值守執行 ＋ run log ＋ **卡片產物** ＋ **隔離目錄與 git 取得**（2026-08-10 裁決提前） | 認領授權（**本期是 enrollment，不是綁定**）、租約、log 界線（D27）、cancel 可靠性、**產物提供路徑的 stored XSS**（D29 §4）、配額、**run 目錄與 allowed root 互不可達**、**Agent 的 git 自由（含 push）是刻意給的，收斂點是可觀測性**（`04` AR-04b）、**「程式碼落在哪台機器」這個變化**（不是存取控制退步，見 `04` 風險表） |
+| **V2.3** | **機密流 ＋ 新儲存面 ＋ git 寫入** | 加密與金鑰、不可讀回、去識別、**`project_agents` 綁定＝機密授權邊界**、git 五條約束（push 半邊）。（run 目錄隔離與配額已在 V2.2 審過，此處只審機密如何進入那個目錄） |
 | V2.4 | 對外副作用（PR） | 交付模式邊界、無自動合併、供應商憑證 |
 | V2.5 | **不必然觸發**（無新憑證、無新儲存面、無新執行能力）；若釐清 run 需要讀敏感文件則補 | — |
 
-**V2.3 是整個 V2 風險最高的一次**，它同時觸發三條。它的審查文件要分成三節、三組邊界測試各自獨立，不要合寫成一段「Agent 執行環境安全審查」。
+**V2.2 與 V2.3 各觸發三條。** 2026-08-10 裁決把隔離目錄與 git 取得提前之後，V2.2 命中「新增在 node 上執行程序的能力」「新增儲存面」「新增憑證流」；V2.3 仍命中「機密流」「新儲存面」「git 寫入」。它的審查文件要分成三節、三組邊界測試各自獨立，不要合寫成一段「Agent 執行環境安全審查」。
 
 ## 7. 合併回 `dev` 的關卡（**人工確認，不自動**）
 

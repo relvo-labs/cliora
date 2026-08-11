@@ -485,6 +485,17 @@ C 早已否決：一旦本機檔案能被匯入為權威資料，就有兩個真
 
 # 第三次裁決衍生的決策（Agent Runner 模型）
 
+> **2026-08-10 裁決（Agent 自己拉專案）改動了以下決策的階段歸屬與內容。**
+> 完整的搬動表在 `04-phase-v22-agent-runner.md` §0。
+> - **D19（隔離工作目錄）** 從 V2.3 提前到 **V2.2**。
+> - **D20 的取得半邊**（clone／fetch／checkout、host allowlist、known_hosts pinning）
+>   從 V2.3 提前到 **V2.2**；**送回半邊**（push、五條硬約束、bot identity）仍是 V2.3。
+> - **D18（`project_agents` 綁定 ＋ labels 比對）** 從 V2.2 延後到 **V2.3**（綁定）／**後續**（labels）。
+> - **D17 的資格判定** 在 V2.2 只有四條件；綁定與 labels 那兩條在 V2.3 才加回來。
+> - **D17b 邊界 1（指定不繞過綁定）** 的測試隨綁定一起移到 V2.3。
+> - **D30 的 V2.2 那一列** 從「限用 scratch clone」改為「正式 repo 可以」——
+>   原本的限制成立的理由（run 沒有隔離）被裁決移除了。
+
 > 2026-08-08 裁決：平台作為使用者與 Agent 的橋樑；Agent 像 GitHub Runner 一樣自行認領任務卡、在隔離目錄拉 git、依卡片交付模式產出結果；Project × Agent 多對多；原有 Session 保留給使用者。
 >
 > 以下 D16–D27 是這個裁決推導出來的設計問題。**D19、D20、D22、D23、D25、D27 標 ⚠️**，它們改變安全姿態或新增儲存面。
@@ -537,13 +548,18 @@ run.failed         { run_id, error_code, message }
 
 **租約**：`lease_expires_at`，runner 每 30 秒續租；逾時（建議 3 分鐘）平台把 run 標為 `lost` 並把任務重排。重排有 `attempt` 上限（建議 3），用完進 `blocked` 並在卡片上說明原因。
 
-**資格判定**（五個條件全滿足才會被 offer）：
+**資格判定**（全滿足才會被 offer）：
 
 1. 任務在 `ready`
 2. `dependsOn` 全滿足
-3. **runner 綁了這個 Project**（授權，D18）
-4. runner 的 runtime 與 labels 符合卡片要求（能力，D18）
+3. **runner 綁了這個 Project**（授權，D18）— **V2.3 起**，V2.2 沒有這一條
+4. runner 的 runtime 符合卡片要求（能力）— **labels 比對是後續功能**，V2.2 只比 runtime
 5. 卡片的 `assigned_runner_id` 為 null，**或**正好是這個 runner（指定，D17b）
+
+> **2026-08-10**：V2.2 的實際判定是 1、2、4（只有 runtime）、5 —— **四條件**。
+> 第 3 條與 labels 在 V2.3 加回來，那時綁定授權的是機密，它才有真正的讀者。
+> **V2.2 的授權邊界是 enrollment**：任何 enroll 過的 node 上的 runner 都可以領任何專案的卡片。
+> 這是一個姿態宣告而不是遺漏，要在 UI 上明說（`04` AR-08）。
 
 第 5 條讓「指定」在拉取模型裡不需要任何新機制——它只是 poll 查詢的一個 `WHERE` 條件：
 
@@ -564,6 +580,11 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 指定：只有那一個 runner 能領。三個必須先定清楚的邊界：
 
 ### 1. 指定**不能繞過綁定授權**（安全相關）
+
+> **2026-08-10：這一條連同綁定一起移到 V2.3。** V2.2 沒有 `project_agents`，
+> 所以沒有可以被繞過的授權。**規則本身不變，測試在 V2.3**（`10` §2.5 條件 6）。
+> V2.2 保留的是這一條的另一半——**不符資格要在 dispatch 當下就擋下**（邊界 2），
+> 例子從「沒綁 Project」換成「已停用」與「runtime 不符」。
 
 指定一個沒綁這個 Project 的 runner，**不會讓它取得該專案的任務或機密**。第 3 條資格判定永遠先成立。
 
@@ -593,7 +614,15 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 ---
 
-## D18 — Project × Agent 多對多怎麼綁
+## D18 — Project × Agent 多對多怎麼綁（**2026-08-10：延後到 V2.3**）
+
+> **裁決：V2.2 不做綁定，也不做 labels 比對。** 現在每個 agent 都可以拉每個 project。
+> 理由：綁定在 V2.2 沒有授權任何東西——它要授權的是**機密**，而機密是 V2.3。
+> 一個「存在但不授權任何東西」的授權表，會讓 V2.3 的安全審查失去一個真正的檢查點。
+> 所以綁定與機密同一份 ADR、同一支 migration、同一次安全審查。
+> **labels 比對是後續功能**（欄位 `agent_runners.labels` 與 `tasks.required_labels` 已在 V2.1／V2.2 建好，只是不比對）。
+> 以下內容是 V2.3 的設計，不是 V2.2 的。
+
 
 **建議：明確綁定表 ＋ labels 過濾，兩層。**
 
@@ -614,7 +643,22 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 ---
 
-## ⚠️ D19 — 隔離工作目錄
+## ⚠️ D19 — 隔離工作目錄（**2026-08-10：提前到 V2.2**）
+
+> **裁決：Agent 收到任務後自己把專案拉到本地，放在一個隱藏資料夾裡（`.cliora/`）。**
+> **Workspace 綁定從此只服務互動式 Session**（既有的 CLI 與 Terminal 功能）；
+> V2.2 新增的 runner 功能鎖定在看板任務處理，不碰那一層。
+>
+> 這移除了原本 V2.2 最大的已知缺口（「無人值守執行在使用者的 workspace 上」）。
+> 落地路徑：`<agentd 的 StateDirectory>/.cliora/runs/<run_id>/`。
+> systemd unit 目前只有 `RuntimeDirectory=agentd`（`/run/agentd`，tmpfs），
+> 所以要**新增 `StateDirectory=agentd`**（→ `/var/lib/agentd`）——失敗的 run 要留 14 天，
+> tmpfs 撐不過一次重啟。
+>
+> **`.cliora` 這個名字保留**（不只是為了慣例）：若營運者把 run root 設在別的路徑上，
+> 這個名字讓它是隱藏的、而且與既有 `.cliora/.gitignore` 的慣例一致——
+> 萬一它落在一個 repo 裡面，git 本來就會忽略它。
+
 
 **問題**：Agent 在哪裡工作？
 
@@ -640,11 +684,45 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 5. **誰清這個**：daemon 的既有清理迴圈（`shell_reaper` 已有同類型的東西可以參考）。這是 ADR 0024 W2 那個問題的答案，要寫進 ADR。
 6. **不可瀏覽的例外**：`artifacts/` 可以透過 run 詳情頁下載，但那是**明確列舉的檔案**，不是目錄瀏覽器。
 
-**Agent Run 不能讀寫使用者的 allowed root。** 這一條要有測試：runner 程序的工作目錄與可及路徑都收斂在 run 目錄內。
+~~**Agent Run 不能讀寫使用者的 allowed root。** 這一條要有測試：runner 程序的工作目錄與可及路徑都收斂在 run 目錄內。~~
+
+> **2026-08-10 更正：這一句不成立，而且它不是「還沒做」是「做不到」。**
+> run 的子程序與 agentd 同一個 OS 使用者，而 allowed roots 必須被那個使用者讀寫
+> （否則互動式 Session 開不起來——`daemon/internal/install/systemd.go:33` 的註解
+> 明寫家目錄刻意不隱藏，因為 runtime 需要它）。沒有 chroot／mount namespace／seccomp，
+> 而引入它們會遮掉 CLI 需要的 `~/.claude`／`~/.codex`／`~/.gitconfig`／`~/.ssh`。
+>
+> **可測的替代是兩件事**：① 平台的任何路徑都不寫 allowed root
+> （`daemon/internal/{files,workspace}/` 零 diff ＋ workspace 的 `git status` 為空）；
+> ② **`runner.register` 回報 `dedicated`（＝ `len(allowed_roots) == 0`）並在 Agents 頁顯示**
+> ——`allowed_roots` 為空的 node 上第一句才是恆真的。回報而不是強制，
+> 沿用 `sandbox_bypass` 的 requested／actual 分離（ADR 0023 D3）。
+>
+> 這與 D25 一致：**不試圖限制 Agent 在沙箱裡能做什麼**。
+> 本次更正只是承認「沙箱」在 V2.2 的邊界比原文字面上鬆，並把那段保證交給部署姿態
+> ——而部署姿態要有一個可檢查的定義（`plan/18/04b-run-directory-and-git.md` §3.5）。
 
 ---
 
-## ⚠️ D20 — Git 存取
+## ⚠️ D20 — Git 存取（**2026-08-10：取得半邊提前到 V2.2，送回半邊留在 V2.3**）
+
+> | | 階段 | 內容 |
+> |---|---|---|
+> | **取得** | **V2.2** | `clone`／`fetch`／`checkout`／`worktree add`、host allowlist、known_hosts pinning、**clone 後移除 `origin`** |
+> | **送回** | V2.3 | `push`、`cliora/` 分支命名空間、五條硬約束、bot identity、commit trailer |
+> | **認證** | V2.3 | PAT／SSH key 的下放與不落檔。**V2.2 用 node 上既有的 ambient git 認證，平台不管理任何憑證**（`04` AR-04b） |
+>
+> **2026-08-10 第二次裁決：V2.2 不擋 Agent 自己 push，憑證也不必唯讀。**
+> Agent 在沙箱裡可以用該 node 既有的憑證做 git 能做的任何事——**這是刻意給的自由**，
+> 與 D25「不限制沙箱內能做什麼，改為限制產出怎麼離開」一致。
+> 所以**不做** `git remote remove origin`，也不建議「runner node 只帶唯讀憑證」。
+>
+> 收斂點是三個：紅線 5 的原則（沒有人 merge 的分支不影響任何人）、
+> node 的部署姿態、以及**可觀測性**（run 摘要記錄 `git remote -v` 與未推送 commit 數）。
+> 連帶修訂：**`00` §7 紅線 4 第 1、2 條的主詞改為「平台的 push 路徑」**——
+> 那兩條約束的從來是平台代表卡片執行的 push，不是 Agent 自己的行為。
+> 完整推導見 `04` AR-04b 與 `plan/18/04b-run-directory-and-git.md` §5.4／§4.5。
+
 
 **問題**：怎麼拿到程式碼、怎麼把結果送回去。
 
@@ -878,6 +956,12 @@ ADR 0027 要記錄這次修訂，並在 `Alternatives rejected` 明列：讓卡�
 Run log 的四條約束：
 
 1. **有界**：單次 run 的 log 上限（建議 5 MB），超過從中間截斷並明示「已截斷 N bytes」。
+   > **2026-08-11 補述：log 的內容是 JSONL 事件而不是終端位元組。**
+   > `claude -p --output-format stream-json`／`codex exec --json` 的事件流。
+   > 這讓本條的四條約束**更容易成立而不是更難**：截斷以行為單位（不切斷一行 JSON）、
+   > 去識別作用在事件的文字欄位、而**「不是 Terminal relay」這一條變成結構上的事實**
+   > ——輸出裡沒有 ANSI，因為刻意不走 PTY。
+   > 存活判定也建立在這個事件流上（`plan/18/04-…md` §3.4）。
 2. **去識別在 runner 端做**（D22）：機密值在離開 node 之前就被替換掉。
 3. **保留期**：與 run 目錄一致（成功 3 天、失敗 14 天可設定），到期刪除。
 4. **不是 Terminal relay**：`run.log_chunk` 是單向、批次、可丟棄的；它不走 `terminal.*` 的任何一條路徑，也沒有 writer／viewer 語意。
@@ -1019,7 +1103,7 @@ Traqora 看起來是有 9 條功能分支的**活躍專案**。所以：
 |---|---|---|
 | **V2.0** | **不使用 Traqora**（2026-08-08 修訂，見下） | V2.0 一行程式碼都不讀 |
 | V2.1 | **正式 repo 可以** | 只在 workspace 寫 `.cliora/`，不碰程式碼 |
-| **V2.2** | **用 scratch clone 或 fork，不要用正式 repo** | run 尚未隔離，直接在 workspace 執行 |
+| **V2.2** | **正式 repo 可以**（2026-08-10 修訂；第一次仍建議先用 scratch clone 走一遍） | ~~run 尚未隔離~~ → 裁決之後 run 拉的是自己的 clone、不 push、`origin` 還被移掉了，對正式 repo 的影響是零。**原本的限制隨著它的前提一起失效** |
 | V2.3 起 | 正式 repo 可以 | 隔離目錄 ＋ 分支命名空間 ＋ 只出 PR |
 
 這一條要寫進 V2.2 的工作包，否則「建議只在測試專案啟用」會被當成客套話。
@@ -1047,7 +1131,7 @@ Traqora 看起來是有 9 條功能分支的**活躍專案**。所以：
 
 - **V2.0**：把 Traqora 的多個目錄綁在**兩個不同 node** 上 → 驗跨 node 綁定與 root 停用時的狀態顯示。
 - **V2.1**：用 Traqora 真實的待辦建看板 → 驗六車道與 DoR 在真實工作上撐不撐得住。
-- **V2.2**：scratch clone 上跑第一次認領 → 驗雙重領取、租約重排。
+- **V2.2**：第一次認領 → 驗雙重領取、租約重排、**clone 到隔離目錄、`base_branch: main` 不是寫死的 `master`**（這一項原本排在 V2.3，隨 clone 一起提前）。
 - **V2.3**：`base_branch: main` → 驗設定值不是寫死的；PAT 與 SSH **各測一次**。
 - **V2.4**：對 Traqora 開出第一個真的 PR → 這是整個 V2 的第一次真實交付。
 - **V2.5**：拿 Traqora 一句真實的模糊需求走完釐清 → 拆解。

@@ -22,8 +22,8 @@
 | `process_definitions`、`epics`、`user_stories`、`tasks`、`task_dependencies` | V2.1 | 0023 |
 | **`requirements`、`feature_specs`、`task_proposals`** | **V2.1**（表與人工表單）／V2.5（Agent 驅動） | 0023 |
 | `session_tokens` | V2.1 | 0024 |
-| `agent_runners`、`project_agents`、`task_runs`、`run_logs`、`task_messages`、**`task_artifacts`** | V2.2 | 0026 |
-| `project_secrets`、`project_repositories` | V2.3 | 0027 |
+| `agent_runners`、`task_runs`、`run_logs`、`task_messages`、**`task_artifacts`**（＋ blob 分表）、`run_tokens`、**`project_repositories`** | V2.2 | 0029／0030／0031 |
+| `project_secrets`、**`project_agents`** | V2.3 | 依實作當下的現況編號 |
 | `execution_plans`、`verification_reports` | V2.4 | 0028 |
 | `evidence_items` | V2.4 | 0029 |
 | `document_patch_proposals` | V2.5 | 0030 |
@@ -34,6 +34,14 @@
 > V2.1 另加三個既有表的新增欄：`terminal_sessions.task_id`、`projects.next_card_seq`、
 > **`activity_events.actor_kind`**（後者是規劃沒有的——沒有它，時間軸上
 > 「Agent 做的」「系統做的」「你沒有 `audit.view`」三種情況長得一模一樣）。
+
+
+> **2026-08-10 裁決（Agent 自己拉專案）改了本節三處**，見 `04-phase-v22-agent-runner.md` §0：
+> 1. **`project_repositories` 的身分欄位提前到 V2.2**（Agent 要 clone，平台就得知道 repo 在哪）。
+>    它的憑證欄位（`auth_kind`／`credential_secret_id`／`provider_token_secret_id`）仍是 V2.3。
+> 2. **`project_agents` 延後到 V2.3**（與機密同一支 migration——它授權的就是機密）。
+> 3. **migration 編號**：V2.2 的現況基線是 `0028_node_removal_sessions`，所以是 `0029` 起，
+>    不是規劃原本寫的 `0026`（那個已經被 V2.1 的流程種子用掉了）。V2.3 起順移。
 
 seed migration 另計（各自獨立一支）：`0022`（`project.*`）、V2.1 的 `task.*`（`0025`）、V2.2 的 `agent.*`／`run.*`、V2.4 的 `process.manage`。
 
@@ -175,8 +183,9 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | `runner.register` / `registered` / `poll` | V2.2 | v1.11.0 | 0.9.0 |
 | `run.offer` / `accept` / `decline` / `lease_renew` | V2.2 | v1.11.0 | 0.9.0 |
 | `run.progress` / `log_chunk` / `complete` / `failed` / `cancel` | V2.2 | v1.11.0 | 0.9.0 |
-| `run.artifact`（metadata ＋ 分塊上傳） | V2.2 | v1.11.0 | 0.9.0 |
-| `run.offer` 的 `spec` 擴充 `secrets` 與 `source` | V2.3 | v1.12.0 | 0.10.0 |
+| ~~`run.artifact`（metadata ＋ 分塊上傳）~~ **不做**：產物走 HTTP 端點（`plan/18/00` D4） | V2.2 | — | — |
+| **`run.offer` 的 `spec` 含 `source`（repo URL ＋ ref）** — 2026-08-10 裁決提前 | **V2.2** | v1.11.0 | 0.9.0 |
+| `run.offer` 的 `spec` 擴充 `secrets` | V2.3 | v1.12.0 | 0.10.0 |
 | `run.complete` 的 `delivery_ref` | V2.4 | v1.13.0 | 0.11.0 |
 | （無） | **V2.5** | v1.13.0 不變 | **0.11.0 不變** |
 
@@ -204,7 +213,7 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | `project.view` | V2.0 | ✅ | ✅ | ✅ | `GET /api/projects*`、`/api/tasks*`、`/api/runs*` |
 | `project.manage` | V2.0 | ❌ | ❌ | ✅ | Project CRUD、workspace 綁定 |
 | `task.create` | V2.1 | ❌ | ✅ | ✅ | `POST` epics／user-stories／tasks |
-| `task.update` | V2.1 | ❌ | ✅ | ✅ | `PATCH /api/tasks/{id}` |
+| `task.update` | V2.1 | ❌ | ✅ | ✅ | `PATCH /api/tasks/{id}`；**V2.2 起還守著 `POST /api/tasks/{id}/messages` 與 `/artifacts`**（2026-08-11 裁決：那兩條原本標 `project.view`，而 Viewer 持有它——那會是一個唯讀角色的寫入路徑） |
 | `task.approve` | V2.1 | ❌ | ✅ | ✅ | `POST /api/tasks/{id}/gates/{gate}`、**規格核准、提案接受、UI 變體選定**（D28） |
 | `agent.view` | V2.2 | ✅ | ✅ | ✅ | `GET /api/agents` |
 | `agent.manage` | V2.2 | ❌ | ❌ | ✅ | runner 啟用、並行度、Project 綁定 |
@@ -240,10 +249,13 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | Workspace 綁定 | 綁定時 `sessions.authorize_workspace()`；**每次使用重跑**（紅線 2） |
 | Task／Run | 屬於可見 Project 即可讀；寫入需對應動作 |
 | Gate 核准 | `task.approve` ＋ **actor 必須是人類**（token 一律拒絕） |
-| Run offer 資格 | 五條件：任務 `ready` ＋ `dependsOn` 滿足 ＋ **runner 綁了該 Project**（授權）＋ runtime／labels 相符（能力）＋ `assigned_runner_id` 為 null 或等於該 runner（指定）。**指定永遠不能覆蓋綁定** |
+| Run offer 資格（**V2.2**） | 四條件：任務 `ready` ＋ `dependsOn` 滿足 ＋ runtime 相符 ＋ `assigned_runner_id` 為 null 或等於該 runner。**授權邊界是 enrollment**——本期沒有綁定（2026-08-10 裁決） |
+| Run offer 資格（**V2.3 起**） | 加回第五條：**runner 綁了該 Project**（授權），且**指定永遠不能覆蓋綁定**。labels 比對是後續功能 |
 | 機密下放 | 只給該卡片 `required_secrets` 列出的、且在 Project allowlist 內的 |
-| Run 目錄 | daemon 擁有，**不在 allowed root**，既有檔案 API 不得觸及 |
-| 卡片產物 | 繼承 Project（`project.view` 可下載）；**無公開連結、無可猜 URL**；上傳需 run 憑證或 `project.view` |
+| Run 目錄（**V2.2 起**） | daemon 擁有，`<state>/.cliora/runs/<run_id>/`，**不在 allowed root**，既有檔案 API 不得觸及。daemon 在 run root 落在 allowed root 內時拒絕以 runner 模式啟動。⚠️ **反向不成立**（2026-08-10 更正）：run 的子程序與 agentd 同一個 OS 使用者，平台沒有實作「Agent 讀不到 allowed root」。替代是 `runner.register` 回報 **`dedicated`**（＝ `len(allowed_roots) == 0`）並在 Agents 頁顯示，見 `04` AR-02b 規則 1 |
+| Workspace 綁定 | **只服務互動式 Session**（2026-08-10 裁決）。Agent Run 不使用它 |
+| 卡片產物 | 繼承 Project（**`project.view` 可下載**）；**無公開連結、無可猜 URL**；**上傳需 run 憑證或 `task.update`**（2026-08-11 裁決：原本寫 `project.view`，而那是一個 Viewer 寫入路徑）。刪除只有 `project.manage` ＋ 理由 ＋ audit |
+| 卡片訊息 | **讀 `project.view`、寫 `task.update` 或 run 憑證**。讀寫分開，不是整條端點升級 |
 | 互動式 Session | 沿用既有 `authz.may_*`，**不新增概念** |
 
 ## 8. 環境變數
@@ -259,9 +271,17 @@ ALTER TABLE terminal_sessions ADD COLUMN task_id UUID NULL
 | `CLIORA_ARTIFACT_MAX_BYTES` | `10485760` | 單件卡片產物上限 |
 | `CLIORA_ARTIFACT_PROJECT_QUOTA_MB` | `1024` | 專案產物總配額 |
 | `CLIORA_RUN_WAITING_TIMEOUT_H` | `24` | `waiting_for_input` 逾時 |
+| `CLIORA_ARTIFACT_RUN_MAX_COUNT` | `20` | 單次 run 的產物件數上限 |
+| `CLIORA_RUN_IDLE_TIMEOUT_S` | `300` | **存活判定的主要門檻**（距上一個 JSONL 事件多久）。2026-08-11 新增 |
+| `CLIORA_RUN_WALL_TIMEOUT_S` | `21600` | 牆鐘**兜底**（原本是 3600 且是主要判定，那是錯的） |
 | `CLIORA_SECRET_MASTER_KEY` | — | **機密主金鑰（已裁決：環境變數）**。缺少／過短／等於 dev 預設值 → 拒絕啟動並指名。**與既有的 `CLIORA_SECRET_ENCRYPTION_KEY`（ADR 0022 的 tunnel 憑證）同一種模式但獨立**——兩者輪替時機不同，共用會互相綁住 |
 
-daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 config 檔慣例。
+daemon 側另有 run 目錄配額、mirror 與 run 的保留期，走既有 config 檔慣例。**V2.2 起**至少要有：
+`runner.enabled`、`runner.work_dir`（預設 `<StateDirectory>/.cliora/runs`）、`runner.max_concurrent`、
+`runner.max_waiting`、`runner.idle_timeout_seconds`、`runner.run_quota_bytes`、`runner.total_quota_bytes`、
+`runner.retention_days.{success,failure}`、`runner.git.allowed_hosts`、`runner.cancel_grace_seconds`。
+systemd unit 要新增 **`StateDirectory=agentd`**——目前只有 `RuntimeDirectory=agentd`（tmpfs），
+而失敗的 run 目錄要留 14 天，撐不過一次重啟。
 
 **兩個旗標而不是一個**：看板（V2.1）與自主執行（V2.2+）的風險等級差很多，組織可能想要前者不要後者。
 

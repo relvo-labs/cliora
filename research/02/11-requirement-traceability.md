@@ -49,17 +49,25 @@
 | ID | 標題 | Owner | 關鍵 AC |
 |---|---|---|---|
 | FR-AGENT-001 | Runner 註冊 | daemon | `agentd` 的一個模式；**重用既有 enrollment／憑證／WSS／heartbeat**，不新增信任建立 |
-| FR-AGENT-002 | Project × Agent 多對多 | central | 三層：綁定（授權）／labels（能力）／指定（意圖）；**指定永不覆蓋綁定**；未綁定的 Project 永不 offer |
+| ~~FR-AGENT-002~~ | ~~Project × Agent 多對多~~ → **移到 V2.3**（FR-RUNENV-006） | central | 2026-08-10 裁決：綁定授權的是機密，與機密同期交付。V2.2 的授權邊界是 **enrollment** |
+| 🆕 FR-AGENT-011 | **隔離工作目錄** | daemon | `<state>/.cliora/runs/<run_id>/`，**不在 allowed root 內、與 allowed root 互不可達**；兩層配額；保留期清理；run root 落在 allowed root 內時**拒絕啟動** |
+| 🆕 FR-AGENT-012 | **Agent 自行取得程式碼** | daemon | 依 `source` clone／checkout；bare mirror ＋ `git worktree`；host allowlist；known_hosts pinning；**clone 後移除 `origin`**；缺憑證**快速失敗**不掛住 |
+| 🆕 FR-AGENT-013 | **變更不得靜默丟棄** | daemon | `delivery: none｜artifact` 但工作目錄有變更 → `git diff` **附成一件產物**（D21 誠實性規則 ＋ D29 §7，原屬 V2.4） |
 | FR-AGENT-003 | 任務認領 | central | **拉取式**；原子認領，**雙重領取不可能**；五條件資格判定 |
 | FR-AGENT-008 | 指定 Agent | central | 可指定可不指定（預設不指定）；資格衝突在 dispatch 當下回 409；離線與不符資格的文案不同；重排維持指定；**預設不逾時退回** |
 | FR-AGENT-004 | 租約與重排 | central | 續租、逾時標 `lost`、重排上限 3、用完進 `blocked` |
-| FR-AGENT-005 | Run 生命週期 | central | 獨立狀態機；**不寫 `terminal_sessions`**；cancel 程序無殘留 |
-| FR-AGENT-006 | Run log | central | 有界、runner 端去識別、保留期；**與互動 Session 的承諾嚴格分開** |
+| FR-AGENT-005 | Run 生命週期 | central | 獨立狀態機；**不寫 `terminal_sessions`**；cancel 程序無殘留（process group）；🆕 **三個計時器各答一個問題**：租約答「runner 活著嗎」（→ `lost`、重排）、idle 答「child 在前進嗎」（→ `RUN_IDLE_TIMEOUT`、不重排）、牆鐘只是兜底。**一個「還在跑但很慢」的 run 不得被誤殺** |
+| FR-AGENT-006 | Run log | central | 有界、runner 端去識別、保留期；**與互動 Session 的承諾嚴格分開**。🆕 **內容是 JSONL 事件流**（`claude --output-format stream-json`／`codex exec --json`）而不是終端位元組——所以「不是 Terminal relay」是結構上的事實而不是一條紀律；截斷**不切斷一行 JSON** |
 | FR-AGENT-007 | 看板溝通 | central | 訊息串三種來源；`waiting_for_input` ＋ 逾時退回 `blocked` |
 | FR-AGENT-009 | **任務卡產物** | central | 執行中隨時可附；**存平台不存 node**（run 清理後仍可下載）；不可變；三層配額 |
 | FR-AGENT-010 | **產物的安全提供** | central | 預設 `attachment` ＋ `nosniff`；只有圖片／文字／markdown 可內嵌；**HTML 絕不在應用 origin 渲染**；繼承 Project 存取控制 |
 
-### FR-RUNENV — 機密與隔離環境（V2.3）
+### FR-RUNENV — 機密、git 送回與綁定授權（V2.3）
+
+> **2026-08-10**：隔離目錄與 clone 已移到 V2.2（FR-AGENT-011／012）。
+> 本組移入一條：**FR-RUNENV-006 Project × Agent 綁定**（原 FR-AGENT-002）——
+> 三層（綁定＝授權／labels＝能力，後續功能／指定＝意圖），**指定永不覆蓋綁定**，
+> 未綁定的 Project 永不 offer。另加 **FR-RUNENV-007**：平台憑證取代 node 的 ambient git 憑證。
 
 | ID | 標題 | Owner | 關鍵 AC |
 |---|---|---|---|
@@ -137,7 +145,7 @@
 | **0028** | **任務層、Session Token 與平台投影**（D3／D4／D7／D8／D11／D13／D14／D15）：內化閘門的邊界、`.cliora/` 的寫入面為何不違反紅線 3、Agent 憑證是什麼／不是什麼、三種新儲存各自的保留期 | **V2.1** |
 | 0029 | **Agent Runner 模型與 run 生命週期**（D16／D17／D18／D24／D26）：拉取式認領、租約、run 不是 Session | V2.2 |
 | 0030 | **run 的兩種輸出：log 與卡片產物**（D27／D29）。核心是兩者**保留期不同**：log 是診斷、產物是交付物 | V2.2 |
-| 0031 | **隔離工作目錄與 git 存取**（D19／D20）：六條目錄規則、五條 git 約束 | V2.3 |
+| 0031 | **隔離工作目錄與 git 存取**（D19／D20） | **V2.2 發佈**：六條目錄規則 ＋ git **取得**半邊（clone／fetch、host allowlist、known_hosts、clone 後移除 `origin`、ambient 憑證的後果）。**V2.3 增補**：五條 git 約束（push 半邊）＋ `project_agents` 綁定＝機密授權邊界 |
 | 0032 | **機密管理與 SEC-002 修訂**（D22／D23） | V2.3 |
 | 0033 | **交付模式與 PR 建立**（D21／D25）：`source` × `delivery`、紅線 5 | V2.4 |
 | — | **修訂 ADR 0022**：tunnel 也用於 run 的 mockup 預覽（Agent 提議 → 人核准 → 平台執行）；其範圍宣告不變且更強 | V2.5 |
