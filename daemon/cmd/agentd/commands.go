@@ -16,6 +16,8 @@ import (
 
 	"github.com/cliora/cliora/daemon/internal/config"
 	"github.com/cliora/cliora/daemon/internal/files"
+	"github.com/cliora/cliora/daemon/internal/gitfetch"
+	"github.com/cliora/cliora/daemon/internal/runner"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
 	ctmux "github.com/cliora/cliora/daemon/internal/tmux"
@@ -134,6 +136,7 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 				reportTmuxPosture(ctx, out, cfg)
 				reportUploadPosture(out, cfg, report)
 				reportFileUploadPosture(out, cfg, report)
+				reportRunnerPosture(ctx, out, cfg, report)
 			}
 
 			// The privileged posture is not a fault in either direction, so neither
@@ -453,4 +456,62 @@ func dialProvider() error {
 	}
 	_ = conn.Close()
 	return nil
+}
+
+// reportRunnerPosture prints the runner-mode diagnostics (ADR 0029/0031).
+//
+// Three things a person needs before a card is ever dispatched here, and each is a
+// different kind of answer:
+//
+//   - **git is a new prerequisite.** Without it a `source: repo` card fails at its
+//     first step, every time, and the reason would live only in a run log. A failure,
+//     not a warning: this machine has runner mode switched on and cannot honour it.
+//   - **the run root must be isolated.** The daemon refuses runner mode when it is
+//     not, so doctor says the same thing rather than leaving the operator to find it
+//     in a startup log after a card has been queued.
+//   - **dedicated is reported, not required.** A mixed-use node is a legitimate and
+//     common setup; what would be wrong is for it to be an unnoticed fact, so it is
+//     printed as a note with what it implies.
+func reportRunnerPosture(
+	ctx context.Context, out io.Writer, cfg *config.Config, report func(string, error),
+) {
+	if !cfg.Runner.Enabled {
+		fmt.Fprintln(out, "[info] runner: disabled in this node's configuration")
+		return
+	}
+	if version, err := gitfetch.Available(ctx); err != nil {
+		report("runner:git", fmt.Errorf(
+			"git is not on PATH; it is a prerequisite for runner mode, and a card that "+
+				"needs a repository cannot be fetched without it"))
+	} else {
+		report("runner:git", nil)
+		fmt.Fprintf(out, "[info] runner: %s\n", version)
+	}
+	report("runner:isolation",
+		runner.CheckIsolation(cfg.Runner.WorkDir, cfg.Workspace.AllowedRoots))
+	fmt.Fprintf(out, "[info] runner: work_dir=%s max_concurrent=%d run_quota=%dMB\n",
+		cfg.Runner.WorkDir, cfg.Runner.MaxConcurrent, cfg.Runner.RunQuotaBytes/(1024*1024))
+	if runner.Dedicated(cfg) {
+		fmt.Fprintln(out, "[info] runner: dedicated (this node declares no allowed root)")
+	} else {
+		fmt.Fprintln(out,
+			"[warn] runner: mixed use — this node also serves interactive sessions, and an "+
+				"agent running here can read those directories. The platform does not "+
+				"prevent that (ADR 0031); a dedicated runner node declares no allowed root.")
+	}
+	// The non-interactive probe, so "why does this runner never claim a card" is
+	// answerable here rather than only from the Agents page.
+	reg := runtime.NewRegistry(cfg.Runtime)
+	for _, id := range []string{"claude", "codex"} {
+		rt, ok := reg.Get(id)
+		if !ok {
+			continue
+		}
+		probe := runtime.ProbeRunCapable(ctx, rt, 5*time.Second)
+		if probe.Capable {
+			fmt.Fprintf(out, "[info] runner:%s can run non-interactively with an event stream\n", id)
+			continue
+		}
+		fmt.Fprintf(out, "[warn] runner:%s is not runner-capable (%s)\n", id, probe.Reason)
+	}
 }

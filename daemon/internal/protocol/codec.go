@@ -309,6 +309,12 @@ type registerFields struct {
 	// for every daemon before 0.8.0: the message type does not exist there, so
 	// Central simply does not send it and the session runs exactly as before.
 	ContextProjection *bool `json:"context_projection,omitempty"`
+	// AgentRunner reports that this daemon can run agent work unattended (contract
+	// 1.11.0, ADR 0029 §7). The fourth of the same shape, absent meaning "no" — and
+	// here it means slightly more than "this binary can": the node also has to have
+	// passed its run-root isolation self-check, because a daemon that would refuse to
+	// start a run must not advertise that it can take one.
+	AgentRunner *bool `json:"agent_runner,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
