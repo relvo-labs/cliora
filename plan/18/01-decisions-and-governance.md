@@ -11,7 +11,14 @@
 而否定命題只能對照清單來證；終端延遲基線見 §1 表格下方那段。
 
 **基線點（2026-08-11 裁決）：`3c8760d`**
-（`Merge pull request #24 from Lei-k/feat/v2-1-task-layer`，本期開工時的 `v2` HEAD）。
+（`Merge pull request #24 from Lei-k/feat/v2-1-task-layer`）。
+
+> **實際擷取於 `dc61006`**（2026-08-11，`docs(v2): 依 2026-08-10／08-11 裁決改寫 V2.2…`）。
+> 裁決當下 `3c8760d` 是 `v2` 的 HEAD，但把本目錄寫進 repo 的那個 commit 讓它前進了一格，
+> 而下一段本來就寫了「以實際擷取當下的 HEAD 為準」。
+> `git diff --stat 3c8760d dc61006` 只動 `plan/` 與 `research/`——
+> 六份基線量到的五個面在兩個 commit 之間逐位元組相同，所以這是換錨點不是換基線。
+> 證據與六份的內容見 [`09-implementation-status.md`](./09-implementation-status.md) §1.1。
 
 擷取時要把當下的 `git rev-parse HEAD` 一起寫進
 `artifacts/ar/local/baseline/COMMIT`，**而且六份基線必須全部取自同一個 commit**
@@ -20,15 +27,17 @@
 若開工前 `v2` 又前進了，**以實際擷取當下的 HEAD 為準並更新這一行**，
 不要沿用這個 hash。
 
-輸出一律進 `artifacts/ar/local/baseline/`，沿用 `scripts/tk/capture-baseline.sh` 的形狀：
+輸出一律進 `artifacts/ar/local/baseline/`，擷取器是 **`scripts/ar/capture-baseline.sh`**
+（沿用 `scripts/tk/capture-baseline.sh` 的形狀，加上一條「工作區乾淨才准跑」的前置檢查
+——用 `AR_BASELINE_ALLOW_DIRTY=1` 覆寫時會把未提交的路徑清單寫進 `COMMIT`）：
 
 | 檔案 | 怎麼取 | 給誰用 |
 |---|---|---|
-| `openapi.json` | 兩個旗標都關閉時 dump 一次、都開啟時再 dump 一次（兩份） | 回歸判準的「旗標關閉逐位元組一致」；判準 14 的「沒有任何回應宣告 `text/html`」 |
+| `openapi-flags-off.json`／`openapi-flags-on.json` | 兩個旗標都關閉時 dump 一次、都開啟時再 dump 一次（兩份） | 回歸判準的「旗標關閉逐位元組一致」；判準 14 的「沒有任何回應宣告 `text/html`」。**擷取當下兩份相同**，理由與它對 `AR-04` 的約束見 `09-…md` §3 第 2 條 |
 | `schema.txt` | `pg_dump --schema-only` | `GATE-AR-SCHEMA-ADDITIVE`（沿用 `scripts/pj/gate-schema-additive.sh`） |
 | `contract-fixtures.txt` | `scripts/tk/contract_snapshot.py` | `GATE-AR-CONTRACT-ADDITIVE`：**既有 fixture 逐檔未變**。開工當下 `contracts/v1/fixtures/` 是 46 valid ＋ 63 invalid ＝ **109 個檔**（`plan/17/09` §1 寫的 96+14=110 與實際清單差一個，**以 `AR-00` 擷取到的清單為準**，不要沿用那個數字） |
-| `frontend-routes.txt` | 從 `frontend/src/router/index.ts` 抽出 `path`／`name`／`component` 三欄 | 判準 14 的第二個機器斷言 |
-| `terminal-latency.json` | e2e stack 上量互動終端的 echo 延遲 p50／p95（50 samples） | `00-…md` §5 的「run log 不得讓終端變頓」那條，需要一個**基線值**才有意義 |
+| `frontend-routes.txt` | `scripts/ar/frontend_routes.py`：從 `frontend/src/router/index.ts` 抽出 `path`／`name`／`component` 三欄 | 判準 14 的第二個機器斷言 |
+| `terminal-latency.json` | `scripts/ar/measure_terminal_latency.py`，在 `scripts/e2e/run-stack.sh` 裡跑：量互動終端的 echo 延遲 p50／p95（50 samples） | `00-…md` §5 的「run log 不得讓終端變頓」那條，需要一個**基線值**才有意義 |
 | `COMMIT` | `git rev-parse HEAD` | 讓上面五份的來源可驗證。**沒有它，「與升級前 diff」是一句沒有被錨定的話** |
 
 **`terminal-latency.json` 是本期新加的一份**。V2.1 不需要它，因為 V2.1 在那條 socket 上
