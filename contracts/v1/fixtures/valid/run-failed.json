@@ -1,0 +1,1 @@
+{"version": 1, "type": "run.failed", "request_id": "01K0ABCDEFGHJKMNPQRSTVWX30", "node_id": "00000000-0000-4000-8000-0000000000aa", "timestamp": "2026-08-11T10:00:00Z", "payload": {"run_id": "00000000-0000-4000-8000-0000000000b1", "error_code": "RUN_IDLE_TIMEOUT", "message": "No event for 300 seconds."}}

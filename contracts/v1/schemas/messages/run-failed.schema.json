@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "A run the daemon ended, contract 1.11.0. `RUN_IDLE_TIMEOUT` and `RUN_TIMEOUT` are separate codes on purpose: to a person the first means 'it is stuck, look at the last event' and the second means 'it cannot finish, look at whether the card is too big'. Collapsing them would lose the only signal that distinguishes those two.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "error_code"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"},
+    "error_code": {"enum": ["RUN_SOURCE_UNAVAILABLE", "RUN_DISK_QUOTA", "RUN_IDLE_TIMEOUT", "RUN_TIMEOUT", "RUN_RUNTIME_UNAVAILABLE", "RUN_CANCELLED", "RUN_INTERNAL_ERROR"]},
+    "message": {"$comment": "Safe text only. In particular it must **not** echo the repository URL: a person who pasted a credential into one would otherwise see it again here (ADR 0031 sec 5).", "type": "string", "minLength": 1, "maxLength": 512},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "disk_bytes": {"type": "integer", "minimum": 0}
+  }
+}

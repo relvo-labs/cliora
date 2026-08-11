@@ -645,6 +645,80 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "啟用那個 Agent，或不指定 Agent 直接派工。",
     retryable: false,
   },
+  // 從 node 送回來的那一組。它們會經由 relay 到達畫面，所以每一個都要有指引。
+  AGENT_RUNS_DISABLED: {
+    cause:
+      "有一台 daemon 想註冊成 Runner，但這個部署把 Agent 執行關掉了。該 node 的互動式 Session 不受影響。",
+    nextStep: "若這個部署要提供無人值守執行，請在 Central 打開該旗標。",
+    retryable: false,
+  },
+  RUNNER_NOT_REGISTERED: {
+    cause:
+      "poll 在 register 之前抵達——通常是 daemon 剛重連、還沒重新宣告自己。",
+    nextStep: "不需要處理；daemon 在下一次連線時會註冊並繼續 poll。",
+    retryable: true,
+  },
+  RUNNER_DISABLED: {
+    cause: "管理員把它停用了，所以即使它的 node 在線上，它仍然不會被派工。",
+    nextStep: "在 Agents 頁把它啟用。",
+    retryable: false,
+  },
+  RUN_NOT_FOUND: {
+    cause:
+      "這個 run id 在平台上不存在——通常是一個延遲或重複的訊框，而那個 run 已經被回收了。",
+    nextStep: "不需要處理；租約逾時之後這是正常現象。",
+    retryable: false,
+  },
+  RUN_INVALID_STATE: {
+    cause: "對一個已經進入終態的 run 送了續租或進度回報。",
+    nextStep: "不需要處理；node 發現那個 run 不在之後就會停止回報。",
+    retryable: false,
+  },
+  RUN_SOURCE_UNAVAILABLE: {
+    cause:
+      "三件事之一：那台機器沒有該 repository 的憑證、host 不在該 node 的允許清單內，或 ref 不存在。" +
+      "details 會指名是哪一種——而且**永遠不會回顯 URL**，因為有人可能把憑證貼進去了。",
+    nextStep:
+      "看 details：在那台機器上補憑證、把 host 加進該 node 的允許清單，或修正卡片上的分支。",
+    retryable: false,
+  },
+  RUN_DISK_QUOTA: {
+    cause:
+      "單次執行的目錄或該 node 的總量超過配額。配額存在的理由很具體：一個失控的建置會把磁碟塞滿，" +
+      "而那會連互動式 Session 一起拖下去。",
+    nextStep:
+      "等清理迴圈，或在那台 node 上調高 runner.run_quota_bytes——如果那份工作真的需要更多。",
+    retryable: false,
+  },
+  RUN_IDLE_TIMEOUT: {
+    cause:
+      "存活判定看的是執行環境的事件流而不是牆鐘。在閒置上限內沒有任何事件抵達，所以這次執行被中止了。",
+    nextStep:
+      "看 run log 的最後幾筆；若那份工作合理地會安靜更久，調高 runner.idle_timeout_seconds。",
+    retryable: false,
+  },
+  RUN_TIMEOUT: {
+    cause:
+      "這是兜底而不是存活判定：這次執行一直有在吐事件，只是沒能在時限內做完。",
+    nextStep: "把卡片拆小，或調高這個部署的 run 牆鐘上限。",
+    retryable: false,
+  },
+  RUN_RUNTIME_UNAVAILABLE: {
+    cause: "那支 CLI 沒裝、不可執行，或版本太舊而沒有帶事件流的非互動介面。",
+    nextStep: "在那台機器上安裝或更新 CLI，並讓 daemon 重新註冊。",
+    retryable: false,
+  },
+  RUN_CANCELLED: {
+    cause: "有人按了取消，或那台 node 正在關機。",
+    nextStep: "準備好之後重新派工一次。",
+    retryable: false,
+  },
+  RUN_INTERNAL_ERROR: {
+    cause:
+      "daemon 的執行路徑裡出了問題。細節只在那台 node 的 log 裡，連同 request id。",
+    nextStep: "重試；若持續發生，收集那個 run id 前後的 daemon log。",
+    retryable: true,
+  },
   AGENT_RUNTIME_MISMATCH: {
     cause:
       "被指定的 Node 沒有回報這張卡需要的執行環境——常見原因是那支 CLI 有裝但版本太舊，偵測不到非互動介面。",

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Central's correlated answer to runner.register, contract 1.11.0. `accepted: false` carries a reason rather than closing the socket: the node keeps serving interactive sessions either way, and a daemon that was refused should be able to say why in `agentd doctor` instead of only retrying.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["accepted"],
+  "properties": {
+    "runner_id": {"type": "string", "format": "uuid"},
+    "accepted": {"type": "boolean"},
+    "enabled": {"$comment": "The administrator's switch, echoed back so the daemon can stop polling instead of being refused on every poll.", "type": "boolean"},
+    "reason": {"type": "string", "minLength": 1, "maxLength": 256}
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The whole payload of `run.accept` and `run.lease_renew`, contract 1.11.0 (ADR 0029). Shared the way session-id.schema.json is shared: both messages say only 'this run', and giving each its own copy would be two places to forget a constraint. Both are one-way frames — the daemon sends them and nothing answers, so there is nowhere for an extra field to be read.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"}
+  }
+}

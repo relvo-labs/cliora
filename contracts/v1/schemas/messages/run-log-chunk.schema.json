@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "One slice of a run's output, contract 1.11.0 (ADR 0030 Part A). Two limits here are not tuning. **`data` is capped at 32 KiB** because the control frame ceiling is 64 KiB and this type is deliberately NOT in the large-frame set that six filesystem messages use: that socket also carries interactive terminal bytes, and promoting the log to the 8 MiB tier would buy an agent's debug output with the terminal's responsiveness. And the content is the CLI's **JSONL event stream**, not terminal bytes — so the chunker may not split a line: half an event cannot be rendered, and 'do not split a line' outranks 'fill the chunk'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "seq", "data"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"},
+    "seq": {"$comment": "A sort key, not a counter. Central aggregates several chunks into one row, so the stored sequence numbers skip — the same property `card_ref` has.", "type": "integer", "minimum": 0},
+    "data": {"type": "string", "maxLength": 32768},
+    "truncated": {"$comment": "Set by the daemon when it dropped output on its own side. Central sets its own flag independently when the run exceeds `CLIORA_RUN_LOG_MAX_BYTES`; the two are different events and both are recorded.", "type": "boolean"}
+  }
+}

@@ -51,7 +51,7 @@ var LargeFrameTypes = map[string]bool{
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "context.project": true, "context.projected": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "context.project": true, "context.projected": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "runner.register": true, "runner.registered": true, "runner.poll": true, "run.offer": true, "run.accept": true, "run.decline": true, "run.lease_renew": true, "run.progress": true, "run.log_chunk": true, "run.complete": true, "run.failed": true, "run.cancel": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -667,6 +667,212 @@ func validRuntimes(items []runtimeItem) bool {
 // fields, and rows/columns within bounds). This is the single source of truth
 // shared by the dispatcher and the contract tests so runtime behaviour matches
 // the golden fixtures across languages.
+
+// --- V2.2 agent runner (contract 1.11.0, ADR 0029/0031) ---------------------
+//
+// The daemon re-validates every one of these rather than trusting Central, the same
+// defence-in-depth rule `context.project` follows (SEC-001). Two of the checks are
+// the machine form of a decision rather than input hygiene:
+//
+//   - `runSpecFields` has no Command, no Args, no Env and **no Workspace**. Strict
+//     unmarshalling makes any of them a rejection, which is what keeps SEC-002's argv
+//     clause and the 2026-08-10 ruling true on the wire and not only in review.
+//   - a source URL may not carry userinfo. A credential inside a remote URL surfaces
+//     in `git remote -v`, in the reflog and in error messages (ADR 0031 §5).
+
+type runnerRegisterFields struct {
+	RunnerID      uuid.UUID `json:"runner_id"`
+	Name          string    `json:"name"`
+	Runtimes      []string  `json:"runtimes"`
+	Labels        []string  `json:"labels"`
+	MaxConcurrent *int      `json:"max_concurrent"`
+	MaxWaiting    *int      `json:"max_waiting"`
+	Dedicated     *bool     `json:"dedicated"`
+}
+
+type runnerRegisteredFields struct {
+	RunnerID uuid.UUID `json:"runner_id"`
+	Accepted *bool     `json:"accepted"`
+	Enabled  *bool     `json:"enabled"`
+	Reason   string    `json:"reason"`
+}
+
+type runnerPollFields struct {
+	RunnerID uuid.UUID `json:"runner_id"`
+	Capacity *int      `json:"capacity"`
+}
+
+type runIDFields struct {
+	RunID uuid.UUID `json:"run_id"`
+}
+
+// RunSource names where a run's code comes from. Exported because the runner needs it.
+type RunSource struct {
+	Kind string `json:"kind"`
+	URL  string `json:"url,omitempty"`
+	Ref  string `json:"ref,omitempty"`
+}
+
+// RunSpec is everything a claimed run is told to do. Read the absent fields first.
+type RunSpec struct {
+	Runtime                     string    `json:"runtime,omitempty"`
+	Source                      RunSource `json:"source"`
+	Context                     string    `json:"context"`
+	AllowedVerificationCommands []string  `json:"allowed_verification_commands,omitempty"`
+	TimeoutSeconds              int       `json:"timeout_seconds"`
+	IdleTimeoutSeconds          int       `json:"idle_timeout_seconds"`
+}
+
+// RunOffer is a run that has **already been claimed** for this node.
+type RunOffer struct {
+	RunID     *uuid.UUID `json:"run_id"`
+	TaskID    uuid.UUID  `json:"task_id,omitempty"`
+	ProjectID uuid.UUID  `json:"project_id,omitempty"`
+	CardRef   string     `json:"card_ref,omitempty"`
+	Title     string     `json:"title,omitempty"`
+	Attempt   int        `json:"attempt,omitempty"`
+	Delivery  string     `json:"delivery,omitempty"`
+	Spec      *RunSpec   `json:"spec,omitempty"`
+}
+
+type runDeclineFields struct {
+	RunID  uuid.UUID `json:"run_id"`
+	Reason string    `json:"reason"`
+}
+
+type runProgressFields struct {
+	RunID           uuid.UUID `json:"run_id"`
+	Phase           string    `json:"phase"`
+	Message         string    `json:"message"`
+	CommitSHA       string    `json:"commit_sha"`
+	WaitingForInput *bool     `json:"waiting_for_input"`
+}
+
+type runLogChunkFields struct {
+	RunID     uuid.UUID `json:"run_id"`
+	Seq       *int      `json:"seq"`
+	Data      *string   `json:"data"`
+	Truncated *bool     `json:"truncated"`
+}
+
+type runCompleteFields struct {
+	RunID           uuid.UUID `json:"run_id"`
+	Result          string    `json:"result"`
+	Summary         string    `json:"summary"`
+	DiskBytes       *int64    `json:"disk_bytes"`
+	GitRemotes      []string  `json:"git_remotes"`
+	UnpushedCommits *int      `json:"unpushed_commits"`
+	UntrackedFiles  *int      `json:"untracked_files"`
+}
+
+type runFailedFields struct {
+	RunID     uuid.UUID `json:"run_id"`
+	ErrorCode string    `json:"error_code"`
+	Message   string    `json:"message"`
+	Summary   string    `json:"summary"`
+	DiskBytes *int64    `json:"disk_bytes"`
+}
+
+type runCancelFields struct {
+	RunID  uuid.UUID `json:"run_id"`
+	Reason string    `json:"reason"`
+}
+
+var (
+	runnerRuntimeSet = map[string]bool{"claude": true, "codex": true}
+	runSourceKindSet = map[string]bool{"none": true, "repo": true, "existing_branch": true}
+	runPhaseSet      = map[string]bool{
+		"preparing": true, "fetching": true, "checked_out": true,
+		"running": true, "waiting_for_input": true, "finishing": true,
+	}
+	runDeclineReasonSet = map[string]bool{
+		"at_capacity": true, "runtime_unavailable": true, "disk_quota": true,
+		"shutting_down": true, "internal_error": true,
+	}
+	runResultSet      = map[string]bool{"succeeded": true, "no_changes": true}
+	runCancelReasons  = map[string]bool{"user_cancelled": true, "lease_lost": true, "shutting_down": true}
+	runFailureCodeSet = map[string]bool{
+		"RUN_SOURCE_UNAVAILABLE": true, "RUN_DISK_QUOTA": true, "RUN_IDLE_TIMEOUT": true,
+		"RUN_TIMEOUT": true, "RUN_RUNTIME_UNAVAILABLE": true, "RUN_CANCELLED": true,
+		"RUN_INTERNAL_ERROR": true,
+	}
+)
+
+// validGitRef refuses a leading `-`: the closed argv table cannot protect a value
+// that *is* a flag.
+func validGitRef(value string) bool {
+	if value == "" || len(value) > 255 {
+		return false
+	}
+	for i, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case (r == '.' || r == '_' || r == '/' || r == '-') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validCloneURL enforces the two properties ADR 0031 §5 names: a scheme the daemon
+// will actually fetch over, and **no userinfo**.
+func validCloneURL(value string) bool {
+	if len(value) < 8 || len(value) > 2048 {
+		return false
+	}
+	rest, ok := strings.CutPrefix(value, "https://")
+	if !ok {
+		rest, ok = strings.CutPrefix(value, "ssh://")
+		if !ok {
+			return false
+		}
+	}
+	if rest == "" || strings.ContainsAny(rest, " \t\r\n") {
+		return false
+	}
+	// Anywhere, not only before the first slash: `@` in the authority is the
+	// credential form, and a host component never legitimately contains one.
+	if strings.Contains(rest, "@") {
+		return false
+	}
+	return strings.Contains(rest, "/")
+}
+
+func validRunSource(source RunSource) bool {
+	if !runSourceKindSet[source.Kind] {
+		return false
+	}
+	if source.Kind == "none" {
+		// Absent, not empty-and-ignored: a field that should not exist has to be
+		// unrepresentable (the same rule filesystem-store follows).
+		return source.URL == "" && source.Ref == ""
+	}
+	return validCloneURL(source.URL) && validGitRef(source.Ref)
+}
+
+func validRunSpec(spec *RunSpec) bool {
+	if spec == nil {
+		return false
+	}
+	if spec.Runtime != "" && !runnerRuntimeSet[spec.Runtime] {
+		return false
+	}
+	if spec.Context == "" || len(spec.Context) > 65536 {
+		return false
+	}
+	if spec.TimeoutSeconds < 60 || spec.TimeoutSeconds > 86400 {
+		return false
+	}
+	if spec.IdleTimeoutSeconds < 30 || spec.IdleTimeoutSeconds > 21600 {
+		return false
+	}
+	if len(spec.AllowedVerificationCommands) > 16 {
+		return false
+	}
+	return validRunSource(spec.Source)
+}
+
 func ValidateControl(raw []byte) error {
 	env, err := DecodeControl(raw)
 	if err != nil {
@@ -758,6 +964,87 @@ func ValidateControl(raw []byte) error {
 				!validProjectData(file.Data) {
 				return errors.New("INVALID_MESSAGE")
 			}
+		}
+	case "runner.register":
+		var p runnerRegisterFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.Name == "" || len(p.Name) > 128 ||
+			p.MaxConcurrent == nil || *p.MaxConcurrent < 0 || *p.MaxConcurrent > 64 ||
+			p.MaxWaiting == nil || *p.MaxWaiting < 0 || *p.MaxWaiting > 64 ||
+			p.Dedicated == nil || len(p.Runtimes) > 8 || len(p.Labels) > 32 {
+			return errors.New("INVALID_MESSAGE")
+		}
+		for _, runtime := range p.Runtimes {
+			if !runnerRuntimeSet[runtime] {
+				return errors.New("INVALID_MESSAGE")
+			}
+		}
+	case "runner.registered":
+		var p runnerRegisteredFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.Accepted == nil {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "runner.poll":
+		var p runnerPollFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunnerID == uuid.Nil ||
+			p.Capacity == nil || *p.Capacity < 1 || *p.Capacity > 16 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.offer":
+		// `run_id: null` is the "nothing for you" answer, and it carries nothing else.
+		var p RunOffer
+		if strictUnmarshal(env.Payload, &p) != nil {
+			return errors.New("INVALID_MESSAGE")
+		}
+		if p.RunID == nil {
+			return nil
+		}
+		if *p.RunID == uuid.Nil || (p.Delivery != "" && p.Delivery != "none" && p.Delivery != "artifact") ||
+			!validRunSpec(p.Spec) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.accept", "run.lease_renew":
+		var p runIDFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.decline":
+		var p runDeclineFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			!runDeclineReasonSet[p.Reason] {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.progress":
+		var p runProgressFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			!runPhaseSet[p.Phase] || len(p.Message) > 512 ||
+			(p.CommitSHA != "" && !validCommitSHA(p.CommitSHA)) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.log_chunk":
+		var p runLogChunkFields
+		// 32 KiB, and deliberately far below the large-frame ceiling: this type is not
+		// in that set, because the same socket carries interactive terminal bytes.
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			p.Seq == nil || *p.Seq < 0 || p.Data == nil || len(*p.Data) > 32768 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.complete":
+		var p runCompleteFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			!runResultSet[p.Result] || len(p.Summary) > 4096 || len(p.GitRemotes) > 16 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.failed":
+		var p runFailedFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			!runFailureCodeSet[p.ErrorCode] || len(p.Message) > 512 || len(p.Summary) > 4096 {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "run.cancel":
+		var p runCancelFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
+			!runCancelReasons[p.Reason] {
+			return errors.New("INVALID_MESSAGE")
 		}
 	case "tunnel.open":
 		var p tunnelOpenFields
@@ -877,4 +1164,19 @@ func DecodeBinary(frame []byte) (byte, uuid.UUID, []byte, error) {
 	copy(id[:], frame[2:18])
 	payload := append([]byte(nil), frame[18:]...)
 	return frame[1], id, payload, nil
+}
+
+// validCommitSHA accepts exactly a full lowercase hex object name. Abbreviations are
+// refused: the Run detail page's promise is "which version did this run execute", and
+// a short sha stops being unique as a repository grows.
+func validCommitSHA(value string) bool {
+	if len(value) != 40 {
+		return false
+	}
+	for _, r := range value {
+		if !((r >= '0' && r <= '9') || (r >= 'a' && r <= 'f')) {
+			return false
+		}
+	}
+	return true
 }

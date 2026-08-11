@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "A release, not a refusal of an open offer, contract 1.11.0 (ADR 0029 sec 2). Because the claim already happened at poll time, this returns the run to `queued` **without spending an attempt**: the runner may simply have filled up between polling and being handed the work. Central keeps a short in-memory cooldown so the same runner does not pick it straight back up.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "reason"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"},
+    "reason": {"$comment": "A closed vocabulary rather than free text: this feeds M-AR-4 (why declines happen), and a free-text field would make that measurement unanswerable.", "enum": ["at_capacity", "runtime_unavailable", "disk_quota", "shutting_down", "internal_error"]}
+  }
+}

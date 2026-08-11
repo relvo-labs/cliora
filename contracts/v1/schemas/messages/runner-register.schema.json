@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "A node telling the platform what it can run, contract 1.11.0 (ADR 0029). Every field here is the machine's report about itself, and none of it is settable through the API — the same posture node.register already takes for image_upload and the codex sandbox flag (ADR 0023 D3). Note what is absent: there is no `enabled`. Whether a runner may take work is an administrator's decision, and letting a re-registration carry it would mean a daemon restart silently re-enabling something that was switched off.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "runtimes", "max_concurrent", "max_waiting", "dedicated"],
+  "properties": {
+    "runner_id": {"$comment": "Present on re-registration only; the platform keys on node_id regardless, because a node holds exactly one runner row (ADR 0029 sec 1).", "type": "string", "format": "uuid"},
+    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "runtimes": {
+      "$comment": "Only the runtimes this node found to be *runner capable* — installed AND exposing both a non-interactive flag and a machine-readable event stream. A node whose CLI is too old reports an empty array and registers successfully: a failed registration reads as 'the machine is broken', while an empty set plus a reason on the Agents page reads as what it is (ADR 0029 sec 7).",
+      "type": "array",
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {"enum": ["claude", "codex"]}
+    },
+    "labels": {
+      "$comment": "Displayed and **never compared** in V2.2. Label matching is a later feature; the field is carried now because the daemon already knows them, and dropping the value would make the console lie about what the node said.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"}
+    },
+    "max_concurrent": {"$comment": "Runs executing at once. Lower bound 0 is legal and means 'registered but taking nothing', which is a useful state during maintenance.", "type": "integer", "minimum": 0, "maximum": 64},
+    "max_waiting": {"$comment": "A second limit, because a run in waiting_for_input holds no process and must not occupy execution capacity (ADR 0029 sec 5). Without it, three runs waiting on a human would take a node offline for work.", "type": "integer", "minimum": 0, "maximum": 64},
+    "dedicated": {"$comment": "**A report, never a setting.** Derived by the daemon from `len(workspace.allowed_roots) == 0`; Central stores it and displays it without checking it — the same requested/actual separation ADR 0023 D3 established for the codex sandbox flag. It matters because the platform has NO technical isolation between a run and the node's allowed roots (ADR 0031 sec 6): on a node with none, 'the run cannot read one' is vacuously true, and this field is what makes mixed use a visible choice instead of an unnoticed fact.", "type": "boolean"}
+  }
+}

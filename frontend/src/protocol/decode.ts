@@ -65,6 +65,23 @@ const TYPES = new Set([
   "tunnel.close",
   "tunnel.closed",
   "tunnel.status",
+  // Agent runner control types (v1.11.0, ADR 0029). The browser never receives these
+  // either — a run's log reaches it over HTTP, not over this socket — but the envelope
+  // vocabulary is shared by all three consumers, so the manifest-driven contract test
+  // validates them here too. That shared validation is what makes the SEC-002 and
+  // no-workspace fixtures below assertions in three languages rather than one.
+  "runner.register",
+  "runner.registered",
+  "runner.poll",
+  "run.offer",
+  "run.accept",
+  "run.decline",
+  "run.lease_renew",
+  "run.progress",
+  "run.log_chunk",
+  "run.complete",
+  "run.failed",
+  "run.cancel",
   "error",
 ]);
 const ENVELOPE_KEYS = new Set([
@@ -1007,6 +1024,20 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
   if (data.type === "daemon.update") validateDaemonUpdatePayload(data.payload);
   if (data.type === "daemon.update_result")
     validateDaemonUpdateResultPayload(data.payload);
+  if (data.type === "runner.register")
+    validateRunnerRegisterPayload(data.payload);
+  if (data.type === "runner.registered")
+    validateRunnerRegisteredPayload(data.payload);
+  if (data.type === "runner.poll") validateRunnerPollPayload(data.payload);
+  if (data.type === "run.offer") validateRunOfferPayload(data.payload);
+  if (data.type === "run.accept" || data.type === "run.lease_renew")
+    validateRunIdPayload(data.payload);
+  if (data.type === "run.decline") validateRunDeclinePayload(data.payload);
+  if (data.type === "run.progress") validateRunProgressPayload(data.payload);
+  if (data.type === "run.log_chunk") validateRunLogChunkPayload(data.payload);
+  if (data.type === "run.complete") validateRunCompletePayload(data.payload);
+  if (data.type === "run.failed") validateRunFailedPayload(data.payload);
+  if (data.type === "run.cancel") validateRunCancelPayload(data.payload);
   if (data.type === "tunnel.open") validateTunnelOpenPayload(data.payload);
   if (data.type === "tunnel.opened") validateTunnelOpenedPayload(data.payload);
   if (data.type === "tunnel.close") validateTunnelIdPayload(data.payload);
@@ -1028,4 +1059,324 @@ export function decodeBinary(raw: Uint8Array): {
   if (raw.byteLength - HEADER_SIZE > MAX_PAYLOAD)
     reject("FRAME_TOO_LARGE", "Terminal payload exceeds the limit");
   return { kind: raw[1], payload: raw.slice(HEADER_SIZE) };
+}
+
+// --- V2.2 agent runner (contract 1.11.0, ADR 0029/0031) ---------------------
+//
+// Two of these carry a decision rather than input hygiene, and both are enforced the
+// same way in all three languages:
+//
+//   * a run spec has no `command`, no `args`, no `env` and **no `workspace`**. The
+//     first three keep SEC-002's argv clause true on the wire; the fourth is the
+//     2026-08-10 ruling's most direct mark on the contract — while that field existed,
+//     Central would have to choose one of the user's paths and send it.
+//   * a source URL may not carry userinfo, because a credential in a remote URL
+//     surfaces in `git remote -v`, in the reflog and in error messages (ADR 0031 §5).
+
+const RUN_RUNTIMES = new Set(["claude", "codex"]);
+const RUN_SOURCE_KINDS = new Set(["none", "repo", "existing_branch"]);
+const RUN_PHASES = new Set([
+  "preparing",
+  "fetching",
+  "checked_out",
+  "running",
+  "waiting_for_input",
+  "finishing",
+]);
+const RUN_DECLINE_REASONS = new Set([
+  "at_capacity",
+  "runtime_unavailable",
+  "disk_quota",
+  "shutting_down",
+  "internal_error",
+]);
+const RUN_RESULTS = new Set(["succeeded", "no_changes"]);
+const RUN_CANCEL_REASONS = new Set([
+  "user_cancelled",
+  "lease_lost",
+  "shutting_down",
+]);
+const RUN_FAILURE_CODES = new Set([
+  "RUN_SOURCE_UNAVAILABLE",
+  "RUN_DISK_QUOTA",
+  "RUN_IDLE_TIMEOUT",
+  "RUN_TIMEOUT",
+  "RUN_RUNTIME_UNAVAILABLE",
+  "RUN_CANCELLED",
+  "RUN_INTERNAL_ERROR",
+]);
+// No leading `-`: a closed argv table cannot protect a value that *is* a flag.
+const GIT_REF = /^[A-Za-z0-9._][A-Za-z0-9._/-]*$/;
+const COMMIT_SHA = /^[0-9a-f]{40}$/;
+const CLONE_URL =
+  /^(https|ssh):\/\/[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?\/[^@\s]*$/;
+
+function requireUuid(value: unknown, field: string): void {
+  if (typeof value !== "string" || !UUID.test(value))
+    reject("INVALID_MESSAGE", `Invalid ${field}`);
+}
+
+function requireBoundedInt(
+  value: unknown,
+  field: string,
+  min: number,
+  max: number,
+): void {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < min ||
+    value > max
+  )
+    reject("INVALID_MESSAGE", `Invalid ${field}`);
+}
+
+function validateRunnerRegisterPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set([
+      "runner_id",
+      "name",
+      "runtimes",
+      "labels",
+      "max_concurrent",
+      "max_waiting",
+      "dedicated",
+    ]),
+    ["name", "runtimes", "max_concurrent", "max_waiting", "dedicated"],
+  );
+  if (
+    typeof payload.name !== "string" ||
+    payload.name.length === 0 ||
+    payload.name.length > 128
+  )
+    reject("INVALID_MESSAGE", "Invalid runner name");
+  const runtimes = payload.runtimes;
+  if (!Array.isArray(runtimes) || runtimes.length > 8)
+    reject("INVALID_MESSAGE", "Invalid runtimes");
+  for (const runtime of runtimes as unknown[])
+    if (typeof runtime !== "string" || !RUN_RUNTIMES.has(runtime))
+      reject("INVALID_MESSAGE", "Unknown runtime");
+  if (payload.labels !== undefined) {
+    if (!Array.isArray(payload.labels) || payload.labels.length > 32)
+      reject("INVALID_MESSAGE", "Invalid labels");
+  }
+  requireBoundedInt(payload.max_concurrent, "max_concurrent", 0, 64);
+  requireBoundedInt(payload.max_waiting, "max_waiting", 0, 64);
+  if (typeof payload.dedicated !== "boolean")
+    reject("INVALID_MESSAGE", "Invalid dedicated");
+}
+
+function validateRunnerRegisteredPayload(
+  payload: Record<string, unknown>,
+): void {
+  requireKeys(
+    payload,
+    new Set(["runner_id", "accepted", "enabled", "reason"]),
+    ["accepted"],
+  );
+  if (typeof payload.accepted !== "boolean")
+    reject("INVALID_MESSAGE", "Invalid accepted");
+}
+
+function validateRunnerPollPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["runner_id", "capacity"]), [
+    "runner_id",
+    "capacity",
+  ]);
+  requireUuid(payload.runner_id, "runner id");
+  requireBoundedInt(payload.capacity, "capacity", 1, 16);
+}
+
+function validateRunIdPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["run_id"]), ["run_id"]);
+  requireUuid(payload.run_id, "run id");
+}
+
+function validateRunSource(value: unknown): void {
+  if (typeof value !== "object" || value === null)
+    reject("INVALID_MESSAGE", "Invalid source");
+  const source = value as Record<string, unknown>;
+  requireKeys(source, new Set(["kind", "url", "ref"]), ["kind"]);
+  if (typeof source.kind !== "string" || !RUN_SOURCE_KINDS.has(source.kind))
+    reject("INVALID_MESSAGE", "Unknown source kind");
+  if (source.kind === "none") {
+    // Absent, not null-and-ignored.
+    if ("url" in source || "ref" in source)
+      reject("INVALID_MESSAGE", "source none carries no url or ref");
+    return;
+  }
+  if (typeof source.url !== "string" || !CLONE_URL.test(source.url))
+    reject("INVALID_MESSAGE", "Invalid source url");
+  if (typeof source.ref !== "string" || !GIT_REF.test(source.ref))
+    reject("INVALID_MESSAGE", "Invalid source ref");
+}
+
+function validateRunSpec(value: unknown): void {
+  if (typeof value !== "object" || value === null)
+    reject("INVALID_MESSAGE", "Invalid spec");
+  const spec = value as Record<string, unknown>;
+  requireKeys(
+    spec,
+    new Set([
+      "runtime",
+      "source",
+      "context",
+      "allowed_verification_commands",
+      "timeout_seconds",
+      "idle_timeout_seconds",
+    ]),
+    ["source", "context", "timeout_seconds", "idle_timeout_seconds"],
+  );
+  if (spec.runtime !== undefined) {
+    if (typeof spec.runtime !== "string" || !RUN_RUNTIMES.has(spec.runtime))
+      reject("INVALID_MESSAGE", "Unknown runtime");
+  }
+  validateRunSource(spec.source);
+  if (
+    typeof spec.context !== "string" ||
+    spec.context.length === 0 ||
+    spec.context.length > 65536
+  )
+    reject("INVALID_MESSAGE", "Invalid context");
+  requireBoundedInt(spec.timeout_seconds, "timeout_seconds", 60, 86400);
+  requireBoundedInt(
+    spec.idle_timeout_seconds,
+    "idle_timeout_seconds",
+    30,
+    21600,
+  );
+  if (spec.allowed_verification_commands !== undefined) {
+    if (
+      !Array.isArray(spec.allowed_verification_commands) ||
+      spec.allowed_verification_commands.length > 16
+    )
+      reject("INVALID_MESSAGE", "Invalid verification commands");
+  }
+}
+
+function validateRunOfferPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set([
+      "run_id",
+      "task_id",
+      "project_id",
+      "card_ref",
+      "title",
+      "attempt",
+      "delivery",
+      "spec",
+    ]),
+    ["run_id"],
+  );
+  // `null` is the "nothing for you" answer, and it carries nothing else.
+  if (payload.run_id === null) return;
+  requireUuid(payload.run_id, "run id");
+  if (payload.delivery !== undefined) {
+    if (payload.delivery !== "none" && payload.delivery !== "artifact")
+      reject("INVALID_MESSAGE", "Unsupported delivery");
+  }
+  validateRunSpec(payload.spec);
+}
+
+function validateRunDeclinePayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["run_id", "reason"]), ["run_id", "reason"]);
+  requireUuid(payload.run_id, "run id");
+  if (
+    typeof payload.reason !== "string" ||
+    !RUN_DECLINE_REASONS.has(payload.reason)
+  )
+    reject("INVALID_MESSAGE", "Unknown decline reason");
+}
+
+function validateRunProgressPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set(["run_id", "phase", "message", "commit_sha", "waiting_for_input"]),
+    ["run_id", "phase"],
+  );
+  requireUuid(payload.run_id, "run id");
+  if (typeof payload.phase !== "string" || !RUN_PHASES.has(payload.phase))
+    reject("INVALID_MESSAGE", "Unknown phase");
+  if (payload.message !== undefined) {
+    if (typeof payload.message !== "string" || payload.message.length > 512)
+      reject("INVALID_MESSAGE", "Invalid message");
+  }
+  if (payload.commit_sha !== undefined) {
+    if (
+      typeof payload.commit_sha !== "string" ||
+      !COMMIT_SHA.test(payload.commit_sha)
+    )
+      reject("INVALID_MESSAGE", "Invalid commit sha");
+  }
+}
+
+function validateRunLogChunkPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["run_id", "seq", "data", "truncated"]), [
+    "run_id",
+    "seq",
+    "data",
+  ]);
+  requireUuid(payload.run_id, "run id");
+  requireBoundedInt(payload.seq, "seq", 0, Number.MAX_SAFE_INTEGER);
+  // 32 KiB, deliberately far below the large-frame ceiling: this type is not in that
+  // set, because the same socket carries interactive terminal bytes.
+  if (typeof payload.data !== "string" || payload.data.length > 32768)
+    reject("INVALID_MESSAGE", "Log chunk too large");
+}
+
+function validateRunCompletePayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set([
+      "run_id",
+      "result",
+      "summary",
+      "disk_bytes",
+      "git_remotes",
+      "unpushed_commits",
+      "untracked_files",
+    ]),
+    ["run_id", "result"],
+  );
+  requireUuid(payload.run_id, "run id");
+  if (typeof payload.result !== "string" || !RUN_RESULTS.has(payload.result))
+    reject("INVALID_MESSAGE", "Unknown result");
+  if (payload.summary !== undefined) {
+    if (typeof payload.summary !== "string" || payload.summary.length > 4096)
+      reject("INVALID_MESSAGE", "Invalid summary");
+  }
+  if (payload.git_remotes !== undefined) {
+    if (!Array.isArray(payload.git_remotes) || payload.git_remotes.length > 16)
+      reject("INVALID_MESSAGE", "Invalid git remotes");
+  }
+}
+
+function validateRunFailedPayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set(["run_id", "error_code", "message", "summary", "disk_bytes"]),
+    ["run_id", "error_code"],
+  );
+  requireUuid(payload.run_id, "run id");
+  if (
+    typeof payload.error_code !== "string" ||
+    !RUN_FAILURE_CODES.has(payload.error_code)
+  )
+    reject("INVALID_MESSAGE", "Unknown failure code");
+  if (payload.message !== undefined) {
+    if (typeof payload.message !== "string" || payload.message.length > 512)
+      reject("INVALID_MESSAGE", "Invalid message");
+  }
+}
+
+function validateRunCancelPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["run_id", "reason"]), ["run_id", "reason"]);
+  requireUuid(payload.run_id, "run id");
+  if (
+    typeof payload.reason !== "string" ||
+    !RUN_CANCEL_REASONS.has(payload.reason)
+  )
+    reject("INVALID_MESSAGE", "Unknown cancel reason");
 }

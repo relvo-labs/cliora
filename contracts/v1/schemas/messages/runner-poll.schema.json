@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "The pull side of the queue, contract 1.11.0 (ADR 0029 sec 2). Backpressure is structural rather than negotiated: a runner at capacity simply does not send this, so there is no `capacity: 0` frame and no scheduler on the platform. **The claim happens when this arrives**, so the run.offer that follows means 'this card is already yours and the lease has started'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["runner_id", "capacity"],
+  "properties": {
+    "runner_id": {"type": "string", "format": "uuid"},
+    "capacity": {"$comment": "How many runs this poll is willing to take. At most a handful: it bounds how many candidate rows Central will attempt to claim in one pass, and a large value would turn one poll into a long transaction.", "type": "integer", "minimum": 1, "maximum": 16}
+  }
+}

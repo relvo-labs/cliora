@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Where the run's code comes from, contract 1.11.0 (ADR 0031). Two constraints are in the schema rather than in a comment, because both are security properties. First: with `kind: none` the URL and ref must be **absent**, not null — a field that should not exist has to be unrepresentable rather than ignored, the same rule filesystem-store follows. Second: the URL may not carry userinfo and may only be https or ssh. A credential inside a remote URL surfaces in `git remote -v`, in the reflog and in error messages, so the platform stores the repository as three columns and this pattern makes the forbidden form unrepresentable on the wire too.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["kind"],
+  "properties": {
+    "kind": {"enum": ["none", "repo", "existing_branch"]},
+    "url": {
+      "$comment": "No `@` before the host: that is the machine form of ADR 0031's rule against tokens in remote URLs.",
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 2048,
+      "pattern": "^(https|ssh)://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?/[^@\\s]*$"
+    },
+    "ref": {
+      "$comment": "A branch or a tag. May not begin with `-`: the closed argv table cannot protect a value that *is* a flag.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^[A-Za-z0-9._][A-Za-z0-9._/-]*$"
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"kind": {"const": "none"}}, "required": ["kind"]},
+      "then": {"not": {"anyOf": [{"required": ["url"]}, {"required": ["ref"]}]}}
+    },
+    {
+      "if": {"properties": {"kind": {"enum": ["repo", "existing_branch"]}}, "required": ["kind"]},
+      "then": {"required": ["url", "ref"]}
+    }
+  ]
+}

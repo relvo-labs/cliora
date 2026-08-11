@@ -1053,6 +1053,125 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "somebody made rather than a machine that will come back.",
             "Enable the agent, or dispatch without naming one.",
         ),
+        # --- V2.2 agent runner: the wire's own codes (ADR 0029/0031) ---
+        # These arrive from a node, so a client can see any of them through the relay
+        # and each needs guidance rather than a bare string.
+        _entry(
+            "AGENT_RUNS_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "Agent runs are switched off in this deployment",
+            "A daemon tried to register as a runner while `CLIORA_AGENT_RUNS_ENABLED` "
+            "is false. The node keeps serving interactive sessions.",
+            "Enable the flag on Central if unattended execution is wanted here.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUNNER_NOT_REGISTERED",
+            status.HTTP_409_CONFLICT,
+            "That node has not registered as a runner",
+            "A poll arrived before registration — usually a daemon that reconnected "
+            "and has not yet re-announced itself.",
+            "None; the daemon registers on its next connection and resumes polling.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUNNER_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "That agent is switched off",
+            "An administrator disabled it, so it is refused work even though its node is online.",
+            "Enable it on the Agents page.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Run not found",
+            "The run id is unknown here — usually a late or duplicated frame from a "
+            "node about a run that has already been reclaimed.",
+            "None; this is normal after a lease expires.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_INVALID_STATE",
+            status.HTTP_409_CONFLICT,
+            "That run has already finished",
+            "A lease renewal or progress report arrived for a run in a terminal state.",
+            "None; the node stops reporting once it sees the run is gone.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_SOURCE_UNAVAILABLE",
+            status.HTTP_409_CONFLICT,
+            "The agent could not fetch the code",
+            "One of three things: the machine has no credential for that repository, "
+            "the host is not on that node's allowlist, or the ref does not exist. The "
+            "details say which — **and never echo the URL**, because somebody may have "
+            "pasted a credential into it.",
+            "Check the details: supply the credential on that machine, add the host to "
+            "the node's allowlist, or correct the branch on the card.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_DISK_QUOTA",
+            status.HTTP_409_CONFLICT,
+            "The agent ran out of its disk allowance",
+            "A run directory or the node's total exceeded its quota. Quotas exist "
+            "because a runaway build would otherwise fill the disk and take interactive "
+            "sessions down with it.",
+            "Wait for the cleanup loop, or raise `runner.run_quota_bytes` on that node "
+            "if the work genuinely needs more.",
+            origin=DAEMON,
+        ),
+        _entry(
+            # Deliberately separate from RUN_TIMEOUT: to a person one means "it is
+            # stuck, look at the last event" and the other means "it cannot finish,
+            # look at whether the card is too big".
+            "RUN_IDLE_TIMEOUT",
+            status.HTTP_409_CONFLICT,
+            "The agent stopped producing events",
+            "Liveness is judged from the runtime's event stream, not from a wall clock. "
+            "No event arrived within the idle limit, so the run was stopped.",
+            "Look at the last entries in the run log; if the work legitimately goes "
+            "quiet for longer, raise `runner.idle_timeout_seconds`.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_TIMEOUT",
+            status.HTTP_409_CONFLICT,
+            "The run hit its wall-clock limit",
+            "The backstop, not the liveness test: the run was still emitting events and "
+            "simply did not finish in time.",
+            "Split the card, or raise the run timeout for this deployment.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_RUNTIME_UNAVAILABLE",
+            status.HTTP_409_CONFLICT,
+            "The runtime is not usable on that node",
+            "The CLI is missing, not executable, or too old to expose a non-interactive "
+            "interface with an event stream.",
+            "Install or update the CLI on that machine and let the daemon re-register.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_CANCELLED",
+            status.HTTP_409_CONFLICT,
+            "The run was cancelled",
+            "Somebody pressed cancel, or the node was shutting down.",
+            "Dispatch the card again when you are ready.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_INTERNAL_ERROR",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The agent run failed for an internal reason",
+            "Something went wrong inside the daemon's run path. The detail is in that "
+            "node's log with the request id.",
+            "Retry; if it persists, collect the daemon log around that run id.",
+            retryable=True,
+            origin=DAEMON,
+        ),
         _entry(
             "AGENT_RUNTIME_MISMATCH",
             status.HTTP_409_CONFLICT,

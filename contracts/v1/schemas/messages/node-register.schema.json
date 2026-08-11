@@ -8,6 +8,7 @@
     "image_upload": {"type": "boolean"},
     "file_upload": {"type": "boolean"},
     "context_projection": {"$comment": "agentd 0.8.0+ can receive a task context pack (ADR 0028). Optional, so a node that predates it registers unchanged and is simply treated as incapable.", "type": "boolean"},
+    "agent_runner": {"$comment": "agentd 0.9.0+ can run agent work unattended (ADR 0029). The fourth capability of the same shape, and optional for the same reason: a node that predates it registers unchanged, is treated as incapable, and is simply never offered a run.", "type": "boolean"},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
     "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
     "os": {"type": "string", "minLength": 1, "maxLength": 64},

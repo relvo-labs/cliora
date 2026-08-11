@@ -571,6 +571,186 @@
       "accept": false,
       "code": "INVALID_MESSAGE",
       "type": "context.project"
+    },
+    {
+      "path": "valid/runner-register.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "valid/runner-register-no-runtimes.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "valid/runner-registered.json",
+      "accept": true,
+      "type": "runner.registered"
+    },
+    {
+      "path": "valid/runner-poll.json",
+      "accept": true,
+      "type": "runner.poll"
+    },
+    {
+      "path": "valid/run-offer.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-offer-empty.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-offer-source-none.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-accept.json",
+      "accept": true,
+      "type": "run.accept"
+    },
+    {
+      "path": "valid/run-decline.json",
+      "accept": true,
+      "type": "run.decline"
+    },
+    {
+      "path": "valid/run-lease-renew.json",
+      "accept": true,
+      "type": "run.lease_renew"
+    },
+    {
+      "path": "valid/run-progress.json",
+      "accept": true,
+      "type": "run.progress"
+    },
+    {
+      "path": "valid/run-log-chunk.json",
+      "accept": true,
+      "type": "run.log_chunk"
+    },
+    {
+      "path": "valid/run-complete.json",
+      "accept": true,
+      "type": "run.complete"
+    },
+    {
+      "path": "valid/run-failed.json",
+      "accept": true,
+      "type": "run.failed"
+    },
+    {
+      "path": "valid/run-cancel.json",
+      "accept": true,
+      "type": "run.cancel"
+    },
+    {
+      "path": "invalid/run-accept-missing-run-id.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-poll-missing-capacity.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-progress-unknown-phase.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-complete-unknown-result.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-decline-freetext-reason.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-register-unknown-runtime.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-poll-negative-capacity.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-register-negative-concurrency.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-log-chunk-oversize.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-accept-local-timestamp.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-unknown-type.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-spec-secrets.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-spec-command.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-spec-args.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-spec-env.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-spec-workspace.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-source-none-with-url.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-source-userinfo.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-source-bad-scheme.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-source-flag-ref.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-source-missing-ref.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
     }
   ],
   "binary": [
