@@ -85,7 +85,8 @@ type FilesystemConfig struct {
 	// pattern (e.g. ".ssh"). Empty → defaults.
 	DeniedDirectories []string     `yaml:"denied_directories"`
 	Search            SearchConfig `yaml:"search"`
-	// Upload bounds the single write path into the workspace (ADR 0024).
+	// Upload bounds both write paths into the workspace: image drop (ADR 0024)
+	// and general file upload (ADR 0026, the nested Files block).
 	Upload UploadConfig `yaml:"upload"`
 }
 
@@ -114,6 +115,53 @@ type UploadConfig struct {
 	// session ends": a CLI transcript keeps referring to the file, and a
 	// vanished image reads to the user as the model losing its memory.
 	RetentionDays int `yaml:"retention_days"`
+	// Files bounds general file upload (ADR 0026). It is nested rather than a
+	// sibling because it shares MaxBytes above: one ceiling for both paths, so
+	// they cannot drift into disagreeing about what fits in a frame.
+	Files FileUploadConfig `yaml:"files"`
+}
+
+// FileUploadConfig bounds general file upload, the second write path into a
+// workspace (ADR 0026, FR-FILE-010).
+//
+// Unlike UploadConfig there is no retention key, and its absence is the design:
+// these files land where the *user* chose, so they are the user's data from the
+// moment they arrive. Deleting them on a timer would be the opposite of what a
+// quota exists to prevent (ADR 0024 W2, as refined by ADR 0026 §5). What replaces
+// retention is MinFreeBytes — it addresses the exhaustion risk directly instead
+// of by expiry.
+type FileUploadConfig struct {
+	// Enabled is a pointer for the same reason as UploadConfig.Enabled, and it is
+	// a *separate* switch: "may the platform put screenshots in .cliora/" and
+	// "may it put arbitrary files anywhere in my workspace" are different-sized
+	// grants, and a node owner is entitled to answer them differently.
+	Enabled *bool `yaml:"enabled"`
+	// MaxSessionBytes and MaxFilesPerDay are counted in memory and reset when
+	// agentd restarts: unlike image drop, these files are scattered across
+	// locations the daemon does not track, so there is nothing to recount from.
+	// They bound a broken client; a determined user holds terminal.operate and
+	// can write files directly (ADR 0026 §5).
+	MaxSessionBytes int64 `yaml:"max_session_bytes"`
+	MaxFilesPerDay  int   `yaml:"max_files_per_day"`
+	// MinFreeBytes refuses an upload that would leave the workspace filesystem
+	// below this much free space. A pointer for the same reason as Enabled: an
+	// explicit 0 means "do not check" (some container filesystems report figures
+	// that mean nothing), and that has to stay distinguishable from absent.
+	MinFreeBytes *int64 `yaml:"min_free_bytes"`
+}
+
+// FileUploadEnabled reports whether general file upload is on, treating an
+// absent key as on (ADR 0026 §9: default true, acquired by upgrade, announced in
+// the release note and the runbook).
+func (f FileUploadConfig) FileUploadEnabled() bool { return f.Enabled == nil || *f.Enabled }
+
+// MinFree is the free-space floor, with an absent key meaning the default. A
+// configured 0 disables the check and is returned as 0.
+func (f FileUploadConfig) MinFree() int64 {
+	if f.MinFreeBytes == nil {
+		return DefaultFileUploadMinFreeBytes
+	}
+	return *f.MinFreeBytes
 }
 
 // UploadEnabled reports whether image drop is on, treating an absent key as on
@@ -158,6 +206,15 @@ const (
 	DefaultUploadMaxSessionBytes int64 = 64 * 1024 * 1024
 	DefaultUploadMaxFilesPerDay        = 200
 	DefaultUploadRetentionDays         = 7
+)
+
+// File-upload defaults (ADR 0026). The per-file ceiling is deliberately absent:
+// it is DefaultUploadMaxBytes above, shared with image drop, and
+// TestUploadCapFitsFrameBound asserts that it still fits the frame.
+const (
+	DefaultFileUploadMaxSessionBytes int64 = 256 * 1024 * 1024
+	DefaultFileUploadMaxFilesPerDay        = 200
+	DefaultFileUploadMinFreeBytes    int64 = 512 * 1024 * 1024
 )
 
 type SessionConfig struct {
@@ -230,6 +287,13 @@ type Config struct {
 	// at startup because a workspace that the platform may now write into is a
 	// fact the node's owner should not learn by accident. Never serialised.
 	UploadFromDefault bool `yaml:"-"`
+
+	// FileUploadFromDefault is the same fact for filesystem.upload.files.enabled
+	// (ADR 0026). Tracked separately because a node can have chosen image drop
+	// explicitly while acquiring general file upload from an upgrade — and the
+	// second one is the wider grant, so conflating them would report the wrong
+	// posture. Never serialised.
+	FileUploadFromDefault bool `yaml:"-"`
 
 	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
 	// absent and defaulted to enabled rather than being chosen. Surfaced in the
@@ -408,6 +472,21 @@ func (c *Config) applyFilesystemDefaults() {
 	if u.RetentionDays <= 0 {
 		u.RetentionDays = DefaultUploadRetentionDays
 	}
+	f := &u.Files
+	if f.Enabled == nil {
+		// Same reasoning as UploadFromDefault, and it has to be recorded
+		// separately: a node can have chosen image drop explicitly while
+		// acquiring file upload from an upgrade.
+		c.FileUploadFromDefault = true
+	}
+	if f.MaxSessionBytes <= 0 {
+		f.MaxSessionBytes = DefaultFileUploadMaxSessionBytes
+	}
+	if f.MaxFilesPerDay <= 0 {
+		f.MaxFilesPerDay = DefaultFileUploadMaxFilesPerDay
+	}
+	// MinFreeBytes is left as-is: absent (nil) and an explicit 0 mean different
+	// things, and MinFree() resolves that rather than a default written here.
 }
 
 // applyTunnelDefaults fills in what an absent `tunnel:` block means. Absent is "do not

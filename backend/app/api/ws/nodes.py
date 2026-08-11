@@ -110,6 +110,7 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         tunnel=TunnelReportInput.from_payload(payload.get("tunnel")),
         privileged_terminal=bool(payload.get("privileged_terminal", False)),
         image_upload=bool(payload.get("image_upload", False)),
+        file_upload=bool(payload.get("file_upload", False)),
     )
 
 

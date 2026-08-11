@@ -6,9 +6,16 @@ absolute path (ADR 0014). Denials (sensitive/binary/oversize) come back in-band
 in the content body with success:false; path/existence errors surface as safe
 ApiError responses via the global handler.
 
-One write path exists: POST /images drops a single image into the session
-workspace so a CLI can read it (ADR 0024). It is gated on `file.upload`, which
-Viewer does not hold, and it carries no filename — the daemon names the file.
+Two write paths exist, both gated on `file.upload`, which Viewer does not hold:
+
+* POST /images drops a single image into a platform-named directory (ADR 0024).
+  It carries no filename — the daemon names the file.
+* POST /upload places one file at a directory and filename the *caller* chooses
+  (ADR 0026). It never overwrites: a collision is refused with FILE_EXISTS, and
+  that single property is why this path needs no version precondition and no undo.
+
+The contrast is deliberate and is not a redundancy: a pasted screenshot does not
+need a name, and `requirements.txt`'s name is its entire meaning.
 """
 
 from __future__ import annotations
@@ -73,6 +80,37 @@ _IMAGE_CONTENT_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image
 _MAX_UPLOAD_BYTES = 4 * 1024 * 1024
 
 
+async def _read_bounded_body(request: Request, limit: int) -> bytes:
+    """Read a raw request body, refusing anything over `limit`.
+
+    Two-stage on purpose: the declared Content-Length is checked first so an
+    oversize upload is refused before its body is transferred, and the running
+    total is checked again while reading, because Content-Length is a claim by the
+    sender. Shared by both upload paths so they cannot disagree about the ceiling.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > limit:
+        raise ApiError(
+            "FILE_UPLOAD_TOO_LARGE",
+            f"The file is larger than {limit // (1024 * 1024)} MiB",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > limit:
+            # Stop reading rather than buffer the rest to find out how big a lie
+            # the Content-Length was.
+            raise ApiError(
+                "FILE_UPLOAD_TOO_LARGE",
+                f"The file is larger than {limit // (1024 * 1024)} MiB",
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _looks_like_image(head: bytes) -> bool:
     """Cheap magic-number pre-screen. Never the authority — the daemon re-sniffs
     and its answer is the one that names the file."""
@@ -107,30 +145,7 @@ async def upload_image(
             "Only PNG, JPEG, GIF and WebP images can be dropped",
             status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
         )
-    # Declared length first, so an oversize upload is refused before its body is
-    # transferred; then enforce it again while reading, because Content-Length
-    # is a claim by the sender.
-    declared = request.headers.get("content-length")
-    if declared is not None and declared.isdigit() and int(declared) > _MAX_UPLOAD_BYTES:
-        raise ApiError(
-            "FILE_UPLOAD_TOO_LARGE",
-            "The image is larger than 4 MiB",
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-        )
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > _MAX_UPLOAD_BYTES:
-            # Stop reading rather than buffer the rest to find out how big a lie
-            # the Content-Length was.
-            raise ApiError(
-                "FILE_UPLOAD_TOO_LARGE",
-                "The image is larger than 4 MiB",
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            )
-        chunks.append(chunk)
-    body = b"".join(chunks)
+    body = await _read_bounded_body(request, _MAX_UPLOAD_BYTES)
     if not body or not _looks_like_image(body[:12]):
         raise ApiError(
             "FILE_UPLOAD_UNSUPPORTED_TYPE",
@@ -140,6 +155,47 @@ async def upload_image(
     service = FileRelayService(session, registry=registry)
     payload = await service.upload_image(actor=user, session_id=session_id, data=body)
     # upload_image writes the audit entry; commit it with the response.
+    await session.commit()
+    return payload
+
+
+@router.post("/upload", status_code=status.HTTP_201_CREATED)
+async def upload_file(
+    session_id: uuid.UUID,
+    request: Request,
+    directory: str = Query(default=".", max_length=4096),
+    filename: str = Query(min_length=1, max_length=1024),
+    user: User = Depends(require_action(FILE_UPLOAD)),
+    session: AsyncSession = Depends(get_session),
+    registry: NodeConnectionRegistry = Depends(get_registry),
+) -> dict[str, Any]:
+    """Place one file at a caller-chosen path inside the session workspace.
+
+    The body is the raw file and the destination travels in the query string.
+    No multipart, for the same reason as /images: this request carries exactly one
+    thing, so it needs neither a parser nor `python-multipart` in the dependency
+    list. Non-ASCII names ride through URL encoding — which is also why the
+    filename is validated *after* decoding (`%2F` decodes to a separator).
+
+    There is no content-type check and no magic-number sniff. Image drop must
+    guarantee the CLI can read what it stores; this path makes no such promise, and
+    a user putting a .tar.gz into their own workspace is not the platform's
+    business. What stands in for a type check is the name policy and the fixed
+    0644 mode, both applied on the node.
+
+    `filename`'s Query max_length is deliberately loose (1024): the real limit is
+    255 *bytes* and belongs where the unit is known, not in a character count.
+    """
+    body = await _read_bounded_body(request, _MAX_UPLOAD_BYTES)
+    service = FileRelayService(session, registry=registry)
+    payload = await service.store_file(
+        actor=user,
+        session_id=session_id,
+        directory=directory,
+        filename=filename,
+        data=body,
+    )
+    # store_file writes the audit entry; commit it with the response.
     await session.commit()
     return payload
 

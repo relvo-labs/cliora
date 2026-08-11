@@ -301,9 +301,12 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: false,
   },
   FILE_UPLOAD_QUOTA_EXCEEDED: {
-    cause: "此 Session 的圖片用量或當日張數已達上限。",
+    cause: "此 Session 的上傳用量或當日檔數已達上限。",
+    // This used to say "delete them in the file tree", which has never been
+    // possible — there is no delete affordance, and ADR 0026 deliberately did not
+    // add one. Pointing at the terminal is the only honest advice.
     nextStep:
-      "請在檔案樹的 .cliora/uploads/ 刪除不需要的圖片；逾期 7 天者會自動清除。",
+      "請在該 Node 上以終端機清理 .cliora/uploads/ 內不需要的圖片；逾期 7 天者會自動清除。",
     retryable: false,
   },
   FILE_UPLOAD_FAILED: {
@@ -312,8 +315,29 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: true,
   },
   FILE_UPLOAD_DISABLED: {
-    cause: "此 Node 的設定關閉了圖片投放。工作區是否可被寫入由該機器決定。",
-    nextStep: "請與該 Node 的擁有者確認 filesystem.upload.enabled 設定。",
+    cause: "此 Node 的設定關閉了上傳。工作區是否可被寫入由該機器決定。",
+    nextStep:
+      "請與該 Node 的擁有者確認 filesystem.upload.enabled 或 filesystem.upload.files.enabled 設定。",
+    retryable: false,
+  },
+
+  // --- General file upload (ADR 0026) ---
+  FILE_EXISTS: {
+    cause:
+      "該目錄裡已經有同名的檔案或資料夾。上傳永不覆寫既有項目，所以這是拒絕而不是失敗。",
+    nextStep:
+      "請改一個名字再上傳；若本來就要取代它，請在該 Node 上以終端機處理。",
+    retryable: false,
+  },
+  FILE_UPLOAD_NO_SPACE: {
+    cause:
+      "該 Node 的工作區磁碟可用空間低於下限。上傳的檔案屬於使用者，平台不會自動清除它們，所以沒有任何機制會自行釋放空間。",
+    nextStep: "請通知管理者釋放空間；agentd doctor 會顯示它比對的數字。",
+    retryable: true,
+  },
+  FILE_INVALID_NAME: {
+    cause: "檔名必須是單一路徑片段：不含 /、不含控制字元、不超過 255 位元組。",
+    nextStep: "請改名後再上傳。",
     retryable: false,
   },
 

@@ -203,3 +203,74 @@ func TestUpdateStagesMatchTheAcceptedVocabulary(t *testing.T) {
 		}
 	}
 }
+
+// --- general file upload, contract 1.9.0 (ADR 0026) ---
+
+// filesystem.store is the second request type allowed the 8 MiB bound, and the
+// bound itself does not move for it: 4 MiB raw is 5.33 MiB of base64, inside the
+// ceiling image drop already paid for. The response stays on the tight limit.
+func TestStoreFrameBounds(t *testing.T) {
+	if !LargeFrameTypes["filesystem.store"] {
+		t.Fatal("filesystem.store must be allowed the large frame bound")
+	}
+	if LargeFrameTypes["filesystem.stored"] {
+		t.Fatal("filesystem.stored is a path and two scalars; it must keep the 64 KiB bound")
+	}
+	if MaxFilePayload != 8*1024*1024 {
+		t.Fatalf("MaxFilePayload = %d; ADR 0026 does not move it", MaxFilePayload)
+	}
+}
+
+func TestValidateStorePayload(t *testing.T) {
+	const sid = "6ba7b810-9dad-11d1-80b4-00c04fd430c8"
+	cases := []struct {
+		name   string
+		fields string
+		accept bool
+	}{
+		{"minimal", `"directory":".","filename":"a.txt","data":"QQ=="`, true},
+		{"nested directory", `"directory":"datasets/raw","filename":"a.csv","data":"QQ=="`, true},
+		// An empty file is a legitimate upload; all three consumers decode "" to
+		// zero bytes (plan/15/07-open-measurements.md §4).
+		{"empty file", `"directory":".","filename":"__init__.py","data":""`, true},
+		{"non-ascii filename", `"directory":".","filename":"測試.csv","data":"QQ=="`, true},
+
+		// The filename is one segment. This is the type's core invariant, and it
+		// matters because URL encoding can smuggle a separator into a query
+		// parameter (%2F decodes to "/") — so the wire states the rule rather than
+		// relying on the order of decode and validate alone.
+		{"separator in filename", `"directory":".","filename":"a/b.txt","data":"QQ=="`, false},
+		{"traversal filename", `"directory":".","filename":"../x","data":"QQ=="`, false},
+		{"dot filename", `"directory":".","filename":".","data":"QQ=="`, false},
+		{"empty filename", `"directory":".","filename":"","data":"QQ=="`, false},
+		{"control char filename", `"directory":".","filename":"a\nb","data":"QQ=="`, false},
+
+		{"absolute directory", `"directory":"/etc","filename":"a","data":"QQ=="`, false},
+		{"parent escape directory", `"directory":"../x","filename":"a","data":"QQ=="`, false},
+		{"missing directory", `"filename":"a","data":"QQ=="`, false},
+
+		{"non-canonical base64", `"directory":".","filename":"a","data":"QQ"`, false},
+		{"url-safe base64", `"directory":".","filename":"a","data":"a-_="`, false},
+
+		// Nothing here may ask to replace something (ADR 0026 §1.1).
+		{"overwrite field", `"directory":".","filename":"a","data":"QQ==","overwrite":true`, false},
+		{"mode field", `"directory":".","filename":"a","data":"QQ==","mode":"0755"`, false},
+		{"mime field", `"directory":".","filename":"a","data":"QQ==","mime":"text/plain"`, false},
+		{"precondition field", `"directory":".","filename":"a","data":"QQ==","precondition":{}`, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			frame := []byte(`{"version":1,"type":"filesystem.store",` +
+				`"request_id":"01J0000000000000000000000A",` +
+				`"node_id":"` + sid + `","timestamp":"2026-08-03T00:00:00Z",` +
+				`"payload":{"session_id":"` + sid + `",` + tc.fields + `}}`)
+			err := ValidateControl(frame)
+			if tc.accept && err != nil {
+				t.Fatalf("rejected: %v", err)
+			}
+			if !tc.accept && err == nil {
+				t.Fatal("accepted")
+			}
+		})
+	}
+}

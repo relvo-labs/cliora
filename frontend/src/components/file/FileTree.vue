@@ -10,6 +10,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 
 import type { FileEntry, FileSearchHit } from "../../api/dto";
+import { filesFromDrop } from "../../composables/useFileUpload";
 import { useFileTree, type TreeRow } from "../../composables/useFileTree";
 import { ROOT_PATH } from "../../stores/files";
 import AsyncState from "../common/AsyncState.vue";
@@ -25,11 +26,22 @@ const props = defineProps<{
   canBrowse: boolean;
   // Set when the session itself is unusable (terminated/exited).
   disabledReason?: string;
+  // True only when the server says this user may upload AND the node says it
+  // accepts uploads (ADR 0026 §9). Both are server-derived: the browser must not
+  // re-derive RBAC and must not guess the node's posture. When false the drop
+  // target does not highlight and nothing is uploaded — hiding rather than
+  // disabling, because a control that refuses on release is worse than none.
+  canUpload?: boolean;
 }>();
 
 const emit = defineEmits<{
   open: [relPath: string, entry: FileEntry];
   clear: [];
+  // Emitted with the files and the resolved destination; the view owns the queue
+  // because it also owns the panel the progress list is rendered into.
+  upload: [files: File[], directory: string];
+  // A refusal that applies to the whole drop (a folder, an unreadable transfer).
+  uploadRefused: [message: string];
 }>();
 
 const treeEl = ref<HTMLElement | null>(null);
@@ -91,6 +103,73 @@ const currentDirLabel = computed(() => {
   const dir = tree.currentDir();
   return dir === ROOT_PATH ? props.rootLabel || "workspace" : dir;
 });
+
+// --- Drag and drop (FU-06, ADR 0026) --------------------------------------
+//
+// The hovered destination, not the hovered row: dropping on a file targets its
+// parent directory (`tree.dropTargetFor`). `dragDepth` counts enter/leave pairs
+// because every row has nested children — an unguarded `dragleave` handler would
+// flicker the highlight off each time the cursor crossed an icon.
+
+const dropDir = ref<string | null>(null);
+let dragDepth = 0;
+
+function labelFor(dir: string): string {
+  return dir === ROOT_PATH ? props.rootLabel || "workspace" : dir;
+}
+
+function isDropTarget(row: TreeRow): boolean {
+  if (!props.canUpload || dropDir.value === null) return false;
+  return tree.dropTargetFor(row) === dropDir.value;
+}
+
+function onDragEnter(row: TreeRow): void {
+  if (!props.canUpload) return;
+  dragDepth += 1;
+  const target = tree.dropTargetFor(row);
+  if (target !== null) dropDir.value = target;
+}
+
+function onDragOver(row: TreeRow, event: DragEvent): void {
+  if (!props.canUpload) return;
+  const target = tree.dropTargetFor(row);
+  if (target === null) return;
+  // Without preventDefault the browser never fires `drop` — and would navigate to
+  // the file instead.
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  dropDir.value = target;
+}
+
+function onDragLeave(): void {
+  dragDepth -= 1;
+  if (dragDepth <= 0) {
+    dragDepth = 0;
+    dropDir.value = null;
+  }
+}
+
+function onDrop(row: TreeRow, event: DragEvent): void {
+  dragDepth = 0;
+  const target = props.canUpload ? tree.dropTargetFor(row) : null;
+  dropDir.value = null;
+  if (target === null) return;
+  event.preventDefault();
+  const { files, refusal } = filesFromDrop(event.dataTransfer);
+  if (refusal) {
+    emit("uploadRefused", refusal);
+    return;
+  }
+  emit("upload", files, target);
+}
+
+// The picker: mandatory rather than a nicety, because drag and drop does not exist
+// for keyboard or touch users. Its destination is the focused row's directory,
+// which the toolbar shows.
+function onPick(files: File[]): void {
+  if (!props.canUpload || files.length === 0) return;
+  emit("upload", files, tree.currentDir());
+}
 </script>
 
 <template>
@@ -115,8 +194,10 @@ const currentDirLabel = computed(() => {
         :dir-label="currentDirLabel"
         :busy="busy"
         :auto-refresh="tree.autoRefresh.value"
+        :can-upload="canUpload"
         @refresh="tree.refresh()"
         @update:auto-refresh="tree.setAutoRefresh"
+        @pick="onPick"
       />
 
       <AsyncState v-if="rootState === 'forbidden'" state="forbidden">
@@ -152,8 +233,14 @@ const currentDirLabel = computed(() => {
           :dom-id="rowDomId(index)"
           :focused="row.key === tree.focusedKey.value"
           :selected="row.key === tree.selectedKey.value"
+          :drop-target="isDropTarget(row)"
+          :drop-label="labelFor(dropDir ?? ROOT_PATH)"
           @activate="activate"
           @toggle="toggle"
+          @dragenter="onDragEnter(row)"
+          @dragover="(event: DragEvent) => onDragOver(row, event)"
+          @dragleave="onDragLeave"
+          @drop="(event: DragEvent) => onDrop(row, event)"
         />
       </div>
     </template>

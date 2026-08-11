@@ -82,10 +82,14 @@ def test_scope_005_no_automatic_task_dispatch() -> None:
 
 
 def test_scope_006_the_console_is_not_an_ide() -> None:
-    """An IDE needs somewhere to save *what you are looking at*. Image drop
-    (ADR 0024) added one write, but it cannot save a file you opened: it writes a
-    new image to a name the daemon invents, and there is still no message that
-    edits, renames or deletes anything.
+    """An IDE needs somewhere to save *what you are looking at*.
+
+    Two write messages now exist. Neither can save a file you opened: image drop
+    (ADR 0024) writes a new image to a name the daemon invents, and file upload
+    (ADR 0026) writes a new file under a name the user typed but refuses to replace
+    anything that is already there. There is still no message that edits, renames
+    or deletes — and after 2026-08-03 that is a product decision rather than a
+    backlog item: those verbs belong to the CLI and the terminal.
     """
     filesystem = {name for name in _message_names() if name.startswith("filesystem-")}
     assert filesystem == {
@@ -94,16 +98,23 @@ def test_scope_006_the_console_is_not_an_ide() -> None:
         "filesystem-search",
         "filesystem-upload",
         "filesystem-uploaded",
+        "filesystem-store",
+        "filesystem-stored",
     }
 
 
-def test_scope_007_the_only_write_path_is_image_drop() -> None:
-    """Narrowed, not withdrawn (ADR 0024, the same treatment SCOPE-011 got).
+def test_scope_007_the_write_paths_are_both_additive() -> None:
+    """Narrowed twice, never withdrawn (ADR 0024 then ADR 0026 — the same treatment
+    SCOPE-011 got).
 
-    The workspace is no longer read-only, so this guard no longer asserts that
-    nothing writes. It asserts the shape of what does: exactly one mutating
-    route, gated on an action Viewer does not hold, and still no edit/delete/
-    rename surface anywhere.
+    The workspace is no longer read-only, so this guard does not assert that nothing
+    writes. It asserts the shape of what does, and the shape is the point: **both
+    write paths only ever add a file.** Neither can replace or remove one, so the
+    console cannot be used to lose work.
+
+    An addition to this set is not forbidden, but it must be deliberate: a third
+    entry here means a third ADR against W1-W4, and a *mutating* path that is not
+    additive means the whole argument in ADR 0026 sec 3 needs redoing.
     """
     file_routes = {path for path in _route_paths() if "/files" in path}
     mutating = {
@@ -112,13 +123,18 @@ def test_scope_007_the_only_write_path_is_image_drop() -> None:
         if "/files" in path and method not in {"GET"}
     }
     assert file_routes, "the file surface disappeared; this guard is stale"
-    assert mutating == {("POST", "/api/sessions/{session_id}/files/images")}, (
-        "a second write path appeared. ADR 0024 permits exactly one, and any "
-        "further path needs its own ADR against W1-W4."
+    assert mutating == {
+        ("POST", "/api/sessions/{session_id}/files/images"),
+        ("POST", "/api/sessions/{session_id}/files/upload"),
+    }, (
+        "the set of write paths changed. Two exist by decision (ADR 0024, ADR 0026); "
+        "a third needs its own ADR against W1-W4, and a DELETE or PUT here would "
+        "contradict ADR 0026 sec 3 rather than extend it."
     )
     assert rbac.FILE_BROWSE in rbac.ALL_ACTIONS
     assert rbac.FILE_UPLOAD in rbac.ALL_ACTIONS
-    # Viewer stays read-only even though the system as a whole no longer is.
+    # Viewer stays read-only even though the system as a whole no longer is. Three
+    # rounds of widening and this has not had to change once.
     assert rbac.FILE_UPLOAD not in rbac.ROLE_ACTIONS[rbac.VIEWER]
     assert _no_surface_for("file.edit", "file.delete", "file.rename") == []
 
@@ -147,6 +163,43 @@ def test_scope_007b_the_upload_request_cannot_name_the_file() -> None:
         "overwrite",
     }
     assert forbidden.isdisjoint(upload["properties"])
+
+
+def test_scope_007c_the_store_request_cannot_replace_anything() -> None:
+    """The mirror of 007b, and the property that keeps this round small (ADR 0026).
+
+    File upload *must* let the caller name its destination — a name is what makes a
+    file useful — so the guard cannot be "there is no name field". It is two
+    narrower things instead:
+
+    * a filename cannot hold a path, because `directory` and `filename` are separate
+      fields and the filename pattern excludes a separator. This matters concretely:
+      URL encoding decodes `%2F` to a separator, so the wire has to state the rule
+      rather than trust the order of decode-then-validate.
+    * nothing can ask to replace, chmod or retype the target. Without that, the
+      version tokens, trash can and undo semantics this round does not have would
+      all become necessary.
+    """
+    store = json.loads((MESSAGE_SCHEMAS / "filesystem-store.schema.json").read_text())
+    assert set(store["properties"]) == {"session_id", "directory", "filename", "data"}
+    assert store["additionalProperties"] is False
+    forbidden = {
+        "overwrite",
+        "replace",
+        "force",
+        "mode",
+        "chmod",
+        "mime",
+        "precondition",
+        "revision",
+        "etag",
+        "if_match",
+    }
+    assert forbidden.isdisjoint(store["properties"])
+    # A filename is one segment. The pattern is the enforcement; this asserts the
+    # pattern is actually there, because a schema that lost it would still validate
+    # every well-formed request.
+    assert "/" in store["properties"]["filename"]["pattern"]
 
 
 def test_scope_008_no_git_surface() -> None:

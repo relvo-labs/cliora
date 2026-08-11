@@ -289,3 +289,68 @@ func TestExplicitEmptyExcludedDirectoriesIsHonoured(t *testing.T) {
 		t.Errorf("excluded_directories = %v, want none", cfg.Workspace.ExcludedDirectories)
 	}
 }
+
+// --- general file upload (ADR 0026) ---
+
+func TestFileUploadDefaults(t *testing.T) {
+	cfg, err := Load(writeFile(t, "config.yaml", validConfig, 0o600))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	f := cfg.Filesystem.Upload.Files
+	if !f.FileUploadEnabled() {
+		t.Fatal("absent enabled should read as on")
+	}
+	if !cfg.FileUploadFromDefault {
+		t.Fatal("absent enabled must be recorded as inherited, not chosen")
+	}
+	if f.MaxSessionBytes != DefaultFileUploadMaxSessionBytes {
+		t.Fatalf("max_session_bytes = %d", f.MaxSessionBytes)
+	}
+	if f.MaxFilesPerDay != DefaultFileUploadMaxFilesPerDay {
+		t.Fatalf("max_files_per_day = %d", f.MaxFilesPerDay)
+	}
+	if f.MinFree() != DefaultFileUploadMinFreeBytes {
+		t.Fatalf("min_free = %d", f.MinFree())
+	}
+	// There is deliberately no per-path size key: both write paths share
+	// filesystem.upload.max_bytes so they cannot drift apart on what fits a frame.
+	if cfg.Filesystem.Upload.MaxBytes != DefaultUploadMaxBytes {
+		t.Fatalf("max_bytes = %d", cfg.Filesystem.Upload.MaxBytes)
+	}
+}
+
+func TestFileUploadExplicitSettings(t *testing.T) {
+	cfg, err := Load(writeFile(t, "config.yaml", validConfig+`
+filesystem:
+  upload:
+    enabled: true
+    files:
+      enabled: false
+      max_session_bytes: 1024
+      max_files_per_day: 3
+      min_free_bytes: 0
+`, 0o600))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	f := cfg.Filesystem.Upload.Files
+	if f.FileUploadEnabled() {
+		t.Fatal("explicit false must be honoured")
+	}
+	if cfg.FileUploadFromDefault {
+		t.Fatal("an explicit value must not be recorded as inherited")
+	}
+	// An explicit 0 disables the free-space check and must stay distinguishable
+	// from an absent key — that is why the field is a pointer.
+	if f.MinFree() != 0 {
+		t.Fatalf("min_free = %d, want 0 (check disabled)", f.MinFree())
+	}
+	if f.MaxSessionBytes != 1024 || f.MaxFilesPerDay != 3 {
+		t.Fatalf("quota = %d/%d", f.MaxSessionBytes, f.MaxFilesPerDay)
+	}
+	// Image drop must be unaffected by the nested block.
+	if !cfg.Filesystem.Upload.UploadEnabled() {
+		t.Fatal("image drop was switched off by the files block")
+	}
+}

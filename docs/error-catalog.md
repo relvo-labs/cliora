@@ -133,15 +133,18 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `FILE_TOO_LARGE` | — | The file is too large to preview | The file exceeds the preview cap (2 MiB by default). | Open it on the node instead. | no | no | daemon |
 | `FILE_BINARY` | — | This file is not text | The content is binary, so there is nothing useful to render. | None. | no | no | daemon |
 
-## Image drop
+## File upload
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
 |---|---:|---|---|---|:--:|:--:|:--:|
 | `FILE_UPLOAD_TOO_LARGE` | — | The image is larger than 4 MiB | Central refuses the request before reading the whole body, and the daemon refuses it again before writing anything. | Compress or resize the image and try again. | no | no | central |
 | `FILE_UPLOAD_UNSUPPORTED_TYPE` | — | Only PNG, JPEG, GIF and WebP images can be dropped | The content did not match one of the four accepted image signatures. The declared content type is not what decides this. | Convert the file to a supported image format. SVG and PDF are not images here. | no | no | daemon |
-| `FILE_UPLOAD_QUOTA_EXCEEDED` | — | This session has reached its image quota | Either the cumulative byte quota or the per-day file count for this workspace is full. | Delete images you no longer need from .cliora/uploads/ in the file tree; expired ones are removed automatically after 7 days. | no | yes | daemon |
+| `FILE_UPLOAD_QUOTA_EXCEEDED` | — | This session has reached its image quota | Either the cumulative byte quota or the per-day file count for this workspace is full. | Remove images you no longer need from .cliora/uploads/ on the node (a terminal session is the way to do that); expired ones are removed automatically after 7 days. | no | yes | daemon |
 | `FILE_UPLOAD_FAILED` | — | The node could not store the image | Writing to the workspace failed — no disk space, no permission, or .cliora exists but is not a directory. | Ask an administrator to check the node; `agentd doctor` names the file to fix. | yes | no | daemon |
 | `FILE_UPLOAD_DISABLED` | — | This node does not accept image drop | The node's config sets filesystem.upload.enabled to false. Whether a workspace may be written to is the node's decision, not the platform's. | None from the browser; the node's owner controls this setting. | no | no | daemon |
+| `FILE_EXISTS` | — | A file or directory with that name already exists | Upload never replaces anything: the node creates the file with O_EXCL, so a name that is already taken is refused and not one existing byte is touched. That property is why this path needs no version token and has no undo. | Upload it under a different name, or replace the file from a terminal session if replacing is what you meant. | no | no | daemon |
+| `FILE_UPLOAD_NO_SPACE` | — | The node does not have enough free disk space | The workspace filesystem is below the node's configured free-space floor, or the file would not leave twice its own size free. This check is what stands in for a retention period on this path: uploaded files belong to the user, so nothing expires them. | Free space on the node, or ask an administrator to; `agentd doctor` reports the figure it is comparing against. | yes | no | daemon |
+| `FILE_INVALID_NAME` | — | That filename cannot be used | A filename must be a single path segment: no separator, no control characters, at most 255 bytes. Checked after URL decoding, because percent-encoding can otherwise smuggle a separator through. | Rename the file and try again. | no | no | central |
 
 ## Daemon update
 

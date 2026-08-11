@@ -136,6 +136,11 @@ export interface NodeDetail extends NodeSummary {
   // daemon that predates the field reads as false and the console hides the
   // affordance rather than offering one that fails (ADR 0024 W4).
   image_upload: boolean;
+  // Whether this node accepts general file upload — an arbitrary file at a
+  // user-chosen path (ADR 0026 §9). A second flag rather than a widening of the
+  // first: the terminal's paste affordance is gated on `image_upload` and the file
+  // tree's drop target on this one, and a machine may allow one without the other.
+  file_upload: boolean;
   is_enabled: boolean;
   registered_at: string;
   runtimes: NodeRuntime[];
@@ -278,6 +283,14 @@ export interface FileSearchResult {
 export interface FileUploadResult {
   path: string;
   mime: string;
+  size: number;
+  modified_at: string;
+}
+
+// The response to a general file upload (ADR 0026). No `mime`: this path does not
+// judge content type, so there is nothing honest to put there.
+export interface FileStoreResult {
+  path: string;
   size: number;
   modified_at: string;
 }

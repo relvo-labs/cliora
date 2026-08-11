@@ -12,6 +12,7 @@ import type {
   EnrollmentToken,
   EnrollmentTokenCreated,
   FileContent,
+  FileStoreResult,
   FileUploadResult,
   FileSearchResult,
   FileTreePage,
@@ -450,31 +451,81 @@ export class ApiClient {
       onProgress?: (fraction: number) => void;
     } = {},
   ): Promise<FileUploadResult> {
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/files/images`;
+    // The image's own type; the server accepts four and re-checks the bytes.
+    return this.uploadWithProgress<FileUploadResult>(
+      path,
+      file,
+      file.type,
+      options,
+    );
+  }
+
+  // Place one file at a caller-chosen path in the session workspace (ADR 0026).
+  //
+  // The destination travels in the query string and the body is the raw file: no
+  // multipart, for the same reason as uploadImage. `encodeURIComponent` is not
+  // optional here — it encodes `+` as `%2B`, and a query string reader decodes a
+  // bare `+` as a space, so a hand-built URL would silently rename `a+b.txt` to
+  // `a b.txt` (measured: plan/15/07-open-measurements.md §2).
+  async uploadFile(
+    sessionId: string,
+    directory: string,
+    filename: string,
+    file: Blob,
+    options: {
+      signal?: AbortSignal;
+      onProgress?: (fraction: number) => void;
+    } = {},
+  ): Promise<FileStoreResult> {
+    const query =
+      `directory=${encodeURIComponent(directory)}` +
+      `&filename=${encodeURIComponent(filename)}`;
+    const path = `/api/sessions/${encodeURIComponent(sessionId)}/files/upload?${query}`;
+    // Deliberately not the browser-guessed file.type: this path does not judge
+    // content type at all, and sending a guess would invite someone to trust it.
+    return this.uploadWithProgress<FileStoreResult>(
+      path,
+      file,
+      "application/octet-stream",
+      options,
+    );
+  }
+
+  // Shared by both upload paths. Extracted rather than duplicated because the
+  // parts that are easy to get subtly wrong — the 401 refresh-and-retry, the
+  // abort listener teardown, and reading an error out of a non-JSON proxy
+  // response — should have exactly one implementation.
+  private async uploadWithProgress<T extends { path: string }>(
+    path: string,
+    file: Blob,
+    contentType: string,
+    options: { signal?: AbortSignal; onProgress?: (fraction: number) => void },
+  ): Promise<T> {
     try {
-      return await this.uploadOnce(sessionId, file, options);
+      return await this.uploadOnce<T>(path, file, contentType, options);
     } catch (error) {
       if (
         error instanceof ApiError &&
         error.status === 401 &&
         (await this.refresh())
       ) {
-        return this.uploadOnce(sessionId, file, options);
+        return this.uploadOnce<T>(path, file, contentType, options);
       }
       throw error;
     }
   }
 
-  private uploadOnce(
-    sessionId: string,
+  private uploadOnce<T extends { path: string }>(
+    path: string,
     file: Blob,
+    contentType: string,
     options: { signal?: AbortSignal; onProgress?: (fraction: number) => void },
-  ): Promise<FileUploadResult> {
-    const path = `/api/sessions/${encodeURIComponent(sessionId)}/files/images`;
-    return new Promise<FileUploadResult>((resolve, reject) => {
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}${path}`);
-      // The image's own type; the server accepts four and re-checks the bytes.
-      xhr.setRequestHeader("Content-Type", file.type);
+      xhr.setRequestHeader("Content-Type", contentType);
       const token = this.tokens.accessToken();
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
@@ -504,14 +555,14 @@ export class ApiClient {
         let body: {
           error?: { code?: string; message?: string };
           request_id?: string;
-        } & Partial<FileUploadResult> = {};
+        } & Partial<T> = {};
         try {
           body = xhr.responseText ? JSON.parse(xhr.responseText) : {};
         } catch {
           // A non-JSON body from a proxy (a 413 page, say) still has a status.
         }
         if (xhr.status >= 200 && xhr.status < 300 && body.path) {
-          resolve(body as FileUploadResult);
+          resolve(body as T);
           return;
         }
         reject(

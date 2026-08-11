@@ -30,6 +30,13 @@ const props = defineProps<{
   domId: string;
   focused: boolean;
   selected: boolean;
+  // True while a drag is hovering this row's destination (ADR 0026). The parent
+  // owns which row that is, because the destination for a *file* row is its parent
+  // directory and only the parent knows the tree shape.
+  dropTarget?: boolean;
+  // Where a drop on this row would land. Shown while dragging, so the user sees
+  // the destination before letting go.
+  dropLabel?: string;
 }>();
 
 const emit = defineEmits<{
@@ -132,6 +139,7 @@ const label = computed(() => {
     :data-key="row.key"
     :data-focused="focused || undefined"
     :data-selected="selected || undefined"
+    :data-drop-target="dropTarget || undefined"
     :style="{ paddingInlineStart: `${(row.level - 1) * 14 + 6}px` }"
     @click="emit('activate', row)"
   >
@@ -158,6 +166,12 @@ const label = computed(() => {
     <span v-if="excluded" class="badge">已排除</span>
     <span v-if="row.entry?.type === 'symlink'" class="badge">連結</span>
     <RefreshCw v-if="row.busy" class="spin" :size="12" aria-hidden="true" />
+    <!-- The actual destination, not the row under the cursor: dropping on a file
+         means "put it next to this file", so the label has to name that folder or
+         the user is guessing. -->
+    <span v-if="dropTarget && dropLabel" class="drop-hint">
+      放到 {{ dropLabel }}/
+    </span>
   </div>
 
   <!-- "Load more": the daemon truncated this level (partial state). -->
@@ -238,6 +252,21 @@ const label = computed(() => {
 }
 .name[data-hidden] {
   color: var(--text-muted);
+}
+/* Outline plus text, never colour alone (style.md state contract): a hovered row
+ * gets a dashed outline AND a label naming where the file would land. */
+.row[data-drop-target] {
+  outline: 1px dashed var(--action-primary);
+  outline-offset: -1px;
+  background: var(--surface-raised, rgba(127, 127, 127, 0.12));
+}
+.drop-hint {
+  margin-inline-start: auto;
+  padding-inline: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--action-primary);
+  white-space: nowrap;
 }
 .badge {
   flex: none;

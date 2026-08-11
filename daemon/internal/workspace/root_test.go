@@ -221,3 +221,76 @@ func FuzzOpenFile(f *testing.F) {
 		}
 	})
 }
+
+// --- general file upload (ADR 0026) ---
+
+// StatIn is paired with LstatIn rather than replacing it: os.Root follows
+// in-root symlinks, so Stat alone would report a symlink-to-directory as a
+// directory and uploads would land somewhere the user did not choose.
+func TestStatInAndLstatInDisagreeOnSymlink(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "real"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("real", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	root, err := New([]string{dir}).OpenWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	lst, err := root.LstatIn("link")
+	if err != nil {
+		t.Fatalf("LstatIn: %v", err)
+	}
+	if lst.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("LstatIn followed the symlink")
+	}
+	st, err := root.StatIn("link")
+	if err != nil {
+		t.Fatalf("StatIn: %v", err)
+	}
+	if !st.IsDir() {
+		t.Fatal("StatIn did not follow the symlink to a directory")
+	}
+}
+
+func TestStatInRefusesEscape(t *testing.T) {
+	dir := t.TempDir()
+	root, err := New([]string{dir}).OpenWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	for _, rel := range []string{"../", "..", "/etc", "~/x"} {
+		if _, err := root.StatIn(rel); err == nil {
+			t.Fatalf("StatIn(%q) was accepted", rel)
+		}
+	}
+}
+
+// EEXIST must map to its own sentinel. On the upload path "something is already
+// called that" is a normal outcome the user has to be told about, and collapsing
+// it into ErrInvalid would surface a collision as "invalid path".
+func TestCreateExclusiveReportsExists(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "taken.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root, err := New([]string{dir}).OpenWorkspace(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	if _, err := root.CreateExclusive("taken.txt", 0o600); !errors.Is(err, ErrExists) {
+		t.Fatalf("err = %v, want ErrExists", err)
+	}
+	// And the existing content is untouched.
+	content, _ := os.ReadFile(filepath.Join(dir, "taken.txt"))
+	if string(content) != "x" {
+		t.Fatalf("content = %q", content)
+	}
+}

@@ -79,3 +79,5 @@
 | 8 | 計畫未提 `-race` 與延遲預算的衝突 | `TestClassifyLatencyBudget` 在 race 下 skip，改由 `GATE-WF-CLASSIFY-CORPUS` 無 race 執行 | race detector 有約 15 倍開銷（實測 2.2 ms → 40 ms）。在 race 下斷言 5 ms 只會量到 detector |
 | 9 | `06-…md` §2 說 `FR-FILE-004` 有兩個方向的違反 | 兩個都修好了，且**收緊的那一邊**寫進 release note | 「本來看得到現在看不到」如果沒有預告，回報會以 bug 的形式進來 |
 | 10 | 計畫未提 `test_scope_006/007` | 兩個 scope guard 改寫而非刪除，並新增 `007b` | 這是 `SCOPE-011` 在 ADR 0021 之後的同一個處理方式：收窄要留下可以被指著問的東西 |
+| 11 | `05-…md` §2.2：檔案樹的 `.cliora/` 旁加一個「平台寫入」標記 | **沒有做**，而 `WF-08` 被記為完成 | 2026-08-03 由 `plan/15` 核對出來（`frontend/src/components/file/` 底下沒有任何相關字串）。上面 `WF-08` 那一列只列了 `PreviewDenied.vue` 的改動，也就是說當時就漏了，而狀態表沒有反映。**補這一列比補那個標記重要**：一個被記成完成卻沒有落地的項目，會讓後面每一份狀態表都不可信 |
+| 12 | `01-…md` §2.2：把 `NFR-005.AC-142` 在 `requirements.json` 標成 `deprecated` 並加 `review` | **做不到，而且沒有做** | 2026-08-03 由 `plan/15` 核對出來：`traceability/schema/requirements.schema.json` 的 criterion id pattern 是 `\.AC-[0-9]{2}`（**兩位數**），所以 `AC-142` 在結構上無法註冊 —— NFR-005 在需求庫裡只有 `AC-01`–`AC-10`。當時的 PRD 正文改對了，需求庫那一半從一開始就不可能成立。這個限制仍然存在（改 id pattern 會動到整個需求庫的鍵），所以那兩條 criterion 的權威紀錄只有 PRD 正文 |

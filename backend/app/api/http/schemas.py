@@ -264,6 +264,7 @@ class RegisterNodeRequest(BaseModel):
     # is the enrollment call, so there is no later API that can set it.
     privileged_terminal: bool = False
     image_upload: bool = False
+    file_upload: bool = False
     runtimes: list[RuntimeItemDTO] = Field(default_factory=list, max_length=16)
     workspace_roots: list[WorkspaceRootDTO] = Field(default_factory=list, max_length=64)
 
@@ -279,6 +280,7 @@ class RegisterNodeRequest(BaseModel):
             public_key=self.public_key,
             privileged_terminal=self.privileged_terminal,
             image_upload=self.image_upload,
+            file_upload=self.file_upload,
             runtimes=[r.to_input() for r in self.runtimes],
             workspace_roots=[w.to_input() for w in self.workspace_roots],
         )
@@ -361,6 +363,11 @@ class NodeDetail(NodeSummary):
     # Whether this node accepts image drop; the console hides the affordance when
     # false rather than offering a button that always fails (ADR 0024 W4).
     image_upload: bool
+    # Whether this node accepts general file upload — an arbitrary file at a
+    # user-chosen path (ADR 0026 §9). Two flags rather than one: the console gates
+    # the terminal's paste affordance on the first and the file tree's drop target
+    # on the second, and a machine may allow one without the other.
+    file_upload: bool
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]

@@ -304,6 +304,32 @@ export function useFileTree(options: FileTreeOptions) {
     }
   }
 
+  // The directory a drop on `row` would land in (ADR 0026, FU-06).
+  //
+  // Dropping on a *file* targets its parent, because "put this next to that file"
+  // is what the gesture means — and requiring a precise hit on a folder row would
+  // make the feature tedious. The row shows the resolved destination while
+  // dragging, so nothing is guessed silently.
+  //
+  // Returns null for rows that cannot take a drop: an excluded directory (its
+  // contents are tool-owned, and the node would refuse anyway), and the synthetic
+  // status / "load more" rows. Those must not highlight either — refusing after the
+  // drop is worse than not offering it.
+  function dropTargetFor(row: TreeRow): string | null {
+    if (row.kind === "root") {
+      return ROOT_PATH;
+    }
+    if (row.kind !== "entry" || !row.entry) {
+      return null;
+    }
+    if (row.entry.type === "directory") {
+      return row.entry.excluded ? null : row.key;
+    }
+    // A file or a symlink: its parent. `ancestorsOf` already returns the chain
+    // outermost-first, so the last element is the immediate parent.
+    return ancestorsOf(row.key).pop() ?? ROOT_PATH;
+  }
+
   // Bring a path (usually a search hit) into the tree: expand every ancestor in
   // order — each level must load before the next path segment is known to the
   // cache — then focus and open it.
@@ -429,6 +455,7 @@ export function useFileTree(options: FileTreeOptions) {
     onKeydown,
     reveal,
     refresh,
+    dropTargetFor,
     autoRefresh,
     setAutoRefresh,
     refreshExpanded,

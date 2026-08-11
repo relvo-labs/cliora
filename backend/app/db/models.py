@@ -98,6 +98,13 @@ class Node(Base):
     image_upload: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), index=True
     )
+    # True when this machine accepts general file upload — an arbitrary file, under a
+    # name the user chose, into a directory the user chose (ADR 0026). A separate
+    # column from `image_upload` rather than a widening of it: the two grants are
+    # different sizes, and a node owner is entitled to answer them differently.
+    file_upload: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
 
     # --- Daemon update state (P4-10, ADR 0017) ---
     # Explicit columns rather than keys inside `metadata`: "which nodes failed to

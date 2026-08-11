@@ -133,6 +133,7 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 				}
 				reportTmuxPosture(ctx, out, cfg)
 				reportUploadPosture(out, cfg, report)
+				reportFileUploadPosture(out, cfg, report)
 			}
 
 			// The privileged posture is not a fault in either direction, so neither
@@ -244,6 +245,52 @@ func uploadUsageSummary(root *workspace.Root) (count int, total int64) {
 		return nil
 	})
 	return count, total
+}
+
+// reportFileUploadPosture prints whether this node accepts general file upload
+// and, when it does, how much room is left on the workspace filesystem
+// (ADR 0026). Disabled is a posture, not a fault. Low free space IS reported as a
+// fault, because it is the one condition that will silently start refusing
+// uploads — and unlike image drop there is no retention sweep that will
+// eventually free anything: these files belong to the user (ADR 0026 §5).
+func reportFileUploadPosture(out io.Writer, cfg *config.Config, report func(string, error)) {
+	up := cfg.Filesystem.Upload.Files
+	if !up.FileUploadEnabled() {
+		fmt.Fprintln(out, "[info] file-upload=disabled (filesystem.upload.files.enabled: false)")
+		return
+	}
+	origin := "set"
+	if cfg.FileUploadFromDefault {
+		origin = "default"
+	}
+	floor := up.MinFree()
+	if floor == 0 {
+		fmt.Fprintf(out, "[info] file-upload=enabled (%s) max=%s/file quota=%s/session "+
+			"free-space check=off\n", origin,
+			humanBytes(cfg.Filesystem.Upload.MaxBytes), humanBytes(up.MaxSessionBytes))
+	} else {
+		fmt.Fprintf(out, "[info] file-upload=enabled (%s) max=%s/file quota=%s/session min-free=%s\n",
+			origin, humanBytes(cfg.Filesystem.Upload.MaxBytes),
+			humanBytes(up.MaxSessionBytes), humanBytes(floor))
+	}
+
+	// Same shape as reportUploadPosture: doctor runs without a session, so it
+	// asks the question an operator actually has — "is anything wrong on this
+	// machine" — of each allowed root.
+	for _, rootPath := range cfg.Workspace.AllowedRoots {
+		free, err := files.FreeBytes(rootPath)
+		if err != nil {
+			fmt.Fprintf(out, "[warn] file-upload:%s free space unknown (%v)\n", rootPath, err)
+			continue
+		}
+		if floor > 0 && free < floor {
+			report("file-upload:"+rootPath, fmt.Errorf(
+				"only %s free, below the %s floor; uploads to this root are being refused",
+				humanBytes(free), humanBytes(floor)))
+			continue
+		}
+		fmt.Fprintf(out, "[info] file-upload:%s free=%s\n", rootPath, humanBytes(free))
+	}
 }
 
 func humanBytes(n int64) string {

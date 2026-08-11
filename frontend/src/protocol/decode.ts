@@ -38,6 +38,8 @@ const TYPES = new Set([
   "filesystem.search_result",
   "filesystem.upload",
   "filesystem.uploaded",
+  "filesystem.store",
+  "filesystem.stored",
   "node.challenge",
   "node.auth",
   "node.authenticated",
@@ -266,6 +268,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "tunnel",
       "privileged_terminal",
       "image_upload",
+      "file_upload",
     ]),
     [
       "name",
@@ -306,6 +309,11 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
   // "unknown" (contract 1.8.0, ADR 0024 W4).
   if ("image_upload" in payload && typeof payload.image_upload !== "boolean")
     reject("INVALID_MESSAGE", "image_upload must be boolean");
+  // Two switches, not one: a node may accept screenshots into .cliora/ and
+  // refuse arbitrary files anywhere in its workspace (contract 1.9.0,
+  // ADR 0026 §9). Absent means "no" here too.
+  if ("file_upload" in payload && typeof payload.file_upload !== "boolean")
+    reject("INVALID_MESSAGE", "file_upload must be boolean");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
   for (const root of payload.workspace_roots as unknown[]) {
     if (!isPlainObject(root))
@@ -460,6 +468,86 @@ function validateFsUploadedPayload(payload: Record<string, unknown>): void {
     !TIMESTAMP.test(payload.modified_at)
   )
     reject("INVALID_MESSAGE", "Invalid upload timestamp");
+}
+
+// General file upload (contract 1.9.0, ADR 0026). Uploads travel over HTTP, so
+// the browser is neither producer nor consumer of these frames — the decoder
+// validates them for the same reason it validates the tunnel and image-drop
+// ones: a type accepted without checking is a type that would forward malformed
+// data.
+//
+// The assertion that matters here is the mirror of validateFsUploadPayload's.
+// There, the point was the ABSENCE of any naming field. Here the caller must
+// name the destination, so the point is that `filename` cannot hold a path and
+// that nothing can ask to replace anything: no overwrite, mode, mime,
+// precondition or revision.
+const STORE_FILENAME_MAX_BYTES = 255;
+
+function isStoreFilename(value: unknown): boolean {
+  if (
+    typeof value !== "string" ||
+    value === "" ||
+    value === "." ||
+    value === ".."
+  )
+    return false;
+  // Bytes, not code points: 84 CJK runes plus an extension is 88 characters and
+  // 256 bytes, and the wire schema's maxLength counts characters.
+  if (new TextEncoder().encode(value).length > STORE_FILENAME_MAX_BYTES)
+    return false;
+  if (value.includes("/")) return false;
+  for (const ch of value) {
+    const code = ch.codePointAt(0) ?? 0;
+    if (code < 0x20 || code === 0x7f) return false;
+  }
+  return true;
+}
+
+function validateFsStorePayload(payload: Record<string, unknown>): void {
+  requireKeys(
+    payload,
+    new Set(["session_id", "directory", "filename", "data"]),
+    ["session_id", "directory", "filename", "data"],
+  );
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  if (!isRelPath(payload.directory))
+    reject("INVALID_MESSAGE", "Invalid destination directory");
+  if (!isStoreFilename(payload.filename))
+    reject("INVALID_MESSAGE", "Invalid filename");
+  // An empty file is a legitimate upload, so unlike filesystem.upload the empty
+  // string is accepted here (measured across all three consumers:
+  // plan/15/07-open-measurements.md §4).
+  if (
+    typeof payload.data !== "string" ||
+    payload.data.length > UPLOAD_MAX_BASE64 ||
+    (payload.data !== "" && !BASE64.test(payload.data))
+  )
+    reject("INVALID_MESSAGE", "Invalid upload payload");
+}
+
+function validateFsStoredPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["path", "size", "modified_at"]), [
+    "path",
+    "size",
+    "modified_at",
+  ]);
+  // Unlike filesystem.uploaded there is no fixed shape to pin: the user chose
+  // this path, not the daemon. The containment rule still applies.
+  if (!isRelPath(payload.path))
+    reject("INVALID_MESSAGE", "Invalid stored path");
+  if (
+    typeof payload.size !== "number" ||
+    !Number.isInteger(payload.size) ||
+    payload.size < 0 ||
+    payload.size > 4 * 1024 * 1024
+  )
+    reject("INVALID_MESSAGE", "Invalid stored size");
+  if (
+    typeof payload.modified_at !== "string" ||
+    !TIMESTAMP.test(payload.modified_at)
+  )
+    reject("INVALID_MESSAGE", "Invalid stored timestamp");
 }
 
 function validateFsSearchPayload(payload: Record<string, unknown>): void {
@@ -820,6 +908,8 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
   if (data.type === "filesystem.upload") validateFsUploadPayload(data.payload);
   if (data.type === "filesystem.uploaded")
     validateFsUploadedPayload(data.payload);
+  if (data.type === "filesystem.store") validateFsStorePayload(data.payload);
+  if (data.type === "filesystem.stored") validateFsStoredPayload(data.payload);
   if (data.type === "node.register") validateRegisterPayload(data.payload);
   if (data.type === "node.heartbeat") validateHeartbeatPayload(data.payload);
   if (data.type === "node.runtime_status")

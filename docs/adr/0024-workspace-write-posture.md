@@ -14,6 +14,10 @@
 - Contract: v1.8.0
 - Ships in: `agentd` 0.6.0 (migrations `0018`, `0019`)
 - Plan: `plan/13/`
+- Followed by: ADR 0026 (general file upload) — the design of the "general file
+  upload" row in Alternatives rejected, and the ADR that §4 anticipated for a
+  path where the client necessarily names the file. It refines W2's third leg
+  (see W2) and leaves W1, W3, W4, §3 and §4 unchanged.
 
 ## Context
 
@@ -63,7 +67,7 @@ path — image drop today, file editing later — must satisfy all four of the f
 | # | Rule | Why it must hold for *every* path, not just this one |
 |---|---|---|
 | **W1** | **Confined by `workspace.Root`** (`os.Root`, `openat2 RESOLVE_BENEATH`). No write may take an absolute path or bypass the handle. | This is the one thing ADR 0014 / `SEC-001` still guards. While the workspace was read-only, defeating it meant reading a file that should not have been read. Now it means *writing* one. W1 is not the first of four rules; it is the precondition of the other three. |
-| **W2** | **Bounded**: per-operation size, cumulative quota, and a retention period — all three. | A write path without a ceiling is a disk-exhaustion entry point. This cannot be deferred: retrofitting a quota means changing the data model, so it is cheaper to require it up front than to add it after the first incident. |
+| **W2** | **Bounded**: per-operation size, cumulative quota, and — for a **platform-owned** destination — a retention period. Where the **user** chooses the destination, retention is replaced by **visibility**: every byte must land at a path the user picked and can see, so the user is the one who removes it. *(Third leg refined by ADR 0026; the first two are unchanged and apply to every path.)* | A write path without a ceiling is a disk-exhaustion entry point. This cannot be deferred: retrofitting a quota means changing the data model, so it is cheaper to require it up front than to add it after the first incident. Retention was written as unconditional because the only path that existed wrote into a directory the platform had named and therefore owned; nobody else was going to clean it. A retention period on a path the *user* named would mean the platform deleting the user's data on a timer, which is the opposite of what W2 exists to prevent. The question to ask of a new write path is not "what is its retention" but **"who cleans this up"** — and free-space refusal covers the exhaustion risk that retention covered. |
 | **W3** | **Audited per write**: who, which session, which node, what shape. Never the content. | "Who changed this file" was not a question the platform had to answer while it could not write. It is now. |
 | **W4** | **Refusable by the node**, with the refusal reported to Central. | Not every machine's workspace may be written by the platform. Same report-only shape as contract 1.7.0: the node states its posture, the platform never selects it. |
 
@@ -192,6 +196,11 @@ cleanup) — both for one 4 MiB image.
   and it carries the same obligation: a release note and a runbook, never silence.
 - **Not decided here:** editing, download, delete, rename, general file upload, image
   preview in the browser, and text transcoding for non-UTF-8 files.
+  *(2026-08-03: general file upload was decided, in ADR 0026. Editing, rename and delete
+  were decided **against** — they belong to the CLI and the terminal, so the console has no
+  way to replace or remove a workspace file, and this ADR's own
+  `FILE_UPLOAD_QUOTA_EXCEEDED` guidance was corrected to say so. Download is the only item
+  here still genuinely undecided.)*
 
 ## Alternatives rejected
 
@@ -199,7 +208,7 @@ cleanup) — both for one 4 MiB image.
 |---|---|
 | Deliver editing in the same round | The user stated a direction, not this round's scope. Editing must settle conflict handling, concurrency, `.git/` protection and the sensitive-file policy in the write direction — each larger than image drop. W1–W4 first; editing then has ground to stand on. |
 | Keep read-only and call image drop an exception | The implementation would contradict `NFR-005.AC-142`, and that contradiction is always resolved by quietly ignoring the document. The user has already withdrawn the principle; writing it down costs one PRD revision. |
-| Open general file upload, since writes are allowed now | Withdrawing read-only did not remove the boundary. W2/W3/W4 must hold for general upload too, and they are not designed for it — starting with what a quota means for arbitrary file sizes. |
+| Open general file upload, since writes are allowed now | Withdrawing read-only did not remove the boundary. W2/W3/W4 must hold for general upload too, and they are not designed for it — starting with what a quota means for arbitrary file sizes. *(2026-08-03: designed, in ADR 0026. The quota question resolved into three ceilings plus a free-space refusal, and it is what forced W2's third leg to be stated conditionally.)* |
 | Store the image on Central and hand the CLI a URL | The CLI would need outbound network access and a platform credential to fetch it, turning the node into an API client of the platform — a far larger authorisation change than writing a file. |
 | Ship the bytes through the terminal (`base64 -d > file`) | That is "run an arbitrary shell command from the front end", which is exactly the half of `SCOPE-011` that ADR 0021 §1 kept. |
 | Let Central inject the path into the terminal | Creates a channel by which the platform can type into any session, and it bypasses single-writer. |
