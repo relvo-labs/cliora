@@ -22,6 +22,7 @@ import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
+import { formatBytes } from "../utils/bytes";
 import { formatInstant } from "../utils/time";
 
 const auth = useAuthStore();
@@ -50,6 +51,52 @@ const displayState = computed(() =>
 );
 
 onMounted(() => resource.run());
+
+// The three states, and why they are three.
+//
+// A runner with no capacity says so by **not polling** — there is no "capacity: 0"
+// frame — so from Central a full runner, a runner with nowhere to put a checkout and a
+// machine that has been unplugged are all the same silence. Only the node can tell them
+// apart, and it reports which on its heartbeat.
+//
+// So this returns a different sentence for each, and none of them is 「離線」 unless the
+// node really is gone. Showing a healthy-but-full machine as offline sends somebody to
+// look for a network fault that is not there.
+function availability(agent: AgentRunner): {
+  tone: "on" | "off" | "busy";
+  label: string;
+} {
+  if (!agent.online) {
+    return { tone: "off", label: "離線" };
+  }
+  switch (agent.blocked_reason) {
+    case "disk_quota":
+    case "disk_low":
+      return { tone: "busy", label: `磁碟用盡（${diskUsage(agent)}）` };
+    case "at_capacity":
+      return {
+        tone: "busy",
+        label: `滿載（${agent.active_runs} / ${agent.max_concurrent}）`,
+      };
+    case "waiting_limit":
+      return {
+        tone: "busy",
+        label: `等待回覆的卡片已滿（${agent.waiting_runs} / ${agent.max_waiting}）`,
+      };
+    default:
+      return { tone: "on", label: "線上" };
+  }
+}
+
+// Both figures or neither. "4.8 GB" on its own does not say whether that is a lot, and
+// a runner that could not measure its own directory must not be shown a number it did
+// not report.
+function diskUsage(agent: AgentRunner): string {
+  if (agent.disk_used_bytes === null || agent.disk_quota_bytes === null) {
+    return "用量未回報";
+  }
+  return `${formatBytes(agent.disk_used_bytes)} / ${formatBytes(agent.disk_quota_bytes)}`;
+}
 
 async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
   actionError.value = null;
@@ -122,8 +169,8 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
         <li v-for="agent in agents" :key="agent.id" class="agent">
           <div class="row">
             <h2>{{ agent.name }}</h2>
-            <span :class="['status', agent.online ? 'on' : 'off']">
-              {{ agent.online ? "線上" : "離線" }}
+            <span :class="['status', availability(agent).tone]">
+              {{ availability(agent).label }}
             </span>
             <span v-if="!agent.enabled" class="status off">已停用</span>
           </div>
@@ -161,6 +208,17 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
                 {{ agent.active_runs }} / {{ agent.max_concurrent }} ·
                 {{ agent.waiting_runs }} / {{ agent.max_waiting }}
               </dd>
+            </div>
+            <div>
+              <dt>指定給此 Agent 的卡片</dt>
+              <!-- Separate from occupancy on purpose: a card can name this runner for
+                   days without ever producing a run, so a page showing only
+                   「執行中」 makes an over-subscribed machine look idle. -->
+              <dd>{{ agent.assigned_cards }}</dd>
+            </div>
+            <div>
+              <dt>磁碟</dt>
+              <dd>{{ diskUsage(agent) }}</dd>
             </div>
             <div v-if="agent.labels.length">
               <dt>標籤</dt>

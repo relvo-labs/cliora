@@ -352,7 +352,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
 function validateHeartbeatPayload(payload: Record<string, unknown>): void {
   requireKeys(
     payload,
-    new Set(["daemon_version", "active_sessions", "resources"]),
+    new Set(["daemon_version", "active_sessions", "resources", "runner"]),
     ["daemon_version", "active_sessions"],
   );
   if (!isNonEmptyString(payload.daemon_version))
@@ -364,6 +364,32 @@ function validateHeartbeatPayload(payload: Record<string, unknown>): void {
     reject("INVALID_MESSAGE", "Invalid active_sessions");
   if (payload.resources !== undefined && !isPlainObject(payload.resources))
     reject("INVALID_MESSAGE", "Invalid resources");
+  if (payload.runner !== undefined) validateRunnerPressure(payload.runner);
+}
+
+// The runner half of the heartbeat: why this node stopped asking for work, plus how
+// full its run root is. The reason is a **closed set** because it is rendered as console
+// copy — the Agents page maps each value to a sentence, and an unrecognised one would
+// either be printed raw or silently fall through to 「線上」.
+function validateRunnerPressure(value: unknown): void {
+  if (!isPlainObject(value)) reject("INVALID_MESSAGE", "Invalid runner");
+  const runner = value as Record<string, unknown>;
+  requireKeys(
+    runner,
+    new Set(["blocked_reason", "disk_used_bytes", "disk_quota_bytes"]),
+    [],
+  );
+  if (
+    runner.blocked_reason !== undefined &&
+    !RUNNER_BLOCKED_REASONS.has(runner.blocked_reason as string)
+  )
+    reject("INVALID_MESSAGE", "Unknown blocked_reason");
+  for (const key of ["disk_used_bytes", "disk_quota_bytes"]) {
+    const size = runner[key];
+    if (size === undefined) continue;
+    if (!Number.isInteger(size) || (size as number) < 0)
+      reject("INVALID_MESSAGE", `Invalid ${key}`);
+  }
 }
 
 function validateRuntimeStatusPayload(payload: Record<string, unknown>): void {
@@ -1082,6 +1108,14 @@ const RUN_PHASES = new Set([
   "running",
   "waiting_for_input",
   "finishing",
+]);
+// Absence means "polling normally" — there is no `""` member, because a runner that is
+// fine says nothing rather than saying it is fine.
+const RUNNER_BLOCKED_REASONS = new Set([
+  "at_capacity",
+  "waiting_limit",
+  "disk_quota",
+  "disk_low",
 ]);
 const RUN_DECLINE_REASONS = new Set([
   "at_capacity",

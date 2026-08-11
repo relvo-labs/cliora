@@ -1,5 +1,48 @@
 # Contract changelog
 
+## 1.11.0 — 2026-08-11 (compatible)
+
+**Added — the agent runner (ADR 0029/0030/0031, `plan/18`).**
+
+Twelve new types, all in the `runner.*` / `run.*` family: `runner.register`,
+`runner.registered`, `runner.poll`, `run.offer`, `run.accept`, `run.decline`,
+`run.lease_renew`, `run.progress`, `run.log_chunk`, `run.complete`, `run.failed` and
+`run.cancel`. Thirty-eight new fixtures (15 valid, 23 invalid).
+
+**Nothing existing changed on the wire**, and every fixture that predates this release
+is byte-for-byte identical (`scripts/tk/contract_snapshot.py`, asserted per file).
+
+Three properties are worth reading here rather than in the schemas, because each is a
+decision the shape enforces rather than a rule someone has to remember:
+
+- **The queue is pull-only, and backpressure is structural.** A runner at capacity
+  simply stops sending `runner.poll` — there is no `capacity: 0` frame, and so there is
+  no scheduler on the platform. The claim happens when the poll *arrives*, which is why
+  `run.offer` is a one-way statement of fact ("this is yours, the lease has started")
+  rather than a request. `run_id: null` is the "nothing for you" answer, present as a
+  shape so the daemon's switch has exactly one branch to write.
+- **`run.lease_renew` is unconditional, on purpose.** The lease answers "is the runner
+  alive" and nothing else. Making renewal depend on the child having produced output
+  would collapse it with the idle timer, and those two must end differently: a lost
+  runner re-queues the card, a hung child does not.
+- **`run.log_chunk` is capped at 32 KiB and is deliberately not in the large-frame
+  set.** That socket also carries interactive terminal bytes, and promoting an agent's
+  debug output to the 8 MiB tier would buy it with the terminal's responsiveness. The
+  content is a JSONL event stream, so the chunker may not split a line.
+
+**One existing message gains one optional field:** `node.heartbeat` may carry a
+`runner` object (`blocked_reason`, `disk_used_bytes`, `disk_quota_bytes`). It exists
+because of the first property above: a runner with no capacity goes quiet, so from
+Central a full runner, a runner with nowhere to put a checkout and a machine somebody
+unplugged are the same silence. Without this the console would show a healthy machine as
+offline. Absent means "not a runner", and an absent `blocked_reason` inside a present
+object means "polling normally" — there is no empty-string member, because a runner that
+is fine says nothing rather than saying it is fine. Every daemon before 0.9.0 omits the
+object entirely and is unaffected.
+
+Requires `agentd` 0.9.0 on the node for the runner types; the heartbeat field is
+optional in both directions.
+
 ## 1.10.0 — 2026-08-09 (compatible)
 
 **Added — the platform's context projection (ADR 0028, `plan/17`).**

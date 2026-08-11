@@ -1090,9 +1090,24 @@ export interface AgentRunner {
   online: boolean;
   active_runs: number;
   waiting_runs: number;
+  // Cards pinned to this runner, whether or not any has run. A machine can be
+  // over-subscribed and still show zero occupancy.
+  assigned_cards: number;
+  // Why the runner stopped polling, as it last reported — **not** an online flag. A
+  // runner with no capacity goes quiet, so without this a full runner and a dead
+  // machine look identical and the page would call a healthy node offline.
+  blocked_reason: RunnerBlockedReason | null;
+  disk_used_bytes: number | null;
+  disk_quota_bytes: number | null;
   registered_at: string;
   last_registered_at: string | null;
 }
+
+export type RunnerBlockedReason =
+  | "at_capacity"
+  | "waiting_limit"
+  | "disk_quota"
+  | "disk_low";
 
 export interface ProjectRepository {
   id: string;

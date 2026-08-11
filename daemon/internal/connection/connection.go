@@ -424,6 +424,13 @@ func (m *Manager) heartbeatLoop(ctx context.Context, write func(string, string, 
 			if res := resourcesPayload(sample); len(res) > 0 {
 				payload["resources"] = res
 			}
+			// Runner mode only. A node that is not a runner sends no `runner` object at
+			// all, rather than an empty one — "this machine does not do agent work" and
+			// "this machine does agent work and is fine" are different facts, and the
+			// Agents page has different words for them.
+			if m.runnerReady() {
+				payload["runner"] = m.runner.Pressure()
+			}
 			if err := write("node.heartbeat", protocol.NewID(), payload); err != nil {
 				return
 			}

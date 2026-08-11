@@ -112,6 +112,10 @@ def _runner_dto(view: RunnerView) -> AgentRunnerDTO:
         online=view.online,
         active_runs=view.active_runs,
         waiting_runs=view.waiting_runs,
+        assigned_cards=view.assigned_cards,
+        blocked_reason=runner.blocked_reason,
+        disk_used_bytes=runner.disk_used_bytes,
+        disk_quota_bytes=runner.disk_quota_bytes,
         registered_at=runner.registered_at,
         last_registered_at=runner.last_registered_at,
     )

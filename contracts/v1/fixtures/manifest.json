@@ -68,6 +68,21 @@
       "type": "node.heartbeat"
     },
     {
+      "path": "valid/node-heartbeat-runner-healthy.json",
+      "accept": true,
+      "type": "node.heartbeat"
+    },
+    {
+      "path": "valid/node-heartbeat-runner-blocked.json",
+      "accept": true,
+      "type": "node.heartbeat"
+    },
+    {
+      "path": "invalid/node-heartbeat-runner-unknown-reason.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
       "path": "valid/node-runtime-status.json",
       "accept": true,
       "type": "node.runtime_status"

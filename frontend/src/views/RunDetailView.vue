@@ -23,6 +23,7 @@ import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
+import { formatBytes } from "../utils/bytes";
 import { formatInstant } from "../utils/time";
 
 const props = defineProps<{ id: string; runId: string }>();
@@ -87,13 +88,6 @@ async function cancel(): Promise<void> {
     actionError.value =
       error instanceof Error ? error.message : "Could not cancel the run.";
   }
-}
-
-function bytes(value: number | null): string {
-  if (value === null) return "—";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 </script>
 
@@ -163,7 +157,7 @@ function bytes(value: number | null): string {
         </div>
         <div>
           <dt>磁碟</dt>
-          <dd>{{ bytes(run.disk_bytes) }}</dd>
+          <dd>{{ formatBytes(run.disk_bytes) }}</dd>
         </div>
         <div v-if="run.error_code">
           <dt>錯誤</dt>
@@ -197,7 +191,7 @@ function bytes(value: number | null): string {
                 {{ artifact.filename }}
               </a>
               <span class="muted">
-                {{ bytes(artifact.size) }} · {{ artifact.content_type }}
+                {{ formatBytes(artifact.size) }} · {{ artifact.content_type }}
               </span>
             </template>
           </li>
@@ -207,8 +201,8 @@ function bytes(value: number | null): string {
       <section>
         <h2>Log</h2>
         <p v-if="run.log_truncated_bytes > 0" class="truncated">
-          這份 log 從中間截斷了，省略 {{ bytes(run.log_truncated_bytes) }}。
-          開頭與結尾都保留著。
+          這份 log 從中間截斷了，省略
+          {{ formatBytes(run.log_truncated_bytes) }}。 開頭與結尾都保留著。
         </p>
         <!-- Rendered as text. Not parsed, not syntax-highlighted per event type: the
              schema is a third-party CLI's and changes with its version. -->

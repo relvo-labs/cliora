@@ -320,7 +320,35 @@ type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
 	ActiveSessions *int         `json:"active_sessions"`
 	Resources      *hbResources `json:"resources,omitempty"`
+	Runner         *hbRunner    `json:"runner,omitempty"`
 }
+
+// The runner half of the heartbeat. Absent on a node that is not a runner; present with
+// no BlockedReason on one that is polling normally. The reason is a closed set because
+// the console renders each value as a different sentence — an unrecognised one would
+// either be printed raw or fall through to 「線上」 for a machine that has stopped
+// taking work.
+type hbRunner struct {
+	BlockedReason  string `json:"blocked_reason,omitempty"`
+	DiskUsedBytes  *int64 `json:"disk_used_bytes,omitempty"`
+	DiskQuotaBytes *int64 `json:"disk_quota_bytes,omitempty"`
+}
+
+func validRunnerPressure(r *hbRunner) bool {
+	if r == nil {
+		return true
+	}
+	switch r.BlockedReason {
+	case "", "at_capacity", "waiting_limit", "disk_quota", "disk_low":
+	default:
+		return false
+	}
+	if r.DiskUsedBytes != nil && *r.DiskUsedBytes < 0 {
+		return false
+	}
+	return r.DiskQuotaBytes == nil || *r.DiskQuotaBytes >= 0
+}
+
 type hbResources struct {
 	CPUUsage     *float64 `json:"cpu_usage,omitempty"`
 	MemoryUsage  *float64 `json:"memory_usage,omitempty"`
@@ -1131,7 +1159,7 @@ func ValidateControl(raw []byte) error {
 	case "node.heartbeat":
 		var p heartbeatFields
 		if strictUnmarshal(env.Payload, &p) != nil || p.DaemonVersion == "" ||
-			p.ActiveSessions == nil || *p.ActiveSessions < 0 {
+			p.ActiveSessions == nil || *p.ActiveSessions < 0 || !validRunnerPressure(p.Runner) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "node.runtime_status":

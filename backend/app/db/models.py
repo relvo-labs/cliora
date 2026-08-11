@@ -819,6 +819,14 @@ class AgentRunner(Base):
     last_registered_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Why this runner stopped polling, reported on the heartbeat. **Not** an online
+    # indicator: a runner at capacity and a runner whose machine is gone are both
+    # silent, and the console needs to tell them apart (migration 0032). Null means
+    # "no report", which is why these are nullable rather than defaulted.
+    blocked_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

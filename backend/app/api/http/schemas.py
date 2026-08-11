@@ -1378,6 +1378,16 @@ class AgentRunnerDTO(BaseModel):
     online: bool
     active_runs: int
     waiting_runs: int
+    # Cards pinned to this runner, whether or not any of them has ever run. Shows an
+    # over-subscribed machine that occupancy alone makes look idle.
+    assigned_cards: int
+    # Why the runner stopped polling, as it last reported. **Not** an online flag: a
+    # runner expresses "no capacity" by going quiet, so without this a full runner and
+    # a dead machine are the same silence — and the console would show a perfectly
+    # healthy node as offline (exit condition 21). Null means it never said.
+    blocked_reason: str | None
+    disk_used_bytes: int | None
+    disk_quota_bytes: int | None
     registered_at: datetime
     last_registered_at: datetime | None
 

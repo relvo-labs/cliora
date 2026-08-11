@@ -28,20 +28,12 @@ import (
 // "out of disk" and "machine is gone" are different facts and a person reacts to them
 // differently.
 
-// Transport is the daemon's link to Central, as this package needs it. An interface so
-// the supervisor can be tested without a WebSocket, and deliberately one-way: there is
-// no `Request` method, because nothing here may wait for Central to answer.
-type Transport interface {
-	Send(messageType string, payload any) error
-}
-
 // Runner drives one node's share of the queue.
 type Runner struct {
 	Cfg     config.RunnerConfig
 	Node    string
 	Fetch   gitfetch.Fetcher
 	Build   func(runtime string, opts BuildOptions) (Started, error)
-	Send    Transport
 	Now     func() time.Time
 	Runtime []string
 
@@ -51,9 +43,6 @@ type Runner struct {
 	// not occupy execution capacity — but they are not free either, or one card could
 	// park a node indefinitely.
 	waiting int
-	// blocked records why polling stopped, so the heartbeat can carry a reason
-	// instead of the node simply going quiet.
-	blocked string
 }
 
 // BuildOptions is what the supervisor hands to the runtime layer. It carries no
@@ -128,27 +117,34 @@ func (r *Runner) diskPressure() string {
 	return ""
 }
 
-// BlockedReason is what the heartbeat reports when the loop has stopped polling.
-func (r *Runner) BlockedReason() string {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.blocked
-}
-
-// Poll sends one `runner.poll` when there is capacity, and records why when there is
-// not. Called on a ticker by the connection.
-func (r *Runner) Poll(runnerID string) error {
-	capacity, blocked := r.Capacity()
-	r.mu.Lock()
-	r.blocked = blocked
-	r.mu.Unlock()
-	if capacity <= 0 {
-		return nil
+// Pressure is the runner half of `node.heartbeat`.
+//
+// It exists because "no capacity" is expressed by **not polling**, and from Central
+// silence has three causes that look identical: a full runner, a runner with nowhere to
+// put a checkout, and a machine that is gone. Only this node can tell them apart, so it
+// says which — and the console shows「磁碟用盡（4.8 / 5.0 GB）」rather than「離線」for a
+// machine that is running perfectly well (exit condition 21).
+//
+// Measured here rather than remembered from the last poll. A cached reason is a reason
+// that can be stale by exactly the interval somebody is staring at the page, and the
+// computation is a `Statfs` and a map lookup.
+//
+// The disk figures are reported **whether or not** the runner is blocked: somebody
+// watching a node fill up should see it coming rather than learn about it when the work
+// stops. A directory that cannot be walked omits them instead — a failed measurement
+// reported as 0 bytes used reads as "plenty of room", which is the wrong way round.
+func (r *Runner) Pressure() map[string]any {
+	pressure := map[string]any{}
+	if _, blocked := r.Capacity(); blocked != "" {
+		pressure["blocked_reason"] = blocked
 	}
-	return r.Send.Send("runner.poll", map[string]any{
-		"runner_id": runnerID,
-		"capacity":  capacity,
-	})
+	if used, err := DirSize(r.Cfg.WorkDir); err == nil {
+		pressure["disk_used_bytes"] = used
+	}
+	if r.Cfg.TotalQuotaBytes > 0 {
+		pressure["disk_quota_bytes"] = r.Cfg.TotalQuotaBytes
+	}
+	return pressure
 }
 
 // Prepare creates a run's directory and fetches its code.

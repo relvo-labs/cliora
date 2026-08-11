@@ -274,6 +274,14 @@ async def node_gateway(
                     node_id, settings.node_metric_sample_interval_seconds
                 ):
                     await service.persist_metric_sample(node_id, message.payload)
+                # A runner reports why it stopped polling, because Central cannot tell:
+                # a full runner, a runner out of disk and a machine that is gone are all
+                # silence on this socket. Behind the flag, since the column only exists
+                # in deployments that ran this phase's migration.
+                if settings.agent_runs_enabled:
+                    await RunnerService(session).record_pressure(
+                        node_id, message.payload.get("runner")
+                    )
                 await session.commit()
             elif message.type == "node.system_info":
                 await service.update_system_info(node_id, message.payload)

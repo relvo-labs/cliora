@@ -14,6 +14,14 @@
         "disk_usage": {"type": "number", "minimum": 0},
         "daemon_uptime": {"type": "number", "minimum": 0}
       }
+    },
+    "runner": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "blocked_reason": {"enum": ["at_capacity", "waiting_limit", "disk_quota", "disk_low"]},
+        "disk_used_bytes": {"type": "integer", "minimum": 0},
+        "disk_quota_bytes": {"type": "integer", "minimum": 0}
+      }
     }
   }
 }

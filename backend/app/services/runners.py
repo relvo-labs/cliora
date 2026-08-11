@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.clock import now_utc
-from app.db.models import AgentRunner, Node, Project, ProjectRepository, TaskRun
+from app.db.models import AgentRunner, Node, Project, ProjectRepository, Task, TaskRun
 from app.services import audit as audit_actions
 from app.services.audit import AuditService
 from app.settings import Settings, get_settings
@@ -49,6 +49,11 @@ _REPO_PATH = re.compile(r"^[A-Za-z0-9._\-]+(/[A-Za-z0-9._\-]+)+$")
 _BRANCH = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._\-/]*$")
 
 SCHEMES = frozenset({"https", "ssh"})
+
+# Why a runner stopped polling, as the daemon may report it. Closed, and compared
+# against rather than stored verbatim: this string is rendered on the Agents page, and
+# a node is not a trusted source of console copy.
+BLOCKED_REASONS = frozenset({"at_capacity", "waiting_limit", "disk_quota", "disk_low"})
 
 # Fields `PATCH /api/agents/{id}` may set. `runtimes` and `dedicated` are absent on
 # purpose: both are the daemon's report about the machine, and letting an administrator
@@ -82,6 +87,10 @@ class RunnerView:
     online: bool
     active_runs: int
     waiting_runs: int
+    # Cards pinned to this runner. A separate number from `active_runs`, and the one
+    # that answers "is this machine a bottleneck": a card can be assigned to a runner
+    # for days without ever having produced a run.
+    assigned_cards: int = 0
 
 
 class RunnerService:
@@ -117,7 +126,11 @@ class RunnerService:
                 .order_by(AgentRunner.name)
             )
         ).all()
-        counts = await self._run_counts([runner.id for runner, _ in rows])
+        ids = [runner.id for runner, _ in rows]
+        counts = await self._run_counts(ids)
+        # One extra query for the whole list, not one per runner: the Agents page is a
+        # list, and a per-row count is how a list page becomes N+1 queries.
+        assigned = await self._assigned_counts(ids)
         return [
             RunnerView(
                 runner=runner,
@@ -125,6 +138,7 @@ class RunnerService:
                 online=bool(is_online(node.id)),
                 active_runs=counts.get((runner.id, "active"), 0),
                 waiting_runs=counts.get((runner.id, "waiting"), 0),
+                assigned_cards=assigned.get(runner.id, 0),
             )
             for runner, node in rows
         ]
@@ -134,13 +148,72 @@ class RunnerService:
         if node is None:  # pragma: no cover - the FK makes this unreachable
             raise ApiError("NOT_FOUND", "Agent not found", status.HTTP_404_NOT_FOUND)
         counts = await self._run_counts([runner.id])
+        assigned = await self._assigned_counts([runner.id])
         return RunnerView(
             runner=runner,
             node=node,
             online=bool(is_online(node.id)),
             active_runs=counts.get((runner.id, "active"), 0),
             waiting_runs=counts.get((runner.id, "waiting"), 0),
+            assigned_cards=assigned.get(runner.id, 0),
         )
+
+    async def _assigned_counts(self, runner_ids: list[uuid.UUID]) -> dict[uuid.UUID, int]:
+        """How many cards name each runner.
+
+        The plan calls this out as the easiest number to leave off the page, and the
+        reason is that it is the only one that shows a *pinned* machine: a card can sit
+        with `assigned_runner_id` set for days and never appear in `active_runs`, so a
+        console that shows only occupancy makes an over-subscribed runner look idle.
+        """
+        if not runner_ids:
+            return {}
+        rows = (
+            await self._session.execute(
+                select(Task.assigned_runner_id, func.count())
+                .where(
+                    Task.assigned_runner_id.in_(runner_ids),
+                    # Only cards still waiting on the machine. A finished card that
+                    # happens to name this runner is history, and counting it would
+                    # make every runner look permanently over-subscribed.
+                    Task.stage != "done",
+                )
+                .group_by(Task.assigned_runner_id)
+            )
+        ).all()
+        return {runner_id: int(count) for runner_id, count in rows}
+
+    async def record_pressure(self, node_id: uuid.UUID, payload: Any) -> None:
+        """Take the `runner` object off a heartbeat, if there is one.
+
+        Three shapes arrive here and they mean three different things:
+
+        * **absent** — this node is not a runner (or is running agentd 0.8.x). Nothing
+          is written, so a node that leaves runner mode keeps its last known figures
+          rather than having them silently zeroed;
+        * **present, no `blocked_reason`** — a runner that is polling normally. The
+          stored reason is cleared, which is the case that would rot if this only ever
+          wrote non-empty values: a runner that filled its disk in March would still
+          read 「磁碟用盡」 in June;
+        * **present, with a reason** — stored, and the Agents page says which of the
+          three things is happening instead of showing the machine as offline.
+
+        Everything here is a report about the machine, so nothing is trusted as a
+        number: a negative or absurd byte count is dropped rather than displayed.
+        """
+        if not isinstance(payload, dict):
+            return
+        runner = await self.for_node(node_id)
+        if runner is None:
+            return
+        reason = payload.get("blocked_reason")
+        runner.blocked_reason = reason if reason in BLOCKED_REASONS else None
+        used, quota = payload.get("disk_used_bytes"), payload.get("disk_quota_bytes")
+        if isinstance(used, int) and not isinstance(used, bool) and used >= 0:
+            runner.disk_used_bytes = used
+        if isinstance(quota, int) and not isinstance(quota, bool) and quota > 0:
+            runner.disk_quota_bytes = quota
+        runner.reported_at = now_utc()
 
     async def _run_counts(self, runner_ids: list[uuid.UUID]) -> dict[tuple[uuid.UUID, str], int]:
         """Occupancy, split the way the two limits are.

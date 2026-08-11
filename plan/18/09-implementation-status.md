@@ -2,9 +2,11 @@
 
 本檔隨實作更新；「證據」欄只填**實際跑過的指令與其輸出位置**，不填計畫中的測試。
 
-最後更新 **2026-08-11**：**`AR-00`…`AR-12` 的程式與文件都已完成並在本機全綠；
+最後更新 **2026-08-11（第三版）**：**`AR-00`…`AR-12` 的程式與文件都已完成並在本機全綠；
 剩下的都是人工事項（§4）。**
-（前一版寫「計畫已依 2026-08-10 裁決改寫，尚未開工」。）
+（第二版把 `AR-12` 記成 ✅ 是錯的——當時 #18 的 diff 上傳沒有接上、
+`GATE-AR-DISPATCH-COVERAGE` 不存在、dispatch／產物／`RunReaper` 一條後端測試都沒有。
+那一輪的補齊見 §3 第 20–25 條。）
 裁決內容（Agent 自己拉專案到隔離目錄、workspace 綁定只服務互動式 Session、
 綁定與 label 比對延後）與它改動了什麼，見 `research/02/04` §0 與 `00-…md` §3 的
 D11／D13／D15–D20。
@@ -41,14 +43,14 @@ D11／D13／D15–D20。
 | `AR-03` | migration `0029`／`0030`／`0031` ＋ 模型 | ✅ | 八張表 ＋ 種子 ＋ `nodes.agent_runner`；`tasks` 的兩條 FK 一起補（0023 自己承諾的）。`alembic upgrade head` 綠、`scripts/pj/gate-schema-additive.sh` 對 AR-00 基線「只有新增」、新增 `scripts/ar/gate-migration-roundtrip.sh` 且 downgrade 回 `0028` 與基線逐位元組相同 |
 | `AR-04` | RBAC 四動作 ＋ Agents／**Repositories**／Dispatch API（同一個 PR） | ✅ | 四個動作 ＋ 十三條端點同一個 commit，`UNENFORCED_ACTIONS` 維持空集合。三個 SCOPE 守衛依它們自己留的指示改寫（見 §3 第 8 條）。`make check` 全綠 |
 | `AR-05` | 資格查詢、claim-then-offer、租約 sweep、重排 | ✅ | `services/{runs,run_logs,run_reaper}.py` ＋ `api/ws/nodes.py` 四條分支 ＋ `main.py` 的 lifespan。`backend/tests/db/test_run_queue.py` 九條，含用兩條真連線跑 50 次交錯的雙重領取測試 |
-| `AR-06` | contract v1.11.0 ＋ fixtures | ✅ | 十二個新型別、38 個新 fixture（15 valid ＋ 23 invalid），三個語言各自驗。既有 110 個檔逐檔未變 |
+| `AR-06` | contract v1.11.0 ＋ fixtures | ✅ | 十二個新型別、41 個新 fixture（17 valid ＋ 24 invalid），三個語言各自驗。既有 110 個檔逐檔未變。`contracts/CHANGELOG.md` 的 1.11.0 條目補上了（原本 ADR 引用 v1.11.0 但 changelog 沒有那一節）。🆕 **`node.heartbeat` 多一個 optional `runner`**——既有訊息唯一的改動，理由見 §3 第 24 條 |
 | `AR-07b` | 🆕 `StateDirectory`、run 目錄、**淺 clone（不做 mirror，見 §3 第 11 條）**、配額、清理、隔離自檢（**安審 §5**） | ✅ | `internal/runner`（版面／自檢／回收）＋ `internal/gitfetch`（封閉 argv 表）；`daemon/go.mod` 零 diff |
 | `AR-07` | `agentd` 0.9.0 的執行面：非互動執行、log 分塊、取消三段 | ✅ | `runtime/run.go` 是新檔，`runtime.go`／`launch.go` 對基線零 diff（`GATE-AR-TOUCH-LIST`）。取消的 process group 測試抓到一個真缺陷，見 §3 第 12 條 |
 | `AR-08` | `run_tokens` ＋ `cliora` CLI 0.2.0（**安全審查 §2**） | ✅ | 第二張表 ＋ `AgentPrincipal` 的第二種形狀 ＋ `/api/cli/runs` 三條 ＋ 四個子命令。情境解析一行未改 |
 | `AR-09` | 產物：上傳、儲存、配額、安全提供（**安全審查 §4**） | ✅ | 六步接收、三層配額、四個下載標頭、三類預覽白名單。新增一個 runtime 依賴 `python-multipart` |
-| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ✅ | Agents 頁（兩段姿態文案）、Project 設定的 Repository 區（**三個欄位而不是一個網址**）、Task 上的派工 picker（三種等待文案）、導覽項與 `agent_runs` feature。**看板徽章沒做**——卡片上的 run 狀態在 Task 詳情頁上，看板一次要渲染幾十張卡而 run 狀態要另一條查詢 |
+| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ✅ | Agents 頁（兩段姿態文案）、Project 設定的 Repository 區（**三個欄位而不是一個網址**）、Task 上的派工 picker（三種等待文案）、導覽項與 `agent_runs` feature、🆕 **磁碟／配額欄與「三種狀態三種文案」（出口條件 21，§3 第 24 條）**。**看板徽章沒做**——卡片上的 run 狀態在 Task 詳情頁上，看板一次要渲染幾十張卡而 run 狀態要另一條查詢 |
 | `AR-11` | 前端：Run 詳情、訊息串、產物區 | ✅ | Run 詳情頁（log 輪詢、git 摘要、產物區、取消）＋ 卡片上的訊息串與產物區（`TaskAgentPanel`，三種來源混排、提問時說明「正在等你的回覆」） |
-| `AR-12` | 驗證、證據、安全審查定稿、release note | ◐ | 七個 gate ＋ 判準 14 的兩個機器斷言全綠（`scripts/ar/gates.sh`）；`docs/security-review-v22.md` 五節；`docs/release-note-agent-runner.md`。**traceability 仍是 `proposed`**，理由見 §3 第 13 條 |
+| `AR-12` | 驗證、證據、安全審查定稿、release note | ◐ | 七個 gate ＋ 判準 14 的兩個機器斷言全綠（`scripts/ar/gates.sh`）；`docs/security-review-v22.md` 五節；`docs/release-note-agent-runner.md`。🆕 第二輪補上 **`GATE-AR-DISPATCH-COVERAGE`** 與四支後端測試檔（見 §3 第 14–18 條）。**traceability 仍是 `proposed`**，理由見 §3 第 13 條；**四項量測與 Traqora 實跑仍待人工**（§4） |
 | — | **合併提案** | ⬜ **待人工** | 條件全綠只是取得提案資格，不是核准 |
 
 ### 1.1 `AR-00` 的六份基線（2026-08-11 擷取）
@@ -240,7 +242,61 @@ D11／D13／D15–D20。
     **`enroll-dev` 會序列化整個 config struct**，所以 `runner:` 區塊已經存在——
     在後面再 append 一段是重複的 key，daemon 會拒絕啟動。要就地改寫。
 
-**另外，已知會需要回填的五處**（編號獨立於上面十九條）：
+20. 🔴 **出口條件 18 的實作是死的：`git diff` 從來沒有被上傳過。**
+    `SummaryText()` 與 `ShouldAttachDiff()` 都在，摘要也真的會說「diff 已附為產物」，
+    **但沒有任何程式碼把它送出去**——`delivery: none` 的卡片跑完之後，
+    使用者看到一句說產物在那裡的摘要，和一個空的產物區。
+    補上 `internal/runner/upload.go`（HTTP multipart、帶 run 憑證、`sha256` 一起送）
+    並在 `executeRun` 接上；上傳失敗時摘要改口說「⚠ diff 未能附加」，
+    因為一句錯的「已附上」比一句「沒附上」難查得多。
+
+21. 🔴 **每一個乾淨結束的 run，它的 `run.complete` 都會被靜默丟掉。**
+    daemon 送的是 `"summary": ""`，而 contract 寫 `minLength: 1`——
+    `decode_control` 丟例外、WS 迴圈的 `except` 吞掉，run 就一路掛到租約過期變成 `lost`。
+    **這是第 17 條的同一類缺陷**（`runtimes: null`），而它是被為了抓那一類而寫的
+    gate 抓到的，不是被人看到的。修法是 `send` 在送出前把空字串的 optional 欄位拿掉。
+
+22. **`GATE-AR-DISPATCH-COVERAGE`（`backend/tests/test_run_dispatch_coverage.py`）。**
+    第 17 條發生時缺的就是這一條。它做兩件事：① 用 `ast` 取出 `nodes.py` 真正比對過的
+    型別，對照 contract 的 `run.*`／`runner.*` 清單；
+    ② 把 daemon 會組出來的每一種 payload **餵進真正的 `decode_control`**。
+    第二半才是抓到第 21 條的那一半——第一半在那個缺陷下是綠的，因為型別有分支，
+    錯的是 JSON。
+
+23. **產物的兩個小缺陷。** ① `artifact.attached` 的 activity payload 帶了 `filename`，
+    而 `filename` 在 `FORBIDDEN_METADATA_KEYS` 裡——時間軸是全專案每個角色都讀得到的
+    feed。改成 `artifact_id`／`size`／`content_type`。
+    ② `text/markdown` 不在 `PREVIEWABLE` 裡，但計畫寫 markdown 以純文字預覽（判準 16）。
+
+24. 🔴 **出口條件 21 整條沒有實作，而且它的入口是死程式碼。**
+    `Runner.BlockedReason()` 存在、`pollLoop` 也算出了 `blocked`，
+    但 `pollLoop` 只 `slog.Debug` 了一行，從來沒有寫回去；`Runner.Poll()` 與
+    `Transport` 介面完全沒有呼叫者（而 `Send` 從未被賦值，真的呼叫會 nil panic）。
+    往上也一樣空：heartbeat 沒有這個欄位、`agent_runners` 沒有這幾個欄位、
+    Agents 頁只有「線上／離線」兩種字。
+    **後果是這一頁會把一台磁碟滿了的健康機器顯示成「離線」**，
+    而讀的人會去查網路。本輪補齊：
+    - migration `0032_runner_pressure`（四個 nullable 欄位，不 backfill）；
+    - contract：`node.heartbeat` 多一個 optional `runner`（三個語言各自驗，＋3 個 fixture）；
+    - daemon：`Runner.Pressure()`（**即時算，不快取**——快取的理由會剛好在有人盯著頁面的
+      那段時間過期），並刪掉 `Poll`／`Transport`／`blocked` 這組死程式碼；
+    - Central：`RunnerService.record_pressure()`，**會清掉**已恢復的原因
+      （只寫非空值的版本會讓三月滿過磁碟的 runner 在六月還顯示「磁碟用盡」）；
+    - 前端：四種原因四句話 ＋「用量未回報」，`AgentsView.test.ts` 七條。
+    同時補上計畫點名、最容易漏的另一個數字：**指定給此 Agent 的卡片數**
+    （`assigned_cards`，一條 group by，不是每列一次查詢）。
+
+25. **本輪補上的測試（第二版把 `AR-12` 記成 ✅ 時，這些一條都沒有）。**
+    `backend/tests/db/test_agent_api.py`（24 條：dispatch 的九種拒絕、兩種等待理由、
+    repository 驗證、產物標頭／預覽／摘要／刪除／存活、專案配額 413 且**沒有寫入半筆**、
+    run 產物件數上限、**run 全程 `terminal_sessions` 列數不變**＝判準 16）、
+    `test_run_reaper.py`（6 條，含 14d）、`test_run_credential.py`（8 條）、
+    `test_run_log_buffer.py`（6 條，含**截斷不切斷一行 JSON**＝判準 14）、
+    `daemon/internal/gitfetch`（**Agent 在 run 目錄裡 `git push` 到 scratch 遠端會成功**
+    ＝判準 9 的那一條；它的存在本身就是裁決的紀錄）、
+    `daemon/internal/runner/pressure_test.go`（3 條）。
+
+**另外，已知會需要回填的五處**（編號獨立於上面二十五條）：
 
 1. ~~`runArgs` 表~~ **已於 2026-08-10 量出並填入**（`10-…md` M-AR-1）：
    `claude: ["-p"]`、`codex: ["exec"]`，兩支都從 stdin 收 prompt，**D7 成立**。
@@ -329,4 +385,4 @@ clone 發生在 `run.accept` 之前，還沒有事件流可以量。
 | 🆕 **`git` 是 runner 模式的新前置條件** | daemon 用 `git` 執行檔而不是 Go library（`04b-…md` §5.1）。`agentd doctor` 要檢查它 |
 | 🆕 **e2e stack 要一個乾淨的資料庫** | `cliora_e2e` 裡留著 2026-08-08 那次跑剩的 **46 個 `running` session**，而每人的 session 上限比那個小——`POST /api/sessions` 會回 `409 SESSION_LIMIT_REACHED`，而那個訊息看起來像容量問題不像垃圾。基線用的是另建的 `cliora_ar_baseline`：`CLIORA_DATABASE_URL=postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_ar_baseline` |
 | 本期開始時的基線 | **commit `dc61006`**（計畫原寫 `3c8760d`，見 §3 第 1 條）、contract **v1.10.0**、`agentd` **0.8.0**、migration 到 **0028**、RBAC **20** 個動作、`contracts/v1/fixtures/` **109** 個檔（`contract-fixtures.txt` 110 行，多的是 `manifest.json`） |
-| 本期結束時的基線（目標） | contract **v1.11.0**、`agentd` **0.9.0**、migration 到 **0031**、RBAC **24** 個動作、導覽**每個角色各多一項 Agents**（`07-…md` §1）、systemd unit 多一行 `StateDirectory=agentd` |
+| 本期結束時的基線（目標） | contract **v1.11.0**、`agentd` **0.9.0**、migration 到 **0032**、RBAC **24** 個動作、導覽**每個角色各多一項 Agents**（`07-…md` §1）、systemd unit 多一行 `StateDirectory=agentd` |
