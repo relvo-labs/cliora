@@ -82,6 +82,46 @@ $ codex --version    → codex-cli 0.146.0
 **一個不需要的快取層是一個要清理、要處理鎖競爭、要處理損壞的東西**。
 量完再決定。
 
+#### 已量（2026-08-11）✅ **但不是量在 Traqora 上**
+
+工具：`scripts/ar/measure_clone.py`。原始資料：`artifacts/ar/local/measurements/m11-m12.json`
+（本機 `file://`）與 `m11-network.json`（真的走網路）。
+**這台機器上沒有 Traqora 的 clone，而猜它的 URL 不是一件該做的事**——
+所以量的是手上真的有的三個 repo，其中 `cliora` 自己的量級與 Traqora 相當。
+**Traqora 的數字要在有 clone 的機器上補一次**，但下面那個結論不太可能被它推翻。
+
+**走網路（GitHub，`git@`／`https`）**，每項 3 次取中位數：
+
+| repo | mirror clone | mirror 大小 | `remote update` 空跑 | `worktree add` | 淺 clone | 淺 clone 大小 |
+|---|---|---|---|---|---|---|
+| cliora | 4.17 s | 4.1 MB | **2.40 s** | 0.065 s | 3.97 s | 18.0 MB |
+| Monstrare | 0.96 s | 0.3 MB | **0.55 s** | 0.007 s | 0.99 s | 0.7 MB |
+
+**每次 run 的成本**：mirror 路線 ＝ 空跑 update ＋ worktree ＝ **2.47 s**（cliora）；
+淺 clone 路線 ＝ **3.97 s**。**mirror 每次 run 只省 1.5 秒**，
+而它要 2.8 次 run 才把自己第一次 clone 的 4.17 s 賺回來。
+
+**這一列是本次量測最重要的一個發現**：mirror 的成本幾乎全在
+`git remote update --prune` 的**空跑**上（cliora 2.40 s，Monstrare 0.55 s）
+——那是一次網路往返，與 repo 大小幾乎無關。`worktree add` 本身只有 65 ms。
+換句話說，**mirror 省下的不是「取得物件」而是「取得它已經有的物件」**，
+而在這個量級的 repo 上，那兩者差 1.5 秒。
+
+**判讀（給 `AR-07b` 的建議，不是裁決）**：在 Traqora 這個量級上，
+**淺 clone 就夠了，而 mirror 是一個不需要的快取層**——它多帶來的是鎖競爭、
+損壞處理、30 天清理與 `mirrors/` 這一整層目錄，換 1.5 秒。
+ADR 0031 的 Alternatives 表已經把這一列寫成「不是否決，是待量測」，
+**現在量完了，而答案偏向淺 clone**。
+兩件事會翻轉它：① Traqora 實測比 cliora 大一個數量級以上；
+② `run` 的頻率高到「每次省 1.5 秒」變得重要（那要 M-AR-7 的命中率）。
+**若採淺 clone，`04b-…md` §2 的目錄樹要拿掉 `mirrors/`，§4.2 的第三列（mirror 30 天）
+也隨之消失**——這正是計畫說的「改了就要改 daemon 的目錄配置」。
+
+**本機 `file://` 的對照**（同一支腳本，`m11-m12.json`）：三個 repo 的
+mirror／worktree／淺 clone 全部在 0.4 秒以下，`remote update` 空跑只有 7 ms。
+**把它單獨拿來看會得到相反的結論**，所以它在這裡的用途只有一個：
+證明上表那 2.40 s 是網路往返而不是磁碟。
+
 ### 1.3 M12 — run 目錄的典型大小 🆕 **移到本期**
 
 | 量什麼 | 答案會改變什麼 |
@@ -92,6 +132,41 @@ $ codex --version    → codex-cli 0.146.0
 
 **沒有這兩個數字就不能設配額，而沒有配額的 run 目錄會吃掉整台機器的磁碟**
 （`00-…md` §5 的風險表）。這是它們從 V2.3 提前的實質理由，不只是為了對齊階段。
+
+#### 已量（2026-08-11）✅
+
+同一支腳本、同一批原始資料。
+
+| | cliora | parksphere | Monstrare |
+|---|---|---|---|
+| checkout（`worktree add` 之後的 `repo/`） | **17.2 MB** | 3.5 MB | 0.4 MB |
+| 淺 clone 之後的 `repo/`（含 `.git`） | 21.1 MB | 4.8 MB | 0.7 MB |
+| 3 個並行（mirror ＋ 3 份 worktree） | 56 MB | 12 MB | 1.5 MB |
+| 3 個並行（3 份淺 clone） | 63 MB | 14 MB | 2.1 MB |
+
+**而這不是配額該用的數字。** 同一個 repo 上的建置產物：
+
+| | 大小 |
+|---|---|
+| `frontend/node_modules` | **370 MB** |
+| `backend/.venv` | **182 MB** |
+
+一個跑 `npm ci` 的 run，它的目錄從 17 MB 變成約 390 MB——**22 倍**。
+所以 M12 那一列問「量級是 GB 還是 MB」的答案是：
+**checkout 是 MB，run 目錄是 GB**，而配額必須照後者設。
+
+**給 `AR-07b` 的建議值（不是裁決）**：
+
+```text
+runner.run_quota_bytes    2 GB     ← 一個裝了 node_modules ＋ venv 的 run 約 0.4 GB，
+                                      留 5 倍給建置快取、測試產物與一次 npm 的 peak
+runner.total_quota_bytes  8 GB     ← 3 個並行 × 2 GB，再留一份給 mirror／暫存
+runner.min_free_bytes     512 MB   ← 沿用 filesystem.upload 既有水位（config.go:226），
+                                      理由是同一顆磁碟（04b-…md §4.1）
+```
+
+**這三個值明確標成「建議」**：它們是從一個 repo 的建置產物外推的，
+而外推的倍率（5×）是判斷不是量測。上線後由 M-AR-7 與實際的 `RUN_DISK_QUOTA` 次數修正。
 
 ### 1.4 M-AR-2 — 一次典型 run 的 log 產生速率
 
@@ -125,6 +200,49 @@ $ codex --version    → codex-cli 0.146.0
 
 **在量到之前不要把它調小。** 誤殺一個正在工作的 Agent 比多等五分鐘糟得多——
 而且它會重排，所以誤殺一次通常是誤殺三次。
+
+#### 部分已量（2026-08-11）◐ **尾巴沒量到，而沒量到的原因本身是一個發現**
+
+工具：`scripts/ar/measure_event_intervals.py`（用 M-AR-1 那兩張 argv 表逐字）。
+原始資料：`artifacts/ar/local/measurements/m-ar-9-*.json`，每份都含逐事件的
+`at_seconds`／`gap_seconds`／`label` 時間軸。
+
+| run | argv | 事件數 | 牆鐘 | gap p50 | gap p95 | gap max |
+|---|---|---|---|---|---|---|
+| claude，讀四個檔案並解釋 | `-p --output-format stream-json --verbose` | 12 | 21.2 s | 0.43 s | 6.49 s | **6.49 s** |
+| codex，同一個提示 | `exec --json` | 9 | 30.2 s | 1.33 s | 13.75 s | **13.75 s** |
+| claude，跑 `go test ./...` | 同上 | 20 | 19.6 s | 0.69 s | 3.02 s | 3.38 s |
+
+**第三列沒有量到它要量的東西**：`Bash` 工具被環境的權限政策擋掉
+（事件流裡是 `system/permission_denied`），所以那個 run 從來沒有真的跑測試。
+要量到長 tool call 的尾巴，需要 `--permission-mode` 的其中一個值，
+而**這個 session 的執行環境不允許啟動一個帶那個旗標的子行程**。
+**尾巴要在一台可以真的無人值守執行的機器上補量。**
+
+**但這三個 run 已經回答了兩件本來要靠猜的事：**
+
+1. 🆕 **`claude -p` 在預設權限下會擋掉 `Bash`，而 run 不會失敗——它會照樣給一個答案。**
+   第三個 run 的結局是 `result/success`，內容是一份它沒有執行過測試就寫出來的報告。
+   **這是一個比逾時嚴重得多的失敗模式**：一個「成功」的 run 交出一份沒有根據的結論。
+   所以 `04-…md` §5.4 那個殘留問題（`--permission-mode` 用哪個值）
+   **不是一個調校問題而是一個正確性問題**——`BuildRunCommand` 必須帶一個值，
+   而且 `RunCapable` 的探測應該連同它一起驗。`--help` 列出的選項是
+   `acceptEdits`／`auto`／`bypassPermissions`／`manual`／`dontAsk`／`plan`。
+   （`Read` 類工具在預設權限下**可以**執行——第一個 run 的時間軸上有兩次 `tool:Read`。）
+
+2. 🆕 **兩支 CLI 的事件粒度不同，而差別正好落在 idle timer 最在意的地方。**
+   `claude` 在思考時會持續吐 `system/thinking_tokens`（上表第一個 run 裡間隔 1.4–1.5 s），
+   所以「模型在想」這一段是**看得見的**；`codex` 只在 `item.completed` 時才出一個事件，
+   一次工具呼叫從開始到結束之間**完全安靜**（上表 13.75 s 那一格就是這樣來的）。
+   推論：**idle timeout 必須大於「最長的單一工具呼叫」，而不是「最長的思考」**，
+   而在 codex 這條路徑上這兩者是同一件事的機率更低。
+   `idle_timeout_seconds` 若要 per-runtime，理由就是這一條——但**在尾巴量到之前不要拆**，
+   一個共用的、夠大的值比兩個猜出來的值安全。
+
+**對 `runner.idle_timeout_seconds = 300` 的判讀**：目前量到的最大合法間隔是 13.75 s，
+離 300 s 還有 20 倍餘裕，**所以 300 s 沒有被這批資料否定**；
+但這批資料裡沒有任何一個長工具呼叫，而那正是尾巴的來源。
+**維持 300 s，並在 `AR-07` 的第一次真實 run 上補量**（那次 run 本來就要跑測試）。
 
 ### 1.6 M8-b — sidebar 在多一列之後夠不夠（不擋任何票，但改完就不容易補）
 

@@ -21,7 +21,7 @@ D11／D13／D15–D20。
 |---|---|
 | **擋開工** | **無。** 基線點、紅線措辭、成本上限三項均已裁決；`AR-00` 的六份基線已擷取（§1.1），閘門一解除 |
 | **擋波次 1–2**（`AR-03` 起） | **人工核准三份 ADR**（0029／0030／0031，Status 均為 `proposed`）。這是 `00-…md` §4 的閘門二與閘門三：核准前不得動 `backend/`／`frontend/`／`daemon/`／`contracts/`。文件已寫完，等的是一個人的決定，不是更多工作 |
-| **擋波次 3**（`AR-07`／`AR-07b`） | 四項量測：**M-AR-9**（事件間隔的尾巴 → `idle_timeout_seconds`）、**M11**（clone／worktree 耗時 ＋ 淺 clone 對照）、**M12**（run 目錄大小）、**M-AR-2**（log 速率 ＋ JSONL 倍數 ＋ 終端延遲基線）。都需要一台裝了兩支 CLI ＋ 有 Traqora clone 的機器 |
+| **擋波次 3**（`AR-07`／`AR-07b`） | **M11／M12 已量**（§1.2，`AR-07b` 不再被它們擋，但 mirror-vs-淺-clone 要先決定）。剩下：**M-AR-2**（要改 `daemon/cmd/fakecli`，所以它同時被閘門二擋著）、**M-AR-9 的尾巴**（要一台可以無人值守執行 `Bash` 的機器） |
 | **排在 `AR-07` 第一件事** | 兩項要一次真的 run 才知道：`claude --permission-mode dontAsk` 的語意、`codex exec -s workspace-write` 的 landlock 實際範圍 |
 | **V2.3 開工前** | `isolate_ambient_credentials` 的**值**（形狀已定：預設取代、可關成疊加）。M-AR-6 會影響它 |
 | **人工、與設計無關** | `plan/17` 的合併提案、出口條件 9 在 Traqora 實跑、`agentd` 0.8.0 的發布時機 |
@@ -33,7 +33,7 @@ D11／D13／D15–D20。
 
 | Ticket | 標題 | 狀態 | 證據 |
 |---|---|---|---|
-| `AR-00` | 基線擷取（**實際基線點 `dc61006`**，見 §3 第 1 條）＋ **M-AR-1（已量）／M-AR-2／M11／M12／M-AR-9** | ◐ **六份基線已取、M-AR-1 已量；四項量測未做（擋波次 3，不擋 0–2）** | 六份在 `artifacts/ar/local/baseline/`（下表）。擷取器：`scripts/ar/capture-baseline.sh`、`scripts/ar/frontend_routes.py`、`scripts/ar/measure_terminal_latency.py`。M-AR-1 的答案見 `10-…md` §1.1 |
+| `AR-00` | 基線擷取（**實際基線點 `dc61006`**，見 §3 第 1 條）＋ **M-AR-1／M11／M12（已量）、M-AR-9（部分）、M-AR-2（未做）** | ◐ | 六份基線在 `artifacts/ar/local/baseline/`（§1.1）；量測在 `artifacts/ar/local/measurements/`（§1.2）。擷取器與量測器：`scripts/ar/{capture-baseline.sh,frontend_routes.py,measure_terminal_latency.py,measure_clone.py,measure_event_intervals.py}` |
 | `AR-01` | ADR 0029、PRD §8.13、skill、traceability | ◐ **文件已寫，待人工核准** | `docs/adr/0029-v22-agent-runner-model-and-run-lifecycle.md`（**Status: proposed**）；`research/prd.md` §8.13（FR-AGENT-001、003–013，共 12 條、58 個 AC）；`.agent/skills/cliora-project-context/SKILL.md` 三面補述 ＋ Git automation 那一句改寫；`traceability/requirements.json` 12 筆 `proposed`，`scripts/trace validate --level static`／`--level selectors`／`coverage --strict` 全綠，`docs/traceability/{matrix,owners}.md` 已 render |
 | `AR-02` | ADR 0030（log 與產物的兩種保留期） | ◐ **文件已寫，待人工核准** | `docs/adr/0030-v22-run-log-and-card-artifacts.md`（**Status: proposed**）。§Part A 的「掉最後 ≤64 KiB」三句寫在 Consequences 與 Decision 兩處 |
 | `AR-02b` | 🆕 ADR 0031（隔離目錄 ＋ git 取得 ＋ Agent 的 git 自由）**＋ 紅線 4 措辭修訂** | ◐ **文件已寫，待人工核准**；紅線 4 **已於 2026-08-10／11 改好**（見 §3 第 5 條） | `docs/adr/0031-v22-isolated-run-directory-and-git-fetch.md`（**Status: proposed**，Status 段已寫明 V2.3 會 amend 本文件） |
@@ -69,6 +69,25 @@ D11／D13／D15–D20。
 判準是 **p95 不比 0.980 ms 高 20% 以上**。
 
 **四項擋波次 3 的量測（M-AR-2／M-AR-9／M11／M12）尚未進行。** 它們不擋波次 0–2。
+
+### 1.2 `AR-00` 的四項量測（2026-08-11）
+
+| 量測 | 狀態 | 一句話結論 | 原始資料 |
+|---|---|---|---|
+| **M11** clone／worktree 耗時 | ✅ **已量**（**不在 Traqora 上**，見下） | **mirror 每次 run 只省 1.5 秒**，而它的成本幾乎全在 `remote update --prune` 的空跑（一次網路往返，2.40 s）。**在這個量級上淺 clone 就夠了** | `m11-network.json`、`m11-m12.json` |
+| **M12** run 目錄大小 | ✅ **已量** | checkout 是 **17 MB**，但 `node_modules` ＋ `.venv` 是 **552 MB**——**配額的量級是 GB 不是 MB**。建議 `run_quota_bytes=2 GB`／`total_quota_bytes=8 GB` | 同上 |
+| **M-AR-9** 事件間隔 | ◐ **部分**：中段量到了，**尾巴沒有** | 量到的最大合法間隔 13.75 s，**300 s 沒有被否定**；但這批資料裡沒有任何長工具呼叫，而尾巴就是從那裡來的 | `m-ar-9-*.json` |
+| **M-AR-2** log 速率 | ⬜ **未做** | 它要改 `daemon/cmd/fakecli`，而**閘門二在 ADR 核准前禁止動 `daemon/`**。排在核准之後、`AR-07` 之前 | — |
+
+**M11／M12 的兩個限制要記著**：① 這台機器上沒有 Traqora 的 clone，量的是
+`cliora`（量級相當）、`parksphere`、`Monstrare`；② 配額建議值的 5 倍餘裕是判斷不是量測。
+逐項數字與判讀見 [`10-open-measurements.md`](./10-open-measurements.md) §1.2／§1.3／§1.5。
+
+**M-AR-9 沒量到尾巴的原因本身是一個發現**，而且它比原本要量的東西更要緊：
+`claude -p` 在**預設權限下會擋掉 `Bash`，而 run 不會失敗**——
+它以 `result/success` 結束，交出一份沒有真的跑過測試就寫出來的報告。
+所以「`--permission-mode` 用哪個值」不是一個調校問題而是一個**正確性問題**
+（`10-…md` §1.5 的第 1 點）。
 
 ## 2. 出口條件
 
@@ -138,16 +157,28 @@ D11／D13／D15–D20。
 
 1. ~~`runArgs` 表~~ **已於 2026-08-10 量出並填入**（`10-…md` M-AR-1）：
    `claude: ["-p"]`、`codex: ["exec"]`，兩支都從 stdin 收 prompt，**D7 成立**。
-   殘留兩項：① `claude` 的 `--permission-mode` 要用哪個值（`04-…md` §5.4），
-   那要一次真的 run 才知道；② **`RunCapable` 的快取要做成「一次連線」而不是
+   殘留兩項：① `claude` 的 `--permission-mode` 要用哪個值（`04-…md` §5.4）
+   ——**2026-08-11 升級為正確性問題**：預設權限下 `Bash` 被擋，而 run 仍以
+   `result/success` 結束並交出一份沒有執行過的報告（`10-…md` §1.5 第 1 點）。
+   `BuildRunCommand` 必須帶一個值，**選哪一個仍待一次可無人值守執行的機器上驗**；
+   ② **`RunCapable` 的快取要做成「一次連線」而不是
    「一個行程」**（`04-…md` §5.3）——既有的 `bypassProbe` 是後者，而重連並不重探，
    對「能不能領卡」而言那個過期是難查的。
 2. `00-…md` D3 的兩個常數（chunk 32 KiB、聚合窗 2 秒）——M-AR-2 量完可能要調。
-3. 🆕 `runner.run_quota_bytes` 與 `runner.total_quota_bytes` 的預設值——
-   M12 量完才填（`04b-…md` §4.1）。
-4. 🆕 **`runner.idle_timeout_seconds` 的值**——M-AR-9 量完事件間隔的尾巴才填
-   （`10-…md` §1.5）。**在量到之前不要調小**：誤殺一個正在工作的 Agent 會重排，
-   所以誤殺一次通常是誤殺三次。
+   **M-AR-2 要改 `daemon/cmd/fakecli`，所以它排在 ADR 核准之後**（閘門二）。
+3. ~~🆕 `runner.run_quota_bytes` 與 `runner.total_quota_bytes` 的預設值~~
+   **M12 已量（§1.2）。建議值 2 GB／8 GB，`min_free_bytes` 沿用 512 MB。**
+   建議而非定案的理由：5 倍餘裕是從一個 repo 的建置產物外推的判斷，不是量測。
+4. 🆕 **`runner.idle_timeout_seconds` 的值**——M-AR-9 量到中段但**沒量到尾巴**
+   （`10-…md` §1.5）。已量到的最大合法間隔 13.75 s，**300 s 沒有被否定，維持不變**，
+   在 `AR-07` 的第一次真實 run 上補量。**在量到之前不要調小**：
+   誤殺一個正在工作的 Agent 會重排，所以誤殺一次通常是誤殺三次。
+   附帶量到的一條：**兩支 CLI 的事件粒度不同**——`claude` 思考時持續吐事件，
+   `codex` 在一次工具呼叫期間完全安靜。所以 idle timeout 要蓋的是
+   「最長的單一工具呼叫」而不是「最長的思考」。
+4b. 🆕 **mirror 還是淺 clone**——M11 量完（§1.2），**答案偏向淺 clone**：
+   mirror 每次 run 只省 1.5 秒，而它要付一整層 `mirrors/` 的鎖競爭、損壞處理與 30 天清理。
+   **這件事要在 `AR-07b` 開工前決定**，因為它會改 `04b-…md` §2 的目錄樹與 §4.2 的清理表。
 5. 🆕 **`codex exec -s workspace-write` 實際擋得住什麼** ——它在 codex 這條路徑上
    是否真的讓 run 讀不到 allowed root（landlock 的實際範圍）。
    若是，`04b-…md` §3.4 的第 3 點可以從「附帶好處」升級成「codex 路徑的保證」。
