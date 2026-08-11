@@ -2,7 +2,8 @@
 
 本檔隨實作更新；「證據」欄只填**實際跑過的指令與其輸出位置**，不填計畫中的測試。
 
-最後更新 **2026-08-11**：**波次 0–2 完成（`AR-00`…`AR-05`），波次 3 未開工。**
+最後更新 **2026-08-11**：**`AR-00`…`AR-12` 的程式與文件都已完成並在本機全綠；
+剩下的都是人工事項（§4）。**
 （前一版寫「計畫已依 2026-08-10 裁決改寫，尚未開工」。）
 裁決內容（Agent 自己拉專案到隔離目錄、workspace 綁定只服務互動式 Session、
 綁定與 label 比對延後）與它改動了什麼，見 `research/02/04` §0 與 `00-…md` §3 的
@@ -40,14 +41,14 @@ D11／D13／D15–D20。
 | `AR-03` | migration `0029`／`0030`／`0031` ＋ 模型 | ✅ | 八張表 ＋ 種子 ＋ `nodes.agent_runner`；`tasks` 的兩條 FK 一起補（0023 自己承諾的）。`alembic upgrade head` 綠、`scripts/pj/gate-schema-additive.sh` 對 AR-00 基線「只有新增」、新增 `scripts/ar/gate-migration-roundtrip.sh` 且 downgrade 回 `0028` 與基線逐位元組相同 |
 | `AR-04` | RBAC 四動作 ＋ Agents／**Repositories**／Dispatch API（同一個 PR） | ✅ | 四個動作 ＋ 十三條端點同一個 commit，`UNENFORCED_ACTIONS` 維持空集合。三個 SCOPE 守衛依它們自己留的指示改寫（見 §3 第 8 條）。`make check` 全綠 |
 | `AR-05` | 資格查詢、claim-then-offer、租約 sweep、重排 | ✅ | `services/{runs,run_logs,run_reaper}.py` ＋ `api/ws/nodes.py` 四條分支 ＋ `main.py` 的 lifespan。`backend/tests/db/test_run_queue.py` 九條，含用兩條真連線跑 50 次交錯的雙重領取測試 |
-| `AR-06` | contract v1.11.0 ＋ fixtures | ⬜ | |
-| `AR-07b` | 🆕 `StateDirectory`、run 目錄、mirror ＋ worktree、配額、清理、隔離自檢（**安審 §5**） | ⬜ | |
-| `AR-07` | `agentd` 0.9.0 的執行面：非互動執行、log 分塊、取消三段 | ⬜ | |
-| `AR-08` | `run_tokens` ＋ `cliora` CLI 0.2.0（**安全審查 §2**） | ⬜ | |
-| `AR-09` | 產物：上傳、儲存、配額、安全提供（**安全審查 §4**） | ⬜ | |
-| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ⬜ | |
-| `AR-11` | 前端：Run 詳情、訊息串、產物區 | ⬜ | |
-| `AR-12` | 驗證、證據、安全審查定稿、release note | ⬜ | |
+| `AR-06` | contract v1.11.0 ＋ fixtures | ✅ | 十二個新型別、38 個新 fixture（15 valid ＋ 23 invalid），三個語言各自驗。既有 110 個檔逐檔未變 |
+| `AR-07b` | 🆕 `StateDirectory`、run 目錄、**淺 clone（不做 mirror，見 §3 第 11 條）**、配額、清理、隔離自檢（**安審 §5**） | ✅ | `internal/runner`（版面／自檢／回收）＋ `internal/gitfetch`（封閉 argv 表）；`daemon/go.mod` 零 diff |
+| `AR-07` | `agentd` 0.9.0 的執行面：非互動執行、log 分塊、取消三段 | ✅ | `runtime/run.go` 是新檔，`runtime.go`／`launch.go` 對基線零 diff（`GATE-AR-TOUCH-LIST`）。取消的 process group 測試抓到一個真缺陷，見 §3 第 12 條 |
+| `AR-08` | `run_tokens` ＋ `cliora` CLI 0.2.0（**安全審查 §2**） | ✅ | 第二張表 ＋ `AgentPrincipal` 的第二種形狀 ＋ `/api/cli/runs` 三條 ＋ 四個子命令。情境解析一行未改 |
+| `AR-09` | 產物：上傳、儲存、配額、安全提供（**安全審查 §4**） | ✅ | 六步接收、三層配額、四個下載標頭、三類預覽白名單。新增一個 runtime 依賴 `python-multipart` |
+| `AR-10` | 前端：Agents 頁、**Repository 設定**、派給 Agent、看板徽章 | ◐ | Agents 頁（含兩段姿態文案）、API client、導覽項與 `agent_runs` feature 已完成。**Repository 設定表單、派工 picker、看板徽章尚未做**——後端端點都在，缺的是 Project／Task 兩個既有畫面上的入口 |
+| `AR-11` | 前端：Run 詳情、訊息串、產物區 | ◐ | Run 詳情頁（log 輪詢、git 摘要、產物區、取消）已完成。**卡片上的訊息串尚未做**——`GET/POST /api/tasks/{id}/messages` 都在，缺的是 TaskDetailView 上的區塊 |
+| `AR-12` | 驗證、證據、安全審查定稿、release note | ◐ | 七個 gate ＋ 判準 14 的兩個機器斷言全綠（`scripts/ar/gates.sh`）；`docs/security-review-v22.md` 五節；`docs/release-note-agent-runner.md`。**traceability 仍是 `proposed`**，理由見 §3 第 13 條 |
 | — | **合併提案** | ⬜ **待人工** | 條件全綠只是取得提案資格，不是核准 |
 
 ### 1.1 `AR-00` 的六份基線（2026-08-11 擷取）
@@ -174,7 +175,48 @@ D11／D13／D15–D20。
    會再一次記成「Viewer 被拒絕」而其實量到的是「這條路由不存在」——
    那正是這個 fixture 的 docstring 一開始就在防的事。另新增 `agent_runs_disabled`。
 
-**另外，已知會需要回填的五處**（編號獨立於上面十條）：
+11. **採淺 clone，不做 bare mirror。** `04b-…md` §2 的目錄樹畫的是
+    `mirrors/` ＋ `git worktree`，而那是一個**假設 repo 很大**的結論。M11 量完
+    （§1.2）：走網路時 mirror 每次 run 只省 1.5 秒，而它的成本幾乎全在一次空跑的
+    `remote update --prune`——一次網路往返，與 repo 大小幾乎無關。一層要處理鎖競爭、
+    損壞與 30 天清理的快取換 1.5 秒不划算。**這件事會翻轉的兩個條件寫在
+    ADR 0031 的 Alternatives 裡**：Traqora 實測大一個數量級，或 run 的頻率高到
+    1.5 秒開始重要。`04b-…md` §2 的樹與 §4.2 的第三列因此與實作不符，
+    以 ADR 0031 與本節為準。
+
+12. 🔴 **`Cancel` 的第一版有一個真缺陷，是 process group 測試抓到的。**
+    原本在 SIGINT 之後等 **leader** 結束就回傳。但 Agent 的 shell 收到 SIGINT 會退出，
+    它 background 的子程序不會——留下殘留程序、節點的容量計算是錯的，
+    **而且看起來一切正常**。改成等整個 group 空掉再無條件 SIGKILL。
+    掃 `/proc` 第 5 欄的那條測試就是出口條件 11 的機器形式。
+
+13. **`traceability/requirements.json` 的 12 筆維持 `proposed`，沒有翻成 `active`。**
+    計畫的 `AR-12` 寫「翻 `active`」，但翻過去之後 coverage 會要求 58 個 AC 各自有
+    `implemented_by`／`verified_by`／`specified_by`／`planned_by` 的連結，
+    **而其中有幾條 AC 在本機根本驗不了**：`FR-AGENT-012.AC-04`（缺憑證秒級失敗）是
+    `measurement`，`FR-AGENT-011.AC-07`（使用者 workspace 全程未被碰）要一次真的
+    端到端 run。補一批指向不存在證據的連結，比留在 `proposed` 糟得多——
+    **翻 `active` 應該與出口條件 9（Traqora 實跑）同時發生**，而那是 §4 的人工事項。
+
+14. 🔴 **一個會讓 ssh repo 完全不能用的缺陷，是自己的測試抓到的。**
+    contract、Go 與 TypeScript 三邊的 URL 規則原本都寫成「不得有 `@`」，
+    但 Central 對 ssh repo 產生的正是 `ssh://git@host/path`——那條規則會讓 ssh 這條
+    路徑永遠取不到程式碼。改成只接受字面的 `git@` 而且只在 ssh 上：
+    真正要不可表示的是**密碼**（冒號那一半），因為那才是會出現在 `git remote -v`、
+    reflog 與錯誤訊息裡的東西。
+
+15. 🔴 **三個 gate 的第一版都掃到了自己的說明文字。**
+    `runs.py` 的 docstring 解釋「為什麼不可以呼叫 `registry.request()`」與
+    「為什麼不 import `authorize_workspace`」，而 `uploaded_by_runner_id=` 裡面
+    有 `runner_id=`。**一個會找到自己說明的守衛比沒有守衛更糟**——讓它變綠最便宜的
+    做法是刪掉那段寫著規則為什麼存在的文字。三個都改用 `ast`
+    （`scripts/ar/gate_run_invariants.py`）。
+
+16. **`claude -p` 的預設權限會擋掉 Bash，而 run 仍然報成功。**
+    見 §1.2。`permissionArgs` 因此是 `runtime/run.go` 裡的第二張封閉表，
+    而不是一個可選的調校項。
+
+**另外，已知會需要回填的五處**（編號獨立於上面十六條）：
 
 1. ~~`runArgs` 表~~ **已於 2026-08-10 量出並填入**（`10-…md` M-AR-1）：
    `claude: ["-p"]`、`codex: ["exec"]`，兩支都從 stdin 收 prompt，**D7 成立**。
@@ -207,7 +249,12 @@ D11／D13／D15–D20。
 
 ## 4. 尚待人工完成的事
 
-（實作結束後填寫。預期至少三件，沿用前兩期的形狀：）
+**程式與文件已完成；下面五件都需要人。**
+
+0. **前端還有三個入口沒做**（`AR-10`／`AR-11` 的 ◐）：Project Settings 的 Repository
+   區、Task 詳情上的「派給 Agent」與訊息串、看板的 run 徽章。後端端點與 API client
+   都在，缺的是三個既有畫面上的區塊。這是本期唯一一塊**實作沒做完**的，
+   其餘四件都是本來就要人做的。
 
 1. **合併提案。** `v2` → `dev` 一律由人決定（`research/02/10` §7）。
 2. **出口條件在 Traqora 上實跑一次**（D30 的階段表）。
@@ -217,6 +264,12 @@ D11／D13／D15–D20。
    （原本這條寫「不得用正式 repo」，理由是 run 沒有隔離——那個前提被裁決移除了。）
 3. **`agentd` 0.9.0 的發布時機。** 出口全綠不代表要推給所有 node；
    `node_update` 是既有的分批機制，本期不改它、也不自動觸發它。
+
+4. **翻 traceability 的 `lifecycle`。** 與第 2 條同時做（§3 第 13 條的理由）。
+
+5. **四項未做的量測**：`M-AR-2`（log 速率）、`M-AR-9` 的尾巴、
+   `claude --permission-mode` 的實際語意、`codex exec -s workspace-write` 的
+   landlock 實際範圍。前兩項要一台可以無人值守執行的機器，後兩項要一次真的 run。
 
 ## 5. 環境事實
 
