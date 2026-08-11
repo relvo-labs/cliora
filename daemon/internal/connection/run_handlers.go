@@ -205,7 +205,7 @@ func (m *Manager) executeRun(
 	if commit != "" {
 		send("run.progress", map[string]any{"phase": "checked_out", "commit_sha": commit})
 	}
-	if err := runner.WriteContext(layout, spec.Context, ""); err != nil {
+	if err := runner.WriteContext(layout, spec.Context, spec.Credential); err != nil {
 		send("run.failed", map[string]any{
 			"error_code": "RUN_INTERNAL_ERROR", "message": "could not write the task context",
 		})

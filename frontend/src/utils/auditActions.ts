@@ -64,6 +64,10 @@ const LABELS: Record<string, string> = {
   "agent.update": "更新 Agent 設定",
   "run.dispatch": "派工給 Agent",
   "run.cancel": "取消 Run",
+  "run_token.issue": "發行 Run 憑證",
+  "run_token.revoke": "撤銷 Run 憑證",
+  "artifact.upload": "附加產物",
+  "artifact.delete": "刪除產物",
 };
 
 // An action with no label would render blank, so it falls back to its own key —
@@ -122,6 +126,10 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "agent.update",
       "run.dispatch",
       "run.cancel",
+      "run_token.issue",
+      "run_token.revoke",
+      "artifact.upload",
+      "artifact.delete",
     ],
   },
   {

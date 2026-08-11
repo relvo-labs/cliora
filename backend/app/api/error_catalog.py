@@ -1053,6 +1053,60 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "somebody made rather than a machine that will come back.",
             "Enable the agent, or dispatch without naming one.",
         ),
+        # --- V2.2 card artifacts (ADR 0030 Part B) ---
+        # The three quota codes answer 413 and each says which layer was hit. None of
+        # them fails silently: an agent that could not attach its work has to be able
+        # to say so on the card.
+        _entry(
+            "ARTIFACT_TOO_LARGE",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That file is larger than the per-file limit",
+            "One artifact may not exceed the deployment's single-file limit.",
+            "Split it, compress it, or attach a summary and keep the full output elsewhere.",
+        ),
+        _entry(
+            "ARTIFACT_RUN_LIMIT",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "This run has attached as many artifacts as it may",
+            "A single run has a cap on how many files it can attach, so one loop "
+            "cannot fill a project's quota by itself.",
+            "Attach one combined file instead of many.",
+        ),
+        _entry(
+            "ARTIFACT_PROJECT_QUOTA",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "This project's artifact quota is full",
+            "Artifacts follow the card and are never deleted on a timer, so a project "
+            "accumulates them until somebody decides which to remove.",
+            "Delete artifacts that are no longer needed — deletion frees the bytes "
+            "even though the record of the deletion stays.",
+        ),
+        _entry(
+            "ARTIFACT_DIGEST_MISMATCH",
+            status.HTTP_400_BAD_REQUEST,
+            "The upload did not match its stated digest",
+            "Not tamper protection — the connection is already TLS. It catches a "
+            "**truncated** upload, which should fail rather than become a broken "
+            "artifact nobody can open.",
+            "Retry the upload.",
+            retryable=True,
+        ),
+        _entry(
+            "ARTIFACT_DELETED",
+            status.HTTP_410_GONE,
+            "That artifact was deleted",
+            "Its bytes are gone; the record of who deleted it and why is deliberately still there.",
+            "The card shows the reason next to the entry.",
+        ),
+        _entry(
+            "RUN_TOKEN_TTL_EXCEEDED",
+            status.HTTP_409_CONFLICT,
+            "This run would need a credential that outlives the platform's limit",
+            "A run credential may not live longer than the deployment's ceiling on "
+            "agent credentials. That started to bite when the run wall clock grew to "
+            "six hours, so it is refused here rather than issued and expiring mid-run.",
+            "Lower the run timeout, or raise CLIORA_RUN_TOKEN_TTL_HOURS.",
+        ),
         # --- V2.2 agent runner: the wire's own codes (ADR 0029/0031) ---
         # These arrive from a node, so a client can see any of them through the relay
         # and each needs guidance rather than a bare string.

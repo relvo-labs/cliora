@@ -1227,6 +1227,7 @@ function validateRunSpec(value: unknown): void {
       "runtime",
       "source",
       "context",
+      "credential",
       "allowed_verification_commands",
       "timeout_seconds",
       "idle_timeout_seconds",
@@ -1244,6 +1245,14 @@ function validateRunSpec(value: unknown): void {
     spec.context.length > 65536
   )
     reject("INVALID_MESSAGE", "Invalid context");
+  if (spec.credential !== undefined) {
+    // A run credential and nothing else can be delivered through this field.
+    if (
+      typeof spec.credential !== "string" ||
+      !/^cliora_rt_[A-Za-z0-9_-]+$/.test(spec.credential)
+    )
+      reject("INVALID_MESSAGE", "Invalid run credential");
+  }
   requireBoundedInt(spec.timeout_seconds, "timeout_seconds", 60, 86400);
   requireBoundedInt(
     spec.idle_timeout_seconds,

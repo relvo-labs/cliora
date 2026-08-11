@@ -224,4 +224,15 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `RUN_CANCELLED` | 409 | The run was cancelled | Somebody pressed cancel, or the node was shutting down. | Dispatch the card again when you are ready. | no | no | daemon |
 | `RUN_INTERNAL_ERROR` | 500 | The agent run failed for an internal reason | Something went wrong inside the daemon's run path. The detail is in that node's log with the request id. | Retry; if it persists, collect the daemon log around that run id. | yes | no | daemon |
 
+## Card artifacts
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `ARTIFACT_TOO_LARGE` | 413 | That file is larger than the per-file limit | One artifact may not exceed the deployment's single-file limit. | Split it, compress it, or attach a summary and keep the full output elsewhere. | no | no | central |
+| `ARTIFACT_RUN_LIMIT` | 413 | This run has attached as many artifacts as it may | A single run has a cap on how many files it can attach, so one loop cannot fill a project's quota by itself. | Attach one combined file instead of many. | no | no | central |
+| `ARTIFACT_PROJECT_QUOTA` | 413 | This project's artifact quota is full | Artifacts follow the card and are never deleted on a timer, so a project accumulates them until somebody decides which to remove. | Delete artifacts that are no longer needed — deletion frees the bytes even though the record of the deletion stays. | no | no | central |
+| `ARTIFACT_DIGEST_MISMATCH` | 400 | The upload did not match its stated digest | Not tamper protection — the connection is already TLS. It catches a **truncated** upload, which should fail rather than become a broken artifact nobody can open. | Retry the upload. | yes | no | central |
+| `ARTIFACT_DELETED` | 410 | That artifact was deleted | Its bytes are gone; the record of who deleted it and why is deliberately still there. | The card shows the reason next to the entry. | no | no | central |
+| `RUN_TOKEN_TTL_EXCEEDED` | 409 | This run would need a credential that outlives the platform's limit | A run credential may not live longer than the deployment's ceiling on agent credentials. That started to bite when the run wall clock grew to six hours, so it is refused here rather than issued and expiring mid-run. | Lower the run timeout, or raise CLIORA_RUN_TOKEN_TTL_HOURS. | no | no | central |
+
 Coverage is asserted by `backend/tests/test_error_catalog.py`: every code Central raises must appear here, every entry here must be raised by Central or present in the protocol's error enum, and every code must be listed in exactly one section above.

@@ -22,33 +22,50 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Annotated
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.api.http.deps import (
     require_action,
+    require_agent_action,
     require_agent_runs_enabled,
     require_projects_enabled,
 )
 from app.api.http.schemas import (
     AgentRunnerDTO,
     CreateRepositoryRequest,
+    DeleteArtifactRequest,
     DispatchRequest,
     DispatchResponseDTO,
     PostMessageRequest,
     ProjectRepositoryDTO,
     RunLogLineDTO,
     RunLogPageDTO,
+    TaskArtifactDTO,
     TaskMessageDTO,
     TaskRunDTO,
     UpdateAgentRequest,
 )
+from app.clock import now_utc
 from app.db.engine import get_session
-from app.db.models import AgentRunner, ProjectRepository, RunLog, TaskMessage, TaskRun, User
-from app.services.activity import ACTOR_USER
+from app.db.models import (
+    AgentRunner,
+    ProjectRepository,
+    RunLog,
+    Task,
+    TaskArtifact,
+    TaskMessage,
+    TaskRun,
+    User,
+)
+from app.services.activity import ACTOR_AGENT, ACTOR_USER
+from app.services.agent_auth import KIND_RUN, AgentPrincipal
+from app.services.artifacts import PREVIEWABLE, ArtifactService
 from app.services.projects import ProjectService
 from app.services.rbac import (
     AGENT_MANAGE,
@@ -483,3 +500,303 @@ async def post_task_message(
     await session.commit()
     await session.refresh(message)
     return _message_dto(message, author_name=user.display_name)
+
+
+# --- artifacts ------------------------------------------------------------
+
+
+def _artifact_dto(row: TaskArtifact) -> TaskArtifactDTO:
+    return TaskArtifactDTO(
+        id=row.id,
+        task_id=row.task_id,
+        run_id=row.run_id,
+        message_id=row.message_id,
+        filename=row.filename,
+        content_type=row.content_type,
+        size=row.size,
+        sha256=row.sha256,
+        uploaded_by_kind=row.uploaded_by_kind,
+        uploaded_by_user_id=row.uploaded_by_user_id,
+        uploaded_by_runner_id=row.uploaded_by_runner_id,
+        created_at=row.created_at,
+        deleted_at=row.deleted_at,
+        delete_reason=row.delete_reason,
+        previewable=row.deleted_at is None and row.content_type in PREVIEWABLE,
+    )
+
+
+def _download_headers(filename: str) -> dict[str, str]:
+    """The four headers, and none of them is optional.
+
+    * `Content-Disposition: attachment` with **RFC 5987 percent-encoding**, not
+      `filename="…"`. A filename may contain non-ASCII, and the quoted form is a header
+      injection the moment one contains `"` or CRLF. Percent-encoding makes that
+      unrepresentable rather than something to filter.
+    * `Content-Type: application/octet-stream` **even when the database says
+      `image/png`**. A download endpoint does not need the right type; it needs the
+      browser not to try displaying it. The right type is served by `/preview`.
+    * `nosniff`, because without it older engines sniff past the type anyway.
+    * A `CSP` with `sandbox`, as a third layer: even if the first two were bypassed,
+      the response has no script origin.
+    """
+    return {
+        "Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+        "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; sandbox",
+    }
+
+
+@router.get("/tasks/{task_id}/artifacts", response_model=list[TaskArtifactDTO])
+async def list_task_artifacts(
+    task_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[TaskArtifactDTO]:
+    await _require_visible_task(session, settings, task_id)
+    rows = await ArtifactService(session, settings=settings).list_for(task_id)
+    return [_artifact_dto(row) for row in rows]
+
+
+@router.post(
+    "/tasks/{task_id}/artifacts",
+    response_model=TaskArtifactDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def upload_task_artifact(
+    task_id: uuid.UUID,
+    # `Annotated`, not a call in the default: `B008` is right in general, and FastAPI's
+    # own recommended form avoids it.
+    file: Annotated[UploadFile, File()],
+    sha256: Annotated[str, Form()] = "",
+    message: Annotated[str, Form()] = "",
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TaskArtifactDTO:
+    """`task.update`, like posting a message, and for the same reason: attaching a file
+    to a card is a write, and `project.view` is held by every role."""
+    task, _project = await _require_visible_task(session, settings, task_id)
+    data = await file.read()
+    message_id = None
+    if message.strip():
+        posted = await MessageService(session).post(
+            task=task, body=message, author_kind=ACTOR_USER, author_user_id=user.id
+        )
+        message_id = posted.id
+    artifact = await ArtifactService(session, settings=settings).attach(
+        task=task,
+        filename=file.filename or "artifact",
+        data=data,
+        declared_sha256=sha256,
+        run_id=None,
+        message_id=message_id,
+        uploader_kind="user",
+        user_id=user.id,
+        runner_id=None,
+    )
+    await session.commit()
+    await session.refresh(artifact)
+    return _artifact_dto(artifact)
+
+
+@router.get("/artifacts/{artifact_id}")
+async def download_artifact(
+    artifact_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Always a download. There is no query parameter, header or content type that
+    turns this into a render, because a single-origin deployment has nowhere safe to
+    render an uploaded file (ADR 0020, ADR 0030 Part B)."""
+    service = ArtifactService(session, settings=settings)
+    artifact = await service.require(artifact_id)
+    await _require_visible_task(session, settings, artifact.task_id)
+    data = await service.blob(artifact.id)
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers=_download_headers(artifact.filename),
+    )
+
+
+@router.get("/artifacts/{artifact_id}/preview")
+async def preview_artifact(
+    artifact_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Exists only for three kinds of content, and **404 for everything else**.
+
+    404 rather than 403: whether a preview endpoint exists for a given file should not
+    itself be a signal. `text/markdown` is served as `text/plain` — rendering it would
+    execute embedded HTML, and a `.md` whose content is HTML passes every text check
+    there is.
+    """
+    service = ArtifactService(session, settings=settings)
+    artifact = await service.require(artifact_id)
+    await _require_visible_task(session, settings, artifact.task_id)
+    if artifact.deleted_at is not None or artifact.content_type not in PREVIEWABLE:
+        raise ApiError("NOT_FOUND", "Not found", status.HTTP_404_NOT_FOUND)
+    data = await service.blob(artifact.id)
+    media = artifact.content_type
+    if media.startswith("text/"):
+        media = "text/plain; charset=utf-8"
+    return Response(
+        content=data,
+        media_type=media,
+        headers={
+            "Content-Disposition": "inline",
+            "X-Content-Type-Options": "nosniff",
+            "Content-Security-Policy": "default-src 'none'; sandbox",
+        },
+    )
+
+
+@router.delete("/artifacts/{artifact_id}", response_model=TaskArtifactDTO)
+async def delete_artifact(
+    artifact_id: uuid.UUID,
+    body: DeleteArtifactRequest,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TaskArtifactDTO:
+    """`project.manage`, a written reason, and an audit row.
+
+    There is deliberately **no update route anywhere**: an attached artifact is
+    immutable, and an OpenAPI assertion holds `/api/artifacts/{id}` to `GET` and
+    `DELETE`.
+    """
+    service = ArtifactService(session, settings=settings)
+    artifact = await service.require(artifact_id)
+    await _require_visible_task(session, settings, artifact.task_id)
+    await service.delete(artifact=artifact, reason=body.reason, actor_id=user.id)
+    await session.commit()
+    await session.refresh(artifact)
+    return _artifact_dto(artifact)
+
+
+# --- the run credential's surface ------------------------------------------
+#
+# A separate router on `/api/cli/runs`, not the same paths with a second dependency.
+# A route that accepted either principal would need every handler under it to ask
+# which one it got, and the first handler to forget is an agent doing something a
+# person was meant to do. A distinct prefix makes the reachable set enumerable.
+#
+# Every one of these additionally checks `principal.task_id`: a run credential may only
+# touch **its own card**, and a mismatch answers 404 rather than 403 so a token cannot
+# be used to discover which cards exist elsewhere.
+
+run_router = APIRouter(
+    prefix="/api/cli/runs",
+    tags=["agent"],
+    dependencies=[
+        Depends(require_projects_enabled),
+        Depends(require_agent_runs_enabled),
+    ],
+)
+
+
+def _own_task(principal: AgentPrincipal, task: Task) -> None:
+    if principal.kind != KIND_RUN or principal.task_id != task.id:
+        raise ApiError("TASK_NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
+
+
+async def _run_task(session: AsyncSession, principal: AgentPrincipal) -> Task:
+    if principal.task_id is None:
+        raise ApiError("TASK_NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
+    task = await TaskService(session).require_task(principal.task_id)
+    _own_task(principal, task)
+    return task
+
+
+@run_router.get("/messages", response_model=list[TaskMessageDTO])
+async def agent_list_messages(
+    since: datetime | None = Query(default=None),
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> list[TaskMessageDTO]:
+    """`cliora task messages`. **Pull, never push.**
+
+    There is no interrupt path to a running agent: the platform does not reach into a
+    process to tell it something arrived. An agent that asked a question polls for the
+    answer, which is also why `waiting_for_input` has its own 24-hour timer.
+    """
+    task = await _run_task(session, principal)
+    messages = await MessageService(session).list_for(task.id, since=since)
+    return [_message_dto(message, author_name=None) for message in messages]
+
+
+@run_router.post("/messages", response_model=TaskMessageDTO, status_code=status.HTTP_201_CREATED)
+async def agent_post_message(
+    body: PostMessageRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> TaskMessageDTO:
+    """`cliora task say` and `cliora task ask`.
+
+    The **same action** a person needs for the same endpoint (`task.update`), which is
+    what makes "humans and agents share one channel" true in the authorization layer
+    rather than only in the URL.
+    """
+    task = await _run_task(session, principal)
+    message = await MessageService(session).post(
+        task=task,
+        body=body.body,
+        kind=body.kind,
+        author_kind=ACTOR_AGENT,
+        run_id=principal.run_id,
+    )
+    if body.kind == "question" and principal.run_id is not None:
+        # A question parks the run: it renews its lease, accrues no execution timeout,
+        # and occupies `max_waiting` rather than `max_concurrent` — a run waiting on a
+        # person is not running a process (ADR 0029 §5).
+        run = await session.get(TaskRun, principal.run_id)
+        if run is not None and run.status == "running":
+            run.status = "waiting_for_input"
+            run.waiting_since = now_utc()
+    await session.commit()
+    await session.refresh(message)
+    return _message_dto(message, author_name=None)
+
+
+@run_router.post("/artifacts", response_model=TaskArtifactDTO, status_code=status.HTTP_201_CREATED)
+async def agent_upload_artifact(
+    file: Annotated[UploadFile, File()],
+    sha256: Annotated[str, Form()] = "",
+    message: Annotated[str, Form()] = "",
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TaskArtifactDTO:
+    """`cliora task attach`, and the path the daemon uses for the diff.
+
+    The daemon's own `git diff` upload comes through here with the **same credential**
+    and the **same endpoint** — a side benefit of artifacts being HTTP rather than a
+    protocol message, which would have forced the daemon to implement a second upload
+    path of its own (ADR 0030 Part B).
+    """
+    task = await _run_task(session, principal)
+    data = await file.read()
+    message_id = None
+    if message.strip():
+        posted = await MessageService(session).post(
+            task=task, body=message, author_kind=ACTOR_AGENT, run_id=principal.run_id
+        )
+        message_id = posted.id
+    artifact = await ArtifactService(session, settings=settings).attach(
+        task=task,
+        filename=file.filename or "artifact",
+        data=data,
+        declared_sha256=sha256,
+        run_id=principal.run_id,
+        message_id=message_id,
+        uploader_kind="agent",
+        user_id=None,
+        runner_id=None,
+    )
+    await session.commit()
+    await session.refresh(artifact)
+    return _artifact_dto(artifact)

@@ -54,6 +54,7 @@ from app.services.activity import (
     TASK_MESSAGE_POSTED,
     ActivityService,
 )
+from app.services.agent_auth import RunTokenService, RunTokenSubject
 from app.services.audit import AuditService
 from app.services.runners import RepositoryService, clone_url
 from app.settings import Settings, get_settings
@@ -77,6 +78,17 @@ DECLINE_COOLDOWN_SECONDS = 60
 # silently ignored — a declaration the platform ignores is worse than one it refuses
 # (plan/18/00-…md D11). `source` is deliberately absent: after the ruling,
 # `source: repo` is this phase's main path.
+# The wall clock, deliberately generous: it answers "will this ever stop", not "is it
+# alive". Six hours rather than one because a one-shot command exceeding a deadline
+# does not mean it stopped working (ADR 0029 §4).
+RUN_WALL_CLOCK_SECONDS = 6 * 60 * 60
+# The primary liveness judgement, and **the one constant here that is still a
+# considered guess**. M-AR-9 measured inter-event gaps up to 13.75 s, so 300 s has 20×
+# headroom against what was observed — but that sample contained no long tool call,
+# which is where the tail actually lives. **Do not lower it without a measurement**:
+# killing a working agent re-queues the card, so one wrong kill is usually three.
+RUN_IDLE_TIMEOUT_SECONDS = 300
+
 UNSUPPORTED_DELIVERIES = {
     "branch": "V2.3",
     "pull_request": "V2.4",
@@ -100,22 +112,39 @@ class RunOffer:
     run: TaskRun
     task: Task
     repository: ProjectRepository | None
+    # The plaintext run credential, which exists for exactly this one frame. Never
+    # stored, never returned by any other endpoint, and deleted from the node the
+    # instant the run ends.
+    credential: str = ""
+    context: str = ""
 
     def spec(self) -> dict[str, Any]:
         source: dict[str, Any] = {"kind": self.run.source_kind or "none"}
         if self.repository is not None:
             source["url"] = clone_url(self.repository)
             source["ref"] = self.run.source_ref or self.repository.default_branch
+        spec: dict[str, Any] = {
+            "source": source,
+            "context": self.context,
+            "allowed_verification_commands": [],
+            # The wall clock is a backstop, six hours; the idle timer is the primary
+            # liveness judgement and the daemon owns the decision (ADR 0029 §4).
+            "timeout_seconds": RUN_WALL_CLOCK_SECONDS,
+            "idle_timeout_seconds": RUN_IDLE_TIMEOUT_SECONDS,
+        }
+        if self.run.runtime:
+            spec["runtime"] = self.run.runtime
+        if self.credential:
+            spec["credential"] = self.credential
         return {
             "run_id": str(self.run.id),
             "task_id": str(self.run.task_id),
             "project_id": str(self.run.project_id),
             "card_ref": self.task.card_ref,
             "title": self.task.title,
-            "runtime": self.run.runtime,
             "attempt": self.run.attempt,
-            "source": source,
             "delivery": self.task.delivery,
+            "spec": spec,
         }
 
 
@@ -391,6 +420,17 @@ class RunService:
             )
             if task is None:  # pragma: no cover - the FK makes this unreachable
                 continue
+            # The credential is issued **at the claim**, not at dispatch: a run that is
+            # never claimed should never have had one, and issuing early would leave
+            # valid tokens attached to work nobody picked up.
+            issued = await RunTokenService(self._session, settings=self._settings).issue(
+                run=RunTokenSubject(
+                    run_id=run.id,
+                    project_id=run.project_id,
+                    task_id=run.task_id,
+                    timeout_seconds=RUN_WALL_CLOCK_SECONDS,
+                )
+            )
             await self._activity.record(
                 RUN_CLAIMED,
                 project_id=run.project_id,
@@ -403,7 +443,13 @@ class RunService:
                     "attempt": run.attempt,
                 },
             )
-            return RunOffer(run=run, task=task, repository=repository)
+            return RunOffer(
+                run=run,
+                task=task,
+                repository=repository,
+                credential=issued.value,
+                context=render_run_context(task),
+            )
         return None
 
     async def _eligible(self, *, runner: AgentRunner, limit: int) -> list[TaskRun]:
@@ -529,6 +575,9 @@ class RunService:
         # The two retentions of ADR 0030, as one line: a failed run's log is the one
         # somebody will come back to.
         run.logs_expire_at = now_utc() + timedelta(days=3 if succeeded else 14)
+        # One of the four revocation triggers, all of which come through this one
+        # method rather than being repeated at each route that can end a run.
+        await RunTokenService(self._session, settings=self._settings).revoke_for_run(run.id)
         await self._session.flush()
         task = await self._session.get(Task, run.task_id)
         if task is not None:
@@ -586,6 +635,7 @@ class RunService:
         run.result = "lost"
         run.finished_at = now_utc()
         run.logs_expire_at = now_utc() + timedelta(days=14)
+        await RunTokenService(self._session, settings=self._settings).revoke_for_run(run.id)
         task = await self._session.get(Task, run.task_id)
         if task is None:  # pragma: no cover - the FK makes this unreachable
             return None
@@ -653,6 +703,7 @@ class RunService:
         run.result = "cancelled"
         run.finished_at = now_utc()
         run.logs_expire_at = now_utc() + timedelta(days=14)
+        await RunTokenService(self._session, settings=self._settings).revoke_for_run(run.id)
         await self._session.flush()
         await self._audit.record(
             audit_actions.RUN_CANCEL,
@@ -773,3 +824,56 @@ async def claim(
         )
     )
     return bool(result.rowcount)
+
+
+def render_run_context(task: Task) -> str:
+    """The task context an unattended agent is started with.
+
+    **The first section is how to report progress**, and that ordering is the same
+    decision the session context pack made for the same reason: the thing most likely
+    to go wrong is not the agent misunderstanding the task, it is the agent never
+    telling anybody what it did. A paragraph at the end of a file is a paragraph nobody
+    reads.
+
+    This text goes to the child's **stdin**, never into argv (ADR 0029, SEC-002).
+    """
+    lines = [
+        f"# {task.card_ref} {task.title}",
+        "",
+        "你正在無人值守地執行這張卡。沒有人在終端前面，所以**卡片是你唯一的溝通管道**。",
+        "",
+        "## 你可以怎麼回報",
+        "",
+        "```",
+        'cliora task say "做完了 X，接下來做 Y"      # 在卡片上留言',
+        'cliora task ask "這個欄位要用哪個名稱？"      # 提問並等待回覆',
+        'cliora task attach report.md --message "初步發現"   # 附一件產物',
+        "```",
+        "",
+        "平台連不上時這些指令會失敗，**但你的工作不受影響**——繼續做，恢復連線後再執行一次。",
+        "",
+    ]
+    for heading, value in (
+        ("目標", task.objective),
+        ("範圍", task.scope),
+        ("非目標", task.non_goals),
+    ):
+        if value:
+            lines += [f"## {heading}", "", value.strip(), ""]
+    criteria = task.acceptance_criteria or []
+    if criteria:
+        lines += ["## 驗收標準", ""]
+        for item in criteria:
+            lines.append(f"- [{item.get('result') or '未驗'}] {item.get('text', '')}")
+        lines.append("")
+    if task.description:
+        lines += ["## 說明", "", task.description.strip(), ""]
+    lines += [
+        "## 這次執行的邊界",
+        "",
+        "- 你的工作目錄是一份**專屬於這次執行的 clone**，不是任何人的工作區。",
+        "- 交付方式是把產物附到卡片上；本階段平台不會替你開分支或 PR。",
+        "- 執行目錄有保留期，所以**沒附到卡片上的東西會消失**。",
+        "",
+    ]
+    return "\n".join(lines)

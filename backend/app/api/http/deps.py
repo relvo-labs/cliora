@@ -17,7 +17,13 @@ from app.api.errors import ApiError
 from app.api.middleware import actor_var, agent_var, denial_var
 from app.db.engine import get_session
 from app.db.models import User
-from app.services.agent_auth import TOKEN_PREFIX, AgentPrincipal, SessionTokenService
+from app.services.agent_auth import (
+    RUN_TOKEN_PREFIX,
+    TOKEN_PREFIX,
+    AgentPrincipal,
+    RunTokenService,
+    SessionTokenService,
+)
 from app.services.auth import AuthService
 from app.services.rbac import TASK_APPROVE, has_action
 from app.settings import Settings, get_settings
@@ -67,7 +73,7 @@ async def get_current_user(
     if not authorization or not authorization.startswith("Bearer "):
         raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
     presented = authorization[len("Bearer ") :]
-    if presented.startswith(TOKEN_PREFIX):
+    if presented.startswith(TOKEN_PREFIX) or presented.startswith(RUN_TOKEN_PREFIX):
         # A session credential must never become a `User`. `require_action` answers
         # with a user's *entire* action set, so a token that resolved into one would
         # inherit `task.approve` and every terminal action along with it — and the
@@ -77,7 +83,13 @@ async def get_current_user(
         # audit row, but this branch can never return it (or manufacture a User), so
         # the two authentication paths remain structurally disjoint. Invalid,
         # expired and revoked values still produce the identical public answer.
+        #
+        # **Both** credential kinds come through here, and that is one line precisely
+        # because the separation is structural rather than a check somebody remembered
+        # to write (ADR 0029 §6).
         principal = await SessionTokenService(session, settings=settings).resolve(presented)
+        if principal is None:
+            principal = await RunTokenService(session, settings=settings).resolve(presented)
         route = getattr(request.scope.get("route"), "path", "")
         if principal is not None and request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             agent_var.set(principal.token_id)
@@ -121,11 +133,15 @@ async def get_agent_principal(
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> AgentPrincipal:
-    """Authenticate a session credential. The second, disjoint authentication path.
+    """Authenticate an agent credential. The second, disjoint authentication path.
 
-    Refuses anything that is not a session token — including a perfectly valid user
-    JWT — so the two paths cannot be reached through each other. Only the four
-    endpoints the CLI needs depend on this (`plan/17/04-…md` §2.3).
+    Refuses anything that is not an agent token — including a perfectly valid user JWT
+    — so the two paths cannot be reached through each other.
+
+    Two kinds arrive here, dispatched by prefix: a **session** credential (V2.1) and a
+    **run** credential (V2.2). They are separate tables rather than one table with a
+    nullable subject, because a run must not have a `terminal_sessions` row, and
+    because "revoking for a session covers every token" has to stay true.
 
     404 is not an option here and 403 is not either: this is authentication, and the
     caller presented nothing this path recognises.
@@ -136,9 +152,18 @@ async def get_agent_principal(
         raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
     if not authorization or not authorization.startswith("Bearer "):
         raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
-    principal = await SessionTokenService(session, settings=settings).resolve(
-        authorization[len("Bearer ") :]
-    )
+    presented = authorization[len("Bearer ") :]
+    # Dispatched by prefix to one of two services. A single table with a nullable
+    # subject would have been fewer lines and a worse design (ADR 0029 §6).
+    principal: AgentPrincipal | None = None
+    if presented.startswith(TOKEN_PREFIX):
+        principal = await SessionTokenService(session, settings=settings).resolve(presented)
+    elif presented.startswith(RUN_TOKEN_PREFIX):
+        if not settings.agent_runs_enabled:
+            # A credential nobody in this deployment can hold. Not a 404: this is
+            # authentication, and the caller presented something unrecognised.
+            raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
+        principal = await RunTokenService(session, settings=settings).resolve(presented)
     if principal is None:
         raise ApiError("UNAUTHENTICATED", "Missing bearer token", status.HTTP_401_UNAUTHORIZED)
     agent_var.set(principal.token_id)

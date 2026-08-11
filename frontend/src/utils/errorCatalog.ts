@@ -587,6 +587,44 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "關閉不再需要的隧道，或請管理員把預算調整為與服務商方案一致。",
     retryable: false,
   },
+  // 卡片產物（ADR 0030 Part B）。三個配額碼各自要說清楚是哪一層滿了——
+  // 出口條件明寫「不是靜默失敗」：一個附不上產物的 Agent 必須能在卡片上說出來。
+  ARTIFACT_TOO_LARGE: {
+    cause: "單一產物不得超過此部署的單件上限。",
+    nextStep: "拆開、壓縮，或附一份摘要並把完整輸出放在別處。",
+    retryable: false,
+  },
+  ARTIFACT_RUN_LIMIT: {
+    cause:
+      "單次執行可附加的件數有上限，這樣一個迴圈就不會把整個專案的配額吃光。",
+    nextStep: "把多個檔案合併成一件再附加。",
+    retryable: false,
+  },
+  ARTIFACT_PROJECT_QUOTA: {
+    cause:
+      "產物跟著卡片走、不會被定時刪除，所以一個專案會一直累積到有人決定刪哪些。",
+    nextStep:
+      "刪掉不再需要的產物——刪除會真的釋放空間，而「誰以什麼理由刪的」仍然留著。",
+    retryable: false,
+  },
+  ARTIFACT_DIGEST_MISMATCH: {
+    cause:
+      "這不是防竄改（連線本來就是 TLS），而是防截斷：一個被中途砍斷的上傳應該失敗，而不是變成一件打不開的產物。",
+    nextStep: "重新上傳一次。",
+    retryable: true,
+  },
+  ARTIFACT_DELETED: {
+    cause: "它的內容已經被刪除；而「誰以什麼理由刪的」是刻意留著的。",
+    nextStep: "卡片上那一列旁邊寫著理由。",
+    retryable: false,
+  },
+  RUN_TOKEN_TTL_EXCEEDED: {
+    cause:
+      "一枚 run 憑證的效期不得超過此部署對「Agent 憑證最長活多久」的既有承諾。" +
+      "牆鐘從 1 小時放大到 6 小時之後這個上限開始會咬到，所以在這裡拒絕，而不是發一枚會在 run 中途過期的 token。",
+    nextStep: "調低 run 的逾時，或調高 CLIORA_RUN_TOKEN_TTL_HOURS。",
+    retryable: false,
+  },
   // Agent Runner（ADR 0029）。這一組全部發生在「派工」那一刻，而它們的順序是設計的一
   // 部分：先擋卡片本身的問題，再擋本期做不到的宣告，最後才是設定與 Agent。
   TASK_NOT_READY: {

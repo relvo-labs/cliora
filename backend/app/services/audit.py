@@ -149,6 +149,14 @@ AGENT_REGISTER = "agent.register"
 AGENT_UPDATE = "agent.update"
 RUN_DISPATCH = "run.dispatch"
 RUN_CANCEL = "run.cancel"
+# Same shape as `session_token.*`, and the same rule: the id, never the value.
+RUN_TOKEN_ISSUE = "run_token.issue"
+RUN_TOKEN_REVOKE = "run_token.revoke"
+# Upload records the uploader's kind through `user_id` being null for an agent;
+# delete always names a person, because only `project.manage` may do it and it needs a
+# reason.
+ARTIFACT_UPLOAD = "artifact.upload"
+ARTIFACT_DELETE = "artifact.delete"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -193,6 +201,10 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         AGENT_UPDATE,
         RUN_DISPATCH,
         RUN_CANCEL,
+        RUN_TOKEN_ISSUE,
+        RUN_TOKEN_REVOKE,
+        ARTIFACT_UPLOAD,
+        ARTIFACT_DELETE,
         TASK_CREATE,
         TASK_UPDATE,
         TASK_GATE_APPROVE,

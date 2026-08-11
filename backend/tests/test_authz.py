@@ -311,6 +311,21 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # so the agent's route in AR-08 requires the same action rather than a weaker one.
     ("GET", "/api/tasks/{task_id}/messages"): rbac.PROJECT_VIEW,
     ("POST", "/api/tasks/{task_id}/messages"): rbac.TASK_UPDATE,
+    # Artifacts follow the same read/write split, for the same reason: attaching a file
+    # to a card is a write, and `project.view` is held by every role.
+    ("GET", "/api/tasks/{task_id}/artifacts"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/artifacts"): rbac.TASK_UPDATE,
+    ("GET", "/api/artifacts/{artifact_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/artifacts/{artifact_id}/preview"): rbac.PROJECT_VIEW,
+    # Deletion is `project.manage` and needs a written reason. There is deliberately no
+    # `PUT`/`PATCH` here at all: an attached artifact is immutable.
+    ("DELETE", "/api/artifacts/{artifact_id}"): rbac.PROJECT_MANAGE,
+    # The run credential's surface, `None` for the same reason V2.1's is: these are not
+    # authorized by a *user* action. The caller is a run credential whose scope was
+    # fixed when it was issued, and it can never resolve into a user.
+    ("GET", "/api/cli/runs/messages"): None,
+    ("POST", "/api/cli/runs/messages"): None,
+    ("POST", "/api/cli/runs/artifacts"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

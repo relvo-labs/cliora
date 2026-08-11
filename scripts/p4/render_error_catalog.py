@@ -249,6 +249,17 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "RUN_INTERNAL_ERROR",
         ),
     ),
+    (
+        "Card artifacts",
+        (
+            "ARTIFACT_TOO_LARGE",
+            "ARTIFACT_RUN_LIMIT",
+            "ARTIFACT_PROJECT_QUOTA",
+            "ARTIFACT_DIGEST_MISMATCH",
+            "ARTIFACT_DELETED",
+            "RUN_TOKEN_TTL_EXCEEDED",
+        ),
+    ),
 ]
 
 

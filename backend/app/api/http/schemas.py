@@ -1499,3 +1499,32 @@ class PostMessageRequest(BaseModel):
     # for your reply" — readable from the thread alone, without consulting run state
     # for every card on a board.
     kind: Literal["message", "question", "answer"] = "message"
+
+
+class TaskArtifactDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    run_id: uuid.UUID | None
+    message_id: uuid.UUID | None
+    filename: str
+    # Determined by the server, never taken from the uploader. This field is the
+    # primary stored-XSS entry point in the phase (ADR 0030 Part B).
+    content_type: str
+    size: int
+    sha256: str
+    uploaded_by_kind: str
+    uploaded_by_user_id: uuid.UUID | None
+    uploaded_by_runner_id: uuid.UUID | None
+    created_at: datetime
+    # A deleted artifact keeps its row and loses its bytes. The console shows it as a
+    # grey line rather than removing it — the same rule the activity timeline follows,
+    # and the reason a reason is required in the first place.
+    deleted_at: datetime | None
+    delete_reason: str | None
+    # Whether `/preview` exists for this one. Computed rather than stored, because the
+    # allowlist is a property of the code and not of the row.
+    previewable: bool
+
+
+class DeleteArtifactRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)

@@ -40,6 +40,7 @@ const LABELS: Record<string, string> = {
   "run.claimed": "Agent 領取任務",
   "run.finished": "Agent 執行結束",
   "task.message_posted": "卡片留言",
+  "artifact.attached": "附加產物",
 };
 
 /** The raw kind is the fallback, so a kind added on the server stays readable

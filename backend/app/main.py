@@ -23,6 +23,7 @@ from sqlalchemy import text
 
 from app.api.errors import install_error_handlers
 from app.api.http.agents import router as agents_router
+from app.api.http.agents import run_router as agent_runs_cli_router
 from app.api.http.audit import router as audit_router
 from app.api.http.auth import router as auth_router
 from app.api.http.dashboard import router as dashboard_router
@@ -191,6 +192,10 @@ app.include_router(requirements_router)
 # layer off answers 404 rather than a 403 that would confirm the route exists
 # (ADR 0029, plan/18/00-…md D12).
 app.include_router(agents_router)
+# The run credential's surface, on its own prefix for the same reason V2.1's is:
+# a route that accepted either principal would need every handler to ask which one it
+# got, and the first to forget is an agent doing a person's action.
+app.include_router(agent_runs_cli_router)
 # The agent surface: four routes on their own prefix, authenticated by a session
 # credential rather than by a user session (ADR 0028 sec 3).
 app.include_router(agent_tasks_router)

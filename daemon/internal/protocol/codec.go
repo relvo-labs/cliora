@@ -721,12 +721,15 @@ type RunSource struct {
 
 // RunSpec is everything a claimed run is told to do. Read the absent fields first.
 type RunSpec struct {
-	Runtime                     string    `json:"runtime,omitempty"`
-	Source                      RunSource `json:"source"`
-	Context                     string    `json:"context"`
-	AllowedVerificationCommands []string  `json:"allowed_verification_commands,omitempty"`
-	TimeoutSeconds              int       `json:"timeout_seconds"`
-	IdleTimeoutSeconds          int       `json:"idle_timeout_seconds"`
+	Runtime string    `json:"runtime,omitempty"`
+	Source  RunSource `json:"source"`
+	Context string    `json:"context"`
+	// Credential is the run's own `cliora_rt_…` token, delivered once. The daemon
+	// writes it at 0600 and removes it the instant the run ends.
+	Credential                  string   `json:"credential,omitempty"`
+	AllowedVerificationCommands []string `json:"allowed_verification_commands,omitempty"`
+	TimeoutSeconds              int      `json:"timeout_seconds"`
+	IdleTimeoutSeconds          int      `json:"idle_timeout_seconds"`
 }
 
 // RunOffer is a run that has **already been claimed** for this node.
@@ -870,6 +873,9 @@ func validRunSpec(spec *RunSpec) bool {
 		return false
 	}
 	if spec.Context == "" || len(spec.Context) > 65536 {
+		return false
+	}
+	if spec.Credential != "" && !strings.HasPrefix(spec.Credential, "cliora_rt_") {
 		return false
 	}
 	if spec.TimeoutSeconds < 60 || spec.TimeoutSeconds > 86400 {

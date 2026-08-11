@@ -82,6 +82,7 @@ RUN_FINISHED = "run.finished"
 # timeline's view of the same act. The two have different readers, which is why both
 # exist (ADR 0029). System events are **not** posted here — they already are activity.
 TASK_MESSAGE_POSTED = "task.message_posted"
+ARTIFACT_ATTACHED = "artifact.attached"
 
 # The closed vocabulary. V2.1 adds task kinds, V2.2 adds run kinds.
 ALL_KINDS: frozenset[str] = frozenset(
@@ -107,6 +108,7 @@ ALL_KINDS: frozenset[str] = frozenset(
         RUN_CLAIMED,
         RUN_FINISHED,
         TASK_MESSAGE_POSTED,
+        ARTIFACT_ATTACHED,
     }
 )
 

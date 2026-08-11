@@ -562,6 +562,10 @@ export const AUDIT_ACTIONS = [
   "agent.update",
   "run.dispatch",
   "run.cancel",
+  "run_token.issue",
+  "run_token.revoke",
+  "artifact.upload",
+  "artifact.delete",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---

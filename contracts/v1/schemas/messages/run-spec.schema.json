@@ -19,6 +19,13 @@
       "maxItems": 16,
       "items": {"type": "string", "minLength": 1, "maxLength": 256}
     },
+    "credential": {
+      "$comment": "The run's own CLI credential, `cliora_rt_…`, delivered once so the daemon can write it into the run directory at 0600. It travels the same way V2.1's session credential does — inside the message that sets a run up — and for the same reason: the alternative is a second fetch the daemon would have to authenticate separately. The daemon **deletes the file the moment the run ends**, not at the directory's retention deadline: a credential's lifetime is the run. Bounded and pattern-matched so a value of another kind cannot be delivered through this field.",
+      "type": "string",
+      "minLength": 16,
+      "maxLength": 256,
+      "pattern": "^cliora_rt_[A-Za-z0-9_-]+$"
+    },
     "timeout_seconds": {
       "$comment": "The wall clock, and **only a backstop** (ADR 0029 sec 4). It answers 'will this ever stop', not 'is it alive' — a one-shot command exceeding a deadline does not mean it stopped working, which is why this is six hours rather than one.",
       "type": "integer",
