@@ -216,7 +216,31 @@ D11／D13／D15–D20。
     見 §1.2。`permissionArgs` 因此是 `runtime/run.go` 裡的第二張封閉表，
     而不是一個可選的調校項。
 
-**另外，已知會需要回填的五處**（編號獨立於上面十六條）：
+17. 🔴 **`runner.register` 的 `runtimes` 送成 `null`，而 Central 靜默丟掉那個訊框。**
+    第一次真的把服務跑起來時發現的：daemon 的 log 說「runner mode enabled」與
+    「registered with central」，`nodes.agent_runner` 也是 `true`，但
+    `agent_runners` 是空的、`/api/agents` 回 `[]`，**而且沒有任何一端報錯**。
+    原因是 Go 的 nil slice 序列化成 `null`，而 contract 說 `runtimes` 是 array，
+    所以 `decode_control` 拋 `ProtocolError`、`node_gateway` 的 `except` 把它吞掉。
+    **這正是 D2 描述的那個症狀**：「訊息不見了但沒有錯誤」。
+    而且空集合在這裡不是邊界情況而是設計本身——CLI 太舊的 node 就是要以
+    `runtimes: []` 註冊成功。修法是讓那兩個欄位永不為 nil，並補一條測試：
+    把 payload 組出來、`BuildControl` 之後跑 `ValidateControl`。
+    **順帶暴露一件事**：daemon 不驗證自己送出的訊框，只驗收到的。
+
+18. **`TaskDetail.vue` 的「執行設定」說明在 V2.2 之後過期了。**
+    V2.1 寫的是「本階段沒有任何執行者會依它行動」，而 `source` 的三個值與
+    `delivery` 的兩個值現在真的會被依循（ADR 0029 §6）。
+    一句過期的「沒有人會照做」比沒有說明更糟。
+
+19. **`scripts/ar/dev-stack.sh`：把整個 V2.2 stack 跑起來的那一支。**
+    `scripts/e2e/run-stack.sh` 兩個旗標都關、而且 `enroll-dev` 產生的設定裡
+    `runner.enabled` 是 `false`（那是對的：一台機器不該因為被納管或升級就開始
+    無人值守地跑東西），所以那支腳本開不出一個 runner。這一支是 V2.2 的形狀。
+    **`enroll-dev` 會序列化整個 config struct**，所以 `runner:` 區塊已經存在——
+    在後面再 append 一段是重複的 key，daemon 會拒絕啟動。要就地改寫。
+
+**另外，已知會需要回填的五處**（編號獨立於上面十九條）：
 
 1. ~~`runArgs` 表~~ **已於 2026-08-10 量出並填入**（`10-…md` M-AR-1）：
    `claude: ["-p"]`、`codex: ["exec"]`，兩支都從 stdin 收 prompt，**D7 成立**。
@@ -270,6 +294,30 @@ D11／D13／D15–D20。
 5. **四項未做的量測**：`M-AR-2`（log 速率）、`M-AR-9` 的尾巴、
    `claude --permission-mode` 的實際語意、`codex exec -s workspace-write` 的
    landlock 實際範圍。前兩項要一台可以無人值守執行的機器，後兩項要一次真的 run。
+
+## 5. 第一次把整個服務跑起來（2026-08-11）
+
+`scripts/ar/dev-stack.sh`：Central（兩個旗標都開）＋ 一台真的 enroll 過的 runner node
+＋ Vite dev server。**端到端跑通了一次完整的派工**：
+
+| 步驟 | 結果 |
+|---|---|
+| `runner.register` | `agent_runners` 一列，`runtimes: []`（fakecli 不是 runner-capable，這是對的）、`dedicated: false`（混合用途，Agents 頁顯示 ⚠） |
+| 登記 repository | 三個欄位；`evil.example` 回 `REPOSITORY_HOST_NOT_ALLOWED`；只帶 `url` 的 body 回 **422**（那個欄位不存在） |
+| dispatch | `202` ＋ `waiting_reason: "any"` |
+| runner poll → 原子認領 | run 進 `claimed`，`activity` 上有 `run.dispatched`（人）→ `run.claimed`（agent） |
+| run 目錄 | `<runs>/<run_id>/{repo,.cliora,artifacts}`，0700 |
+| clone | Traqora 是私有 repo 且這台機器沒有憑證 → **`RUN_SOURCE_UNAVAILABLE`，queued 到 finished 共 2.7 秒** |
+| 使用者的 workspace | 全程未被碰 |
+
+**那 2.7 秒就是出口條件 9**（「缺 git 憑證時 clone 秒級失敗」，而不是掛到六小時的
+牆鐘）。三個 fail-fast 環境變數是它成立的原因，而 idle timer 救不了這一種——
+clone 發生在 `run.accept` 之前，還沒有事件流可以量。
+
+**還沒有跑到的**：一次成功的 run。這台機器上 `runtime.claude` 指向 `fakecli`，
+而 `fakecli` 不接受 `-p`，所以 `runtimes` 是空的——那正是設計要的回報。
+要看到 Agent 真的做事，需要一台裝了真 CLI、而且該 repo 拉得下來的機器
+（＝出口條件 9 的 Traqora 實跑，§4 第 2 條）。
 
 ## 5. 環境事實
 

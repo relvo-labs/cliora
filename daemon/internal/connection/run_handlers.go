@@ -67,14 +67,20 @@ func (m *Manager) runnerRuntimes(ctx context.Context) []string {
 	m.runCapMu.Lock()
 	defer m.runCapMu.Unlock()
 	if m.runCapability != nil {
-		return append([]string(nil), m.runCapability...)
+		return append([]string{}, m.runCapability...)
 	}
-	var capable []string
+	// **Never nil.** A nil slice marshals to `null`, the contract says `runtimes` is an
+	// array, and Central's decoder drops a frame that fails validation *silently* —
+	// which is the exact failure D2 warns about: the message disappears and nothing
+	// reports an error. The empty-set case is not an edge case here either, it is the
+	// designed one: a node whose CLIs are too old registers successfully with no
+	// runtimes (ADR 0029 §7).
+	capable := []string{}
 	if _, err := gitfetch.Available(ctx); err != nil {
 		slog.Warn("runner disabled: git is unavailable",
 			"hint", "git is a runner-mode prerequisite; agentd doctor reports it")
-		m.runCapability = []string{}
-		return nil
+		m.runCapability = capable
+		return capable
 	}
 	for _, id := range sortedRuntimeIDs() {
 		rt, ok := m.registry.Get(id)
@@ -92,7 +98,7 @@ func (m *Manager) runnerRuntimes(ctx context.Context) []string {
 	// process and a reconnect does not re-probe; here that would be worse, because a
 	// stale "not capable" means this runner silently never claims a card while the
 	// console shows a reason that is no longer true (plan/18/04-…md §5.3).
-	m.runCapability = append([]string(nil), capable...)
+	m.runCapability = append([]string{}, capable...)
 	return capable
 }
 

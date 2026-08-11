@@ -193,7 +193,7 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           開始工作
         </button>
 
-        <h4>執行設定<small>（V2.3 起生效）</small></h4>
+        <h4>執行設定<small>（部分自 V2.2 起生效）</small></h4>
         <dl class="execution">
           <dt>來源</dt>
           <dd>{{ task.source }}</dd>
@@ -202,7 +202,14 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           <dt>base branch</dt>
           <dd>{{ task.base_branch ?? "—" }}</dd>
         </dl>
-        <p class="hint">這是意圖宣告：本階段沒有任何執行者會依它行動。</p>
+        <!-- V2.1 寫的是「本階段沒有任何執行者會依它行動」，而那句話在 V2.2 之後
+             不再為真：`source` 的三個值與 `delivery` 的兩個值現在真的會被依循，
+             其餘的在派工當下就被擋下並指名從哪一版開始生效（ADR 0029 §6）。
+             一句過期的「沒有人會照做」比沒有說明更糟。 -->
+        <p class="hint">
+          來源與「不交付／附成產物」自 V2.2 起會被 Agent 依循； 分支與 PR
+          的交付方式在派工當下會被擋下，並說明從哪一版開始生效。
+        </p>
 
         <h4>Session 歷史</h4>
         <ul class="sessions">
