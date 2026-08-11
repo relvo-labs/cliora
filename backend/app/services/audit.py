@@ -137,6 +137,15 @@ SESSION_TOKEN_REVOKE = "session_token.revoke"
 SESSION_CONTEXT_PROJECTION = "session.context_project"
 PROJECT_WORKSPACE_BIND = "project.workspace_bind"
 PROJECT_WORKSPACE_UNBIND = "project.workspace_unbind"
+# --- V2.2 agent runner (ADR 0029) ---
+# `agent.register` is written by the node gateway when a daemon registers, so its actor
+# is the system rather than a person. The other two are a person's decisions and are
+# deliberately separate from `task.update`: queueing work spends compute, and an
+# auditor filtering for "who started a run on a machine" cannot get that from a merged
+# action.
+AGENT_UPDATE = "agent.update"
+RUN_DISPATCH = "run.dispatch"
+RUN_CANCEL = "run.cancel"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -177,6 +186,9 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         PROJECT_ARCHIVE,
         PROJECT_WORKSPACE_BIND,
         PROJECT_WORKSPACE_UNBIND,
+        AGENT_UPDATE,
+        RUN_DISPATCH,
+        RUN_CANCEL,
         TASK_CREATE,
         TASK_UPDATE,
         TASK_GATE_APPROVE,

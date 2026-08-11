@@ -44,6 +44,19 @@ def require_projects_enabled(settings: Settings = Depends(get_settings)) -> None
         raise ApiError("NOT_FOUND", "Not found", status.HTTP_404_NOT_FOUND)
 
 
+def require_agent_runs_enabled(settings: Settings = Depends(get_settings)) -> None:
+    """404 the agent runner layer when `CLIORA_AGENT_RUNS_ENABLED` is off.
+
+    Same shape and same reasoning as `require_projects_enabled`, with one ordering
+    rule that is not optional: this dependency is declared **after** that one on every
+    router that carries both. Reversed, a deployment with the project layer switched
+    off would answer 403 here instead of 404 — and a 403 confirms the route exists,
+    which is exactly what the bare 404 withholds (plan/18/00-…md D12).
+    """
+    if not settings.agent_runs_enabled:
+        raise ApiError("NOT_FOUND", "Not found", status.HTTP_404_NOT_FOUND)
+
+
 async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),

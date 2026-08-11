@@ -556,6 +556,11 @@ export const AUDIT_ACTIONS = [
   "session_token.issue",
   "session_token.revoke",
   "session.context_project",
+  // Agent Runner（ADR 0029）。派工與取消不併進 `task.update`：掛上佇列會在一台機器上
+  // clone 一個 repo 並跑一個程序，與改一個欄位不是同一個量級，而稽核要分得出來。
+  "agent.update",
+  "run.dispatch",
+  "run.cancel",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -758,6 +763,17 @@ export const ACTION_PROJECT_MANAGE = "project.manage";
 export const ACTION_TASK_CREATE = "task.create";
 export const ACTION_TASK_UPDATE = "task.update";
 export const ACTION_TASK_APPROVE = "task.approve";
+
+// V2.2 agent runner (ADR 0029). `agent.view` joins the read-only set for the same
+// reason `node.view` is in it — a runner is part of the shape of the fleet.
+// `agent.manage` is Admin-only from day one **because of what it becomes**: from V2.3
+// it also covers binding a runner to a project, and that binding authorises the runner
+// to read the project's secrets. `run.dispatch` is separate from `task.update` because
+// queueing work clones a repository onto a machine and starts a process there.
+export const ACTION_AGENT_VIEW = "agent.view";
+export const ACTION_AGENT_MANAGE = "agent.manage";
+export const ACTION_RUN_DISPATCH = "run.dispatch";
+export const ACTION_RUN_CANCEL = "run.cancel";
 
 // --- V2.0 project layer (ADR 0027) ---
 

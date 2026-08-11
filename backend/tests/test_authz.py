@@ -283,6 +283,34 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/cli/tasks/{task_id}"): None,
     ("PATCH", "/api/cli/tasks/{task_id}"): None,
     ("GET", "/api/cli/process"): None,
+    # --- V2.2 agent runner (ADR 0029) ---
+    # `agent.view` is a read-only action held by all three roles, like `node.view`.
+    ("GET", "/api/agents"): rbac.AGENT_VIEW,
+    ("GET", "/api/agents/{runner_id}"): rbac.AGENT_VIEW,
+    # Admin-only from day one: from V2.3 this action also covers binding a runner to a
+    # project, and a binding authorises that runner to read the project's secrets. An
+    # action cannot be given to Developer now and narrowed later (ADR 0029 sec 3).
+    ("PATCH", "/api/agents/{runner_id}"): rbac.AGENT_MANAGE,
+    # Registering where a project's code lives is project configuration, not day-to-day
+    # work — and it is the one path where a person's input becomes part of the daemon's
+    # git argv (ADR 0031 sec 5).
+    ("GET", "/api/projects/{project_id}/repositories"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/repositories"): rbac.PROJECT_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/repositories/{repository_id}"): rbac.PROJECT_MANAGE,
+    # Separate from `task.update` because queueing work spends compute: it clones a
+    # repository onto a machine and starts a process there.
+    ("POST", "/api/tasks/{task_id}/dispatch"): rbac.RUN_DISPATCH,
+    ("GET", "/api/tasks/{task_id}/runs"): rbac.PROJECT_VIEW,
+    ("GET", "/api/runs/{run_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/runs/{run_id}/logs"): rbac.PROJECT_VIEW,
+    ("POST", "/api/runs/{run_id}/cancel"): rbac.RUN_CANCEL,
+    # Reading the thread is `project.view`; **writing to it is not**. The upstream plan
+    # had the write at `project.view`, which all three roles hold — that would have been
+    # a Viewer write path, contradicting the read-only viewer promised everywhere else
+    # (plan/18/06-…md §1). `task.update` is also exactly what a run credential carries,
+    # so the agent's route in AR-08 requires the same action rather than a weaker one.
+    ("GET", "/api/tasks/{task_id}/messages"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/messages"): rbac.TASK_UPDATE,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

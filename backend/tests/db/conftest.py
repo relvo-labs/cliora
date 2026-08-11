@@ -107,7 +107,33 @@ def projects_enabled():
     from app.main import app
     from app.settings import Settings, get_settings
 
-    app.dependency_overrides[get_settings] = lambda: Settings(projects_enabled=True)
+    # **Both** flags, because V2.2's routes carry both guards and the inner one 404s
+    # for the same reason the outer one does. Measuring authorization on those routes
+    # with the inner flag off would again record "refused" while meaning "absent"
+    # (ADR 0029; `agent_runs_disabled` covers the other direction).
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        projects_enabled=True, agent_runs_enabled=True
+    )
+    try:
+        yield
+    finally:
+        app.dependency_overrides.pop(get_settings, None)
+
+
+@pytest.fixture
+def agent_runs_disabled():
+    """The project layer on, the agent runner off — the combination that has to 404.
+
+    The two flags are not one flag: a deployment can run the task board without ever
+    letting anything execute unattended, and that deployment must not be able to tell
+    from a response that the runner layer exists at all.
+    """
+    from app.main import app
+    from app.settings import Settings, get_settings
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        projects_enabled=True, agent_runs_enabled=False
+    )
     try:
         yield
     finally:

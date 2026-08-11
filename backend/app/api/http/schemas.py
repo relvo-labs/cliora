@@ -1338,3 +1338,164 @@ class AcceptProposalResultDTO(BaseModel):
     # card_ref -> the readiness items it lacked. A card that landed in `backlog`
     # instead of `ready` has to say why, on the same screen (FR-TASK-005.AC-06).
     incomplete: dict[str, list[str]]
+
+
+# --- V2.2 agent runner (ADR 0029/0030/0031) ---------------------------------
+
+
+class AgentRunnerDTO(BaseModel):
+    """A runner as the console sees it.
+
+    `online`, `active_runs` and `waiting_runs` are **derived**, not columns: a runner
+    is online exactly when its node is, and storing a second copy of that is storing
+    something that can go stale (ADR 0029 sec 1).
+    """
+
+    id: uuid.UUID
+    node_id: uuid.UUID
+    node_name: str
+    name: str
+    runtimes: list[str]
+    # Shown, never compared. Label matching is V2.3; displaying what the node reported
+    # while silently ignoring it would be worse than not showing it, so the console
+    # labels this field accordingly.
+    labels: list[str]
+    max_concurrent: int
+    max_waiting: int
+    enabled: bool
+    # `len(workspace.allowed_roots) == 0` on the node, as **reported** by the daemon.
+    # False means the machine also serves interactive sessions, and an agent running
+    # there can read those directories — the platform does not prevent that and says
+    # so (ADR 0031 sec 6).
+    dedicated: bool
+    online: bool
+    active_runs: int
+    waiting_runs: int
+    registered_at: datetime
+    last_registered_at: datetime | None
+
+
+class UpdateAgentRequest(BaseModel):
+    """`runtimes` and `dedicated` are deliberately absent: they are the daemon's report
+    about the machine, and a field an administrator can type would make the console
+    display the posture somebody wished for (ADR 0023 D3)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    enabled: bool | None = None
+    max_concurrent: int | None = Field(default=None, ge=0, le=64)
+    max_waiting: int | None = Field(default=None, ge=0, le=64)
+    labels: list[str] | None = None
+
+
+class ProjectRepositoryDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    scheme: str
+    host: str
+    path: str
+    default_branch: str
+    label: str | None
+    # Assembled from the three fields for display. There is no stored URL anywhere,
+    # which is what makes a credential in one impossible rather than filtered.
+    url: str
+    created_at: datetime
+
+
+class CreateRepositoryRequest(BaseModel):
+    """Three fields, **never a URL**.
+
+    An endpoint that accepted a URL would receive `https://user:token@host/…` on its
+    first day, and that token would then live in the database, in `git remote -v`, in
+    the reflog and in error messages. Split like this, userinfo cannot be expressed
+    (ADR 0031 sec 5). An OpenAPI assertion in AR-12 pins the absence of a `url` field.
+    """
+
+    scheme: Literal["https", "ssh"]
+    host: str = Field(min_length=1, max_length=255)
+    path: str = Field(min_length=1, max_length=512)
+    default_branch: str = Field(min_length=1, max_length=255)
+    label: str | None = Field(default=None, max_length=128)
+
+
+class DispatchRequest(BaseModel):
+    # Absent means "any eligible runner", which is the default. Naming one makes it a
+    # `WHERE` clause in that runner's own poll query — never a push (ADR 0029 sec 3).
+    assigned_runner_id: uuid.UUID | None = None
+
+
+class DispatchResponseDTO(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    # "any" | "assigned_offline" | "no_eligible_runner". Computed on the server because
+    # it needs the eligibility query; the three pieces of UI copy behind it must differ
+    # word for word, or a person cannot tell "I misconfigured this" from "wait".
+    waiting_reason: str
+
+
+class TaskRunDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    project_id: uuid.UUID
+    seq: int
+    status: str
+    attempt: int
+    runner_id: uuid.UUID | None
+    runner_name: str | None
+    assigned_runner_id: uuid.UUID | None
+    runtime: str | None
+    source_kind: str | None
+    source_ref: str | None
+    # Which version of the code this run actually executed. Reported by the runner
+    # once the worktree exists.
+    commit_sha: str | None
+    disk_bytes: int | None
+    queued_at: datetime
+    claimed_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    # "is the child making progress", as opposed to the lease's "is the runner alive".
+    last_event_at: datetime | None
+    result: str | None
+    error_code: str | None
+    summary: str | None
+    log_bytes: int
+    log_truncated_bytes: int
+
+
+class RunLogLineDTO(BaseModel):
+    seq: int
+    # The stored segment, returned **unparsed**. The event schema belongs to a
+    # third-party CLI and changes with its version; parsing it here would make that
+    # schema part of our API (plan/18/06-…md §2.1).
+    data: str
+    truncated: bool
+    received_at: datetime
+
+
+class RunLogPageDTO(BaseModel):
+    lines: list[RunLogLineDTO]
+    next_after_seq: int | None
+    log_bytes: int
+    truncated_bytes: int
+
+
+class TaskMessageDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    run_id: uuid.UUID | None
+    author_kind: str
+    author_user_id: uuid.UUID | None
+    author_name: str | None
+    author_runner_id: uuid.UUID | None
+    body: str
+    kind: str
+    event_kind: str | None
+    created_at: datetime
+
+
+class PostMessageRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=20000)
+    # `question` puts the run into `waiting_for_input` and makes the card say "waiting
+    # for your reply" — readable from the thread alone, without consulting run state
+    # for every card on a board.
+    kind: Literal["message", "question", "answer"] = "message"

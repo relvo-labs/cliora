@@ -68,6 +68,16 @@ REQUIREMENT_SPEC_ADDED = "requirement.spec_added"
 REQUIREMENT_APPROVED = "requirement.approved"
 PROPOSAL_ACCEPTED = "requirement.proposal_accepted"
 
+# --- V2.2: the agent runner (ADR 0029) ---
+# Only kinds with a write site in this phase. `test_every_activity_kind_has_a_write_site`
+# fails in both directions, so a kind added ahead of its writer is as loud as a missing
+# one — `run.claimed` and `run.finished` arrive with the queue service that emits them.
+RUN_DISPATCHED = "run.dispatched"
+# A card's conversation is also stored in `task_messages`; this kind is the project
+# timeline's view of the same act. The two have different readers, which is why both
+# exist (ADR 0029). System events are **not** posted here — they already are activity.
+TASK_MESSAGE_POSTED = "task.message_posted"
+
 # The closed vocabulary. V2.1 adds task kinds, V2.2 adds run kinds.
 ALL_KINDS: frozenset[str] = frozenset(
     {
@@ -88,6 +98,8 @@ ALL_KINDS: frozenset[str] = frozenset(
         REQUIREMENT_SPEC_ADDED,
         REQUIREMENT_APPROVED,
         PROPOSAL_ACCEPTED,
+        RUN_DISPATCHED,
+        TASK_MESSAGE_POSTED,
     }
 )
 

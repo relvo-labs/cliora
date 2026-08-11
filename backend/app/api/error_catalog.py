@@ -976,6 +976,91 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "the budget to match the provider plan.",
             origin=DAEMON,
         ),
+        # --- V2.2 agent runner: dispatch (ADR 0029) ---
+        # The order these can occur in is fixed (plan/18/00-…md D13) precisely so that
+        # the *first* thing a person is told is the thing they can act on.
+        _entry(
+            "TASK_NOT_READY",
+            status.HTTP_409_CONFLICT,
+            "Only a card in the ready lane can be dispatched to an agent",
+            "The card is in another lane. Dispatch is an execution action, and a card "
+            "that is not ready has not been agreed to be worked on yet.",
+            "Move the card to Ready first.",
+        ),
+        _entry(
+            "RUN_ALREADY_ACTIVE",
+            status.HTTP_409_CONFLICT,
+            "This card already has a run in progress",
+            "A card has at most one run in flight; a second would mean two agents "
+            "changing the same work with no way to reconcile them.",
+            "Wait for the run to finish, or cancel it first.",
+        ),
+        _entry(
+            "RUN_NOT_ACTIVE",
+            status.HTTP_409_CONFLICT,
+            "This run has already finished",
+            "Cancel only applies to a run that is queued or running.",
+            "Look at the run's result; if it needs doing again, dispatch the card again.",
+        ),
+        _entry(
+            "TASK_REQUIRES_SECRETS",
+            status.HTTP_409_CONFLICT,
+            "Cards that declare required secrets can be dispatched from V2.3",
+            "The card names secrets it needs, and this version manages no secrets at "
+            "all. Accepting the dispatch would run the card **without** them, which "
+            "looks like a broken agent rather than a missing feature.",
+            "Remove the declaration to run without them, or wait for V2.3.",
+        ),
+        _entry(
+            "TASK_DELIVERY_UNSUPPORTED",
+            status.HTTP_409_CONFLICT,
+            "That delivery mode takes effect in a later version",
+            "This version delivers by attaching artifacts to the card. Branches and "
+            "pull requests arrive with the platform's own git write path.",
+            "Set delivery to none or artifact for now; the response names the version "
+            "the declared mode starts working in.",
+        ),
+        _entry(
+            "PROJECT_NO_REPOSITORY",
+            status.HTTP_409_CONFLICT,
+            "This project has no repository registered",
+            "An agent fetches the code itself, so the platform has to know where the "
+            "code is. Nothing on the card can supply that — it is project settings.",
+            "Register the repository in the project's settings, then dispatch again. "
+            "The response carries a link to the right page.",
+        ),
+        _entry(
+            "REPOSITORY_HOST_NOT_ALLOWED",
+            status.HTTP_400_BAD_REQUEST,
+            "This deployment does not allow repositories on that host",
+            "Two allowlists apply: the deployment's and each node's. This is the "
+            "deployment's, and it is empty until an administrator sets it.",
+            "Ask an administrator to add the host to CLIORA_GIT_ALLOWED_HOSTS.",
+        ),
+        _entry(
+            "REPOSITORY_EXISTS",
+            status.HTTP_409_CONFLICT,
+            "That repository is already registered for this project",
+            "A project may list several repositories, but not the same one twice.",
+            "Use the existing entry, or remove it first if the branch needs changing.",
+        ),
+        _entry(
+            "AGENT_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "That agent is disabled",
+            "The card named a specific agent, and it is switched off. This is refused "
+            "at dispatch rather than queued, because a disabled agent is a decision "
+            "somebody made rather than a machine that will come back.",
+            "Enable the agent, or dispatch without naming one.",
+        ),
+        _entry(
+            "AGENT_RUNTIME_MISMATCH",
+            status.HTTP_409_CONFLICT,
+            "That agent does not offer the runtime this card needs",
+            "The named node reported no usable non-interactive interface for the "
+            "runtime required — often because that CLI is installed but too old.",
+            "Pick another agent, or update the CLI on that node and let it re-register.",
+        ),
     ]
 )
 

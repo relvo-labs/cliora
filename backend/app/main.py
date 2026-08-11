@@ -22,6 +22,7 @@ from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.api.errors import install_error_handlers
+from app.api.http.agents import router as agents_router
 from app.api.http.audit import router as audit_router
 from app.api.http.auth import router as auth_router
 from app.api.http.dashboard import router as dashboard_router
@@ -158,6 +159,11 @@ app.include_router(projects_router)
 # Same unconditional mount, same router-level `require_projects_enabled` (ADR 0028).
 app.include_router(tasks_router)
 app.include_router(requirements_router)
+# V2.2. Unconditional mount again, with **two** router-level guards whose order is
+# load-bearing: projects first, agent runs second, so a deployment with the project
+# layer off answers 404 rather than a 403 that would confirm the route exists
+# (ADR 0029, plan/18/00-…md D12).
+app.include_router(agents_router)
 # The agent surface: four routes on their own prefix, authenticated by a session
 # credential rather than by a user session (ADR 0028 sec 3).
 app.include_router(agent_tasks_router)

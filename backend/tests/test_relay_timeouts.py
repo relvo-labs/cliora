@@ -90,7 +90,17 @@ def test_every_relay_budget_is_published() -> None:
     settings = _defaults()
     declared = {name for name, _, _ in PUBLISHED_BUDGETS}
     # Budgets that are not relay round trips to a daemon.
-    not_a_relay_budget = {"db_pool_timeout_seconds", "metrics_gauge_timeout_seconds"}
+    #
+    # `run_lease_timeout_seconds` joins them in V2.2 and is worth naming: a lease is
+    # not a request waiting for an answer, it is how long Central waits before
+    # concluding a runner has died. Nothing is held open on it, and publishing it as a
+    # relay budget would put a number in FR-CONN-006 that no round trip obeys
+    # (ADR 0029 sec 4).
+    not_a_relay_budget = {
+        "db_pool_timeout_seconds",
+        "metrics_gauge_timeout_seconds",
+        "run_lease_timeout_seconds",
+    }
     found = {
         name
         for name in Settings.model_fields

@@ -587,6 +587,70 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "關閉不再需要的隧道，或請管理員把預算調整為與服務商方案一致。",
     retryable: false,
   },
+  // Agent Runner（ADR 0029）。這一組全部發生在「派工」那一刻，而它們的順序是設計的一
+  // 部分：先擋卡片本身的問題，再擋本期做不到的宣告，最後才是設定與 Agent。
+  TASK_NOT_READY: {
+    cause:
+      "只有在「就緒」車道的卡片可以派給 Agent。派工是一個執行動作，而還沒進就緒的卡片代表還沒有人同意要動工。",
+    nextStep: "先把卡片移到「就緒」。",
+    retryable: false,
+  },
+  RUN_ALREADY_ACTIVE: {
+    cause:
+      "一張卡同時只會有一次執行。兩個 Agent 同時改同一份工作，沒有辦法合併結果。",
+    nextStep: "等這次執行結束，或先取消它。",
+    retryable: false,
+  },
+  RUN_NOT_ACTIVE: {
+    cause: "取消只對排隊中或執行中的 run 有意義。",
+    nextStep: "看一下這次執行的結果；若要重做，重新派工一次。",
+    retryable: false,
+  },
+  TASK_REQUIRES_SECRETS: {
+    cause:
+      "這張卡宣告了它需要的機密，而本階段完全不管理機密。接受派工等於讓它在**沒有那些機密**的情況下執行，" +
+      "而那看起來會像 Agent 壞掉，不像缺少功能。",
+    nextStep: "移除該宣告以在沒有機密的情況下執行，或等 V2.3。",
+    retryable: false,
+  },
+  TASK_DELIVERY_UNSUPPORTED: {
+    cause:
+      "本階段的交付方式是把產物附加到卡片上；分支與 PR 要等平台自己的 git 寫入路徑。",
+    nextStep:
+      "先把交付方式設成「不交付」或「附成產物」；回應會指名宣告的模式從哪一版開始生效。",
+    retryable: false,
+  },
+  PROJECT_NO_REPOSITORY: {
+    cause:
+      "Agent 會自己把程式碼拉下來，所以平台必須知道程式碼在哪裡。這不是卡片上的欄位能回答的——它是專案設定。",
+    nextStep:
+      "到專案設定登記 repository 之後再派工一次；回應帶著那一頁的連結。",
+    retryable: false,
+  },
+  REPOSITORY_HOST_NOT_ALLOWED: {
+    cause:
+      "有兩份允許清單：這個部署的，以及每一台 Node 的。這是部署的那一份，而它在管理員設定之前是空的。",
+    nextStep: "請管理員把該 host 加進 CLIORA_GIT_ALLOWED_HOSTS。",
+    retryable: false,
+  },
+  REPOSITORY_EXISTS: {
+    cause: "一個專案可以登記多個 repository，但同一個不能登記兩次。",
+    nextStep: "直接用既有的那一筆；若要改分支，先移除再重新登記。",
+    retryable: false,
+  },
+  AGENT_DISABLED: {
+    cause:
+      "卡片指定了一個被停用的 Agent。這在派工當下就擋下而不是排進佇列，因為「被停用」是有人做的決定，" +
+      "不是一台等一下會回來的機器。",
+    nextStep: "啟用那個 Agent，或不指定 Agent 直接派工。",
+    retryable: false,
+  },
+  AGENT_RUNTIME_MISMATCH: {
+    cause:
+      "被指定的 Node 沒有回報這張卡需要的執行環境——常見原因是那支 CLI 有裝但版本太舊，偵測不到非互動介面。",
+    nextStep: "改指定別的 Agent，或更新那台機器上的 CLI 並讓它重新註冊。",
+    retryable: false,
+  },
 };
 
 // A code with no entry still gets guidance rather than a blank panel: an unknown code

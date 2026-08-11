@@ -219,6 +219,24 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "UPDATE_IN_PROGRESS",
         ),
     ),
+    (
+        # One section rather than two, in the order a person hits them: everything
+        # here is a refusal at dispatch, and the order the checks run in is itself a
+        # decision (ADR 0029, plan/18/00-…md D13).
+        "Agent runner",
+        (
+            "TASK_NOT_READY",
+            "RUN_ALREADY_ACTIVE",
+            "RUN_NOT_ACTIVE",
+            "TASK_REQUIRES_SECRETS",
+            "TASK_DELIVERY_UNSUPPORTED",
+            "PROJECT_NO_REPOSITORY",
+            "REPOSITORY_HOST_NOT_ALLOWED",
+            "REPOSITORY_EXISTS",
+            "AGENT_DISABLED",
+            "AGENT_RUNTIME_MISMATCH",
+        ),
+    ),
 ]
 
 
