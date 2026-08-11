@@ -49,6 +49,13 @@ import type {
   UpdateTunnelIntegrationInput,
   User,
   WorkspaceFavorite,
+  AgentRunner,
+  ProjectRepository,
+  DispatchResult,
+  TaskRun,
+  RunLogPage,
+  TaskMessage,
+  TaskArtifact,
 } from "./dto";
 
 export class ApiError extends Error {
@@ -893,6 +900,155 @@ export class ApiClient {
       });
     }
     return this.refreshInFlight;
+  }
+
+  // --- V2.2: agent runners, runs, messages and artifacts (ADR 0029/0030) ---
+  //
+  // Every one of these answers **404** when either flag is off, and the browser is
+  // expected to know that from `User.features` rather than by probing. That is the
+  // same contract the project layer already has, and the reason both flags answer 404
+  // rather than 403: a 403 would confirm the route exists.
+
+  listAgents(): Promise<AgentRunner[]> {
+    return this.request("GET", "/api/agents");
+  }
+
+  getAgent(id: string): Promise<AgentRunner> {
+    return this.request("GET", `/api/agents/${encodeURIComponent(id)}`);
+  }
+
+  updateAgent(
+    id: string,
+    input: {
+      name?: string;
+      enabled?: boolean;
+      max_concurrent?: number;
+      max_waiting?: number;
+      labels?: string[];
+    },
+  ): Promise<AgentRunner> {
+    return this.request(
+      "PATCH",
+      `/api/agents/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  listProjectRepositories(projectId: string): Promise<ProjectRepository[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories`,
+    );
+  }
+
+  // Three fields, **never a URL**. An endpoint that took a URL would receive
+  // `https://user:token@host/…` on its first day, and that token would then live in
+  // the database, in `git remote -v` and in error messages (ADR 0031 §5).
+  createProjectRepository(
+    projectId: string,
+    input: {
+      scheme: "https" | "ssh";
+      host: string;
+      path: string;
+      default_branch: string;
+      label?: string;
+    },
+  ): Promise<ProjectRepository> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories`,
+      input,
+    );
+  }
+
+  deleteProjectRepository(
+    projectId: string,
+    repositoryId: string,
+  ): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repositoryId)}`,
+    );
+  }
+
+  dispatchTask(
+    taskId: string,
+    input?: { assigned_runner_id?: string },
+  ): Promise<DispatchResult> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/dispatch`,
+      input ?? {},
+    );
+  }
+
+  listTaskRuns(taskId: string): Promise<TaskRun[]> {
+    return this.request("GET", `/api/tasks/${encodeURIComponent(taskId)}/runs`);
+  }
+
+  getRun(runId: string): Promise<TaskRun> {
+    return this.request("GET", `/api/runs/${encodeURIComponent(runId)}`);
+  }
+
+  // Paged, not streamed. A run's log lands at most every two seconds because Central
+  // aggregates before writing, so polling is enough — and the alternative would be a
+  // second real-time channel beside the terminal relay, which is the one thing this
+  // phase should not touch.
+  getRunLogs(runId: string, afterSeq?: number): Promise<RunLogPage> {
+    const query = afterSeq === undefined ? "" : `?after_seq=${afterSeq}`;
+    return this.request(
+      "GET",
+      `/api/runs/${encodeURIComponent(runId)}/logs${query}`,
+    );
+  }
+
+  cancelRun(runId: string): Promise<TaskRun> {
+    return this.request(
+      "POST",
+      `/api/runs/${encodeURIComponent(runId)}/cancel`,
+    );
+  }
+
+  listTaskMessages(taskId: string, since?: string): Promise<TaskMessage[]> {
+    const query = since ? `?since=${encodeURIComponent(since)}` : "";
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/messages${query}`,
+    );
+  }
+
+  postTaskMessage(
+    taskId: string,
+    input: { body: string; kind?: "message" | "question" | "answer" },
+  ): Promise<TaskMessage> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/messages`,
+      input,
+    );
+  }
+
+  listTaskArtifacts(taskId: string): Promise<TaskArtifact[]> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/artifacts`,
+    );
+  }
+
+  deleteArtifact(artifactId: string, reason: string): Promise<TaskArtifact> {
+    return this.request(
+      "DELETE",
+      `/api/artifacts/${encodeURIComponent(artifactId)}`,
+      { reason },
+    );
+  }
+
+  // **A URL, never a fetch-and-render.** The download endpoint always answers with
+  // `attachment` plus `nosniff` plus a `sandbox` CSP, so pointing an anchor at it is
+  // the whole interaction — and there is deliberately no code anywhere in this app
+  // that puts an artifact's bytes into the DOM (ADR 0030 Part B).
+  artifactDownloadUrl(artifactId: string): string {
+    return `${BASE}/api/artifacts/${encodeURIComponent(artifactId)}`;
   }
 
   private raw(

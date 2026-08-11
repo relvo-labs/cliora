@@ -7,6 +7,8 @@ import {
   ACTION_ENROLLMENT_MANAGE,
   ACTION_INTEGRATION_MANAGE,
   ACTION_PROJECT_VIEW,
+  ACTION_AGENT_VIEW,
+  FEATURE_AGENT_RUNS,
   FEATURE_PROJECTS,
 } from "../../api/dto";
 import { useAuthStore } from "../../stores/auth";
@@ -41,6 +43,14 @@ const showProjects = computed(
   () =>
     auth.hasFeature(FEATURE_PROJECTS) &&
     auth.hasPermission(ACTION_PROJECT_VIEW),
+);
+// The same two-condition rule one level in. `agent_runs` is only ever present when
+// `projects` is, so this cannot show an Agents entry in a deployment that has the
+// outer layer switched off.
+const showAgents = computed(
+  () =>
+    auth.hasFeature(FEATURE_AGENT_RUNS) &&
+    auth.hasPermission(ACTION_AGENT_VIEW),
 );
 
 interface NavEntry {
@@ -106,12 +116,18 @@ const entries = computed<NavEntry[]>(() => {
   // `Projects` and `Sessions` are single-entry groups, so they render as plain rows
   // — a heading whose only child repeats it is two rows saying one thing. Only
   // `Infrastructure` is genuinely two levels.
-  return [
+  const rail: NavEntry[] = [
     { kind: "link", label: "Projects", icon: "▦", route: "projects" },
     sessions,
-    { kind: "group", label: "Infrastructure" },
-    ...infrastructure,
   ];
+  // Between the work and the machines, because that is what it is: an agent is a
+  // machine doing the work, and putting it under Infrastructure would file it with
+  // things an operator maintains rather than things a developer uses.
+  if (showAgents.value) {
+    rail.push({ kind: "link", label: "Agents", icon: "◆", route: "agents" });
+  }
+  rail.push({ kind: "group", label: "Infrastructure" }, ...infrastructure);
+  return rail;
 });
 
 async function logout(): Promise<void> {

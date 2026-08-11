@@ -87,6 +87,25 @@ routes.push({
   component: () => import("../views/RequirementDetailView.vue"),
   props: true,
 });
+// V2.2. No permission guard and no feature guard, for the same reason as every route
+// above: a client-side guard decides what renders, not what is allowed. Reaching these
+// without `agent.view`, or in a deployment with either flag off, shows the state driven
+// by the server's own 403 or 404 (ADR 0029).
+//
+// **Neither of these renders an artifact.** That is asserted rather than assumed: the
+// artifact download endpoint always answers `attachment`, and criterion 14 compares
+// this table against the one captured before the phase started.
+routes.push({
+  path: "/agents",
+  name: "agents",
+  component: () => import("../views/AgentsView.vue"),
+});
+routes.push({
+  path: "/projects/:id/runs/:runId",
+  name: "run-detail",
+  component: () => import("../views/RunDetailView.vue"),
+  props: true,
+});
 routes.push({
   path: "/sessions",
   name: "sessions",

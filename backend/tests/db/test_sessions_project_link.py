@@ -279,9 +279,31 @@ async def test_features_reports_the_deployment_not_the_person(
 
 
 async def test_features_lists_projects_when_enabled(api: tuple, projects_enabled: None) -> None:
+    """The fixture turns **both** flags on, so both strings appear.
+
+    That is the shape ADR 0027 anticipated — "V2.2 adds one string rather than a new
+    response shape" — and it is also why the list is asserted whole rather than by
+    membership: a `features` array that quietly grew a string the console does not know
+    about would show a navigation entry pointing at a 404.
+    """
     client, maker = api
     _, headers = await _admin(client, maker)
-    assert (await client.get("/api/auth/me", headers=headers)).json()["features"] == ["projects"]
+    body = (await client.get("/api/auth/me", headers=headers)).json()
+    assert body["features"] == ["projects", "agent_runs"]
+
+
+async def test_features_omits_agent_runs_when_only_the_outer_flag_is_on(
+    api: tuple, agent_runs_disabled: None
+) -> None:
+    """The nested case, which is the one that would break the console.
+
+    `agent_runs` is only ever present alongside `projects`. A deployment running the
+    task board without unattended execution must not be offered an Agents page.
+    """
+    client, maker = api
+    _, headers = await _admin(client, maker)
+    body = (await client.get("/api/auth/me", headers=headers)).json()
+    assert body["features"] == ["projects"]
 
 
 # --- the ad-hoc path is untouched ------------------------------------------ #

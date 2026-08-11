@@ -56,6 +56,13 @@ class UserResponse(BaseModel):
         features: list[str] = []
         if resolved.projects_enabled:
             features.append("projects")
+        # One more string, exactly as the comment above anticipated — not a new response
+        # shape. **Both flags**, because the runner layer is the inner of two: a
+        # deployment with the project layer off does not have agent runs either, and a
+        # `features` array that said otherwise would have the console offer a page that
+        # answers 404.
+        if resolved.projects_enabled and resolved.agent_runs_enabled:
+            features.append("agent_runs")
         return cls(
             id=user.id,
             username=user.username,

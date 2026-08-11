@@ -33,6 +33,9 @@ export interface User {
 
 /** Feature keys carried by `User.features` (ADR 0027). V2.2 adds `agent_runs`. */
 export const FEATURE_PROJECTS = "projects";
+// The inner of the two flags: present only when the project layer is on as well,
+// because the runner layer is nested inside it (ADR 0029).
+export const FEATURE_AGENT_RUNS = "agent_runs";
 
 export interface LoginResponse {
   tokens: TokenPair;
@@ -1062,4 +1065,141 @@ export interface RequirementDetail extends Requirement {
 export interface AcceptProposalResult {
   created: Task[];
   incomplete: Record<string, string[]>;
+}
+
+// --- V2.2 agent runner (ADR 0029/0030/0031) --------------------------------
+
+export interface AgentRunner {
+  id: string;
+  node_id: string;
+  node_name: string;
+  name: string;
+  runtimes: string[];
+  // Shown and **never compared** in V2.2. The console labels the field accordingly:
+  // displaying what the node reported while silently ignoring it would be worse than
+  // not showing it at all.
+  labels: string[];
+  max_concurrent: number;
+  max_waiting: number;
+  enabled: boolean;
+  // `len(workspace.allowed_roots) === 0` on the node, **as reported by the daemon**.
+  // False means the machine also serves interactive sessions, and an agent running
+  // there can read those directories — the platform does not prevent that and the
+  // Agents page says so rather than implying an isolation that does not exist.
+  dedicated: boolean;
+  online: boolean;
+  active_runs: number;
+  waiting_runs: number;
+  registered_at: string;
+  last_registered_at: string | null;
+}
+
+export interface ProjectRepository {
+  id: string;
+  project_id: string;
+  scheme: "https" | "ssh";
+  host: string;
+  path: string;
+  default_branch: string;
+  label: string | null;
+  // Assembled by the server from the three fields, for display. There is no stored URL
+  // anywhere, which is what makes a credential in one impossible rather than filtered.
+  url: string;
+  created_at: string;
+}
+
+export interface DispatchResult {
+  run_id: string;
+  status: string;
+  // "any" | "assigned_offline" | "no_eligible_runner". The three pieces of copy behind
+  // this must read differently, or a person cannot tell "I misconfigured something"
+  // from "wait a moment".
+  waiting_reason: string;
+}
+
+export type RunStatus =
+  | "queued"
+  | "claimed"
+  | "running"
+  | "waiting_for_input"
+  | "succeeded"
+  | "failed"
+  | "lost"
+  | "cancelled";
+
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  project_id: string;
+  seq: number;
+  status: RunStatus;
+  attempt: number;
+  runner_id: string | null;
+  runner_name: string | null;
+  assigned_runner_id: string | null;
+  runtime: string | null;
+  source_kind: string | null;
+  source_ref: string | null;
+  commit_sha: string | null;
+  disk_bytes: number | null;
+  queued_at: string;
+  claimed_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  // "is the child progressing", as opposed to the lease's "is the runner alive".
+  last_event_at: string | null;
+  result: string | null;
+  error_code: string | null;
+  summary: string | null;
+  log_bytes: number;
+  log_truncated_bytes: number;
+}
+
+export interface RunLogLine {
+  seq: number;
+  // The stored segment, **unparsed**. The event schema belongs to a third-party CLI
+  // and changes with its version; parsing it here would make that schema part of this
+  // application.
+  data: string;
+  truncated: boolean;
+  received_at: string;
+}
+
+export interface RunLogPage {
+  lines: RunLogLine[];
+  next_after_seq: number | null;
+  log_bytes: number;
+  truncated_bytes: number;
+}
+
+export interface TaskMessage {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  author_kind: "user" | "agent" | "system";
+  author_user_id: string | null;
+  author_name: string | null;
+  author_runner_id: string | null;
+  body: string;
+  kind: "message" | "question" | "answer" | "event";
+  event_kind: string | null;
+  created_at: string;
+}
+
+export interface TaskArtifact {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  message_id: string | null;
+  filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  uploaded_by_kind: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_runner_id: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  delete_reason: string | null;
+  previewable: boolean;
 }
