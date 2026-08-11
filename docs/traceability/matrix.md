@@ -4,6 +4,64 @@
 
 | Requirement | Criterion | Source text | Plan/design | Implementation | Verification |
 |---|---|---|---|---|---|
+| FR-AGENT-001 | [FR-AGENT-001.AC-01](../../research/prd.md#fr-agent-001-ac-01) | Runner 是既有節點程式的一種模式；不得新增任何建立信任關係的流程， | — | — | — |
+| FR-AGENT-001 | [FR-AGENT-001.AC-02](../../research/prd.md#fr-agent-001-ac-02) | Runner 的上線狀態即該節點的上線狀態；不得另設一套心跳或另一個線上旗標。 | — | — | — |
+| FR-AGENT-001 | [FR-AGENT-001.AC-03](../../research/prd.md#fr-agent-001-ac-03) | 一台節點至多對應一列 Runner；其可執行的執行環境是一個集合， | — | — | — |
+| FR-AGENT-001 | [FR-AGENT-001.AC-04](../../research/prd.md#fr-agent-001-ac-04) | 節點須回報自己是否為專用 Runner（未設定任何 Allowed Root）， | — | — | — |
+| FR-AGENT-001 | [FR-AGENT-001.AC-05](../../research/prd.md#fr-agent-001-ac-05) | 未具備 Runner 能力的舊版節點須繼續正常提供互動式 Session，且永不被指派工單。 | — | — | — |
+| FR-AGENT-003 | [FR-AGENT-003.AC-01](../../research/prd.md#fr-agent-003-ac-01) | 認領是 Runner 主動的；平台不得推送、不得自動指派、不得排程最佳化或負載平衡。 | — | — | — |
+| FR-AGENT-003 | [FR-AGENT-003.AC-02](../../research/prd.md#fr-agent-003-ac-02) | 資格判定為四條件且全部成立才成立：卡片在「就緒」車道、其所有前置任務均已完成、 | — | — | — |
+| FR-AGENT-003 | [FR-AGENT-003.AC-03](../../research/prd.md#fr-agent-003-ac-03) | 本階段的授權邊界是節點納管：任一已納管節點上的 Runner 皆可領取任何專案的卡片。 | — | — | — |
+| FR-AGENT-003 | [FR-AGENT-003.AC-04](../../research/prd.md#fr-agent-003-ac-04) | 兩個 Runner 同時對同一張卡片提出認領時，只有一個成立； | — | — | — |
+| FR-AGENT-003 | [FR-AGENT-003.AC-05](../../research/prd.md#fr-agent-003-ac-05) | 本階段不比對標籤，也不檢查專案與 Agent 的綁定；Runner 的標籤與卡片要求的標籤顯示但不比對。 | — | — | — |
+| FR-AGENT-004 | [FR-AGENT-004.AC-01](../../research/prd.md#fr-agent-004-ac-01) | 執行中的工單持有租約並週期續租；租約逾時者標記為失聯，其嘗試次數加一並重新排入佇列。 | — | — | — |
+| FR-AGENT-004 | [FR-AGENT-004.AC-02](../../research/prd.md#fr-agent-004-ac-02) | 重排次數達上限（三次）後，卡片進入「阻塞」車道，並記錄可讀的原因。 | — | — | — |
+| FR-AGENT-004 | [FR-AGENT-004.AC-03](../../research/prd.md#fr-agent-004-ac-03) | 被指定 Runner 的卡片重排後仍只提供給原本被指定的那一個，不得退回給任意 Runner。 | — | — | — |
+| FR-AGENT-004 | [FR-AGENT-004.AC-04](../../research/prd.md#fr-agent-004-ac-04) | 租約回收須能跨平台重啟後仍然生效，不得倚賴僅存在於記憶體中的計時器。 | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-01](../../research/prd.md#fr-agent-005-ac-01) | Run 有自己的狀態機；執行過程不得寫入任何 Session 紀錄—— | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-02](../../research/prd.md#fr-agent-005-ac-02) | Run 不得使用互動式終端的傳輸路徑、不佔用寫入者名額、不建立終端多工工作階段。 | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-03](../../research/prd.md#fr-agent-005-ac-03) | 三個計時器各自回答不同的問題且不得混用：租約回答「Runner 是否還在」（逾時即重排）、 | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-04](../../research/prd.md#fr-agent-005-ac-04) | 存活判定以執行環境提供的事件流為準，不以牆鐘為準。 | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-05](../../research/prd.md#fr-agent-005-ac-05) | 取消一個 Run 須終止其整個程序群組；終止後該程序群組下不得殘留任何程序。 | — | — | — |
+| FR-AGENT-005 | [FR-AGENT-005.AC-06](../../research/prd.md#fr-agent-005-ac-06) | 等待人類回覆的 Run 續租但不累計執行逾時，且不佔用並行執行上限； | — | — | — |
+| FR-AGENT-006 | [FR-AGENT-006.AC-01](../../research/prd.md#fr-agent-006-ac-01) | Run 記錄有大小上限；超過時自中間截斷並明示被丟棄的位元組數。 | — | — | — |
+| FR-AGENT-006 | [FR-AGENT-006.AC-02](../../research/prd.md#fr-agent-006-ac-02) | Run 記錄的內容是執行環境的結構化事件流而非終端位元組；截斷不得切斷一筆事件。 | — | — | — |
+| FR-AGENT-006 | [FR-AGENT-006.AC-03](../../research/prd.md#fr-agent-006-ac-03) | 所有 Run 記錄在離開節點前都須經過去識別處理的掛勾點， | — | — | — |
+| FR-AGENT-006 | [FR-AGENT-006.AC-04](../../research/prd.md#fr-agent-006-ac-04) | Run 記錄有保留期（成功較短、失敗較長）並自動刪除； | — | — | — |
+| FR-AGENT-006 | [FR-AGENT-006.AC-05](../../research/prd.md#fr-agent-006-ac-05) | Run 記錄的傳送不得使互動式終端的回應延遲明顯變差； | — | — | — |
+| FR-AGENT-007 | [FR-AGENT-007.AC-01](../../research/prd.md#fr-agent-007-ac-01) | Agent 可在卡片上留言；訊息串須能區分人類、Agent 與系統三種來源。 | — | — | — |
+| FR-AGENT-007 | [FR-AGENT-007.AC-02](../../research/prd.md#fr-agent-007-ac-02) | Agent 可在卡片上提問；提問後該 Run 進入等待回覆狀態，卡片明白顯示「等待你的回覆」。 | — | — | — |
+| FR-AGENT-007 | [FR-AGENT-007.AC-03](../../research/prd.md#fr-agent-007-ac-03) | 人類回覆後，Agent 須能取得該回覆並繼續執行。 | — | — | — |
+| FR-AGENT-007 | [FR-AGENT-007.AC-04](../../research/prd.md#fr-agent-007-ac-04) | 逾時（24 小時）未獲回覆的提問，卡片自動退回「阻塞」車道並記錄原因。 | — | — | — |
+| FR-AGENT-008 | [FR-AGENT-008.AC-01](../../research/prd.md#fr-agent-008-ac-01) | 派工時可指定也可不指定 Agent，預設不指定。 | — | — | — |
+| FR-AGENT-008 | [FR-AGENT-008.AC-02](../../research/prd.md#fr-agent-008-ac-02) | 指定一個已停用或執行環境不符的 Agent 時，派工當下即拒絕且不進入佇列， | — | — | — |
+| FR-AGENT-008 | [FR-AGENT-008.AC-03](../../research/prd.md#fr-agent-008-ac-03) | 指定的 Agent 目前離線時接受派工並進入佇列，卡片顯示等待該 Agent 且標示其離線； | — | — | — |
+| FR-AGENT-008 | [FR-AGENT-008.AC-04](../../research/prd.md#fr-agent-008-ac-04) | 本階段做不到的宣告須在派工當下拒絕並說明自哪一個階段起生效， | — | — | — |
+| FR-AGENT-009 | [FR-AGENT-009.AC-01](../../research/prd.md#fr-agent-009-ac-01) | Run 執行期間隨時可附加產物；附加能力不以卡片上的交付宣告為前提。 | — | — | — |
+| FR-AGENT-009 | [FR-AGENT-009.AC-02](../../research/prd.md#fr-agent-009-ac-02) | 產物儲存於平台而非節點；節點上的執行目錄被回收之後，產物仍可下載。 | — | — | — |
+| FR-AGENT-009 | [FR-AGENT-009.AC-03](../../research/prd.md#fr-agent-009-ac-03) | 產物不可變更：沒有任何介面可以修改一件已附加的產物。 | — | — | — |
+| FR-AGENT-009 | [FR-AGENT-009.AC-04](../../research/prd.md#fr-agent-009-ac-04) | 產物有三層配額：單件大小、單次執行件數、專案總量；超過時明確拒絕並說明是哪一層。 | — | — | — |
+| FR-AGENT-009 | [FR-AGENT-009.AC-05](../../research/prd.md#fr-agent-009-ac-05) | 平台不保證產物不含機密。 去識別只對記錄的文字串流有效， | — | — | — |
+| FR-AGENT-010 | [FR-AGENT-010.AC-01](../../research/prd.md#fr-agent-010-ac-01) | 產物的下載回應一律標示為附件並禁止內容型別嗅探； | — | — | — |
+| FR-AGENT-010 | [FR-AGENT-010.AC-02](../../research/prd.md#fr-agent-010-ac-02) | 只有圖片、純文字與 Markdown 可在畫面內預覽，且 Markdown 以純文字提供。 | — | — | — |
+| FR-AGENT-010 | [FR-AGENT-010.AC-03](../../research/prd.md#fr-agent-010-ac-03) | 應用程式來源內沒有任何路徑會渲染產物內容——包含在新分頁開啟。 | — | — | — |
+| FR-AGENT-010 | [FR-AGENT-010.AC-04](../../research/prd.md#fr-agent-010-ac-04) | 產物的存取權限繼承其所屬專案，不另設更寬鬆的路徑。 | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-01](../../research/prd.md#fr-agent-011-ac-01) | 執行目錄由節點程式自己建立，不在任何 Allowed Root 之內，兩個方向皆然； | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-02](../../research/prd.md#fr-agent-011-ac-02) | 執行目錄的根路徑落在任何 Allowed Root 之內時， | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-03](../../research/prd.md#fr-agent-011-ac-03) | 節點須回報自己是否為專用 Runner，並由平台呈現； | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-04](../../research/prd.md#fr-agent-011-ac-04) | 執行目錄每次執行都是全新的，不重複使用、不共用； | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-05](../../research/prd.md#fr-agent-011-ac-05) | 容量上限用盡時停止領取新工單並回報原因，不得表現為節點離線。 | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-06](../../research/prd.md#fr-agent-011-ac-06) | 執行目錄依結果保留一段期間後由節點程式自動回收（成功較短、失敗較長）； | — | — | — |
+| FR-AGENT-011 | [FR-AGENT-011.AC-07](../../research/prd.md#fr-agent-011-ac-07) | 平台的任何路徑都不寫入使用者的工作區：一次完整執行的前後， | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-01](../../research/prd.md#fr-agent-012-ac-01) | 卡片宣告需要程式碼時，節點程式依該專案登記的儲存庫取得程式碼至執行目錄， | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-02](../../research/prd.md#fr-agent-012-ac-02) | 取得程式碼的指令參數來自一張封閉表，沒有任何一個參數來自請求內容、 | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-03](../../research/prd.md#fr-agent-012-ac-03) | 儲存庫位置的通訊協定與主機須通過允許清單檢查， | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-04](../../research/prd.md#fr-agent-012-ac-04) | 節點缺少必要的存取憑證時，取得程式碼須於數秒內失敗並回報明確的錯誤代碼， | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-05](../../research/prd.md#fr-agent-012-ac-05) | 每一次執行結束時，摘要須記錄得出這次執行有沒有動到遠端： | — | — | — |
+| FR-AGENT-012 | [FR-AGENT-012.AC-06](../../research/prd.md#fr-agent-012-ac-06) | 執行所產生的提交，其作者身分為機器身分，不得冒用任何人類身分，也不得偽裝為平台。 | — | — | — |
+| FR-AGENT-013 | [FR-AGENT-013.AC-01](../../research/prd.md#fr-agent-013-ac-01) | 卡片宣告不交付或僅交付產物，而執行結束時工作目錄有變更時， | — | — | — |
+| FR-AGENT-013 | [FR-AGENT-013.AC-02](../../research/prd.md#fr-agent-013-ac-02) | 該情況須在執行摘要中明白記載「宣告不交付，但偵測到變更」與變更的檔案數。 | — | — | — |
+| FR-AGENT-013 | [FR-AGENT-013.AC-03](../../research/prd.md#fr-agent-013-ac-03) | 未被追蹤的新檔案只計數不打包，且須在摘要中說明有幾個未附加， | — | — | — |
 | FR-AUTH-001 | [FR-AUTH-001.AC-01](../../research/prd.md#fr-auth-001-ac-01) | 使用者可使用有效帳號登入。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_login_success_returns_tokens_and_user |
 | FR-AUTH-001 | [FR-AUTH-001.AC-02](../../research/prd.md#fr-auth-001-ac-02) | 無效帳號或密碼不可登入。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_login_invalid_password_is_401<br>pytest:backend/tests/db/test_auth_api.py::test_login_unknown_user_is_401_same_code<br>pytest:backend/tests/db/test_auth_api.py::test_disabled_user_cannot_login |
 | FR-AUTH-001 | [FR-AUTH-001.AC-03](../../research/prd.md#fr-auth-001-ac-03) | 登入成功後取得有效 Session 或 JWT。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_me_requires_bearer_and_returns_identity<br>pytest:backend/tests/test_security.py::test_access_token_roundtrip |

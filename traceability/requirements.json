@@ -6380,6 +6380,558 @@
           "risk": "critical"
         }
       ]
+    },
+    {
+      "id": "FR-AGENT-001",
+      "kind": "functional",
+      "title": "Runner 註冊",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-001"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-AGENT-001.AC-01",
+          "source_anchor": "fr-agent-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-001.AC-02",
+          "source_anchor": "fr-agent-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-001.AC-03",
+          "source_anchor": "fr-agent-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-001.AC-04",
+          "source_anchor": "fr-agent-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-001.AC-05",
+          "source_anchor": "fr-agent-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-003",
+      "kind": "functional",
+      "title": "任務認領",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-003.AC-01",
+          "source_anchor": "fr-agent-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-003.AC-02",
+          "source_anchor": "fr-agent-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-003.AC-03",
+          "source_anchor": "fr-agent-003-ac-03",
+          "verification_profile": "inspection",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-003.AC-04",
+          "source_anchor": "fr-agent-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-003.AC-05",
+          "source_anchor": "fr-agent-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-004",
+      "kind": "functional",
+      "title": "租約與重排",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-004.AC-01",
+          "source_anchor": "fr-agent-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-004.AC-02",
+          "source_anchor": "fr-agent-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-004.AC-03",
+          "source_anchor": "fr-agent-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-004.AC-04",
+          "source_anchor": "fr-agent-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-005",
+      "kind": "functional",
+      "title": "Run 生命週期",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-005"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-005.AC-01",
+          "source_anchor": "fr-agent-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-005.AC-02",
+          "source_anchor": "fr-agent-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-005.AC-03",
+          "source_anchor": "fr-agent-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-005.AC-04",
+          "source_anchor": "fr-agent-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-005.AC-05",
+          "source_anchor": "fr-agent-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-005.AC-06",
+          "source_anchor": "fr-agent-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-006",
+      "kind": "functional",
+      "title": "Run 記錄",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-006"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-006.AC-01",
+          "source_anchor": "fr-agent-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-006.AC-02",
+          "source_anchor": "fr-agent-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-006.AC-03",
+          "source_anchor": "fr-agent-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-006.AC-04",
+          "source_anchor": "fr-agent-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-006.AC-05",
+          "source_anchor": "fr-agent-006-ac-05",
+          "verification_profile": "measurement",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-007",
+      "kind": "functional",
+      "title": "看板溝通",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-007"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-007.AC-01",
+          "source_anchor": "fr-agent-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-007.AC-02",
+          "source_anchor": "fr-agent-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-007.AC-03",
+          "source_anchor": "fr-agent-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-007.AC-04",
+          "source_anchor": "fr-agent-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-008",
+      "kind": "functional",
+      "title": "指定 Agent",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-008"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-008.AC-01",
+          "source_anchor": "fr-agent-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-008.AC-02",
+          "source_anchor": "fr-agent-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-008.AC-03",
+          "source_anchor": "fr-agent-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-008.AC-04",
+          "source_anchor": "fr-agent-008-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-009",
+      "kind": "functional",
+      "title": "任務卡產物",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-009"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-009.AC-01",
+          "source_anchor": "fr-agent-009-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-009.AC-02",
+          "source_anchor": "fr-agent-009-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-009.AC-03",
+          "source_anchor": "fr-agent-009-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-009.AC-04",
+          "source_anchor": "fr-agent-009-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-009.AC-05",
+          "source_anchor": "fr-agent-009-ac-05",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-010",
+      "kind": "functional",
+      "title": "產物的安全提供",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-010"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-AGENT-010.AC-01",
+          "source_anchor": "fr-agent-010-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-010.AC-02",
+          "source_anchor": "fr-agent-010-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-010.AC-03",
+          "source_anchor": "fr-agent-010-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-010.AC-04",
+          "source_anchor": "fr-agent-010-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-011",
+      "kind": "functional",
+      "title": "隔離工作目錄",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-011"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-AGENT-011.AC-01",
+          "source_anchor": "fr-agent-011-ac-01",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-011.AC-02",
+          "source_anchor": "fr-agent-011-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-011.AC-03",
+          "source_anchor": "fr-agent-011-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-011.AC-04",
+          "source_anchor": "fr-agent-011-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-011.AC-05",
+          "source_anchor": "fr-agent-011-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-011.AC-06",
+          "source_anchor": "fr-agent-011-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-011.AC-07",
+          "source_anchor": "fr-agent-011-ac-07",
+          "verification_profile": "automated",
+          "risk": "critical"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-012",
+      "kind": "functional",
+      "title": "自行取得程式碼",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-012"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-AGENT-012.AC-01",
+          "source_anchor": "fr-agent-012-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-012.AC-02",
+          "source_anchor": "fr-agent-012-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-012.AC-03",
+          "source_anchor": "fr-agent-012-ac-03",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-AGENT-012.AC-04",
+          "source_anchor": "fr-agent-012-ac-04",
+          "verification_profile": "measurement",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-012.AC-05",
+          "source_anchor": "fr-agent-012-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-012.AC-06",
+          "source_anchor": "fr-agent-012-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-AGENT-013",
+      "kind": "functional",
+      "title": "變更不得靜默丟棄",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-agent-013"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-AGENT-013.AC-01",
+          "source_anchor": "fr-agent-013-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-AGENT-013.AC-02",
+          "source_anchor": "fr-agent-013-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-AGENT-013.AC-03",
+          "source_anchor": "fr-agent-013-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
     }
   ]
 }

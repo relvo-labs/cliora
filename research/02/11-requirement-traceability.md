@@ -51,9 +51,9 @@
 | FR-AGENT-001 | Runner 註冊 | daemon | `agentd` 的一個模式；**重用既有 enrollment／憑證／WSS／heartbeat**，不新增信任建立 |
 | ~~FR-AGENT-002~~ | ~~Project × Agent 多對多~~ → **移到 V2.3**（FR-RUNENV-006） | central | 2026-08-10 裁決：綁定授權的是機密，與機密同期交付。V2.2 的授權邊界是 **enrollment** |
 | 🆕 FR-AGENT-011 | **隔離工作目錄** | daemon | `<state>/.cliora/runs/<run_id>/`，**不在 allowed root 內、與 allowed root 互不可達**；兩層配額；保留期清理；run root 落在 allowed root 內時**拒絕啟動** |
-| 🆕 FR-AGENT-012 | **Agent 自行取得程式碼** | daemon | 依 `source` clone／checkout；bare mirror ＋ `git worktree`；host allowlist；known_hosts pinning；**clone 後移除 `origin`**；缺憑證**快速失敗**不掛住 |
+| 🆕 FR-AGENT-012 | **Agent 自行取得程式碼** | daemon | 依 `source` clone／checkout；bare mirror ＋ `git worktree`；host allowlist；known_hosts pinning；缺憑證**快速失敗**不掛住；**不移除 `origin`**——2026-08-10 第二次裁決撤回了那個作法，換上的是可觀測性（run 摘要記 `git remote -v` 與未推送 commit 數） |
 | 🆕 FR-AGENT-013 | **變更不得靜默丟棄** | daemon | `delivery: none｜artifact` 但工作目錄有變更 → `git diff` **附成一件產物**（D21 誠實性規則 ＋ D29 §7，原屬 V2.4） |
-| FR-AGENT-003 | 任務認領 | central | **拉取式**；原子認領，**雙重領取不可能**；五條件資格判定 |
+| FR-AGENT-003 | 任務認領 | central | **拉取式**；原子認領，**雙重領取不可能**；**四**條件資格判定（綁定與 label 兩條已隨 2026-08-10 裁決移到 V2.3） |
 | FR-AGENT-008 | 指定 Agent | central | 可指定可不指定（預設不指定）；資格衝突在 dispatch 當下回 409；離線與不符資格的文案不同；重排維持指定；**預設不逾時退回** |
 | FR-AGENT-004 | 租約與重排 | central | 續租、逾時標 `lost`、重排上限 3、用完進 `blocked` |
 | FR-AGENT-005 | Run 生命週期 | central | 獨立狀態機；**不寫 `terminal_sessions`**；cancel 程序無殘留（process group）；🆕 **三個計時器各答一個問題**：租約答「runner 活著嗎」（→ `lost`、重排）、idle 答「child 在前進嗎」（→ `RUN_IDLE_TIMEOUT`、不重排）、牆鐘只是兜底。**一個「還在跑但很慢」的 run 不得被誤殺** |
