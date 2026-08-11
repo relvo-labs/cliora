@@ -24,11 +24,15 @@ package cli
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -53,9 +57,28 @@ const (
 const OfflineMessage = `無法連線到 Cliora（Session 可繼續工作）。
 你的變更未被記錄，恢復連線後請重新執行。`
 
-// Context is what a session's projection left in the workspace.
+// RunOfflineMessage is the same promise for a run. The first line changes because a
+// run is not a session; **the second does not**, and that is the part that matters:
+// the platform being down does not mean the agent should stop.
+const RunOfflineMessage = `無法連線到 Cliora（工作可繼續）。
+這次的訊息／產物未被記錄，恢復連線後請重新執行。`
+
+// Context is what a session's projection — or a run's setup — left in the workspace.
+//
+// **The discovery code needed no change for runs**, and that is a consequence of the
+// directory layout rather than luck: a run puts its context in `<run>/.cliora/` with
+// the checkout as a sibling, so walking up from the child's cwd finds it on the first
+// step. Better still, a run directory holds exactly **one** context pack, so the
+// "several packs, name one with --session" branch below is unreachable there — that
+// ambiguity only ever existed for a shared workspace, and the 2026-08-10 ruling
+// removed that situation entirely.
 type Context struct {
+	// SessionID is the pack's identifier, which is a run id inside a run directory.
+	// The field keeps its name because every reader of it treats it as an opaque id.
 	SessionID string
+	// Run marks which kind of subject this is, so the offline message and the endpoint
+	// prefix can differ without either being inferred from the other.
+	Run       bool
 	Dir       string // the `.cliora` directory that was found
 	PackPath  string
 	TokenPath string
@@ -81,7 +104,7 @@ func FindContext(start string, session string) (Context, error) {
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return Context{}, errors.New(
-				"找不到 .cliora/context/：這個目錄不在一個有任務情境的 Session 工作區裡")
+				"找不到 .cliora/context/：這個目錄不在一個有任務情境的工作區裡（Session 或 Agent Run）")
 		}
 		dir = parent
 	}
@@ -116,7 +139,7 @@ func contextFrom(dir string, entries []os.DirEntry, session string) (Context, er
 		}
 	}
 	if !ids[chosen] {
-		return Context{}, fmt.Errorf("找不到 Session %s 的情境包", chosen)
+		return Context{}, fmt.Errorf("找不到 %s 的情境包", chosen)
 	}
 	ctx := Context{
 		SessionID: chosen,
@@ -230,6 +253,43 @@ func (c *Client) do(method, path string, body any, into any) (int, error) {
 	return ExitOK, nil
 }
 
+// upload is `do` for a multipart body.
+//
+// A separate method rather than a flag on `do`: the two differ in the body they build
+// and in nothing else, and threading a content type plus an io.Reader through the JSON
+// path would make the common case harder to read to save a dozen lines.
+func (c *Client) upload(path, contentType string, body io.Reader, into any) (int, error) {
+	if c.Base == "" || c.Token == "" {
+		return ExitUnreachable, errors.New(RunOfflineMessage)
+	}
+	req, err := http.NewRequest("POST", c.Base+path, body)
+	if err != nil {
+		return ExitRefused, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Content-Type", contentType)
+	// Longer than the JSON client's ten seconds: this one may be sending ten megabytes.
+	client := &http.Client{Timeout: 120 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return ExitUnreachable, errors.New(RunOfflineMessage)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 500 {
+		return ExitUnreachable, errors.New(RunOfflineMessage)
+	}
+	if resp.StatusCode >= 400 {
+		return ExitRefused, errors.New(explain(resp.StatusCode, raw))
+	}
+	if into != nil {
+		if err := json.Unmarshal(raw, into); err != nil {
+			return ExitRefused, err
+		}
+	}
+	return ExitOK, nil
+}
+
 // explain turns a refusal into the next step, per code.
 //
 // Written here rather than echoed from the server because the reader is an agent
@@ -266,6 +326,17 @@ func explain(status int, raw []byte) string {
 		return "Review Gate 的核准必須由人在平台上完成；Agent 憑證沒有這個權限。"
 	case "TASK_NOT_FOUND":
 		return "找不到這張卡（可能不屬於這個 Session 的專案）。"
+	// The three quota refusals. Each gets its own sentence because each leads
+	// somewhere different, and because an artifact that silently failed to attach is
+	// work that disappears when the run directory is reclaimed.
+	case "ARTIFACT_TOO_LARGE":
+		return "這個檔案超過單件上限。拆開、壓縮，或附一份摘要。"
+	case "ARTIFACT_RUN_LIMIT":
+		return "這次執行已經附滿了產物件數上限。把多個檔案合併成一件再附加。"
+	case "ARTIFACT_PROJECT_QUOTA":
+		return "專案的產物配額已用盡。請人清理不再需要的產物之後再試。"
+	case "ARTIFACT_DIGEST_MISMATCH":
+		return "上傳的內容與摘要不符，可能被截斷了。重試一次。"
 	}
 	if parsed.Error.Message != "" {
 		return parsed.Error.Message
@@ -338,4 +409,96 @@ func (c *Client) UpdateTask(ref, stage, note string) (TaskSummary, []map[string]
 		return TaskSummary{}, nil, code, err
 	}
 	return result.Task, result.Warnings, ExitOK, nil
+}
+
+// --- V2.2: the run credential's four calls (AR-08) --------------------------
+//
+// All four go through the same `do` and the same `explain` as V2.1's, including the
+// offline behaviour — with one word changed and one promise kept (see
+// `RunOfflineMessage`).
+
+// Message is one entry in a card's conversation.
+type Message struct {
+	ID        string `json:"id"`
+	Kind      string `json:"kind"`
+	Author    string `json:"author_kind"`
+	Body      string `json:"body"`
+	CreatedAt string `json:"created_at"`
+}
+
+// PostMessage is `cliora task say` and `cliora task ask`.
+//
+// The two differ by one field, and that field is what parks the run: a question moves
+// it to `waiting_for_input`, where it renews its lease, accrues no execution timeout,
+// and occupies the waiting limit rather than the execution one.
+func (c *Client) PostMessage(body, kind string) (Message, int, error) {
+	var out Message
+	status, err := c.do("POST", "/api/cli/runs/messages",
+		map[string]any{"body": body, "kind": kind}, &out)
+	return out, status, err
+}
+
+// ListMessages is `cliora task messages`. **Pull, never push**: there is no interrupt
+// path into a running agent, so an agent that asked something polls for the answer.
+func (c *Client) ListMessages(since string) ([]Message, int, error) {
+	path := "/api/cli/runs/messages"
+	if since != "" {
+		path += "?since=" + url.QueryEscape(since)
+	}
+	var out []Message
+	status, err := c.do("GET", path, nil, &out)
+	return out, status, err
+}
+
+// Artifact is one attached deliverable.
+type Artifact struct {
+	ID          string `json:"id"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type"`
+	Size        int64  `json:"size"`
+}
+
+// Attach uploads a file as a card artifact.
+//
+// Three decisions are visible here. **multipart, not base64 in JSON**: 10 MB of base64
+// is 13.3 MB of string, and Go's client can stream a file as it is. **The digest is
+// computed before sending and checked by the server**: not tamper protection — the
+// connection is TLS — but a truncated upload should fail rather than become a broken
+// artifact. And **a quota refusal is not silent**: `explain` turns each of the three
+// codes into a sentence, and the exit code is non-zero.
+func (c *Client) Attach(path, message string) (Artifact, int, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+	defer file.Close()
+
+	digest := sha256.New()
+	if _, err := io.Copy(digest, file); err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	_ = writer.WriteField("sha256", hex.EncodeToString(digest.Sum(nil)))
+	if message != "" {
+		_ = writer.WriteField("message", message)
+	}
+	part, err := writer.CreateFormFile("file", filepath.Base(path))
+	if err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+	if err := writer.Close(); err != nil {
+		return Artifact{}, ExitRefused, err
+	}
+
+	var out Artifact
+	status, err := c.upload("/api/cli/runs/artifacts", writer.FormDataContentType(), &body, &out)
+	return out, status, err
 }

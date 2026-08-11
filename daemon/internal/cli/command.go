@@ -127,6 +127,108 @@ func NewCommand() *cobra.Command {
 	update.Flags().StringVar(&note, "note", "", "a short note to record on the card")
 	task.AddCommand(update)
 
+	// --- V2.2: the four an unattended run needs (AR-08) ---
+	//
+	// **The card is the only channel.** A run has nobody at a terminal, so anything it
+	// does not say here is something nobody will ever know it did — and the run
+	// directory is reclaimed on a retention schedule.
+	say := &cobra.Command{
+		Use:   "say <text>",
+		Short: "Post a message on this run's card",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			message, code, postErr := NewClient(ctx).PostMessage(args[0], "message")
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, message)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "已留言。")
+			return nil
+		},
+	}
+	ask := &cobra.Command{
+		Use:   "ask <text>",
+		Short: "Ask a question and wait for a human answer",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			message, code, postErr := NewClient(ctx).PostMessage(args[0], "question")
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, message)
+			}
+			// Said plainly, because the next thing the agent does depends on it: the
+			// answer will not be pushed, and nobody may reply at all.
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"已提問。用 `cliora task messages` 拉取回覆；24 小時無人回覆這張卡會退回「阻塞」。")
+			return nil
+		},
+	}
+	var since string
+	messages := &cobra.Command{
+		Use:   "messages",
+		Short: "Read this card's conversation",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			items, code, listErr := NewClient(ctx).ListMessages(since)
+			if listErr != nil {
+				return exit(cmd, code, listErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, items)
+			}
+			for _, item := range items {
+				fmt.Fprintf(cmd.OutOrStdout(), "[%s] %s: %s\n",
+					item.CreatedAt, item.Author, item.Body)
+			}
+			return nil
+		},
+	}
+	messages.Flags().StringVar(&since, "since", "", "only messages after this timestamp")
+
+	var attachMessage string
+	attach := &cobra.Command{
+		Use:   "attach <file>",
+		Short: "Attach a file to this run's card",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			artifact, code, attachErr := NewClient(ctx).Attach(args[0], attachMessage)
+			if attachErr != nil {
+				// Never silent. A quota refusal that printed nothing would let an
+				// agent believe its work was delivered right up until the run
+				// directory was reclaimed.
+				return exit(cmd, code, attachErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, artifact)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "已附加 %s（%d bytes）。\n",
+				artifact.Filename, artifact.Size)
+			return nil
+		},
+	}
+	attach.Flags().StringVar(&attachMessage, "message", "", "a message to post alongside the file")
+
+	task.AddCommand(say, ask, messages, attach)
+
 	root.AddCommand(context, task)
 	return root
 }
