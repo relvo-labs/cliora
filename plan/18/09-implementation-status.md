@@ -2,7 +2,7 @@
 
 本檔隨實作更新；「證據」欄只填**實際跑過的指令與其輸出位置**，不填計畫中的測試。
 
-最後更新 **2026-08-11**：**波次 0 開工，`AR-00` 的六份基線已擷取。**
+最後更新 **2026-08-11**：**波次 0–2 完成（`AR-00`…`AR-05`），波次 3 未開工。**
 （前一版寫「計畫已依 2026-08-10 裁決改寫，尚未開工」。）
 裁決內容（Agent 自己拉專案到隔離目錄、workspace 綁定只服務互動式 Session、
 綁定與 label 比對延後）與它改動了什麼，見 `research/02/04` §0 與 `00-…md` §3 的
@@ -37,9 +37,9 @@ D11／D13／D15–D20。
 | `AR-01` | ADR 0029、PRD §8.13、skill、traceability | ✅ **ADR 0029 已於 2026-08-11 人工核准** | `docs/adr/0029-v22-agent-runner-model-and-run-lifecycle.md`（**Status: accepted**）；`research/prd.md` §8.13（FR-AGENT-001、003–013，共 12 條、58 個 AC）；`.agent/skills/cliora-project-context/SKILL.md` 三面補述 ＋ Git automation 那一句改寫；`traceability/requirements.json` 12 筆 `proposed`，`scripts/trace validate --level static`／`--level selectors`／`coverage --strict` 全綠，`docs/traceability/{matrix,owners}.md` 已 render |
 | `AR-02` | ADR 0030（log 與產物的兩種保留期） | ✅ **已於 2026-08-11 人工核准** | `docs/adr/0030-v22-run-log-and-card-artifacts.md`（**Status: accepted**）。§Part A 的「掉最後 ≤64 KiB」三句寫在 Consequences 與 Decision 兩處 |
 | `AR-02b` | 🆕 ADR 0031（隔離目錄 ＋ git 取得 ＋ Agent 的 git 自由）**＋ 紅線 4 措辭修訂** | ✅ **已於 2026-08-11 人工核准**；紅線 4 **已於 2026-08-10／11 改好**（見 §3 第 5 條） | `docs/adr/0031-v22-isolated-run-directory-and-git-fetch.md`（**Status: accepted**，Status 段已寫明 V2.3 會 amend 本文件，以及 mirror-vs-淺-clone 這一項仍開放） |
-| `AR-03` | migration `0029`／`0030`／`0031` ＋ 模型 | ⬜ | |
-| `AR-04` | RBAC 四動作 ＋ Agents／**Repositories**／Dispatch API（同一個 PR） | ⬜ | |
-| `AR-05` | 資格查詢、claim-then-offer、租約 sweep、重排 | ⬜ | |
+| `AR-03` | migration `0029`／`0030`／`0031` ＋ 模型 | ✅ | 八張表 ＋ 種子 ＋ `nodes.agent_runner`；`tasks` 的兩條 FK 一起補（0023 自己承諾的）。`alembic upgrade head` 綠、`scripts/pj/gate-schema-additive.sh` 對 AR-00 基線「只有新增」、新增 `scripts/ar/gate-migration-roundtrip.sh` 且 downgrade 回 `0028` 與基線逐位元組相同 |
+| `AR-04` | RBAC 四動作 ＋ Agents／**Repositories**／Dispatch API（同一個 PR） | ✅ | 四個動作 ＋ 十三條端點同一個 commit，`UNENFORCED_ACTIONS` 維持空集合。三個 SCOPE 守衛依它們自己留的指示改寫（見 §3 第 8 條）。`make check` 全綠 |
+| `AR-05` | 資格查詢、claim-then-offer、租約 sweep、重排 | ✅ | `services/{runs,run_logs,run_reaper}.py` ＋ `api/ws/nodes.py` 四條分支 ＋ `main.py` 的 lifespan。`backend/tests/db/test_run_queue.py` 九條，含用兩條真連線跑 50 次交錯的雙重領取測試 |
 | `AR-06` | contract v1.11.0 ＋ fixtures | ⬜ | |
 | `AR-07b` | 🆕 `StateDirectory`、run 目錄、mirror ＋ worktree、配額、清理、隔離自檢（**安審 §5**） | ⬜ | |
 | `AR-07` | `agentd` 0.9.0 的執行面：非互動執行、log 分塊、取消三段 | ⬜ | |
@@ -153,7 +153,28 @@ D11／D13／D15–D20。
    兩處都是上游 2026-08-10 回寫時漏掉的格子（`01-…md` §5.4 的表列了九份檔案，
    而這兩格在其中一份裡）。**PRD §8.13 的 AC 依裁決寫，不依那兩格。**
 
-**另外，已知會需要回填的五處**（編號獨立於上面七條）：
+8. **三個 SCOPE 守衛在本期改寫，而不是刪掉。**
+   `test_scope_014_dispatch_is_pull_based.py` 的
+   `test_central_holds_no_runner_registry_yet` 是一個**刻意的 tripwire**——
+   它的 docstring 自己寫「V2.2 加進來時這條會紅，並強迫另外三條被看過」。
+   照做了：它換成那張表必須保持的性質（**runner 的列說一台機器能做什麼，
+   永不說它被指派了什麼**），另加一條 `ast` 斷言 `services/runs.py` 不呼叫
+   `registry.request/send_*`——那同時是死鎖守衛。
+   `SCOPE-001` 的字串 `agent` 換成結構斷言（`RunLogLineDTO` 只有四個欄位）；
+   `SCOPE-005` 的 `dispatch` 換成 `schedule`／`assignment`——非目標是**自動**派工。
+   **一條也沒有變寬**，三條都變得更難繞過。
+
+9. **`ast` 而不是 grep。** 第一版的 `GATE-AR-NO-REQUEST-IN-LOOP` 用文字掃描，
+   而它掃到的是 `services/runs.py` 自己 docstring 裡「為什麼不可以呼叫 `registry.request()`」
+   那一句。改成 `ast.walk` 找 `Call`——一個會找到自己說明文字的守衛，
+   會讓下一個人為了讓它綠掉而刪掉那段說明。
+
+10. **`tests/db/conftest.py` 的 `projects_enabled` 現在同時開兩個旗標。**
+   V2.2 的路由掛了兩個 guard，而內層那個也回 404。只開外層去量授權，
+   會再一次記成「Viewer 被拒絕」而其實量到的是「這條路由不存在」——
+   那正是這個 fixture 的 docstring 一開始就在防的事。另新增 `agent_runs_disabled`。
+
+**另外，已知會需要回填的五處**（編號獨立於上面十條）：
 
 1. ~~`runArgs` 表~~ **已於 2026-08-10 量出並填入**（`10-…md` M-AR-1）：
    `claude: ["-p"]`、`codex: ["exec"]`，兩支都從 stdin 收 prompt，**D7 成立**。
