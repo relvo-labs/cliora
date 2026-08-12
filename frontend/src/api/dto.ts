@@ -878,6 +878,9 @@ export interface BoardCard {
   delivery: string;
   blocking_count: number;
   gates_approved_count: number;
+  active_run_status: RunStatus | null;
+  active_run_runner_name: string | null;
+  waiting_reason: string | null;
   version: number;
   updated_at: string;
 }

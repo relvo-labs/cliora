@@ -486,6 +486,6 @@ th {
   margin: 0 0 4px;
   font-size: 20px;
   font-weight: 700;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 </style>

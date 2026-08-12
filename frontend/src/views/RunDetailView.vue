@@ -21,6 +21,15 @@ import { ACTION_RUN_CANCEL } from "../api/dto";
 import type { RunLogLine, TaskArtifact, TaskRun } from "../api/dto";
 import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
+import PageHead from "../components/ui/PageHead.vue";
+import RunBadge from "../components/ui/RunBadge.vue";
+import SourceBadge from "../components/ui/SourceBadge.vue";
+import UiCard from "../components/ui/UiCard.vue";
+import {
+  SOURCE_AGENT,
+  SOURCE_MACHINE,
+  SOURCE_PLATFORM,
+} from "../components/ui/labels";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
 import { formatBytes } from "../utils/bytes";
@@ -39,6 +48,15 @@ let timer: number | undefined;
 
 const ACTIVE = new Set(["queued", "claimed", "running", "waiting_for_input"]);
 const isActive = computed(() => !!run.value && ACTIVE.has(run.value.status));
+const timeline = computed(() => {
+  if (!run.value) return [];
+  return [
+    { at: run.value.queued_at, label: "排入佇列" },
+    { at: run.value.claimed_at, label: "Runner 認領" },
+    { at: run.value.started_at, label: "開始執行" },
+    { at: run.value.finished_at, label: "執行結束" },
+  ].filter((item): item is { at: string; label: string } => Boolean(item.at));
+});
 
 const resource = useAsyncResource(async () => {
   run.value = await api().getRun(props.runId);
@@ -109,19 +127,17 @@ async function cancel(): Promise<void> {
       <button class="link" @click="resource.run()">Retry</button>
     </AsyncState>
 
-    <div v-else-if="run">
-      <header class="head">
-        <div>
-          <h1>Run #{{ run.seq }}</h1>
-          <p>
-            {{ run.status }} · 第 {{ run.attempt }} 次嘗試
-            <span v-if="run.runner_name"> · {{ run.runner_name }}</span>
-          </p>
-        </div>
-        <button v-if="canCancel && isActive" class="ghost" @click="cancel()">
-          取消
-        </button>
-      </header>
+    <div v-else-if="run" class="run-page">
+      <PageHead>
+        <template #title>Run #{{ run.seq }}</template>
+        <template #subtitle>第 {{ run.attempt }} 次嘗試</template>
+        <template #actions>
+          <RunBadge :status="run.status" :runner-name="run.runner_name" />
+          <button v-if="canCancel && isActive" class="ghost" @click="cancel()">
+            取消
+          </button>
+        </template>
+      </PageHead>
 
       <p v-if="actionError" class="error">{{ actionError }}</p>
 
@@ -130,47 +146,70 @@ async function cancel(): Promise<void> {
         平台不會中斷它，而 24 小時無人回覆這張卡會退回「阻塞」。
       </p>
 
-      <dl class="facts">
-        <div>
-          <dt>來源</dt>
-          <dd>
-            <span v-if="run.source_kind === 'none'">不需要程式碼</span>
-            <span v-else>{{ run.source_ref ?? "—" }}</span>
-          </dd>
-        </div>
-        <div>
-          <dt>執行的版本</dt>
-          <!-- "Which version of the code did this run actually execute" — the reason
+      <UiCard>
+        <template #header>執行摘要</template>
+        <dl class="facts">
+          <div>
+            <dt>來源</dt>
+            <dd>
+              <SourceBadge :source="SOURCE_PLATFORM" />
+              <span v-if="run.source_kind === 'none'">不需要程式碼</span>
+              <span v-else>{{ run.source_ref ?? "—" }}</span>
+            </dd>
+          </div>
+          <div>
+            <dt>執行的版本</dt>
+            <!-- "Which version of the code did this run actually execute" — the reason
                `commit_sha` is reported at all. -->
-          <dd>
-            <code v-if="run.commit_sha">{{ run.commit_sha.slice(0, 12) }}</code>
-            <span v-else class="muted">—</span>
-          </dd>
-        </div>
-        <div>
-          <dt>最後動靜</dt>
-          <!-- The child's event stream, not the lease. The lease answers "is the runner
+            <dd>
+              <SourceBadge :source="SOURCE_MACHINE" />
+              <code v-if="run.commit_sha">{{
+                run.commit_sha.slice(0, 12)
+              }}</code>
+              <span v-else class="muted">—</span>
+            </dd>
+          </div>
+          <div>
+            <dt>最後動靜</dt>
+            <!-- The child's event stream, not the lease. The lease answers "is the runner
                alive" and Central judges it; this answers "is the child progressing". -->
-          <dd>
-            {{ run.last_event_at ? formatInstant(run.last_event_at) : "—" }}
-          </dd>
-        </div>
-        <div>
-          <dt>磁碟</dt>
-          <dd>{{ formatBytes(run.disk_bytes) }}</dd>
-        </div>
-        <div v-if="run.error_code">
-          <dt>錯誤</dt>
-          <dd>
-            <code>{{ run.error_code }}</code>
-          </dd>
-        </div>
-      </dl>
+            <dd>
+              <SourceBadge :source="SOURCE_MACHINE" />
+              {{ run.last_event_at ? formatInstant(run.last_event_at) : "—" }}
+            </dd>
+          </div>
+          <div>
+            <dt>磁碟</dt>
+            <dd>{{ formatBytes(run.disk_bytes) }}</dd>
+          </div>
+          <div v-if="run.error_code">
+            <dt>錯誤</dt>
+            <dd>
+              <code>{{ run.error_code }}</code>
+            </dd>
+          </div>
+        </dl>
+      </UiCard>
 
-      <p v-if="run.summary" class="summary">{{ run.summary }}</p>
+      <p v-if="run.summary" class="summary">
+        <SourceBadge :source="SOURCE_AGENT" />
+        {{ run.summary }}
+      </p>
 
-      <section>
-        <h2>產物</h2>
+      <UiCard>
+        <template #header>時間軸</template>
+        <ol class="timeline">
+          <li v-for="item in timeline" :key="item.label">
+            <time :datetime="item.at">{{ formatInstant(item.at) }}</time>
+            <span class="dot" aria-hidden="true"></span>
+            <strong>{{ item.label }}</strong>
+            <span class="muted">—</span>
+          </li>
+        </ol>
+      </UiCard>
+
+      <UiCard>
+        <template #header>產物</template>
         <p v-if="!artifacts.length" class="muted">
           這次執行還沒有附加任何產物。
         </p>
@@ -196,10 +235,10 @@ async function cancel(): Promise<void> {
             </template>
           </li>
         </ul>
-      </section>
+      </UiCard>
 
-      <section>
-        <h2>Log</h2>
+      <UiCard>
+        <template #header>Log</template>
         <p v-if="run.log_truncated_bytes > 0" class="truncated">
           這份 log 從中間截斷了，省略
           {{ formatBytes(run.log_truncated_bytes) }}。 開頭與結尾都保留著。
@@ -210,26 +249,26 @@ async function cancel(): Promise<void> {
           lines.map((line) => line.data).join("\n")
         }}</pre>
         <p v-else class="muted">還沒有輸出。</p>
-      </section>
+      </UiCard>
     </div>
   </AppLayout>
 </template>
 
 <style scoped>
-.head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
+.run-page {
+  display: grid;
+  gap: var(--space-4);
 }
 .facts {
   display: grid;
-  gap: 0.25rem;
-  font-size: 0.9rem;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--font-base);
 }
 .facts div {
   display: flex;
-  gap: 0.5rem;
+  align-items: center;
+  gap: var(--space-2);
 }
 .facts dt {
   min-width: 8rem;
@@ -240,14 +279,16 @@ async function cancel(): Promise<void> {
 }
 .waiting,
 .truncated {
-  background: #fff6e5;
-  padding: 0.5rem 0.75rem;
-  border-radius: 4px;
-  font-size: 0.9rem;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--risk-medium);
+  border-radius: var(--radius-sm);
+  background: var(--surface-default);
+  font-size: var(--font-sm);
 }
 .summary {
-  border-left: 3px solid var(--color-border, #d0d0d0);
-  padding-left: 0.75rem;
+  border-left: 3px solid var(--border-default);
+  padding-left: var(--space-3);
 }
 .artifacts {
   list-style: none;
@@ -261,11 +302,11 @@ async function cancel(): Promise<void> {
 .log {
   max-height: 28rem;
   overflow: auto;
-  background: #101010;
-  color: #e8e8e8;
-  padding: 0.75rem;
-  border-radius: 4px;
-  font-size: 0.8rem;
+  background: var(--terminal-background);
+  color: var(--terminal-foreground);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-sm);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -273,6 +314,33 @@ async function cancel(): Promise<void> {
   opacity: 0.65;
 }
 .error {
-  color: #b3261e;
+  color: var(--status-error);
+}
+.timeline {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.timeline li {
+  display: grid;
+  grid-template-columns: minmax(150px, auto) 16px 1fr 48px;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  border-bottom: 1px solid var(--border-default);
+  font-size: var(--font-sm);
+}
+.timeline time {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+}
+.dot {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--source-platform);
+  border-radius: 50%;
 }
 </style>

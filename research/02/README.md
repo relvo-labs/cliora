@@ -30,6 +30,7 @@
 | [02-phase-v20-project-foundation.md](./02-phase-v20-project-foundation.md) | V2.0 專案基座（`PJ-`） |
 | [03-phase-v21-task-board.md](./03-phase-v21-task-board.md) | V2.1 任務看板與流程內化（`TK-`） |
 | [04-phase-v22-agent-runner.md](./04-phase-v22-agent-runner.md) | V2.2 Agent Runner 與任務認領（`AR-`） |
+| [12-phase-v22_1-ui-remediation.md](./12-phase-v22_1-ui-remediation.md) | **V2.2_1 前端修復期（`UI-`）**——V2.0–V2.2 的前端引用了 104 個未定義的 CSS token，三個 V2 主畫面實際上以無樣式 HTML 渲染。這一期修它，並加上守門 |
 | [05-phase-v23-secrets-and-isolation.md](./05-phase-v23-secrets-and-isolation.md) | V2.3 機密下放與隔離工作目錄（`SC-`） |
 | [06-phase-v24-delivery-and-verification.md](./06-phase-v24-delivery-and-verification.md) | V2.4 交付、驗證與證據（`DV-`） |
 | [07-phase-v25-requirements-and-decomposition.md](./07-phase-v25-requirements-and-decomposition.md) | V2.5 需求釐清與任務拆解（`RQ-`） |
@@ -79,7 +80,9 @@ tmux attach -t cliora-v22        # 需要看的時候才 attach
 
 > 本目錄只做規劃，不含程式碼變更。執行計畫在 `plan/` 下逐階段建立，沿用 `plan/15/` 的文件結構：
 > **V2.0 → [`plan/16/`](../../plan/16/README.md)（已實作）**、
-> **V2.1 → [`plan/17/`](../../plan/17/README.md)（已實作，`evidence.sh` 10/10；合併提案待人工）**。
+> **V2.1 → [`plan/17/`](../../plan/17/README.md)（已實作，`evidence.sh` 10/10；合併提案待人工）**、
+> **V2.2 → [`plan/18/`](../../plan/18/README.md)**、
+> **V2.2_1 → [`plan/19/`](../../plan/19/README.md)（前端修復期）**。
 > 執行計畫與本目錄不一致時，**以執行計畫為準並回寫這裡**——它讀的是程式碼，本目錄讀的是構想。
 > 2026-08-09 的一次回寫：V2.1 動 contract v1.10.0 ＋ `agentd` 0.8.0，V2.2 起的版本號與
 > ADR 編號各順移一格。

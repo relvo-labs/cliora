@@ -23,6 +23,11 @@ import type {
   Task,
 } from "../../api/dto";
 import { formatInstant } from "../../utils/time";
+import DeliveryBadge from "../ui/DeliveryBadge.vue";
+import RiskBadge from "../ui/RiskBadge.vue";
+import SourceBadge from "../ui/SourceBadge.vue";
+import StageBadge from "../ui/StageBadge.vue";
+import UiCard from "../ui/UiCard.vue";
 
 const props = defineProps<{
   task: Task;
@@ -55,6 +60,25 @@ const gates = computed(() =>
   })),
 );
 
+const evidence = computed<Record<string, unknown>[]>(() => {
+  const value = props.task.links?.evidence;
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> =>
+        Boolean(item && typeof item === "object"),
+      )
+    : [];
+});
+
+function sourceOf(item: Record<string, unknown>): string | null {
+  return typeof item.source === "string" ? item.source : null;
+}
+
+function isFailed(item: Record<string, unknown>): boolean {
+  return [false, "failed", "fail", "error"].includes(
+    item.result as false | string,
+  );
+}
+
 async function toggleGate(key: string, approved: boolean): Promise<void> {
   if (!approved && !window.confirm("確定要取消這項人工核准嗎？")) return;
   error.value = null;
@@ -77,13 +101,14 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
     <header>
       <span class="ref">{{ task.card_ref }}</span>
       <h2>{{ task.title }}</h2>
-      <span class="stage" :data-stage="task.stage">{{ task.stage }}</span>
+      <StageBadge :stage="task.stage" />
+      <RiskBadge :risk="task.risk" />
     </header>
 
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
 
     <div class="columns">
-      <section>
+      <UiCard>
         <h3>任務定義</h3>
         <dl>
           <template
@@ -103,10 +128,39 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
 
         <h4>驗收標準</h4>
         <ul class="criteria">
-          <li v-for="(item, index) in task.acceptance_criteria" :key="index">
-            <span class="result">{{ item.result ?? "未驗" }}</span>
-            {{ item.text }}
-          </li>
+          <template
+            v-for="(item, index) in task.acceptance_criteria"
+            :key="index"
+          >
+            <li v-if="isFailed(item)" class="failed" data-failed-check>
+              <div>
+                <span class="result">{{ item.result ?? "失敗" }}</span>
+                {{ item.text }}
+              </div>
+              <SourceBadge
+                v-if="sourceOf(item)"
+                :source="sourceOf(item) as string"
+              />
+              <pre v-if="item.summary || item.command">{{
+                item.summary ?? item.command
+              }}</pre>
+            </li>
+            <li v-else>
+              <details>
+                <summary>
+                  <span class="result">{{ item.result ?? "未驗" }}</span>
+                  {{ item.text }}
+                  <SourceBadge
+                    v-if="sourceOf(item)"
+                    :source="sourceOf(item) as string"
+                  />
+                </summary>
+                <pre v-if="item.summary || item.command">{{
+                  item.summary ?? item.command
+                }}</pre>
+              </details>
+            </li>
+          </template>
           <li v-if="task.acceptance_criteria.length === 0" class="empty">
             尚未填寫
           </li>
@@ -179,11 +233,10 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
             task.proposal_id ?? "—"
           }}
         </p>
-      </section>
+      </UiCard>
 
-      <section>
-        <h3>執行</h3>
-        <p class="hint">本階段由人執行。</p>
+      <UiCard>
+        <h3>Agent 執行</h3>
         <button
           v-if="canStartSession"
           class="primary"
@@ -193,12 +246,16 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           開始工作
         </button>
 
-        <h4>執行設定<small>（部分自 V2.2 起生效）</small></h4>
+        <h4>執行設定</h4>
         <dl class="execution">
+          <dt>Runtime</dt>
+          <dd>任一支援環境</dd>
+          <dt>Runner</dt>
+          <dd>{{ task.assigned_runner_id ?? "任一 Agent" }}</dd>
           <dt>來源</dt>
-          <dd>{{ task.source }}</dd>
+          <dd><SourceBadge :source="task.source" /></dd>
           <dt>交付</dt>
-          <dd>{{ task.delivery }}</dd>
+          <dd><DeliveryBadge :delivery="task.delivery" /></dd>
           <dt>base branch</dt>
           <dd>{{ task.base_branch ?? "—" }}</dd>
         </dl>
@@ -247,8 +304,25 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           </li>
           <li v-if="(activity ?? []).length === 0" class="empty">尚無活動</li>
         </ul>
-      </section>
+      </UiCard>
     </div>
+
+    <UiCard class="report">
+      <template #header>驗證報告與證據</template>
+      <p v-if="evidence.length === 0" class="empty">
+        尚無證據。驗證結果會保留來源層級，平台不替互相矛盾的資料仲裁。
+      </p>
+      <ul v-else class="evidence" data-evidence>
+        <li v-for="(item, index) in evidence" :key="index">
+          <SourceBadge
+            v-if="sourceOf(item)"
+            :source="sourceOf(item) as string"
+          />
+          <span>{{ item.label ?? item.text ?? item.kind ?? "證據" }}</span>
+          <code v-if="item.value !== undefined">{{ item.value }}</code>
+        </li>
+      </ul>
+    </UiCard>
   </article>
 </template>
 
@@ -260,11 +334,11 @@ header {
 }
 h2 {
   margin: 0;
-  font-size: var(--font-size-lg);
+  font-size: var(--font-lg);
 }
 .ref {
   font-family: var(--font-mono);
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 .columns {
   display: grid;
@@ -272,16 +346,19 @@ h2 {
   gap: var(--space-4);
   margin-top: var(--space-3);
 }
+.report {
+  margin-top: var(--space-4);
+}
 h3 {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-sm);
   margin-top: 0;
 }
 h4 {
-  font-size: var(--font-size-sm);
+  font-size: var(--font-sm);
   margin: var(--space-3) 0 var(--space-1);
 }
 h4 small {
-  color: var(--color-text-muted);
+  color: var(--text-muted);
   font-weight: 400;
 }
 ul {
@@ -290,11 +367,11 @@ ul {
   padding: 0;
 }
 .readiness li[data-met="false"] {
-  color: var(--color-text-muted);
+  color: var(--text-muted);
 }
 .readiness small {
   display: block;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
   margin-left: var(--space-3);
 }
 .gates li {
@@ -307,26 +384,58 @@ ul {
   min-width: 8rem;
 }
 .disabled {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
 }
 .approved {
-  color: var(--color-success);
-  font-size: var(--font-size-xs);
+  color: var(--status-online);
+  font-size: var(--font-xs);
 }
 .hint,
 .empty,
 .provenance {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
 }
 .criteria .result {
   font-family: var(--font-mono);
-  font-size: var(--font-size-xs);
+  font-size: var(--font-xs);
   margin-right: var(--space-1);
 }
+.criteria details summary {
+  cursor: pointer;
+}
+.criteria .failed {
+  display: grid;
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border-left: 3px solid var(--status-error);
+  border-radius: var(--radius-sm);
+  background: var(--surface-default);
+}
+.criteria pre {
+  overflow-x: auto;
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  white-space: pre-wrap;
+}
+.evidence {
+  display: grid;
+  gap: var(--space-2);
+}
+.evidence li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.evidence code {
+  margin-left: auto;
+  font-family: var(--font-mono);
+}
 .execution dt {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
 }
 </style>

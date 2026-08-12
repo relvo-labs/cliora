@@ -1041,6 +1041,9 @@ class BoardCardDTO(BaseModel):
     delivery: str
     blocking_count: int
     gates_approved_count: int
+    active_run_status: str | None = None
+    active_run_runner_name: str | None = None
+    waiting_reason: str | None = None
     version: int
     updated_at: datetime
 

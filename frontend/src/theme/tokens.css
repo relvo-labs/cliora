@@ -23,6 +23,56 @@
   --status-offline: #727b87;
   --status-busy: #c68c37;
   --status-error: #d25454;
+
+  /* V2 work vocabulary. Session activity keeps --status-online (green), while task
+   * activity is blue and run activity is amber so the three meanings remain distinct
+   * at a glance (research/02/09 §7, plan/19 D32). */
+
+  /* Task stages deliberately use a grey → blue → purple → deep-green
+   * progression, separate from infrastructure health colours. */
+  --stage-backlog: #8892a0;
+  --stage-blocked: #b4574f;
+  --stage-ready: #4a7c8c;
+  --stage-implementing: #3f6fa8;
+  --stage-verify: #7a5ea8;
+  --stage-done: #2f7a56;
+
+  /* Run states. --run-waiting belongs only to the human-action-required treatment;
+   * reusing it elsewhere would weaken the one state that waits on a person (D24). */
+  --run-queued: #8892a0;
+  --run-running: #c68c37;
+  --run-waiting: #d2691e;
+  --run-succeeded: #2f9b63;
+  --run-failed: #d25454;
+  --run-lost: #a0673f;
+
+  --risk-low: #6b7684;
+  --risk-medium: #c68c37;
+  --risk-high: #c45c5c;
+
+  /* Evidence confidence is structural: solid machine fact, outlined platform
+   * observation, and quiet agent report. SourceBadge is its only renderer (D10). */
+  --source-machine: #2f7a56;
+  --source-platform: #4a7c8c;
+  --source-agent: #8892a0;
+
+  /* Spacing and type scales were absent from the original token set, which led V2
+   * views to guess names. These values match the reviewed prototype and style.md. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --font-xs: 11px;
+  --font-sm: 12px;
+  --font-base: 13px;
+  --font-md: 15px;
+  --font-lg: 19px;
+  --font-xl: 24px;
+  --font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
   --terminal-background: #0f1115;
   --terminal-foreground: #d7dde4;
   --terminal-selection: #78aaff40;

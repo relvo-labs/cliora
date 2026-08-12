@@ -1,4 +1,4 @@
-.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability railway-parity railway-test railway-check
+.PHONY: bootstrap format-check lint typecheck tokens unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability railway-parity railway-test railway-check
 
 # Postgres URL for the P1 data layer (override to point at your instance).
 DB_URL ?= postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -22,6 +22,9 @@ typecheck:
 	uv run --project backend mypy backend/app
 	cd frontend && npm run typecheck
 
+tokens:
+	node scripts/frontend/check-tokens.mjs
+
 unit:
 	uv run --project backend pytest backend/tests -q
 	cd daemon && go test -race ./...
@@ -43,7 +46,7 @@ build:
 	cd daemon && mkdir -p bin && go build -o bin/agentd ./cmd/agentd && go build -o bin/fakecli ./cmd/fakecli
 	cd frontend && npm run build
 
-check: format-check lint typecheck unit contract build traceability-validate railway-check
+check: format-check lint typecheck tokens unit contract build traceability-validate railway-check
 
 # --- Railway deployment target (ADR 0020 / plan/07) ---
 # Both of these are static and hermetic: no platform account, no network. What they cannot

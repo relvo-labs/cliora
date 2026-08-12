@@ -1074,10 +1074,7 @@ async function retryProjection(): Promise<void> {
   object-fit: cover;
 }
 .drop-status code {
-  font-family:
-    JetBrains Mono,
-    ui-monospace,
-    monospace;
+  font-family: var(--font-mono);
 }
 .drop-status.bad {
   color: var(--status-error);
@@ -1126,10 +1123,7 @@ async function retryProjection(): Promise<void> {
   border: 1px solid var(--status-error);
 }
 .up-name {
-  font-family:
-    JetBrains Mono,
-    ui-monospace,
-    monospace;
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1144,7 +1138,7 @@ async function retryProjection(): Promise<void> {
   white-space: nowrap;
 }
 .up-state.ok {
-  color: var(--status-success, var(--text-secondary));
+  color: var(--status-online);
 }
 .up-state.bad {
   color: var(--status-error);

@@ -55,6 +55,7 @@ from app.services.agent_auth import AGENT_FORBIDDEN_FIELDS, AgentPrincipal, Sess
 from app.services.process import EffectiveProcess
 from app.services.projects import ProjectService
 from app.services.rbac import PROJECT_VIEW, TASK_APPROVE, TASK_CREATE, TASK_UPDATE
+from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.services.tasks import TaskService
 from app.settings import Settings, get_settings
 
@@ -63,6 +64,10 @@ router = APIRouter(prefix="/api", tags=["tasks"], dependencies=[Depends(require_
 
 def _tasks(session: AsyncSession) -> TaskService:
     return TaskService(session)
+
+
+def get_registry() -> NodeConnectionRegistry:
+    return get_node_registry()
 
 
 async def _project(session: AsyncSession, settings: Settings, project_id: uuid.UUID):
@@ -241,6 +246,7 @@ async def read_board(
     _: User = Depends(require_action(PROJECT_VIEW)),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    registry: NodeConnectionRegistry = Depends(get_registry),
 ) -> BoardDTO:
     """Every card in the project, grouped by lane. One response, no paging.
 
@@ -252,7 +258,7 @@ async def read_board(
     await _project(session, settings, project_id)
     service = _tasks(session)
     process = await service.process()
-    cards = await service.board(project_id)
+    cards = await service.board(project_id, is_online=registry.is_connected)
     grouped: dict[str, list[BoardCardDTO]] = {lane["stage"]: [] for lane in process.lanes}
     for card in cards:
         grouped.setdefault(card.task.stage, []).append(
@@ -268,6 +274,9 @@ async def read_board(
                 delivery=card.task.delivery,
                 blocking_count=card.blocking_count,
                 gates_approved_count=card.gates_approved_count,
+                active_run_status=card.active_run_status,
+                active_run_runner_name=card.active_run_runner_name,
+                waiting_reason=card.waiting_reason,
                 version=card.task.version,
                 updated_at=card.task.updated_at,
             )

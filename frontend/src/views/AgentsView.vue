@@ -20,6 +20,9 @@ import { ACTION_AGENT_MANAGE } from "../api/dto";
 import type { AgentRunner } from "../api/dto";
 import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
+import BaseBadge from "../components/ui/BaseBadge.vue";
+import DataTable from "../components/ui/DataTable.vue";
+import PageHead from "../components/ui/PageHead.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
 import { formatBytes } from "../utils/bytes";
@@ -114,19 +117,21 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
 
 <template>
   <AppLayout>
-    <header class="head">
-      <div>
-        <h1>Agents</h1>
-        <p>Nodes that can run a card's work unattended.</p>
-      </div>
-      <button
-        class="ghost"
-        :disabled="resource.state.value === 'loading'"
-        @click="resource.run()"
+    <PageHead>
+      <template #title>Agents</template>
+      <template #subtitle
+        >Nodes that can run a card's work unattended.</template
       >
-        Refresh
-      </button>
-    </header>
+      <template #actions>
+        <button
+          class="ghost"
+          :disabled="resource.state.value === 'loading'"
+          @click="resource.run()"
+        >
+          Refresh
+        </button>
+      </template>
+    </PageHead>
 
     <!-- Stated on the page, not only in an ADR: this is the kind of design that gets
          reported as a bug when it is written down only once. -->
@@ -165,122 +170,132 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
     <div v-else>
       <p v-if="actionError" class="error">{{ actionError }}</p>
 
-      <ul class="agents">
-        <li v-for="agent in agents" :key="agent.id" class="agent">
-          <div class="row">
-            <h2>{{ agent.name }}</h2>
-            <span :class="['status', availability(agent).tone]">
-              {{ availability(agent).label }}
-            </span>
-            <span v-if="!agent.enabled" class="status off">已停用</span>
-          </div>
+      <DataTable>
+        <thead>
+          <tr>
+            <th>Agent 與執行容量</th>
+          </tr>
+        </thead>
+        <tbody class="agents">
+          <tr v-for="agent in agents" :key="agent.id" class="agent">
+            <td>
+              <div class="row">
+                <h2>{{ agent.name }}</h2>
+                <span :class="['status', availability(agent).tone]">
+                  {{ availability(agent).label }}
+                </span>
+                <span v-if="!agent.enabled" class="status off">已停用</span>
+              </div>
 
-          <p class="node">節點 {{ agent.node_name }}</p>
+              <p class="node">節點 {{ agent.node_name }}</p>
 
-          <!-- The isolation posture, in the two shapes it can take. The warning is
+              <!-- The isolation posture, in the two shapes it can take. The warning is
                deliberately specific about what it means: a vague "mixed use" would be
                read as a style note rather than as "an agent can read those files". -->
-          <p v-if="agent.dedicated" class="posture-ok">
-            ✔ 專用 Runner（此節點未設定任何 Allowed Root）
-          </p>
-          <p v-else class="posture-warn">
-            ⚠ 混合用途：此節點同時提供互動式 Session，而在這裡執行的 Agent
-            <strong>讀得到那些目錄</strong>。平台沒有阻止這件事；專用的 Runner
-            節點不設定任何 Allowed Root。
-          </p>
+              <p v-if="agent.dedicated" class="posture-ok">
+                ✔ 專用 Runner（此節點未設定任何 Allowed Root）
+              </p>
+              <p v-else class="posture-warn">
+                ⚠ 混合用途：此節點同時提供互動式 Session，而在這裡執行的 Agent
+                <strong>讀得到那些目錄</strong>。平台沒有阻止這件事；專用的
+                Runner 節點不設定任何 Allowed Root。
+              </p>
 
-          <dl class="facts">
-            <div>
-              <dt>執行環境</dt>
-              <dd>
-                <span v-if="agent.runtimes.length">{{
-                  agent.runtimes.join("、")
-                }}</span>
-                <span v-else class="muted">
-                  無——已安裝的 CLI 都偵測不到帶事件流的非互動介面， 所以這個
-                  Agent 不會被派到任何卡片。
-                </span>
-              </dd>
-            </div>
-            <div>
-              <dt>執行中 / 等待回覆</dt>
-              <dd>
-                {{ agent.active_runs }} / {{ agent.max_concurrent }} ·
-                {{ agent.waiting_runs }} / {{ agent.max_waiting }}
-              </dd>
-            </div>
-            <div>
-              <dt>指定給此 Agent 的卡片</dt>
-              <!-- Separate from occupancy on purpose: a card can name this runner for
+              <dl class="facts">
+                <div>
+                  <dt>執行環境</dt>
+                  <dd>
+                    <span v-if="agent.runtimes.length" class="tags">
+                      <BaseBadge
+                        v-for="runtime in agent.runtimes"
+                        :key="runtime"
+                        variant="quiet"
+                        >{{ runtime }}</BaseBadge
+                      >
+                    </span>
+                    <span v-else class="muted">
+                      無——已安裝的 CLI 都偵測不到帶事件流的非互動介面， 所以這個
+                      Agent 不會被派到任何卡片。
+                    </span>
+                  </dd>
+                </div>
+                <div>
+                  <dt>執行中 / 等待回覆</dt>
+                  <dd>
+                    {{ agent.active_runs }} / {{ agent.max_concurrent }} ·
+                    {{ agent.waiting_runs }} / {{ agent.max_waiting }}
+                  </dd>
+                </div>
+                <div>
+                  <dt>指定給此 Agent 的卡片</dt>
+                  <!-- Separate from occupancy on purpose: a card can name this runner for
                    days without ever producing a run, so a page showing only
                    「執行中」 makes an over-subscribed machine look idle. -->
-              <dd>{{ agent.assigned_cards }}</dd>
-            </div>
-            <div>
-              <dt>磁碟</dt>
-              <dd>{{ diskUsage(agent) }}</dd>
-            </div>
-            <div v-if="agent.labels.length">
-              <dt>標籤</dt>
-              <!-- Shown and not compared. Saying so is the honest option: a label the
+                  <dd>{{ agent.assigned_cards }}</dd>
+                </div>
+                <div>
+                  <dt>磁碟</dt>
+                  <dd>{{ diskUsage(agent) }}</dd>
+                </div>
+                <div v-if="agent.labels.length">
+                  <dt>標籤</dt>
+                  <!-- Shown and not compared. Saying so is the honest option: a label the
                    platform ignores would otherwise look like a filter. -->
-              <dd>
-                {{ agent.labels.join("、")
-                }}<span class="muted">（本階段顯示但不比對）</span>
-              </dd>
-            </div>
-            <div>
-              <dt>註冊於</dt>
-              <dd>
-                {{
-                  formatInstant(agent.last_registered_at ?? agent.registered_at)
-                }}
-              </dd>
-            </div>
-          </dl>
+                  <dd>
+                    <span class="tags">
+                      <BaseBadge
+                        v-for="label in agent.labels"
+                        :key="label"
+                        variant="quiet"
+                        >{{ label }}</BaseBadge
+                      >
+                    </span>
+                    <span class="muted"
+                      >labels 目前僅供辨識，不參與資格比對。</span
+                    >
+                  </dd>
+                </div>
+                <div>
+                  <dt>註冊於</dt>
+                  <dd>
+                    {{
+                      formatInstant(
+                        agent.last_registered_at ?? agent.registered_at,
+                      )
+                    }}
+                  </dd>
+                </div>
+              </dl>
 
-          <div v-if="canManage" class="actions">
-            <button
-              v-if="agent.enabled"
-              class="ghost"
-              @click="setEnabled(agent, false)"
-            >
-              停用
-            </button>
-            <button v-else class="primary" @click="setEnabled(agent, true)">
-              啟用
-            </button>
-          </div>
-        </li>
-      </ul>
+              <div v-if="canManage" class="actions">
+                <button
+                  v-if="agent.enabled"
+                  class="ghost"
+                  @click="setEnabled(agent, false)"
+                >
+                  停用
+                </button>
+                <button v-else class="primary" @click="setEnabled(agent, true)">
+                  啟用
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </DataTable>
     </div>
   </AppLayout>
 </template>
 
 <style scoped>
-.head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-}
 .posture {
-  border-left: 3px solid var(--color-border, #d0d0d0);
+  border-left: 3px solid var(--border-default);
   padding: 0.5rem 0.75rem;
   margin: 0 0 1rem;
   font-size: 0.9rem;
 }
-.agents {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  gap: 0.75rem;
-}
 .agent {
-  border: 1px solid var(--color-border, #d0d0d0);
-  border-radius: 6px;
-  padding: 0.75rem 1rem;
+  background: var(--surface-elevated);
 }
 .row {
   display: flex;
@@ -297,10 +312,16 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
   padding: 0.05rem 0.5rem;
 }
 .status.on {
-  background: #e6f4ea;
+  color: var(--status-online);
+  border: 1px solid var(--status-online);
 }
 .status.off {
-  background: #f1f1f1;
+  color: var(--status-offline);
+  background: var(--surface-canvas);
+}
+.status.busy {
+  color: var(--status-busy);
+  border: 1px solid var(--status-busy);
 }
 .node {
   margin: 0.25rem 0;
@@ -313,7 +334,8 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
   font-size: 0.85rem;
 }
 .posture-warn {
-  background: #fff6e5;
+  border-left: 3px solid var(--status-busy);
+  background: var(--surface-default);
   padding: 0.4rem 0.6rem;
   border-radius: 4px;
 }
@@ -341,6 +363,12 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
   margin-top: 0.5rem;
 }
 .error {
-  color: #b3261e;
+  color: var(--status-error);
+}
+.tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-right: var(--space-1);
 }
 </style>

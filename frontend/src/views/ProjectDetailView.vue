@@ -24,6 +24,11 @@ import ProjectRepositories from "../components/project/ProjectRepositories.vue";
 import TaskBoard from "../components/project/TaskBoard.vue";
 import TaskRoadmap from "../components/project/TaskRoadmap.vue";
 import AsyncState from "../components/common/AsyncState.vue";
+import BaseBadge from "../components/ui/BaseBadge.vue";
+import EmptyState from "../components/ui/EmptyState.vue";
+import PageHead from "../components/ui/PageHead.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiCard from "../components/ui/UiCard.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
@@ -146,6 +151,11 @@ onMounted(() => resource.run());
 
 const project = computed(() => projects.current);
 const isArchived = computed(() => project.value?.status === "archived");
+const projectStatusTone = computed(() => {
+  if (project.value?.status === "active") return "status-online";
+  if (project.value?.status === "paused") return "status-busy";
+  return "status-offline";
+});
 const requestId = computed(() => {
   const error = resource.error.value;
   return error instanceof ApiError ? error.requestId : undefined;
@@ -344,38 +354,36 @@ function recordActionError(error: unknown, fallback: string): void {
     </AsyncState>
 
     <template v-else-if="project">
-      <header class="head">
-        <div>
-          <h1>{{ project.name }}</h1>
-          <p>
-            <span class="slug">{{ project.slug }}</span>
-            · owned by {{ project.owner_name }} · created
-            {{ formatInstant(project.created_at) }}
-          </p>
-        </div>
-        <div class="head-actions">
-          <span class="pill" :data-status="project.status">{{
-            project.status
-          }}</span>
-          <button v-if="canManage" class="ghost" @click="beginEdit">
+      <PageHead>
+        <template #title>{{ project.name }}</template>
+        <template #subtitle>
+          <span class="slug">{{ project.slug }}</span>
+          · owned by {{ project.owner_name }} · created
+          {{ formatInstant(project.created_at) }}
+        </template>
+        <template #actions>
+          <BaseBadge variant="outline" :tone="projectStatusTone">
+            {{ project.status }}
+          </BaseBadge>
+          <UiButton v-if="canManage" variant="secondary" @click="beginEdit">
             Edit
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             v-if="canManage && !isArchived"
-            class="ghost"
+            variant="ghost"
             @click="setStatus('archived')"
           >
             Archive
-          </button>
-          <button
+          </UiButton>
+          <UiButton
             v-if="canManage && isArchived"
-            class="ghost"
+            variant="ghost"
             @click="setStatus('active')"
           >
             Un-archive
-          </button>
-        </div>
-      </header>
+          </UiButton>
+        </template>
+      </PageHead>
 
       <p v-if="isArchived" class="notice">
         This project is archived. Existing sessions and bindings are untouched,
@@ -423,12 +431,29 @@ function recordActionError(error: unknown, fallback: string): void {
         </button>
       </nav>
 
-      <section v-if="tab === 'board'">
-        <div v-if="canCreateTasks && !isArchived" class="quick-create">
-          <input v-model="taskTitle" placeholder="新卡片的標題" data-new-task />
-          <button class="ghost" :disabled="!taskTitle" @click="createTask">
-            建立
-          </button>
+      <section v-if="tab === 'board'" class="tab-panel board-panel">
+        <div class="workbar">
+          <div class="workbar-copy">
+            <strong>Delivery board</strong>
+            <span
+              >WIP limits are advisory. Move cards without losing context.</span
+            >
+          </div>
+          <div v-if="canCreateTasks && !isArchived" class="quick-create">
+            <input
+              v-model="taskTitle"
+              placeholder="新卡片的標題"
+              data-new-task
+            />
+            <UiButton
+              variant="primary"
+              size="sm"
+              :disabled="!taskTitle"
+              @click="createTask"
+            >
+              建立卡片
+            </UiButton>
+          </div>
         </div>
         <p v-if="taskError" class="notice error" role="alert">
           {{ taskError }}
@@ -443,159 +468,253 @@ function recordActionError(error: unknown, fallback: string): void {
         />
       </section>
 
-      <section v-else-if="tab === 'roadmap'">
-        <div v-if="canCreateTasks && !isArchived" class="quick-create">
-          <input v-model="epicTitle" placeholder="新 Epic" data-new-epic />
-          <button class="ghost" :disabled="!epicTitle" @click="createEpic">
-            建立 Epic
-          </button>
-          <input
-            v-model="storyTitle"
-            placeholder="新 User Story"
-            data-new-story
-          />
-          <button class="ghost" :disabled="!storyTitle" @click="createStory">
-            建立 User Story
-          </button>
+      <section v-else-if="tab === 'roadmap'" class="tab-panel">
+        <div class="workbar roadmap-bar">
+          <div class="workbar-copy">
+            <strong>Delivery roadmap</strong>
+            <span
+              >Epic → User Story → Task, with completion rolled upward.</span
+            >
+          </div>
+          <div v-if="canCreateTasks && !isArchived" class="quick-create">
+            <input v-model="epicTitle" placeholder="新 Epic" data-new-epic />
+            <UiButton size="sm" :disabled="!epicTitle" @click="createEpic">
+              建立 Epic
+            </UiButton>
+            <input
+              v-model="storyTitle"
+              placeholder="新 User Story"
+              data-new-story
+            />
+            <UiButton size="sm" :disabled="!storyTitle" @click="createStory">
+              建立 User Story
+            </UiButton>
+          </div>
         </div>
         <TaskRoadmap v-if="roadmap" :roadmap="roadmap" />
       </section>
 
-      <section v-else-if="tab === 'requirements'">
+      <section v-else-if="tab === 'requirements'" class="tab-panel">
         <!-- Intake is one field on purpose: it accepts a vague sentence, which is the
              premise of the whole flow (D28). A form with ten required fields at this
              moment is how the flow stops being used. -->
-        <div v-if="canCreateTasks && !isArchived" class="quick-create">
-          <input
-            v-model="intakeText"
-            placeholder="用一句話說你想要什麼"
-            data-new-requirement
-          />
-          <button class="ghost" :disabled="!intakeText" @click="submitIntake">
-            提出
-          </button>
-        </div>
-        <ul class="requirements">
-          <li
-            v-for="item in requirements"
-            :key="item.id"
-            :data-status="item.status"
-          >
-            <RouterLink
-              :to="{
-                name: 'requirement-detail',
-                params: { id: props.id, requirementId: item.id },
-              }"
+        <div class="workbar requirement-bar">
+          <div class="workbar-copy">
+            <strong>Requirement intake</strong>
+            <span
+              >Start with one imperfect sentence; clarification happens
+              next.</span
             >
-              <span class="ref">{{ item.card_ref }}</span>
-              {{ item.raw_text }}
-            </RouterLink>
-            <span class="status">{{ item.status }}</span>
-          </li>
-          <li v-if="requirements.length === 0" class="empty">
-            還沒有需求。丟一句模糊的話進來就可以開始。
-          </li>
-        </ul>
-      </section>
-
-      <section v-else-if="tab === 'settings'">
-        <h2>生效中的流程定義</h2>
-        <p class="muted">唯讀；流程由平台種子管理，專案不能在這裡改寫。</p>
-        <dl v-if="processDefinition" class="process-settings">
-          <dt>版本</dt>
-          <dd>{{ processDefinition.version }}</dd>
-          <dt>來源</dt>
-          <dd>{{ processDefinition.source }}</dd>
-          <template v-for="gate in processDefinition.gates" :key="gate.key">
-            <dt>{{ gate.label }}</dt>
-            <dd>
-              {{ gate.enabled ? "啟用" : `停用：${gate.disabled_reason}` }}
+          </div>
+          <div v-if="canCreateTasks && !isArchived" class="quick-create">
+            <input
+              v-model="intakeText"
+              placeholder="用一句話說你想要什麼"
+              data-new-requirement
+            />
+            <UiButton
+              variant="primary"
+              size="sm"
+              :disabled="!intakeText"
+              @click="submitIntake"
+            >
+              提出需求
+            </UiButton>
+          </div>
+        </div>
+        <UiCard v-if="requirements.length" flush>
+          <ul class="requirements">
+            <li
+              v-for="item in requirements"
+              :key="item.id"
+              :data-status="item.status"
+            >
               <RouterLink
-                v-if="gate.key === 'ui' && !gate.enabled"
-                to="/settings/integrations"
+                :to="{
+                  name: 'requirement-detail',
+                  params: { id: props.id, requirementId: item.id },
+                }"
               >
-                前往整合設定
+                <span class="ref">{{ item.card_ref }}</span>
+                {{ item.raw_text }}
               </RouterLink>
-            </dd>
+              <span class="status">{{ item.status }}</span>
+            </li>
+          </ul>
+        </UiCard>
+        <EmptyState v-else>
+          還沒有需求。丟一句模糊的話進來就可以開始。
+          <template #action>
+            <span class="empty-guidance"
+              >需求會先進入收件，再由 Agent 協助釐清。</span
+            >
           </template>
-        </dl>
+        </EmptyState>
       </section>
 
-      <section v-if="tab === 'overview'">
-        <p v-if="project.description" class="description">
-          {{ project.description }}
-        </p>
+      <section v-else-if="tab === 'settings'" class="tab-panel">
+        <UiCard>
+          <template #header>
+            <div class="card-heading">
+              <span>生效中的流程定義</span>
+              <span class="heading-note">唯讀 · 平台管理</span>
+            </div>
+          </template>
+          <p class="muted settings-copy">
+            專案沿用平台種子的流程，不能在這裡改寫。
+          </p>
+          <dl v-if="processDefinition" class="process-settings">
+            <dt>版本</dt>
+            <dd>{{ processDefinition.version }}</dd>
+            <dt>來源</dt>
+            <dd>{{ processDefinition.source }}</dd>
+            <template v-for="gate in processDefinition.gates" :key="gate.key">
+              <dt>{{ gate.label }}</dt>
+              <dd>
+                {{ gate.enabled ? "啟用" : `停用：${gate.disabled_reason}` }}
+                <RouterLink
+                  v-if="gate.key === 'ui' && !gate.enabled"
+                  to="/settings/integrations"
+                >
+                  前往整合設定
+                </RouterLink>
+              </dd>
+            </template>
+          </dl>
+        </UiCard>
+      </section>
+
+      <section v-if="tab === 'overview'" class="tab-panel overview-panel">
+        <div class="overview-grid" aria-label="Project summary">
+          <UiCard>
+            <span class="metric-label">Workspace footprint</span>
+            <strong class="metric-number">{{ project.workspace_count }}</strong>
+            <span class="metric-caption">
+              directories across {{ project.node_count }} nodes
+            </span>
+          </UiCard>
+          <UiCard>
+            <span class="metric-label">Active sessions</span>
+            <strong class="metric-number">{{
+              project.active_session_count
+            }}</strong>
+            <span class="metric-caption">
+              {{
+                project.active_session_count
+                  ? "work in progress"
+                  : "nothing running"
+              }}
+            </span>
+          </UiCard>
+          <UiCard>
+            <span class="metric-label">Recent changes</span>
+            <strong class="metric-number">{{
+              projects.activity.length
+            }}</strong>
+            <span class="metric-caption">latest project events</span>
+          </UiCard>
+        </div>
+
+        <UiCard v-if="project.description" class="description-card">
+          <span class="eyebrow">Project brief</span>
+          <p class="description">{{ project.description }}</p>
+        </UiCard>
 
         <!-- Above Workspaces on purpose: after the 2026-08-10 ruling a run does not
              use a workspace binding at all, so "where does this project's code live"
              is now the question a person answers first. -->
-        <ProjectRepositories :project-id="id" :can-manage="canManage" />
+        <UiCard class="overview-card">
+          <ProjectRepositories :project-id="id" :can-manage="canManage" />
+        </UiCard>
 
-        <div class="section-head">
-          <h2>Workspaces</h2>
-          <button
-            v-if="canManage && !isArchived"
-            class="ghost"
-            :disabled="actionBusy"
-            @click="beginBind"
-          >
-            Bind workspace
-          </button>
-        </div>
-        <p v-if="project.workspaces.length === 0" class="muted">
-          No workspaces bound yet.
-        </p>
-        <ul v-else class="bindings">
-          <li v-for="w in project.workspaces" :key="w.id">
-            <span class="mark" :data-usability="w.usability" aria-hidden="true">
-              {{ USABILITY[w.usability].mark }}
-            </span>
-            <span class="node">{{ w.node_name }}</span>
-            <span class="path" :title="w.path">{{ w.path }}</span>
-            <span v-if="w.is_primary" class="tag">primary</span>
-            <span v-if="!usable(w)" class="reason">
-              {{ USABILITY[w.usability].text }}
-            </span>
-            <span class="spacer" />
-            <button
-              class="link"
-              :disabled="!usable(w) || isArchived"
-              :title="usable(w) ? '' : USABILITY[w.usability].text"
-              @click="openSession(w)"
-            >
-              Open session
-            </button>
-            <button
-              v-if="canManage"
-              class="link danger"
-              :disabled="actionBusy"
-              @click="unbind(w.id)"
-            >
-              Unbind
-            </button>
-          </li>
-        </ul>
+        <UiCard flush class="overview-card">
+          <template #header>
+            <div class="card-heading">
+              <div>
+                <span>Workspace bindings</span>
+                <small>Session launch points registered to this project.</small>
+              </div>
+              <UiButton
+                v-if="canManage && !isArchived"
+                size="sm"
+                :disabled="actionBusy"
+                @click="beginBind"
+              >
+                Bind workspace
+              </UiButton>
+            </div>
+          </template>
+          <p v-if="project.workspaces.length === 0" class="card-empty">
+            No workspaces bound yet.
+          </p>
+          <ul v-else class="bindings">
+            <li v-for="w in project.workspaces" :key="w.id">
+              <span
+                class="mark"
+                :data-usability="w.usability"
+                aria-hidden="true"
+              >
+                {{ USABILITY[w.usability].mark }}
+              </span>
+              <span class="node">{{ w.node_name }}</span>
+              <span class="path" :title="w.path">{{ w.path }}</span>
+              <span v-if="w.is_primary" class="tag">primary</span>
+              <span v-if="!usable(w)" class="reason">
+                {{ USABILITY[w.usability].text }}
+              </span>
+              <span class="spacer" />
+              <button
+                class="link"
+                :disabled="!usable(w) || isArchived"
+                :title="usable(w) ? '' : USABILITY[w.usability].text"
+                @click="openSession(w)"
+              >
+                Open session
+              </button>
+              <button
+                v-if="canManage"
+                class="link danger"
+                :disabled="actionBusy"
+                @click="unbind(w.id)"
+              >
+                Unbind
+              </button>
+            </li>
+          </ul>
+        </UiCard>
 
-        <h2>Recent activity</h2>
-        <p v-if="projects.activity.length === 0" class="muted">
-          Nothing has happened yet. Bind a workspace, or start a session from
-          one.
-        </p>
-        <ul v-else class="timeline">
-          <li v-for="event in projects.activity.slice(0, 10)" :key="event.id">
-            <span class="when" :title="event.occurred_at">{{
-              formatInstant(event.occurred_at)
-            }}</span>
-            <span class="what">{{ kindLabel(event.kind) }}</span>
-            <span class="detail">{{
-              describe(event.kind, event.payload)
-            }}</span>
-            <span class="who">{{ event.actor_name ?? "—" }}</span>
-          </li>
-        </ul>
+        <UiCard flush class="overview-card">
+          <template #header>
+            <div class="card-heading">
+              <div>
+                <span>Recent activity</span>
+                <small>The latest changes across this project.</small>
+              </div>
+              <UiButton size="sm" variant="ghost" @click="tab = 'activity'">
+                View all
+              </UiButton>
+            </div>
+          </template>
+          <p v-if="projects.activity.length === 0" class="card-empty">
+            Nothing has happened yet. Bind a workspace, or start a session from
+            one.
+          </p>
+          <ul v-else class="timeline">
+            <li v-for="event in projects.activity.slice(0, 10)" :key="event.id">
+              <span class="when" :title="event.occurred_at">{{
+                formatInstant(event.occurred_at)
+              }}</span>
+              <span class="what">{{ kindLabel(event.kind) }}</span>
+              <span class="detail">{{
+                describe(event.kind, event.payload)
+              }}</span>
+              <span class="who">{{ event.actor_name ?? "—" }}</span>
+            </li>
+          </ul>
+        </UiCard>
       </section>
 
-      <section v-else>
+      <section v-else-if="tab === 'activity'" class="tab-panel activity-panel">
         <!--
           Stated, never left blank. A missing actor means one of two different
           things — a system-originated event, or a reader without `audit.view` —
@@ -605,25 +724,37 @@ function recordActionError(error: unknown, fallback: string): void {
           Some information is hidden: showing who performed an action requires
           audit permission.
         </p>
-        <ul class="timeline">
-          <li v-for="event in projects.activity" :key="event.id">
-            <span class="when" :title="event.occurred_at">{{
-              formatInstant(event.occurred_at)
-            }}</span>
-            <span class="what">{{ kindLabel(event.kind) }}</span>
-            <span class="detail">{{
-              describe(event.kind, event.payload)
-            }}</span>
-            <span class="who">{{ event.actor_name ?? "—" }}</span>
-          </li>
-        </ul>
-        <button
+        <UiCard flush>
+          <template #header>
+            <div class="card-heading">
+              <div>
+                <span>Activity log</span>
+                <small
+                  >Project, workspace and session events in time order.</small
+                >
+              </div>
+            </div>
+          </template>
+          <ul class="timeline activity-log">
+            <li v-for="event in projects.activity" :key="event.id">
+              <span class="when" :title="event.occurred_at">{{
+                formatInstant(event.occurred_at)
+              }}</span>
+              <span class="what">{{ kindLabel(event.kind) }}</span>
+              <span class="detail">{{
+                describe(event.kind, event.payload)
+              }}</span>
+              <span class="who">{{ event.actor_name ?? "—" }}</span>
+            </li>
+          </ul>
+        </UiCard>
+        <UiButton
           v-if="projects.activityCursor"
-          class="ghost"
+          variant="secondary"
           @click="projects.fetchActivity(props.id, { append: true })"
         >
           Load more
-        </button>
+        </UiButton>
       </section>
     </template>
 
@@ -644,14 +775,14 @@ function recordActionError(error: unknown, fallback: string): void {
           </select>
         </label>
         <div class="dialog-actions">
-          <button class="ghost" @click="editing = false">Cancel</button>
-          <button
-            class="primary"
+          <UiButton variant="ghost" @click="editing = false">Cancel</UiButton>
+          <UiButton
+            variant="primary"
             :disabled="actionBusy || !editName.trim()"
             @click="saveEdit"
           >
             Save
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>
@@ -692,14 +823,14 @@ function recordActionError(error: unknown, fallback: string): void {
           binding</label
         >
         <div class="dialog-actions">
-          <button class="ghost" @click="binding = false">Cancel</button>
-          <button
-            class="primary"
+          <UiButton variant="ghost" @click="binding = false">Cancel</UiButton>
+          <UiButton
+            variant="primary"
             :disabled="actionBusy || !bindNodeId || !bindPath.trim()"
             @click="saveBinding"
           >
             Bind
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>
@@ -737,7 +868,7 @@ function recordActionError(error: unknown, fallback: string): void {
   margin-top: 0;
 }
 .slug {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 .pill {
   display: inline-block;
@@ -748,7 +879,7 @@ function recordActionError(error: unknown, fallback: string): void {
   color: var(--text-secondary);
 }
 .pill[data-status="paused"] {
-  border: 1px solid var(--status-warning, var(--border-focus));
+  border: 1px solid var(--status-busy);
   background: transparent;
 }
 .pill[data-status="archived"] {
@@ -810,7 +941,7 @@ h2 {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border-subtle, var(--border-default));
+  border-bottom: 1px solid var(--border-default);
   font-size: 13px;
 }
 .bindings li:last-child,
@@ -821,17 +952,17 @@ h2 {
   flex: 1;
 }
 .mark[data-usability="usable"] {
-  color: var(--status-success, seagreen);
+  color: var(--status-online);
 }
 .mark[data-usability="outside_allowed_root"] {
-  color: var(--status-warning, darkorange);
+  color: var(--status-busy);
 }
 .node {
   font-weight: 600;
 }
 .path {
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -866,10 +997,10 @@ h2 {
   color: var(--text-muted);
 }
 .link.danger {
-  color: var(--status-danger, crimson);
+  color: var(--status-error);
 }
 .notice.error {
-  color: var(--status-danger, crimson);
+  color: var(--status-error);
 }
 .notice small,
 .async small {
@@ -938,5 +1069,284 @@ h2 {
   margin: 0;
   color: var(--text-muted);
   font-size: 12px;
+}
+
+/* Project workbench — mirrors the reviewed prototype's calm, dense hierarchy. */
+.tabs {
+  gap: 0;
+  margin-bottom: var(--space-4);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.tabs button {
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  white-space: nowrap;
+}
+.tabs button:hover {
+  color: var(--text-primary);
+  background: var(--surface-default);
+}
+.tab-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+.workbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 58px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-default);
+}
+.workbar-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+.workbar-copy strong {
+  font-size: var(--font-sm);
+}
+.workbar-copy span {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+.quick-create {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.quick-create input {
+  width: 220px;
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  font-size: var(--font-sm);
+}
+.requirement-bar .quick-create input {
+  width: min(380px, 34vw);
+}
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.overview-grid :deep(.body) {
+  display: grid;
+  gap: var(--space-1);
+  min-height: 120px;
+  align-content: center;
+}
+.metric-label,
+.eyebrow {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.metric-number {
+  margin-top: var(--space-1);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+.metric-caption {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+.description-card :deep(.body) {
+  display: grid;
+  gap: var(--space-2);
+}
+.description {
+  max-width: 76ch;
+  color: var(--text-secondary);
+  line-height: 1.65;
+}
+.overview-card {
+  margin: 0;
+}
+.card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  width: 100%;
+  font-size: var(--font-sm);
+}
+.card-heading > div {
+  display: grid;
+  gap: 2px;
+}
+.card-heading small,
+.heading-note {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 400;
+}
+.card-empty {
+  margin: 0;
+  padding: var(--space-5) var(--space-4);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+}
+.bindings,
+.timeline {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.bindings li,
+.timeline li {
+  min-height: 46px;
+  padding: var(--space-3) var(--space-4);
+}
+.timeline li {
+  position: relative;
+  padding-left: var(--space-5);
+}
+.timeline li::before {
+  position: absolute;
+  left: var(--space-3);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  content: "";
+  background: var(--action-primary);
+}
+.activity-log:empty::after {
+  display: block;
+  padding: var(--space-5);
+  color: var(--text-muted);
+  content: "No activity yet.";
+}
+.requirements {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.requirements li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: 58px;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-default);
+}
+.requirements li:last-child {
+  border-bottom: 0;
+}
+.requirements a {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.requirements a:hover {
+  color: var(--action-primary);
+}
+.requirements .ref {
+  flex: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
+  font-weight: 400;
+}
+.requirements .status {
+  padding: 2px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.empty-guidance {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+.settings-copy {
+  margin-top: 0;
+}
+.process-settings {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.35fr) minmax(0, 1fr);
+  margin: var(--space-4) 0 0;
+  border-top: 1px solid var(--border-default);
+}
+.process-settings dt,
+.process-settings dd {
+  margin: 0;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-default);
+}
+.process-settings dt {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.process-settings dd {
+  color: var(--text-secondary);
+}
+.dialog {
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 48px
+    color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+.dialog input,
+.dialog textarea,
+.dialog select {
+  min-height: 38px;
+}
+@media (max-width: 980px) {
+  .workbar,
+  .roadmap-bar,
+  .requirement-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .workbar-copy {
+    margin-right: 0;
+  }
+  .quick-create {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+  .quick-create input,
+  .requirement-bar .quick-create input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+@media (max-width: 700px) {
+  .overview-grid {
+    grid-template-columns: 1fr;
+  }
+  .bindings li,
+  .timeline li {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .path,
+  .detail {
+    max-width: 100%;
+  }
+  .who {
+    margin-left: 0;
+  }
 }
 </style>

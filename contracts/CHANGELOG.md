@@ -1,5 +1,9 @@
 # Contract changelog
 
+Board-card run projections added in `plan/19` are HTTP/OpenAPI response fields, not
+WebSocket control messages, so this contract package and its protocol version are
+intentionally unchanged (D33).
+
 ## 1.11.0 — 2026-08-11 (compatible)
 
 **Added — the agent runner (ADR 0029/0030/0031, `plan/18`).**

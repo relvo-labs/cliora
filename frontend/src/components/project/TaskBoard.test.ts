@@ -1,8 +1,10 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "../../api/client";
 import type { Board } from "../../api/dto";
+import ToastHost from "../ui/ToastHost.vue";
+import { useToast } from "../ui/useToast";
 import TaskBoard from "./TaskBoard.vue";
 
 /**
@@ -37,6 +39,9 @@ function board(
     delivery: card.delivery ?? "pull_request",
     blocking_count: card.blocking_count ?? 0,
     gates_approved_count: 0,
+    active_run_status: card.active_run_status ?? null,
+    active_run_runner_name: card.active_run_runner_name ?? null,
+    waiting_reason: card.waiting_reason ?? null,
     version: card.version ?? 1,
     updated_at: "2026-08-09T00:00:00Z",
   })) as Board["lanes"][number]["cards"];
@@ -55,6 +60,11 @@ function client(overrides: Record<string, unknown> = {}) {
 }
 
 describe("TaskBoard", () => {
+  beforeEach(() => {
+    const toast = useToast();
+    for (const message of toast.messages.value) toast.dismiss(message.id);
+  });
+
   it("groups cards into the six lanes in order", () => {
     const wrapper = mount(TaskBoard, {
       props: {
@@ -112,6 +122,7 @@ describe("TaskBoard", () => {
   });
 
   it("puts the card back and names the blocking cards when the move is refused", async () => {
+    const host = mount(ToastHost);
     const updateTask = vi.fn().mockRejectedValue(
       new ApiError("TASK_DEPENDENCY_UNSATISFIED", "blocked", 409, undefined, {
         blocking_refs: ["TASK-3", "TASK-7"],
@@ -128,7 +139,7 @@ describe("TaskBoard", () => {
     await wrapper.find('[data-move-to="implementing"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const message = wrapper.find("[data-board-message]");
+    const message = host.find(".k-error");
     expect(message.text()).toContain("TASK-3");
     expect(message.text()).toContain("TASK-7");
     // Back in backlog: the rollback is the property, the message is the courtesy.
@@ -139,6 +150,7 @@ describe("TaskBoard", () => {
   });
 
   it("says a card was changed by someone else on a version conflict", async () => {
+    const host = mount(ToastHost);
     const updateTask = vi
       .fn()
       .mockRejectedValue(
@@ -154,7 +166,7 @@ describe("TaskBoard", () => {
     await wrapper.find('[data-move-for="TASK-1"]').trigger("click");
     await wrapper.find('[data-move-to="ready"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(wrapper.find("[data-board-message]").text()).toContain("別人改過");
+    expect(host.find(".k-error").text()).toContain("別人改過");
     expect(wrapper.find('[data-stage="backlog"] .card').exists()).toBe(true);
   });
 
@@ -167,5 +179,71 @@ describe("TaskBoard", () => {
       },
     });
     expect(wrapper.find('[data-move-for="TASK-1"]').exists()).toBe(false);
+  });
+
+  it("makes waiting for human input the only full-width card alert", () => {
+    const wrapper = mount(TaskBoard, {
+      props: {
+        board: board([
+          { id: "waiting", active_run_status: "waiting_for_input" },
+          { id: "running", active_run_status: "running" },
+        ]),
+        client: client(),
+        canWrite: true,
+      },
+    });
+    expect(wrapper.findAll(".human-waiting")).toHaveLength(1);
+    expect(wrapper.find('[data-human-waiting="true"]').text()).toContain(
+      "等待你的回覆",
+    );
+  });
+
+  it("renders the two queued waiting reasons word for word differently", () => {
+    const wrapper = mount(TaskBoard, {
+      props: {
+        board: board([
+          {
+            id: "offline",
+            active_run_status: "queued",
+            active_run_runner_name: "dev-vm-01",
+            waiting_reason: "assigned_offline",
+          },
+          {
+            id: "none",
+            active_run_status: "queued",
+            waiting_reason: "no_eligible_runner",
+          },
+        ]),
+        client: client(),
+        canWrite: true,
+      },
+    });
+    const copy = wrapper.findAll(".waiting-copy").map((item) => item.text());
+    expect(copy).toContain("等待指定的 Agent：dev-vm-01（目前離線）");
+    expect(copy).toContain("等待可用的 Agent");
+    expect(new Set(copy).size).toBe(2);
+  });
+
+  it("uses the outline flash instead of displacement when motion is reduced", async () => {
+    const original = window.matchMedia;
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true }) as never;
+    const updateTask = vi
+      .fn()
+      .mockRejectedValue(
+        new ApiError("TASK_VERSION_CONFLICT", "conflict", 409),
+      );
+    const wrapper = mount(TaskBoard, {
+      props: {
+        board: board([{ id: "x", card_ref: "TASK-1" }]),
+        client: client({ updateTask }),
+        canWrite: true,
+      },
+    });
+    await wrapper.find('[data-card-ref="TASK-1"]').trigger("dragstart");
+    await wrapper.find('[data-stage="ready"]').trigger("drop");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(wrapper.find(".rollback-menu").exists()).toBe(true);
+    expect(wrapper.find(".rollback-drag").exists()).toBe(false);
+    window.matchMedia = original;
   });
 });

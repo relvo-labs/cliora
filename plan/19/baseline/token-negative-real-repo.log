@@ -1,0 +1,4 @@
+node scripts/frontend/check-tokens.mjs
+ERROR  frontend/src/components/project/TaskBoard.vue:248  var(--cliora-does-not-exist)  宣告會被丟棄
+Token references: 1 ERROR, 0 WARN
+make: *** [Makefile:26: tokens] Error 1

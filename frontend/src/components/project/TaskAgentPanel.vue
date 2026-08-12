@@ -26,6 +26,10 @@ import type {
 } from "../../api/dto";
 import { api, useAuthStore } from "../../stores/auth";
 import { formatInstant } from "../../utils/time";
+import BaseBadge from "../ui/BaseBadge.vue";
+import RunBadge from "../ui/RunBadge.vue";
+import SourceBadge from "../ui/SourceBadge.vue";
+import { SOURCE_AGENT, SOURCE_PLATFORM } from "../ui/labels";
 
 const props = defineProps<{
   projectId: string;
@@ -174,7 +178,7 @@ function bytes(value: number): string {
           >
             #{{ run.seq }}
           </RouterLink>
-          <span class="badge">{{ run.status }}</span>
+          <RunBadge :status="run.status" :runner-name="run.runner_name" />
           <span class="muted">
             第 {{ run.attempt }} 次 · {{ run.runner_name ?? "尚未被領走" }} ·
             {{ formatInstant(run.queued_at) }}
@@ -202,7 +206,22 @@ function bytes(value: number): string {
                   : (message.author_name ?? "你")
             }}
           </span>
-          <span v-if="message.kind === 'question'" class="badge">提問</span>
+          <SourceBadge
+            v-if="
+              message.author_kind === 'agent' ||
+              message.author_kind === 'system'
+            "
+            :source="
+              message.author_kind === 'agent' ? SOURCE_AGENT : SOURCE_PLATFORM
+            "
+          />
+          <BaseBadge
+            v-if="message.kind === 'question'"
+            variant="outline"
+            tone="run-waiting-for-input"
+          >
+            提問
+          </BaseBadge>
           <p>{{ message.body }}</p>
           <small class="muted">{{ formatInstant(message.created_at) }}</small>
         </li>
@@ -243,7 +262,7 @@ function bytes(value: number): string {
 .agent-panel {
   display: grid;
   gap: 0.75rem;
-  border: 1px solid var(--border-default, #d0d0d0);
+  border: 1px solid var(--border-default);
   border-radius: 6px;
   padding: 0.75rem 1rem;
 }
@@ -260,14 +279,15 @@ h3 {
 }
 .waiting,
 .notice {
-  background: #fff6e5;
+  background: var(--surface-canvas);
+  border-left: 3px solid var(--risk-medium);
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
   margin: 0;
   font-size: 0.9rem;
 }
 .error {
-  color: #b3261e;
+  color: var(--status-error);
   margin: 0;
 }
 ul {
@@ -283,10 +303,10 @@ ul {
   padding-left: 0.5rem;
 }
 .thread li.agent {
-  border-left-color: #6b8afd;
+  border-left-color: var(--source-agent);
 }
 .thread li.system {
-  border-left-color: #cfcfcf;
+  border-left-color: var(--source-platform);
 }
 .thread li p {
   margin: 0.15rem 0;
@@ -294,13 +314,6 @@ ul {
 }
 .who {
   font-weight: 600;
-}
-.badge {
-  font-size: 0.75rem;
-  border-radius: 999px;
-  padding: 0.05rem 0.45rem;
-  background: #eef1f5;
-  margin-left: 0.35rem;
 }
 .compose {
   display: flex;

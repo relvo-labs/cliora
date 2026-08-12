@@ -258,7 +258,7 @@ const label = computed(() => {
 .row[data-drop-target] {
   outline: 1px dashed var(--action-primary);
   outline-offset: -1px;
-  background: var(--surface-raised, rgba(127, 127, 127, 0.12));
+  background: var(--surface-canvas);
 }
 .drop-hint {
   margin-inline-start: auto;

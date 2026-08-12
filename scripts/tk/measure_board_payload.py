@@ -62,6 +62,13 @@ def _card(rng: random.Random, seq: int, *, full: bool) -> dict[str, Any]:
         "owner_name": "someone.developer",
         "delivery": rng.choice(DELIVERIES),
         "blocking_count": rng.choice([0, 0, 0, 1, 2]),
+        # plan/19's compact active-run projection. Null is the heaviest common case
+        # because the field names still travel for every idle card; measuring it
+        # therefore catches the fixed cost without inventing an unrealistically busy
+        # 200-card board.
+        "active_run_status": None,
+        "active_run_runner_name": None,
+        "waiting_reason": None,
         "version": rng.randint(1, 40),
         "updated_at": "2026-08-09T04:15:00Z",
     }

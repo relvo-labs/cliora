@@ -654,11 +654,11 @@ input {
 }
 .shortcut .path {
   overflow-wrap: anywhere;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 .shortcut .why {
   font-size: 11px;
-  color: var(--status-warning, var(--text-muted));
+  color: var(--status-busy);
 }
 .field {
   display: flex;
@@ -751,7 +751,7 @@ input {
   border-radius: var(--radius-sm);
   background: var(--surface-default);
   color: var(--text-secondary);
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-size: 12px;
   cursor: pointer;
 }

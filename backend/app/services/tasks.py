@@ -20,6 +20,7 @@ is a source of truth that lies (research/02/03, the risk table's last row).
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -171,8 +172,10 @@ class TaskService:
     async def process(self) -> EffectiveProcess:
         return await self._process.effective()
 
-    async def board(self, project_id: uuid.UUID) -> list[BoardCard]:
-        return await self._repo.board_cards(project_id)
+    async def board(
+        self, project_id: uuid.UUID, *, is_online: Callable[[uuid.UUID], bool]
+    ) -> list[BoardCard]:
+        return await self._repo.board_cards(project_id, is_online=is_online)
 
     async def roadmap(
         self, project_id: uuid.UUID

@@ -7,6 +7,12 @@ import { ACTION_PROJECT_MANAGE } from "../api/dto";
 import type { ProjectStatus } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import AsyncState from "../components/common/AsyncState.vue";
+import BaseBadge from "../components/ui/BaseBadge.vue";
+import DataTable from "../components/ui/DataTable.vue";
+import EmptyState from "../components/ui/EmptyState.vue";
+import PageHead from "../components/ui/PageHead.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiCard from "../components/ui/UiCard.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useAuthStore } from "../stores/auth";
 import { useProjectsStore } from "../stores/projects";
@@ -58,6 +64,23 @@ const requestId = computed(() =>
     : undefined,
 );
 
+const totals = computed(() =>
+  projects.list.reduce(
+    (result, project) => ({
+      workspaces: result.workspaces + project.workspace_count,
+      nodes: result.nodes + project.node_count,
+      sessions: result.sessions + project.active_session_count,
+    }),
+    { workspaces: 0, nodes: 0, sessions: 0 },
+  ),
+);
+
+function statusTone(status: ProjectStatus): string {
+  if (status === "active") return "status-online";
+  if (status === "paused") return "status-busy";
+  return "status-offline";
+}
+
 onMounted(() => resource.run());
 
 function open(id: string): void {
@@ -91,32 +114,40 @@ async function create(): Promise<void> {
 
 <template>
   <AppLayout>
-    <header class="head">
-      <div>
-        <h1>Projects</h1>
-        <p>Work that spans workspaces on more than one node.</p>
-      </div>
-      <div class="head-actions">
-        <button
-          class="ghost"
+    <PageHead>
+      <template #title>Projects</template>
+      <template #subtitle>
+        {{ projects.list.length }} projects · {{ totals.workspaces }} workspace
+        bindings across {{ totals.nodes }} nodes
+      </template>
+      <template #actions>
+        <UiButton
+          variant="ghost"
           :disabled="resource.state.value === 'loading'"
           @click="resource.run()"
         >
           Refresh
-        </button>
-        <button v-if="canManage" class="primary" @click="creating = true">
+        </UiButton>
+        <UiButton v-if="canManage" variant="primary" @click="creating = true">
           New project
-        </button>
-      </div>
-    </header>
+        </UiButton>
+      </template>
+    </PageHead>
 
-    <div class="filters">
-      <select v-model="statusFilter" @change="resource.run()">
-        <option value="">All statuses</option>
-        <option value="active">Active</option>
-        <option value="paused">Paused</option>
-        <option value="archived">Archived</option>
-      </select>
+    <div class="project-toolbar" aria-label="Project filters">
+      <div class="toolbar-copy">
+        <strong>Project directory</strong>
+        <span>Cross-node work, ownership and execution at a glance.</span>
+      </div>
+      <label class="field-label">
+        <span>Status</span>
+        <select v-model="statusFilter" @change="resource.run()">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="paused">Paused</option>
+          <option value="archived">Archived</option>
+        </select>
+      </label>
       <label class="check">
         <input v-model="ownedByMe" type="checkbox" @change="resource.run()" />
         Only mine
@@ -136,61 +167,82 @@ async function create(): Promise<void> {
     <AsyncState v-else-if="displayState === 'error'" state="error">
       Could not load projects.
       <small v-if="requestId">Request ID: {{ requestId }}</small>
-      <button class="link" @click="resource.run()">Retry</button>
+      <UiButton variant="ghost" size="sm" @click="resource.run()">
+        Retry
+      </UiButton>
     </AsyncState>
     <!--
       Two wordings, because the useful next step differs by role. Both end with the
       same sentence: a project is optional, and ad-hoc sessions were not replaced.
     -->
-    <AsyncState v-else-if="displayState === 'empty'" state="empty">
-      <template v-if="featureUnavailable">
-        Projects are not enabled in this deployment.
-      </template>
-      <template v-else-if="canManage">
-        No projects yet. Create one with “New project”. You can still start an
-        ad-hoc session directly from Sessions.
-      </template>
-      <template v-else>
-        No projects yet. Ask an Admin to create one, or start an ad-hoc session
-        directly from Sessions.
-      </template>
+    <AsyncState
+      v-else-if="displayState === 'empty' && featureUnavailable"
+      state="empty"
+    >
+      Projects are not enabled in this deployment.
     </AsyncState>
+    <EmptyState v-else-if="displayState === 'empty'">
+      還沒有專案。你仍然可以直接從 Sessions 建立 Ad-hoc Session。
+      <template #action>
+        <UiButton v-if="canManage" variant="primary" @click="creating = true">
+          建立專案
+        </UiButton>
+        <UiButton @click="router.push({ name: 'sessions' })">
+          前往 Sessions
+        </UiButton>
+      </template>
+    </EmptyState>
 
-    <div v-if="displayState === 'success'" class="table-wrap">
-      <table>
+    <UiCard v-if="displayState === 'success'" flush class="project-table-card">
+      <DataTable>
         <thead>
           <tr>
-            <th>Name</th>
+            <th>Project</th>
             <th>Status</th>
-            <th>Workspaces</th>
-            <th>Sessions</th>
+            <th>Workspace footprint</th>
+            <th>Active sessions</th>
             <th>Last activity</th>
+            <th aria-label="Open project"></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="p in projects.list" :key="p.id">
+          <tr v-for="p in projects.list" :key="p.id" class="project-row">
             <td>
               <button class="name" @click="open(p.id)">{{ p.name }}</button>
-              <!-- The slug is what a URL and, from V2.1, a card reference are
-                   built from, so it is shown rather than hidden behind the name. -->
               <span class="slug">{{ p.slug }}</span>
             </td>
             <td>
-              <span class="pill" :data-status="p.status">{{ p.status }}</span>
+              <BaseBadge variant="outline" :tone="statusTone(p.status)">
+                {{ p.status }}
+              </BaseBadge>
             </td>
             <td>
-              {{ p.workspace_count }} directories · {{ p.node_count }} nodes
+              <strong class="metric-value">{{ p.workspace_count }}</strong>
+              directories
+              <span class="metric-separator">·</span>
+              {{ p.node_count }} nodes
             </td>
-            <!-- An em dash rather than a 0: "nothing running" is easier to scan
-                 as an absence than as a number to be read and compared. -->
-            <td>{{ p.active_session_count || "—" }}</td>
-            <td :title="p.last_activity_at ?? ''">
+            <td>
+              <span :class="{ quiet: !p.active_session_count }">
+                {{ p.active_session_count || "—" }}
+              </span>
+            </td>
+            <td class="activity" :title="p.last_activity_at ?? ''">
               {{ formatInstant(p.last_activity_at) }}
+            </td>
+            <td class="open-cell">
+              <button
+                class="open-project"
+                :aria-label="`Open ${p.name}`"
+                @click="open(p.id)"
+              >
+                →
+              </button>
             </td>
           </tr>
         </tbody>
-      </table>
-    </div>
+      </DataTable>
+    </UiCard>
 
     <div v-if="creating" class="dialog-backdrop" @click.self="creating = false">
       <div class="dialog" role="dialog" aria-label="New project">
@@ -221,10 +273,14 @@ async function create(): Promise<void> {
           Request ID: {{ createRequestId }}
         </p>
         <div class="dialog-actions">
-          <button class="ghost" @click="creating = false">Cancel</button>
-          <button class="primary" :disabled="!newName.trim()" @click="create">
+          <UiButton variant="ghost" @click="creating = false">Cancel</UiButton>
+          <UiButton
+            variant="primary"
+            :disabled="!newName.trim()"
+            @click="create"
+          >
             Create
-          </button>
+          </UiButton>
         </div>
       </div>
     </div>
@@ -232,95 +288,102 @@ async function create(): Promise<void> {
 </template>
 
 <style scoped>
-.head {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-.head h1 {
-  margin: 0;
-  font-size: 24px;
-}
-.head p {
-  margin: 4px 0 0;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.head-actions {
-  display: flex;
-  gap: 8px;
-}
-.filters {
+.project-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: var(--space-4);
+  min-height: 58px;
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-default);
+}
+.toolbar-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin-right: auto;
+}
+.toolbar-copy strong {
+  font-size: var(--font-sm);
+}
+.toolbar-copy span {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+.field-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.field-label select {
+  min-height: 34px;
+  padding: 0 30px 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  background: var(--surface-elevated);
 }
 .check {
   display: flex;
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--font-sm);
 }
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-default);
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-th,
-td {
-  padding: 10px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-subtle, var(--border-default));
-}
-th {
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 12px;
-}
-tbody tr:last-child td {
-  border-bottom: none;
+.project-table-card {
+  min-height: 190px;
 }
 .name {
   background: none;
   border: none;
   padding: 0;
-  color: var(--action-primary);
+  color: var(--text-primary);
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--font-md);
   cursor: pointer;
+}
+.name:hover {
+  color: var(--action-primary);
 }
 .slug {
   display: block;
+  margin-top: 2px;
   color: var(--text-muted);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: var(--font-xs);
 }
-/* Three states, and deliberately no green: the same screen later carries "session
- * running" and, from V2.2, "run executing". Spending green here would make three
- * different kinds of "in progress" indistinguishable (plan/16 §8). */
-.pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 999px;
-  font-size: 11px;
-  background: var(--surface-canvas);
-  color: var(--text-secondary);
+.metric-value {
+  color: var(--text-primary);
 }
-.pill[data-status="paused"] {
-  border: 1px solid var(--status-warning, var(--border-focus));
-  color: var(--status-warning, var(--text-secondary));
+.metric-separator {
+  margin-inline: var(--space-1);
+  color: var(--text-muted);
+}
+.quiet,
+.activity {
+  color: var(--text-muted);
+}
+.open-cell {
+  width: 44px;
+  text-align: right;
+}
+.open-project {
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
   background: transparent;
 }
-.pill[data-status="archived"] {
-  color: var(--text-muted);
+.open-project:hover {
+  border-color: var(--border-default);
+  color: var(--action-primary);
+  background: var(--surface-elevated);
 }
 .dialog-backdrop {
   position: fixed;
@@ -328,14 +391,18 @@ tbody tr:last-child td {
   display: grid;
   place-items: center;
   background: rgb(0 0 0 / 40%);
+  z-index: 20;
 }
 .dialog {
   width: min(420px, 92vw);
-  padding: 20px;
-  border-radius: var(--radius-md);
+  padding: var(--space-5);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   background: var(--surface-elevated);
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
+  box-shadow: 0 18px 48px
+    color-mix(in srgb, var(--text-primary) 18%, transparent);
 }
 .dialog h2 {
   margin: 0;
@@ -347,6 +414,7 @@ tbody tr:last-child td {
   font-size: 13px;
 }
 .dialog input {
+  min-height: 38px;
   padding: 8px 10px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
@@ -372,7 +440,7 @@ tbody tr:last-child td {
 }
 .error {
   margin: 0;
-  color: var(--status-danger, crimson);
+  color: var(--status-error);
   font-size: 12px;
 }
 .dialog-actions {
@@ -391,5 +459,17 @@ tbody tr:last-child td {
 }
 .skeleton span:first-child {
   width: 72%;
+}
+@media (max-width: 760px) {
+  .project-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .toolbar-copy {
+    margin-right: 0;
+  }
+  .field-label {
+    justify-content: space-between;
+  }
 }
 </style>

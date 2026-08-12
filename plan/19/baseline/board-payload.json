@@ -1,0 +1,13 @@
+{
+  "cards": 200,
+  "threshold_bytes": 524288,
+  "full": {
+    "bytes": 439029,
+    "gzip_bytes": 31983
+  },
+  "summary": {
+    "bytes": 73851,
+    "gzip_bytes": 12665
+  },
+  "verdict": "summary shape fits in one response"
+}

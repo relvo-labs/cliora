@@ -139,6 +139,32 @@ CLI 就是 `agentd` 那支二進位）。既有訊息與既有 fixtures 零變�
 
 ---
 
+## §4b V2.2_1 前端修復（`UI-`）
+
+前置：V2.2 出口通過。**建議排在 V2.3 之前**——V2.3 起的機密與交付畫面沿用這一期定下的徽章與原語。
+完整診斷與裁決見 [`12-phase-v22_1-ui-remediation.md`](./12-phase-v22_1-ui-remediation.md)，執行計畫見 [`plan/19/`](../../plan/19/README.md)。
+
+| ☐ | Ticket | 內容 |
+|---|---|---|
+| ☐ | UI-01 | Token 定稿：24 個語意色（stage／run／risk／source）＋ 10 個尺度 token 進 `tokens.css`，同步 `research/style.md` |
+| ☐ | UI-02 | 還債：**104 個未定義 `var()`** 全部改對（13 個檔案；含 `--font-size-*` → `--font-*` 改名） |
+| ☐ | UI-03 | **守門**：`make check` 新增 token 解析檢查，任何解不開的 `var()` 就失敗 |
+| ☐ | UI-04 | 徽章族：`BaseBadge` ＋ `Stage`／`Run`／`Risk`／`Delivery`／`Source` 五個語意徽章，中文標籤、未知值有退路 |
+| ☐ | UI-05 | 版面原語：`PageHead`／`UiCard`／`DataTable`／`EmptyState`／`ToastHost`（**不重新引入全域 class layer**） |
+| ☐ | UI-06 | **看板契約**：`BoardCard` 加 `run_status`／`run_agent`／`run_id` 三欄（contract＋backend＋前端）＋ **重跑 M1**（≤ 90 KB） |
+| ☐ | UI-07 | 看板重繪：六車道著色、**「等待你的回覆」滿版色條＋脈動**（D24）、指定 agent 的兩種等待文案 |
+| ☐ | UI-08 | 拖曳拒絕：補 **Done Gate** 第三種、改用 toast、卡片彈回動畫 |
+| ☐ | UI-09 | Task 詳情：兩欄版面、**`SourceBadge` 三級上線**（D10）、失敗項預設展開不可摺疊 |
+| ☐ | UI-10 | 其餘畫面對齊原語：Roadmap／Agents／Run 詳情／Requirements／Projects |
+| ☐ | UI-11 | `TokenShowcaseView` 從 V1 詞彙更新為 V2 詞彙（含三種「進行中」並排供審查） |
+| ☐ | UI-12 | 視覺回歸基準；**旗標關閉時 V1 畫面逐像素不變** |
+
+**出口**：9 條（`12` §6）。**不動 `contracts/`、不動 daemon**——看板是 HTTP REST，
+`BoardCardDTO` 的變更由 OpenAPI 快照比對治理（純新增欄位）。
+⚠️ D24 目前不是樣式缺口而是**契約缺口**：`BoardCard` 沒有任何 run 欄位，看板無從得知哪張卡在等人。
+
+---
+
 ## §5 V2.3 機密與隔離（`SC-`）
 
 前置：V2.2 出口通過。（金鑰與 git 認證已於 2026-08-08 裁決。**M11／M12 移到 V2.2 開工前**——2026-08-10 裁決把 clone 提前。）

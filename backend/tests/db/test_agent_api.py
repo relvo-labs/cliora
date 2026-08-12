@@ -272,6 +272,68 @@ async def test_no_eligible_agent_is_a_different_reason(api: tuple, projects_enab
     assert reason != "assigned_offline"
 
 
+async def test_board_projects_the_active_run_without_an_n_plus_one(
+    api: tuple, projects_enabled: None
+) -> None:
+    """The board adds three scalars in four grouped repository queries, never per card."""
+    from app.api.http import agents as agents_api
+    from app.api.http import tasks as tasks_api
+    from app.main import app
+    from app.repositories.tasks import TaskRepository
+
+    client, maker = api
+    owner, headers = await _actor(client, maker)
+    project = await _project(maker, owner)
+    task = await _card(maker, project)
+    runner, _node = await _runner(maker)
+    registry = _Registry(online=set())
+
+    app.dependency_overrides[agents_api.get_registry] = lambda: registry
+    app.dependency_overrides[tasks_api.get_registry] = lambda: registry
+    try:
+        dispatched = await client.post(
+            f"/api/tasks/{task}/dispatch",
+            json={"assigned_runner_id": str(runner)},
+            headers=headers,
+        )
+        assert dispatched.status_code == 202, dispatched.text
+
+        response = await client.get(f"/api/projects/{project}/board", headers=headers)
+        assert response.status_code == 200, response.text
+        card = next(
+            item
+            for lane in response.json()["lanes"]
+            for item in lane["cards"]
+            if item["id"] == str(task)
+        )
+        assert card["active_run_status"] == "queued"
+        assert card["active_run_runner_name"]
+        assert card["waiting_reason"] == "assigned_offline"
+
+        async with maker() as session:
+            queries = 0
+
+            def count_query(*_args) -> None:  # noqa: ANN002
+                nonlocal queries
+                queries += 1
+
+            engine = session.get_bind()
+            sa.event.listen(engine, "before_cursor_execute", count_query)
+            try:
+                cards = await TaskRepository(session).board_cards(
+                    project, is_online=registry.is_connected
+                )
+            finally:
+                sa.event.remove(engine, "before_cursor_execute", count_query)
+
+        projected = next(item for item in cards if item.task.id == task)
+        assert projected.waiting_reason == "assigned_offline"
+        assert queries <= 4
+    finally:
+        app.dependency_overrides.pop(agents_api.get_registry, None)
+        app.dependency_overrides.pop(tasks_api.get_registry, None)
+
+
 # --- repositories: three fields, never a URL ------------------------------- #
 
 

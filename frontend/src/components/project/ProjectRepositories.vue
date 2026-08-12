@@ -17,6 +17,7 @@ import { onMounted, ref } from "vue";
 import { ApiError } from "../../api/client";
 import type { ProjectRepository } from "../../api/dto";
 import { api } from "../../stores/auth";
+import UiButton from "../ui/UiButton.vue";
 
 const props = defineProps<{ projectId: string; canManage: boolean }>();
 
@@ -88,10 +89,18 @@ async function remove(repository: ProjectRepository): Promise<void> {
 <template>
   <div v-if="available">
     <div class="section-head">
-      <h2>Repositories</h2>
-      <button v-if="canManage" class="ghost" @click="adding = !adding">
+      <div>
+        <h2>Repositories</h2>
+        <span>Canonical code sources available to Agent runs.</span>
+      </div>
+      <UiButton
+        v-if="canManage"
+        size="sm"
+        :variant="adding ? 'ghost' : 'secondary'"
+        @click="adding = !adding"
+      >
         {{ adding ? "取消" : "登記 repository" }}
-      </button>
+      </UiButton>
     </div>
 
     <p class="hint">
@@ -141,7 +150,7 @@ async function remove(repository: ProjectRepository): Promise<void> {
         <code>git remote -v</code>、
         進錯誤訊息。拆成三欄之後它<strong>無法被表示</strong>。
       </p>
-      <button class="primary" type="submit">登記</button>
+      <UiButton variant="primary" type="submit">登記</UiButton>
     </form>
   </div>
 </template>
@@ -149,41 +158,104 @@ async function remove(repository: ProjectRepository): Promise<void> {
 <style scoped>
 .section-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: var(--space-4);
+}
+.section-head > div {
+  display: grid;
+  gap: 2px;
+}
+.section-head h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--font-sm);
+}
+.section-head span {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
 }
 .hint {
-  font-size: 0.85rem;
-  opacity: 0.8;
+  max-width: 78ch;
+  margin: var(--space-3) 0 0;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  line-height: 1.55;
 }
 .error {
-  color: #b3261e;
+  color: var(--status-error);
 }
 .repos {
   list-style: none;
+  margin: var(--space-3) calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
   padding: 0;
   display: grid;
-  gap: 0.3rem;
-  font-size: 0.9rem;
+  font-size: var(--font-sm);
 }
 .repos li {
   display: flex;
-  gap: 0.6rem;
-  align-items: baseline;
+  gap: var(--space-3);
+  align-items: center;
+  min-height: 46px;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-default);
+}
+.repos code {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: var(--font-sm);
+  font-weight: 600;
+}
+.repos .link {
+  margin-left: auto;
 }
 .form {
   display: grid;
-  gap: 0.5rem;
-  max-width: 32rem;
-  margin-top: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-default);
 }
 .form label {
   display: grid;
-  gap: 0.2rem;
-  font-size: 0.85rem;
+  gap: var(--space-1);
+  color: var(--text-secondary);
+  font-size: var(--font-xs);
+  font-weight: 600;
+}
+.form input,
+.form select {
+  min-height: 36px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+}
+.form .hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.form > button {
+  justify-self: start;
 }
 .muted {
-  opacity: 0.65;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+@media (max-width: 700px) {
+  .form {
+    grid-template-columns: 1fr;
+  }
+  .repos li {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .repos .link {
+    margin-left: 0;
+  }
 }
 </style>

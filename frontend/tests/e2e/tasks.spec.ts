@@ -155,7 +155,7 @@ test.describe("V2.1 task layer", () => {
     await expect(
       page.getByRole("heading", { name: "Nested task" }),
     ).toBeVisible();
-    await expect(page.getByText("本階段由人執行。")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Agent 執行" })).toBeVisible();
     await page.screenshot({
       path: "../artifacts/tk/local/task-detail.png",
       fullPage: true,
@@ -196,7 +196,7 @@ test.describe("V2.1 task layer", () => {
     await signIn(page);
     await page.goto(`/projects/${project.id}?tab=board`);
     await moveFromBoard(page, dependent.task.card_ref, "implementing");
-    await expect(page.locator("[data-board-message]")).toContainText(
+    await expect(page.locator(".toast.k-error")).toContainText(
       prerequisite.task.card_ref,
     );
     await expect(
@@ -217,7 +217,7 @@ test.describe("V2.1 task layer", () => {
       ),
     ).toBeVisible();
     await moveFromBoard(stalePage, conflict.task.card_ref, "blocked");
-    await expect(stalePage.locator("[data-board-message]")).toContainText(
+    await expect(stalePage.locator(".toast.k-error")).toContainText(
       "剛被別人改過",
     );
     await expect(
@@ -226,6 +226,51 @@ test.describe("V2.1 task layer", () => {
       ),
     ).toBeVisible();
     await stalePage.close();
+  });
+
+  test("the two queued waiting reasons remain different on the board", async ({
+    page,
+    request,
+  }) => {
+    const token = await tokenFor(request);
+    const project = await createProject(request, token, "task-waiting-copy");
+    const assigned = await postJson(
+      request,
+      token,
+      `/api/projects/${project.id}/tasks`,
+      { title: "Assigned offline" },
+    );
+    const unassigned = await postJson(
+      request,
+      token,
+      `/api/projects/${project.id}/tasks`,
+      { title: "No eligible runner" },
+    );
+
+    await page.route(`**/api/projects/${project.id}/board`, async (route) => {
+      const response = await route.fetch();
+      const board = await response.json();
+      for (const lane of board.lanes) {
+        for (const card of lane.cards) {
+          card.active_run_status = "queued";
+          if (card.id === assigned.task.id) {
+            card.active_run_runner_name = "dev-vm-01";
+            card.waiting_reason = "assigned_offline";
+          } else if (card.id === unassigned.task.id) {
+            card.active_run_runner_name = null;
+            card.waiting_reason = "no_eligible_runner";
+          }
+        }
+      }
+      await route.fulfill({ response, json: board });
+    });
+
+    await signIn(page);
+    await page.goto(`/projects/${project.id}?tab=board`);
+    const copies = await page.locator(".waiting-copy").allTextContents();
+    expect(copies).toContain("等待指定的 Agent：dev-vm-01（目前離線）");
+    expect(copies).toContain("等待可用的 Agent");
+    expect(new Set(copies).size).toBe(2);
   });
 
   test("a requirement proposal can be accepted one task at a time", async ({

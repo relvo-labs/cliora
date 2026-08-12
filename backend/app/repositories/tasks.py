@@ -11,28 +11,54 @@ Two queries here carry decisions rather than plumbing:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from sqlalchemy import Select, and_, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
-from app.db.models import Epic, Project, Task, TaskDependency, UserStory
+from app.db.models import (
+    AgentRunner,
+    Epic,
+    Project,
+    Task,
+    TaskDependency,
+    TaskRun,
+    UserStory,
+)
+
+ACTIVE_RUN_STATUSES = ("queued", "claimed", "running", "waiting_for_input")
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveRunProjection:
+    task_id: uuid.UUID
+    status: str
+    runner_name: str | None
+    assigned_runner_id: uuid.UUID | None
+    assigned_runner_node_id: uuid.UUID | None
+    runtime: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class BoardCard:
-    """A card as the board renders it, plus the two counts it needs.
+    """A card as the board renders it, plus its compact projections.
 
     Not the ORM row: M1 measured a 200-card board at 439 KB with the full card and
-    74 KB with this shape, and 500 cards puts the full shape over a megabyte
-    (`plan/17/10-…md` §1). Acceptance criteria and gate detail belong to the card
-    detail view, and a test asserts they never reappear here.
+    74 KB with the original summary. Plan/19 adds only active status, runner name and
+    a fixed waiting-reason enum: the same 200-card fixture is 89,251 bytes against a
+    90,000-byte budget. Acceptance criteria and gate detail still belong to the card
+    detail view; widening this type is how that decision gets undone.
     """
 
     task: Task
     owner_name: str | None
     blocking_count: int
     gates_approved_count: int
+    active_run_status: str | None
+    active_run_runner_name: str | None
+    waiting_reason: str | None
 
 
 class TaskRepository:
@@ -81,12 +107,14 @@ class TaskRepository:
     def _board_select(self, project_id: uuid.UUID) -> Select[tuple[Task]]:
         return select(Task).where(Task.project_id == project_id).order_by(Task.updated_at.desc())
 
-    async def board_cards(self, project_id: uuid.UUID) -> list[BoardCard]:
-        """Every card in a project, with the two derived counts the board shows.
+    async def board_cards(
+        self, project_id: uuid.UUID, *, is_online: Callable[[uuid.UUID], bool]
+    ) -> list[BoardCard]:
+        """Every card in a project, with compact board-only projections.
 
-        The blocking count is computed in one grouped query rather than per card: the
-        per-card version is the N+1 that turns a 200-card board from one round trip
-        into two hundred and one.
+        Task rows, blocking counts and active runs are each one query. Waiting reasons
+        add at most one runner-list query, then evaluate every queued run in memory.
+        The per-card version is the N+1 that turns a 200-card board into 200 trips.
         """
         from app.db.models import User
 
@@ -99,18 +127,115 @@ class TaskRepository:
             )
         ).all()
         blocking = await self.blocking_counts(project_id)
+        active = await self.active_runs(project_id)
+        waiting = await self.waiting_reasons(list(active.values()), is_online=is_online)
         cards = []
         for task, owner_name in rows:
             gates = task.gates or {}
+            run = active.get(task.id)
             cards.append(
                 BoardCard(
                     task=task,
                     owner_name=owner_name,
                     blocking_count=blocking.get(task.id, 0),
                     gates_approved_count=sum(1 for value in gates.values() if value),
+                    active_run_status=run.status if run else None,
+                    active_run_runner_name=run.runner_name if run else None,
+                    waiting_reason=waiting.get(task.id),
                 )
             )
         return cards
+
+    async def active_runs(self, project_id: uuid.UUID) -> dict[uuid.UUID, ActiveRunProjection]:
+        """Return the newest active run per card in one query.
+
+        The state machine permits at most one, while row-numbering also gives old or
+        hand-written data a deterministic result instead of duplicating board cards.
+        """
+        ranked = (
+            select(
+                TaskRun.task_id.label("task_id"),
+                TaskRun.status.label("status"),
+                TaskRun.runner_id.label("runner_id"),
+                TaskRun.assigned_runner_id.label("assigned_runner_id"),
+                TaskRun.runtime.label("runtime"),
+                func.row_number()
+                .over(
+                    partition_by=TaskRun.task_id,
+                    order_by=(TaskRun.queued_at.desc(), TaskRun.id.desc()),
+                )
+                .label("position"),
+            )
+            .where(
+                TaskRun.project_id == project_id,
+                TaskRun.status.in_(ACTIVE_RUN_STATUSES),
+            )
+            .subquery()
+        )
+        claimed = aliased(AgentRunner)
+        assigned = aliased(AgentRunner)
+        rows = (
+            await self._session.execute(
+                select(
+                    ranked.c.task_id,
+                    ranked.c.status,
+                    func.coalesce(claimed.name, assigned.name),
+                    ranked.c.assigned_runner_id,
+                    assigned.node_id,
+                    ranked.c.runtime,
+                )
+                .join(claimed, claimed.id == ranked.c.runner_id, isouter=True)
+                .join(assigned, assigned.id == ranked.c.assigned_runner_id, isouter=True)
+                .where(ranked.c.position == 1)
+            )
+        ).all()
+        return {
+            row[0]: ActiveRunProjection(
+                task_id=row[0],
+                status=row[1],
+                runner_name=row[2],
+                assigned_runner_id=row[3],
+                assigned_runner_node_id=row[4],
+                runtime=row[5],
+            )
+            for row in rows
+        }
+
+    async def waiting_reasons(
+        self,
+        runs: list[ActiveRunProjection],
+        *,
+        is_online: Callable[[uuid.UUID], bool],
+    ) -> dict[uuid.UUID, str]:
+        """Resolve every queued run with one runner query and one online snapshot."""
+        queued = [run for run in runs if run.status == "queued"]
+        if not queued:
+            return {}
+        runners = list(
+            (
+                await self._session.execute(
+                    select(AgentRunner).where(AgentRunner.enabled.is_(True))
+                )
+            ).scalars()
+        )
+        online = {runner.node_id: is_online(runner.node_id) for runner in runners}
+        reasons: dict[uuid.UUID, str] = {}
+        for run in queued:
+            if run.assigned_runner_id is not None:
+                reasons[run.task_id] = (
+                    "any"
+                    if run.assigned_runner_node_id is not None
+                    and is_online(run.assigned_runner_node_id)
+                    else "assigned_offline"
+                )
+                continue
+            eligible = any(
+                online[runner.node_id]
+                and (run.runtime is None or run.runtime in (runner.runtimes or []))
+                for runner in runners
+            )
+            reasons[run.task_id] = "any" if eligible else "no_eligible_runner"
+        return reasons
 
     async def blocking_counts(self, project_id: uuid.UUID) -> dict[uuid.UUID, int]:
         """How many unfinished dependencies each card in this project still has."""

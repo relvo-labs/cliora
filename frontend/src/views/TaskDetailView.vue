@@ -125,7 +125,7 @@ onMounted(() => resource.run());
 .breadcrumbs {
   display: flex;
   gap: var(--space-2);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+  font-size: var(--font-sm);
 }
 </style>

@@ -169,6 +169,9 @@ async def test_the_board_card_stays_a_summary(api: tuple, projects_enabled: None
     assert "gates" not in card
     assert card["gates_approved_count"] == 0
     assert card["blocking_count"] == 0
+    assert card["active_run_status"] is None
+    assert card["active_run_runner_name"] is None
+    assert card["waiting_reason"] is None
 
 
 async def test_the_roadmap_keeps_both_unclassified_buckets(
