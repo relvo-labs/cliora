@@ -1366,10 +1366,16 @@ class AgentRunnerDTO(BaseModel):
     node_name: str
     name: str
     runtimes: list[str]
-    # Shown, never compared. Label matching is V2.3; displaying what the node reported
-    # while silently ignoring it would be worse than not showing it, so the console
-    # labels this field accordingly.
+    # **Matched from V2.3**, as a superset: a card reaches this runner when its
+    # `required_labels` are a subset of these. Read-only — the node's config declares
+    # them (ADR 0029 amendment B5) — and the console must not draw them as a security
+    # control: a tag decides which machine, never which machine may hold a secret.
     labels: list[str]
+    # The two node-side declarations, also read-only. `run_untagged` false reserves the
+    # machine for tagged work; `accept_secrets` false keeps it away from cards that
+    # declare secrets.
+    run_untagged: bool
+    accept_secrets: bool
     max_concurrent: int
     max_waiting: int
     enabled: bool
@@ -1398,13 +1404,58 @@ class AgentRunnerDTO(BaseModel):
 class UpdateAgentRequest(BaseModel):
     """`runtimes` and `dedicated` are deliberately absent: they are the daemon's report
     about the machine, and a field an administrator can type would make the console
-    display the posture somebody wished for (ADR 0023 D3)."""
+    display the posture somebody wished for (ADR 0023 D3).
+
+    **`labels`, `run_untagged` and `accept_secrets` are absent for the same reason, and
+    from V2.3 the reason is stronger.** They now decide which machine gets which card
+    and which machine may hold a secret, so an edit here would be a second source of
+    truth that the node's next `runner.register` silently overwrites. Changing them
+    means changing that machine's config file (ADR 0029 amendment B5)."""
 
     name: str | None = Field(default=None, min_length=1, max_length=128)
     enabled: bool | None = None
     max_concurrent: int | None = Field(default=None, ge=0, le=64)
     max_waiting: int | None = Field(default=None, ge=0, le=64)
-    labels: list[str] | None = None
+
+
+# The closed set of kinds, named once so the DTO, the create request and the route
+# helper cannot drift apart.
+SecretKind = Literal["env", "git_pat", "git_ssh_key", "provider_token"]
+
+
+class ProjectSecretDTO(BaseModel):
+    """A secret's metadata. **There is no field for the value, and there never will be.**
+
+    Also absent, and each for its own reason: a **fingerprint** answers "is this the one
+    I rotated last week", which `rotated_at` already answers without disclosing anything;
+    a **length** is a side channel, because a 93-character value is almost certainly a
+    fine-grained PAT (ADR 0032 §2 rule 8).
+    """
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    kind: SecretKind
+    created_by: uuid.UUID | None
+    created_at: datetime
+    rotated_at: datetime | None
+    # The most useful column on the page: it is how somebody tells a live credential
+    # from one nothing has touched since it was created.
+    last_used_at: datetime | None
+
+
+class CreateProjectSecretRequest(BaseModel):
+    # Bounded here as well as in the envelope module, so an oversized body is refused
+    # before it is encrypted rather than after.
+    name: str = Field(min_length=1, max_length=128)
+    kind: SecretKind
+    value: str = Field(min_length=1, max_length=8192)
+
+
+class RotateProjectSecretRequest(BaseModel):
+    """Only the value. Name and kind are immutable — see `SecretService.rotate`."""
+
+    value: str = Field(min_length=1, max_length=8192)
 
 
 class ProjectRepositoryDTO(BaseModel):
@@ -1447,9 +1498,16 @@ class DispatchResponseDTO(BaseModel):
     run_id: uuid.UUID
     status: str
     # "any" | "assigned_offline" | "no_eligible_runner". Computed on the server because
-    # it needs the eligibility query; the three pieces of UI copy behind it must differ
+    # it needs the eligibility rules; the three pieces of UI copy behind it must differ
     # word for word, or a person cannot tell "I misconfigured this" from "wait".
     waiting_reason: str
+    # Which tags nothing online has, when that is why nobody claimed it. **The smallest
+    # missing set across the online runners**, not the intersection: what the reader has
+    # to do is make one machine eligible, and the minimum answers that directly
+    # (exit condition 3e). Empty for the other two reasons.
+    missing_tags: list[str] = []
+    # Named only for `assigned_offline`, so the copy can say which machine.
+    runner_name: str | None = None
 
 
 class TaskRunDTO(BaseModel):
@@ -1480,6 +1538,12 @@ class TaskRunDTO(BaseModel):
     summary: str | None
     log_bytes: int
     log_truncated_bytes: int
+    # **The card's declaration, not a per-run snapshot** — and the difference is stated
+    # rather than papered over. The authoritative record of what was actually handed to
+    # which machine is the `secret.deliver` audit row; this is what the card asked for,
+    # which is what a reader of the run page is trying to see. Names only: there is no
+    # version of this field that could carry a value.
+    secret_names: list[str] = []
 
 
 class RunLogLineDTO(BaseModel):

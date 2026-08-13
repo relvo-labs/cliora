@@ -50,6 +50,8 @@ import type {
   User,
   WorkspaceFavorite,
   AgentRunner,
+  ProjectSecret,
+  SecretKind,
   ProjectRepository,
   DispatchResult,
   TaskRun,
@@ -909,6 +911,60 @@ export class ApiClient {
   // same contract the project layer already has, and the reason both flags answer 404
   // rather than 403: a 403 would confirm the route exists.
 
+  // --- V2.3: project secrets (ADR 0032) ---
+  //
+  // **No method returns a value, and there is no endpoint that could.** The listing is
+  // `secret.manage` because "which credentials does this project hold, and when was
+  // each last used" is reconnaissance; `listSecretNames` is what a Developer needs to
+  // tick names on a card, and it returns nothing else.
+
+  listSecrets(projectId: string): Promise<ProjectSecret[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets`,
+    );
+  }
+
+  listSecretNames(projectId: string): Promise<string[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/secret-names`,
+    );
+  }
+
+  createSecret(
+    projectId: string,
+    input: { name: string; kind: SecretKind; value: string },
+  ): Promise<ProjectSecret> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets`,
+      input,
+    );
+  }
+
+  // Rotation is an overwrite of the value and nothing else: a rename would orphan every
+  // card pointing at the old name, and a kind change would retroactively alter where an
+  // already-delivered value was allowed to go.
+  rotateSecret(
+    projectId: string,
+    secretId: string,
+    value: string,
+  ): Promise<ProjectSecret> {
+    return this.request(
+      "PUT",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(secretId)}`,
+      { value },
+    );
+  }
+
+  deleteSecret(projectId: string, secretId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(secretId)}`,
+    );
+  }
+
   listAgents(): Promise<AgentRunner[]> {
     return this.request("GET", "/api/agents");
   }
@@ -924,7 +980,9 @@ export class ApiClient {
       enabled?: boolean;
       max_concurrent?: number;
       max_waiting?: number;
-      labels?: string[];
+      // No `labels`, `run_untagged` or `accept_secrets`: they are what the node's own
+      // config declares, and an edit here would be a second source of truth that the
+      // next `runner.register` silently overwrites (ADR 0029 amendment B5).
     },
   ): Promise<AgentRunner> {
     return this.request(

@@ -491,6 +491,31 @@ func reportRunnerPosture(
 		runner.CheckIsolation(cfg.Runner.WorkDir, cfg.Workspace.AllowedRoots))
 	fmt.Fprintf(out, "[info] runner: work_dir=%s max_concurrent=%d run_quota=%dMB\n",
 		cfg.Runner.WorkDir, cfg.Runner.MaxConcurrent, cfg.Runner.RunQuotaBytes/(1024*1024))
+	// The three dispatch declarations. They are printed because "why does this machine
+	// never get that card" and "why does it never get the secrets" are the two commonest
+	// questions this phase creates, and both answers live in this config file — without
+	// these lines the only way to find them is to guess (plan/20/00-…md D14).
+	tags := cfg.Runner.TagList()
+	if len(tags) == 0 {
+		fmt.Fprintln(out, "[info] runner: tags=(none) — this node matches only cards that declare no tag")
+	} else {
+		fmt.Fprintf(out, "[info] runner: tags=%s\n", strings.Join(tags, ", "))
+	}
+	if cfg.Runner.RunUntaggedValue() {
+		fmt.Fprintln(out, "[info] runner: run_untagged=true (also claims cards with no tag)")
+	} else {
+		fmt.Fprintln(out, "[warn] runner: run_untagged=false — this node claims only cards that declare a tag")
+	}
+	// A warning rather than an ok, but **it does not change the exit code**: doctor's
+	// contract is that a warning never fails it. It is flagged because refusing secrets
+	// is a legitimate configuration and simultaneously the least obvious reason a card
+	// is never claimed.
+	if cfg.Runner.AcceptSecretsValue() {
+		fmt.Fprintln(out, "[info] runner: accept_secrets=true")
+	} else {
+		fmt.Fprintln(out,
+			"[warn] runner: accept_secrets=false — this node is never offered a card that declares secrets")
+	}
 	if runner.Dedicated(cfg) {
 		fmt.Fprintln(out, "[info] runner: dedicated (this node declares no allowed root)")
 	} else {

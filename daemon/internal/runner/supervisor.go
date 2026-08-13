@@ -158,21 +158,33 @@ func (r *Runner) Prepare(ctx context.Context, runID string, source Source) (Layo
 	if err != nil {
 		return Layout{}, "", err
 	}
+	commit, err := r.PrepareIn(ctx, layout, source)
+	return layout, commit, err
+}
+
+// PrepareIn is the fetch half against a directory that already exists.
+//
+// Split out in V2.3 because the order changed: platform git credentials have to be
+// written **into** the run directory (the askpass helper, the ssh-agent socket) before
+// the clone that uses them, so the caller creates the layout, sets those up, and then
+// fetches. Keeping `Prepare` as the two steps together means the V2.2 call sites and
+// tests are unchanged.
+func (r *Runner) PrepareIn(ctx context.Context, layout Layout, source Source) (string, error) {
 	if source.Kind == "none" {
 		// No checkout at all. The agent has no code, and that is the card's choice
 		// rather than a failure.
-		return layout, "", nil
+		return "", nil
 	}
 	commit, err := r.Fetch.Clone(ctx, source.URL, source.Ref, layout.Repo)
 	if err != nil {
-		return layout, "", classifySource(err)
+		return "", classifySource(err)
 	}
 	if err := r.Fetch.SetRunIdentity(ctx, layout.Repo, r.Node); err != nil {
 		// Not fatal: the run can still do its work, and the identity only matters if
 		// the agent commits. Reported rather than raised.
-		return layout, commit, nil
+		return commit, nil
 	}
-	return layout, commit, nil
+	return commit, nil
 }
 
 // Source is the fetch half of a run's spec.

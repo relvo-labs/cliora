@@ -19,6 +19,13 @@ a project, and that binding is what authorises the runner to read the project's
 secrets.** An action cannot be given to Developer now and taken back then, which is
 the same argument the `project.manage` comment already makes.
 
+> **Note added 2026-08-13.** The forecast in the paragraph above did not hold: the
+> 2026-08-12 ruling cancelled `project_agents`, so `agent.manage` never grew that
+> meaning. It stays Admin-only for a plainer reason — enabling a runner and setting
+> its concurrency is the disposition of compute. It does **not** cover editing tags,
+> which are declared by the node's own config (ADR 0029 amendment B5), and the
+> secrets themselves are `secret.manage`, seeded separately in `0034`.
+
 **`run.dispatch` is separate from `task.update`** because queueing work spends
 compute: it clones a repository onto a machine and starts a process there. That is a
 different order of magnitude from editing a field, and the audit trail has to be able

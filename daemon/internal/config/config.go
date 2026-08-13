@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -228,7 +229,67 @@ type RunnerConfig struct {
 	RetentionSuccessDays int `yaml:"retention_success_days"`
 	RetentionFailedDays  int `yaml:"retention_failed_days"`
 
+	// Tags is what this machine declares about its own capabilities, reported with
+	// `runner.register` and matched as a superset against a card's `required_labels`
+	// (ADR 0029 amendment B3). **A tag is not authorization**: it is a value this
+	// machine reports about itself, so reporting one more changes what it is offered.
+	// The authorization boundary is enrollment (ADR 0032 §0).
+	Tags []string `yaml:"tags"`
+	// RunUntagged off means this runner only claims cards that declare at least one
+	// tag — the only way to reserve a machine for particular work, since a dedicated
+	// box otherwise fills with ordinary untagged cards.
+	//
+	// AcceptSecrets off means it is only ever offered cards with no `required_secrets`.
+	// It is the node operator's veto, declared by the person who knows what else runs
+	// on this machine (ADR 0032 §0, compensating control 2).
+	//
+	// **Both are pointers, and that is load-bearing.** A bool's zero value is false,
+	// but an absent key has to mean *true* — the default has to equal the behaviour
+	// before the upgrade. Plain bools would make an existing config file that never
+	// mentioned these silently stop claiming anything.
+	RunUntagged   *bool `yaml:"run_untagged"`
+	AcceptSecrets *bool `yaml:"accept_secrets"`
+
 	Git RunnerGitConfig `yaml:"git"`
+}
+
+// RunUntaggedValue and AcceptSecretsValue resolve the two tri-state declarations.
+// Absent means true for both, matching the column defaults on Central and therefore
+// leaving behaviour unchanged across an upgrade.
+func (r RunnerConfig) RunUntaggedValue() bool {
+	return r.RunUntagged == nil || *r.RunUntagged
+}
+
+func (r RunnerConfig) AcceptSecretsValue() bool {
+	return r.AcceptSecrets == nil || *r.AcceptSecrets
+}
+
+// TagList is the declared tags, normalised and **never nil**.
+//
+// Never nil is not defensive style: a nil slice marshals to `null`, the contract says
+// `labels` is an array, and Central's decoder drops a frame that fails validation
+// *silently*. That exact defect cost a debugging session in V2.2 when `runtimes` went
+// out as null and the runner simply never appeared, with neither end reporting an
+// error (plan/18/09-…md §3 item 17).
+//
+// Sorted and de-duplicated so that "what did this node report" is stable across
+// restarts and a config file's ordering does not show up as a change on the Agents page.
+func (r RunnerConfig) TagList() []string {
+	seen := map[string]struct{}{}
+	tags := []string{}
+	for _, tag := range r.Tags {
+		trimmed := strings.TrimSpace(tag)
+		if trimmed == "" {
+			continue
+		}
+		if _, dup := seen[trimmed]; dup {
+			continue
+		}
+		seen[trimmed] = struct{}{}
+		tags = append(tags, trimmed)
+	}
+	sort.Strings(tags)
+	return tags
 }
 
 // RunnerGitConfig is the node's own half of the two-layer host check. Central has a
@@ -247,6 +308,21 @@ type RunnerGitConfig struct {
 	// seconds, not to hang until the wall clock — the idle timer cannot save that case
 	// because the clone happens before there is any event stream to measure.
 	FetchTimeoutSeconds int `yaml:"fetch_timeout_seconds"`
+	// IsolateAmbientCredentials hides the machine's own git credentials from a run —
+	// **but only when that run actually received a platform credential** (ADR 0031
+	// amendment A3). Applying it unconditionally would hide them and supply no
+	// replacement, so on the default deployment (where platform-managed git
+	// credentials are off) every private-repository clone would fail, and the symptom
+	// would look like a misconfigured credential rather than a policy.
+	//
+	// A pointer for the same reason `run_untagged` is one: absent has to mean the
+	// documented default, which here is `true`.
+	IsolateAmbientCredentials *bool `yaml:"isolate_ambient_credentials"`
+}
+
+// IsolateAmbient resolves the tri-state. Absent means true.
+func (g RunnerGitConfig) IsolateAmbient() bool {
+	return g.IsolateAmbientCredentials == nil || *g.IsolateAmbientCredentials
 }
 
 // Runner defaults. The two quotas come from M11/M12 (plan/18/10-…md §1.3): a checkout

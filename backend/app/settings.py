@@ -195,6 +195,33 @@ class Settings(BaseSettings):
     # bounded piece of work, and the wall clock backstop is six hours.
     run_token_ttl_hours: int = 12
 
+    # --- V2.3 project secrets (ADR 0032) ---
+    # The master key that wraps every project secret's data key. 32 bytes, base64:
+    # `openssl rand -base64 32`. **Separate from `secret_encryption_key` on purpose**:
+    # the two rotate for different reasons, and sharing one key makes each rotation
+    # hostage to the other (ADR 0032 §3).
+    #
+    # **Keep it somewhere other than the database backup.** The backup cannot restore a
+    # secret without it, and losing it loses every secret irrecoverably.
+    secret_master_key: str = ""
+    # Which version a newly written secret is stamped with. Rotation is: put the old key
+    # in `CLIORA_SECRET_MASTER_KEY_V<n>`, put the new one in `CLIORA_SECRET_MASTER_KEY`,
+    # raise this. Existing rows keep opening under their own version until they are
+    # rewrapped, and rewrapping never rewrites a ciphertext.
+    secret_master_key_version: int = 1
+    # Whether the platform delivers git credentials to runners at all (2026-08-13
+    # ruling). **Off by default**: at this stage git authentication is the node owner's
+    # manual configuration and the platform does not manage it. With this off, secrets
+    # of kind `git_pat`/`git_ssh_key` cannot be created, a repository's `auth_kind` may
+    # only be `ambient`, `spec.secrets` never carries a git kind, and the daemon's
+    # ambient-credential isolation does not engage.
+    #
+    # The consequence of the default, stated where it is set: the platform pushes on a
+    # card's behalf using a credential it did not issue and cannot revoke. The five hard
+    # constraints still hold — they constrain *what* is pushed — but "revocable" does
+    # not apply to that path.
+    git_secret_delivery_enabled: bool = False
+
     # --- P4 metrics export (ADR 0018) ---
     # Off by default. An always-on metrics endpoint is a permanent read surface on the
     # control plane, and most deployments do not scrape at all — so it is opt-in rather
@@ -299,6 +326,38 @@ class Settings(BaseSettings):
             )
         if self.metrics_enabled and len(self.metrics_scrape_token) < 16:
             raise ValueError("metrics_scrape_token must be at least 16 characters")
+        return self
+
+    @model_validator(mode="after")
+    def require_master_key_when_agent_runs_enabled(self) -> "Settings":
+        """Refuse to start without a usable master key — **but only when it is needed**.
+
+        Conditional, and that is the whole decision. Checking unconditionally would stop
+        every existing deployment that does not use V2 from booting, in order to protect
+        zero rows: with the flag off there are no secrets endpoints and no secrets. All
+        three precedents in this file are conditional too — `metrics_scrape_token` on
+        `metrics_enabled` just below, and the dev-secret check on `environment`.
+
+        Refusing at startup rather than at the first decryption, because the alternative
+        fails on a node three minutes into a run, where the message is furthest from the
+        person who can fix it.
+        """
+        if not self.agent_runs_enabled:
+            return self
+        # Imported here rather than at module scope: `secret_envelope` reads settings to
+        # find the key, so a top-level import would be a cycle. The function itself is
+        # pure over the string — it never calls `get_settings()` — which is what lets it
+        # run while `Settings` is still being constructed.
+        from app.security import secret_envelope
+
+        ok, reason = secret_envelope.master_key_status_for(self.secret_master_key)
+        if not ok:
+            raise ValueError(
+                f"CLIORA_SECRET_MASTER_KEY {reason} — it is required when "
+                "CLIORA_AGENT_RUNS_ENABLED is true (32 bytes, base64: "
+                "`openssl rand -base64 32`), and it must be kept separately from the "
+                "database backup because the backup cannot restore a secret without it"
+            )
         return self
 
     @model_validator(mode="after")

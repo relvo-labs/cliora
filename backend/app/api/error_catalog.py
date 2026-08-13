@@ -1002,14 +1002,122 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "Cancel only applies to a run that is queued or running.",
             "Look at the run's result; if it needs doing again, dispatch the card again.",
         ),
+        # V2.3 replaced `TASK_REQUIRES_SECRETS` rather than removing it: secrets exist
+        # now, so the refusals are about *this card* rather than about the version.
+        # **Two codes, because they are fixed on different pages** (ADR 0032 §0).
         _entry(
-            "TASK_REQUIRES_SECRETS",
+            "TASK_SECRETS_NOT_ALLOWED",
             status.HTTP_409_CONFLICT,
-            "Cards that declare required secrets can be dispatched from V2.3",
-            "The card names secrets it needs, and this version manages no secrets at "
-            "all. Accepting the dispatch would run the card **without** them, which "
-            "looks like a broken agent rather than a missing feature.",
-            "Remove the declaration to run without them, or wait for V2.3.",
+            "This card asks for a secret name the project does not allow",
+            "A card may only declare names on its project's allowlist. The allowlist is "
+            "intent — which names a card *may* ask for — and it is deliberately not "
+            "derived from the secrets that happen to exist.",
+            "Add the name to the project's allowlist, or correct the card. The response "
+            "names the offending entries and links to the settings page.",
+        ),
+        _entry(
+            "TASK_SECRETS_MISSING",
+            status.HTTP_409_CONFLICT,
+            "This card asks for a secret that has not been created",
+            "The name is allowed, but nothing has been stored under it — most often "
+            "because the secret was deleted. Running anyway would start the card "
+            "**without** a value it says it needs, which looks like a broken agent.",
+            "Create the secret in project settings, or remove the declaration.",
+        ),
+        _entry(
+            "TASK_BRANCH_NOT_DELIVERABLE",
+            status.HTTP_409_CONFLICT,
+            "That branch is outside the cliora/ namespace",
+            "The platform only ever pushes inside `cliora/<card>-<run>`, so a card "
+            "continuing a branch elsewhere could never deliver. Refused here rather "
+            "than at the push, where the run has already done its work.",
+            "Set delivery to artifact, or continue a branch the platform created.",
+        ),
+        _entry(
+            "AGENT_TAG_MISMATCH",
+            status.HTTP_409_CONFLICT,
+            "That agent does not have the tags this card needs",
+            "Naming an agent does not create eligibility. People name a machine "
+            "precisely because it is the only one with what the card needs, so letting "
+            "the name override the tag would run the card somewhere it fails minutes in.",
+            "The response names the missing tags: pick another agent, or add them to "
+            "that node's agentd configuration.",
+        ),
+        _entry(
+            "AGENT_REFUSES_UNTAGGED",
+            status.HTTP_409_CONFLICT,
+            "That agent only claims cards that declare a tag",
+            "The node is reserved for tagged work (`run_untagged: false`). Without that "
+            "setting a dedicated machine fills up with ordinary untagged cards.",
+            "Give the card a tag that machine has, or dispatch to another agent.",
+        ),
+        _entry(
+            "AGENT_REFUSES_SECRETS",
+            status.HTTP_409_CONFLICT,
+            "That agent does not accept secrets",
+            "The node's owner declared `accept_secrets: false`, which is the operator's "
+            "veto over which machines may hold a credential (ADR 0032 §0).",
+            "Dispatch to a node that accepts secrets, or remove the declaration.",
+        ),
+        _entry(
+            "SECRET_NAME_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That is not a usable secret name",
+            "A secret's name becomes an environment variable, so it must be upper-case "
+            "letters, digits and underscores.",
+            "Rename it, for example GITHUB_TOKEN.",
+        ),
+        _entry(
+            "SECRET_NAME_RESERVED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That name would replace part of the execution environment",
+            "Names like PATH or HOME, and the GIT_/SSH_/CLIORA_ prefixes, are reserved. "
+            "A secret called GIT_ASKPASS would take over the credential helper the "
+            "platform's own git path is built on.",
+            "Choose a name outside the reserved set.",
+        ),
+        _entry(
+            "SECRET_KIND_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown secret kind",
+            "A secret's kind decides where its value goes on the node, so it is a "
+            "closed set (ADR 0032 §4).",
+            "Use env, git_pat, git_ssh_key or provider_token.",
+        ),
+        _entry(
+            "SECRET_EXISTS",
+            status.HTTP_409_CONFLICT,
+            "This project already has a secret with that name",
+            "Names are unique per project among the secrets that have not been deleted.",
+            "Rotate the existing one instead of creating a second.",
+        ),
+        _entry(
+            "SECRET_IN_USE",
+            status.HTTP_409_CONFLICT,
+            "A registered repository authenticates with this secret",
+            "Deleting it would leave that repository pointing at a credential that no "
+            "longer exists, and the failure would surface minutes into a run.",
+            "Point the repository at another credential first; the response names it.",
+        ),
+        _entry(
+            "SECRET_TOO_LARGE",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That value is larger than a secret should be",
+            "Eight KiB, which is 2.4x the largest legitimate input measured (an "
+            "RSA-4096 private key at 3 369 bytes). Eight of these also have to fit "
+            "inside one 64 KiB dispatch frame alongside the task context.",
+            "An ed25519 key is 399 bytes and does the same job.",
+        ),
+        _entry(
+            "GIT_SECRET_DELIVERY_DISABLED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "This deployment does not deliver git credentials from the platform",
+            "Off by default (2026-08-13 ruling): at this stage git authentication is "
+            "configured on the node by its owner, and the platform does not manage it. "
+            "Storing a credential that would never be delivered is a setting that looks "
+            "finished and is not.",
+            "Configure git authentication on the node, or set "
+            "CLIORA_GIT_SECRET_DELIVERY_ENABLED on Central.",
         ),
         _entry(
             "TASK_DELIVERY_UNSUPPORTED",

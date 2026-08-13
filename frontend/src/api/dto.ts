@@ -569,6 +569,12 @@ export const AUDIT_ACTIONS = [
   "run_token.revoke",
   "artifact.upload",
   "artifact.delete",
+  // V2.3 project secrets (ADR 0032). `secret.deliver` carries **names only** — never a
+  // value, a length or a fingerprint.
+  "secret.create",
+  "secret.rotate",
+  "secret.delete",
+  "secret.deliver",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -774,14 +780,22 @@ export const ACTION_TASK_APPROVE = "task.approve";
 
 // V2.2 agent runner (ADR 0029). `agent.view` joins the read-only set for the same
 // reason `node.view` is in it — a runner is part of the shape of the fleet.
-// `agent.manage` is Admin-only from day one **because of what it becomes**: from V2.3
-// it also covers binding a runner to a project, and that binding authorises the runner
-// to read the project's secrets. `run.dispatch` is separate from `task.update` because
-// queueing work clones a repository onto a machine and starts a process there.
+// `agent.manage` is Admin-only because it is the disposition of compute: enabling a
+// runner and setting its concurrency. It does **not** cover editing tags, which the
+// node's own config declares (ADR 0029 amendment B5). `run.dispatch` is separate from
+// `task.update` because queueing work clones a repository onto a machine and starts a
+// process there.
 export const ACTION_AGENT_VIEW = "agent.view";
 export const ACTION_AGENT_MANAGE = "agent.manage";
 export const ACTION_RUN_DISPATCH = "run.dispatch";
 export const ACTION_RUN_CANCEL = "run.cancel";
+
+// V2.3 project secrets (ADR 0032). Admin-only for the same reason `enrollment.manage`
+// is: a credential the platform holds on a user's behalf, hands to a machine on demand
+// and can revoke is an organisation-level asset. It also guards repository registration
+// from V2.3, because a repository row stopped being "where the code is" and became
+// "which credential fetches it".
+export const ACTION_SECRET_MANAGE = "secret.manage";
 
 // --- V2.0 project layer (ADR 0027) ---
 
@@ -1072,16 +1086,44 @@ export interface AcceptProposalResult {
 
 // --- V2.2 agent runner (ADR 0029/0030/0031) --------------------------------
 
+/** A secret's kind decides where its value goes on the node (ADR 0032 §4): `env`
+ *  reaches the CLI child's environment, the two git kinds reach **only the daemon's own
+ *  git environment**, and `provider_token` is not delivered at all in this phase. */
+export type SecretKind = "env" | "git_pat" | "git_ssh_key" | "provider_token";
+
+/** A project secret's metadata. **There is no field for the value, and there never will
+ *  be** — nor for a fingerprint (`rotated_at` answers the same question without
+ *  disclosing anything) or a length (a 93-character value is almost certainly a
+ *  fine-grained PAT). */
+export interface ProjectSecret {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: SecretKind;
+  created_by: string | null;
+  created_at: string;
+  rotated_at: string | null;
+  /** The most useful column on the page: it separates a live credential from one
+   *  nothing has touched since it was created. */
+  last_used_at: string | null;
+}
+
 export interface AgentRunner {
   id: string;
   node_id: string;
   node_name: string;
   name: string;
   runtimes: string[];
-  // Shown and **never compared** in V2.2. The console labels the field accordingly:
-  // displaying what the node reported while silently ignoring it would be worse than
-  // not showing it at all.
+  // **Matched from V2.3**, as a superset: a card reaches this runner when its
+  // `required_labels` are a subset of these. Read-only — the node's own config
+  // declares them — and the console must never draw them as a security control: a tag
+  // decides *which machine*, never *which machine may hold a secret*.
   labels: string[];
+  // Read-only node declarations. `run_untagged` false reserves this machine for cards
+  // that declare a tag; `accept_secrets` false keeps it away from cards that declare
+  // secrets.
+  run_untagged: boolean;
+  accept_secrets: boolean;
   max_concurrent: number;
   max_waiting: number;
   enabled: boolean;
@@ -1133,6 +1175,13 @@ export interface DispatchResult {
   // this must read differently, or a person cannot tell "I misconfigured something"
   // from "wait a moment".
   waiting_reason: string;
+  // Which tags nothing online has, when that is why nobody claimed it — **the smallest
+  // missing set, not the intersection**. "Waiting for an available agent" is the wrong
+  // sentence when the truth is "no machine has `docker`", and the two lead somewhere
+  // different (V2.3, exit condition 3e). Empty for the other two reasons.
+  missing_tags: string[];
+  // Named only for `assigned_offline`, so the copy can say which machine.
+  runner_name: string | null;
 }
 
 export type RunStatus =
@@ -1171,6 +1220,11 @@ export interface TaskRun {
   summary: string | null;
   log_bytes: number;
   log_truncated_bytes: number;
+  /** **The card's declaration, not a per-run snapshot.** The authoritative record of
+   *  what was handed to which machine is the `secret.deliver` audit row. Names only —
+   *  there is no version of this field that could carry a value. Absent on the list
+   *  route, which renders rows rather than one run. */
+  secret_names?: string[];
 }
 
 export interface RunLogLine {

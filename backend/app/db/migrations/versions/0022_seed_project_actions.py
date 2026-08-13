@@ -20,6 +20,11 @@ the decision worth recording:
   to draw that project's secrets. An action that starts in Developer hands and is
   narrowed later takes a privilege away from people who already have it, which is a
   worse migration than granting it to Admin now.
+  **Note added 2026-08-13**: that binding was cancelled (2026-08-12 ruling), so the
+  sentence about it never came true. What `project.manage` did gain in V2.3 is the
+  project's **allowlist of secret names**; the values behind those names are
+  `secret.manage`, a separate Admin action (ADR 0032). The conclusion — Admin from
+  the start rather than narrowed later — is unchanged.
 
 `project.manage` is deliberately **not** a widening of `node.manage`, even though
 both are Admin-only today. The audit trail has to distinguish "removed a node" from

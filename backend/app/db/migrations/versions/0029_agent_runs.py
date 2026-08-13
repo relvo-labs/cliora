@@ -39,6 +39,14 @@ because binding a runner to a project is what authorises that runner to read the
 project's secrets. Creating an authorization table that authorises nothing now would
 cost V2.3's security review a real checkpoint: it would see "the table already
 exists" instead of "this is a new authorization boundary" (plan/18/02-…md §2.2).
+
+> **Note added 2026-08-13.** The paragraph above is left as written because a
+> migration is a historical record, but its forecast did not hold: the 2026-08-12
+> ruling **cancelled** `project_agents` rather than deferring it. The authorization
+> boundary is permanently enrollment, pairing is tags plus an optional named runner,
+> and the security review checks four compensating controls instead of a table
+> (ADR 0032 §0). The decision not to create the table here was still the right one —
+> only the reason has changed from "not yet" to "not at all".
 """
 
 from collections.abc import Sequence

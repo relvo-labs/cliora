@@ -42,6 +42,8 @@ function runner(overrides: Partial<AgentRunner> = {}): AgentRunner {
     name: "dev-runner-01",
     runtimes: ["claude"],
     labels: [],
+    run_untagged: true,
+    accept_secrets: true,
     max_concurrent: 2,
     max_waiting: 5,
     enabled: true,
@@ -152,5 +154,64 @@ describe("AgentsView availability", () => {
     const facts = wrapper.get(".facts").text();
     expect(facts).toContain("指定給此 Agent 的卡片");
     expect(facts).toContain("7");
+  });
+
+  it("says tags take part in dispatch, and that the node declares them", async () => {
+    // V2.2 said the opposite in words ("僅供辨識"). Leaving that sentence would be
+    // worse than having none: it tells a reader their tag will be ignored.
+    state.list = [runner({ labels: ["docker", "node20"] })];
+    const wrapper = await render();
+    const facts = wrapper.get(".facts").text();
+    expect(facts).toContain("參與派工比對");
+    expect(facts).toContain("agentd 設定檔宣告");
+    expect(facts).not.toContain("僅供辨識");
+  });
+
+  it("shows the tag cell even when the runner declared none", async () => {
+    // "No tags" is a dispatch-relevant fact — it decides which cards this machine can
+    // take — so the row is not hidden the way an empty decorative field would be.
+    state.list = [runner({ labels: [] })];
+    const wrapper = await render();
+    expect(wrapper.get(".facts").text()).toContain("（未宣告）");
+  });
+
+  it("never draws a tag as an authorization control", async () => {
+    // The whole of exit condition 3g on this page, as a rendered-DOM assertion rather
+    // than a promise in a document. A padlock beside a tag teaches "labelling a card
+    // `prod` keeps it on the production box", and a tag is self-reported, so that is
+    // exactly false (ADR 0032 §0).
+    //
+    // Scoped to the tag cell rather than the page, and the difference matters: the
+    // page *must* contain the word 授權 — the enrollment-boundary paragraph is exit
+    // condition 3g's other half. What must not happen is that word appearing beside a
+    // tag. A whole-page assertion would have forbidden the disclosure it is there to
+    // protect, which is how a guard ends up deleting the thing it guards.
+    state.list = [runner({ labels: ["prod"] })];
+    const wrapper = await render();
+    const cell = wrapper.get(".tag-cell").html();
+    for (const forbidden of ["🔒", "lock", "授權", "permission"]) {
+      expect(cell).not.toContain(forbidden);
+    }
+  });
+
+  it("spells out the two node-side refusals rather than leaving silence", async () => {
+    // Both are legitimate configurations and both are the least obvious answer to
+    // "why does this machine never get that card".
+    state.list = [runner({ run_untagged: false, accept_secrets: false })];
+    const wrapper = await render();
+    const facts = wrapper.get(".facts").text();
+    expect(facts).toContain("只領有 tag 的卡片");
+    expect(facts).toContain("不收機密");
+  });
+
+  it("states the enrollment boundary including the secrets, and no longer promises per-project authorization", async () => {
+    state.list = [runner()];
+    const wrapper = await render();
+    const text = wrapper.text();
+    expect(text).toContain("並取得那些卡片宣告的機密");
+    // The 2026-08-12 ruling cancelled that table; the sentence promising it was on
+    // screen, which is the worst place for a promise that will not be kept.
+    expect(text).not.toContain("V2.3 起提供");
+    expect(text).toContain("不決定哪台機器可以拿機密");
   });
 });

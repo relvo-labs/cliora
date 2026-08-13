@@ -1101,8 +1101,14 @@ export function decodeBinary(raw: Uint8Array): {
 
 const RUN_RUNTIMES = new Set(["claude", "codex"]);
 const RUN_SOURCE_KINDS = new Set(["none", "repo", "existing_branch"]);
+// `provider_token` is deliberately absent: this phase has no code path that sends one,
+// so it must be unrepresentable. The git kinds stay, because a deployment setting — not
+// the wire — decides whether they travel (ADR 0032 §4).
+const RUN_SECRET_KINDS = new Set(["env", "git_pat", "git_ssh_key"]);
 const RUN_PHASES = new Set([
   "preparing",
+  // 1.12.0: "stuck on a credential" and "stuck on the network" are different facts.
+  "authenticating",
   "fetching",
   "checked_out",
   "running",
@@ -1178,6 +1184,10 @@ function validateRunnerRegisterPayload(payload: Record<string, unknown>): void {
       "name",
       "runtimes",
       "labels",
+      // V2.3. Optional on the wire, and **absent means true** on both — the
+      // compatibility rule is a property of the payload, not of a release version.
+      "run_untagged",
+      "accept_secrets",
       "max_concurrent",
       "max_waiting",
       "dedicated",
@@ -1199,6 +1209,10 @@ function validateRunnerRegisterPayload(payload: Record<string, unknown>): void {
   if (payload.labels !== undefined) {
     if (!Array.isArray(payload.labels) || payload.labels.length > 32)
       reject("INVALID_MESSAGE", "Invalid labels");
+  }
+  for (const key of ["run_untagged", "accept_secrets"] as const) {
+    if (payload[key] !== undefined && typeof payload[key] !== "boolean")
+      reject("INVALID_MESSAGE", `Invalid ${key}`);
   }
   requireBoundedInt(payload.max_concurrent, "max_concurrent", 0, 64);
   requireBoundedInt(payload.max_waiting, "max_waiting", 0, 64);
@@ -1262,6 +1276,8 @@ function validateRunSpec(value: unknown): void {
       "source",
       "context",
       "credential",
+      "secrets",
+      "branch",
       "allowed_verification_commands",
       "timeout_seconds",
       "idle_timeout_seconds",
@@ -1276,7 +1292,10 @@ function validateRunSpec(value: unknown): void {
   if (
     typeof spec.context !== "string" ||
     spec.context.length === 0 ||
-    spec.context.length > 65536
+    // 32 KiB from 1.12.0. The old ceiling of 65536 was the *whole* control frame, so one
+    // field could consume the entire budget on its own — and it now shares that budget
+    // with the secrets below.
+    spec.context.length > 32768
   )
     reject("INVALID_MESSAGE", "Invalid context");
   if (spec.credential !== undefined) {
@@ -1286,6 +1305,48 @@ function validateRunSpec(value: unknown): void {
       !/^cliora_rt_[A-Za-z0-9_-]+$/.test(spec.credential)
     )
       reject("INVALID_MESSAGE", "Invalid run credential");
+  }
+  if (spec.secrets !== undefined) {
+    // Values reach a node on exactly one message, and only from the platform's own
+    // store (ADR 0032 §1). `provider_token` is absent from the accepted kinds because
+    // this phase can never send one — unlike the git kinds, which a run-time setting
+    // gates rather than the wire.
+    if (!Array.isArray(spec.secrets) || spec.secrets.length > 8)
+      reject("INVALID_MESSAGE", "Invalid secrets");
+    for (const entry of spec.secrets as unknown[]) {
+      if (typeof entry !== "object" || entry === null)
+        reject("INVALID_MESSAGE", "Invalid secret");
+      const secret = entry as Record<string, unknown>;
+      requireKeys(secret, new Set(["name", "kind", "value"]), [
+        "name",
+        "kind",
+        "value",
+      ]);
+      if (
+        typeof secret.name !== "string" ||
+        !/^[A-Z][A-Z0-9_]*$/.test(secret.name) ||
+        secret.name.length > 128
+      )
+        reject("INVALID_MESSAGE", "Invalid secret name");
+      if (typeof secret.kind !== "string" || !RUN_SECRET_KINDS.has(secret.kind))
+        reject("INVALID_MESSAGE", "Invalid secret kind");
+      if (
+        typeof secret.value !== "string" ||
+        secret.value.length === 0 ||
+        secret.value.length > 8192
+      )
+        reject("INVALID_MESSAGE", "Invalid secret value");
+    }
+  }
+  if (spec.branch !== undefined) {
+    // The daemon re-checks this prefix too: the five hard constraints are its
+    // responsibility, and a constraint that trusts the frame it was sent is not one.
+    if (
+      typeof spec.branch !== "string" ||
+      spec.branch.length > 255 ||
+      !/^cliora\/[A-Za-z0-9._][A-Za-z0-9._-]*$/.test(spec.branch)
+    )
+      reject("INVALID_MESSAGE", "Invalid branch");
   }
   requireBoundedInt(spec.timeout_seconds, "timeout_seconds", 60, 86400);
   requireBoundedInt(
@@ -1322,7 +1383,13 @@ function validateRunOfferPayload(payload: Record<string, unknown>): void {
   if (payload.run_id === null) return;
   requireUuid(payload.run_id, "run id");
   if (payload.delivery !== undefined) {
-    if (payload.delivery !== "none" && payload.delivery !== "artifact")
+    // `branch` joins in 1.12.0; the two pull-request modes need a provider API and are
+    // still refused at dispatch, so they cannot reach a node.
+    if (
+      payload.delivery !== "none" &&
+      payload.delivery !== "artifact" &&
+      payload.delivery !== "branch"
+    )
       reject("INVALID_MESSAGE", "Unsupported delivery");
   }
   validateRunSpec(payload.spec);

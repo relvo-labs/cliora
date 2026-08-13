@@ -357,6 +357,13 @@ class Project(Base):
     # and `card_ref` goes on to name a branch and a pull request. Epics, stories and
     # tasks share it, so numbers skip: it is an identifier, not a count.
     next_card_seq: Mapped[int] = mapped_column(Integer, default=1)
+    # Which secret **names** this project's cards may declare (V2.3, ADR 0032 sec 0).
+    # Intent, not inventory: it is deliberately not derived from the rows that happen
+    # to exist in `project_secrets`, because deriving it would make deleting one secret
+    # silently un-dispatchable a batch of cards with nothing on screen relating the two.
+    allowed_secret_names: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -798,7 +805,15 @@ class AgentRunner(Base):
     one person's dev VM serving both purposes is the common case, and it should be a
     visible choice rather than an unnoticed fact.
 
-    ``labels`` are **displayed and never compared** in V2.2. Label matching is V2.3.
+    ``labels`` were displayed and never compared in V2.2. **From V2.3 they are the
+    fourth eligibility condition** (ADR 0029 amendment B2), matched as a superset:
+    ``required_labels ⊆ labels``. They remain **read-only through the API** — a tag is
+    what the node's own config declares, so a platform-side edit would be a second
+    source of truth that ``runner.register`` overwrites on the next reconnect.
+
+    **A tag is not authorization.** It is a string the runner reports about itself, so
+    a compromised runner changes what it is offered by reporting one more. The
+    authorization boundary is enrollment, permanently (ADR 0032 sec 0).
     """
 
     __tablename__ = "agent_runners"
@@ -827,6 +842,13 @@ class AgentRunner(Base):
     disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     disk_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Two node-side declarations, both defaulting to the permissive value — because a
+    # default has to equal the behaviour before the upgrade, and a payload that omits
+    # them is read as true (ADR 0029 amendment B3). `run_untagged` off reserves a
+    # machine for tagged work; `accept_secrets` off keeps it away from cards that
+    # declare secrets, which is the node operator's veto (ADR 0032 sec 0).
+    run_untagged: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    accept_secrets: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -844,12 +866,15 @@ class ProjectRepository(Base):
     schema form of ADR 0031's rule that a credential must never appear in a remote
     URL, where it would surface in ``git remote -v``, the reflog and error messages.
 
-    V2.3's three credential columns (``auth_kind``, ``credential_secret_id``,
-    ``provider_token_secret_id``) are **deliberately not created yet**, unlike the
-    card's execution settings which ADR 0028 declared early. The difference: those
-    three would be foreign keys to ``project_secrets``, a table this phase does not
-    have, and a nullable UUID pointing at a table that does not exist is something no
-    reader can validate.
+    The three credential columns arrived in V2.3 (migration 0033), once
+    ``project_secrets`` existed for them to point at. ``auth_kind`` has **three**
+    values rather than the two the design named: ``ambient`` is what every repository
+    registered under V2.2 is actually using — the node's own git credentials — and
+    after the 2026-08-13 ruling it is the default going forward as well, because
+    platform-managed git credentials are gated behind
+    ``CLIORA_GIT_SECRET_DELIVERY_ENABLED`` and that flag is off by default. Back-filling
+    those rows as ``pat`` with a null credential would have written down a row that is
+    not true.
     """
 
     __tablename__ = "project_repositories"
@@ -862,11 +887,68 @@ class ProjectRepository(Base):
     path: Mapped[str] = mapped_column(String(512))
     default_branch: Mapped[str] = mapped_column(String(255))
     label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    auth_kind: Mapped[str] = mapped_column(String(16), default="ambient", server_default="ambient")
+    credential_secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_secrets.id", ondelete="RESTRICT"), nullable=True
+    )
+    provider_token_secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_secrets.id", ondelete="RESTRICT"), nullable=True
+    )
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class ProjectSecret(Base):
+    """A value the platform holds for a project and hands to a runner on demand.
+
+    FR-RUNENV-001/002, ADR 0032. **Nothing about this row is readable back.** No API
+    returns the value, the DTO has no field for it, and the service's queries name the
+    columns they want so that a future ``dict(row.__dict__)`` cannot reach the
+    ciphertext by accident.
+
+    **Four ciphertext columns, because the envelope has two layers.** The value is
+    encrypted under a per-row data key; the data key is encrypted under the master key.
+    Each AES-GCM operation needs its own nonce, stored beside its ciphertext. Rotating
+    the master key rewrites ``dek_wrapped`` and leaves ``value_encrypted`` byte-for-byte
+    identical — which is what makes rotation something other than a full-table
+    re-encryption, and what keeps the upgrade path to a KMS down to one function.
+
+    **No fingerprint and no length.** A fingerprint answers "is this the one I rotated
+    last week" and ``rotated_at`` answers that without disclosing anything; a length is
+    a side channel, because a 93-character value is almost certainly a fine-grained PAT.
+
+    ``kind`` decides where the value goes on the node (ADR 0032 sec 4): ``env`` reaches
+    the CLI child's environment, ``git_pat``/``git_ssh_key`` reach **only the daemon's
+    own git environment** and are gated off by default, and ``provider_token`` is not
+    delivered at all in this phase.
+    """
+
+    __tablename__ = "project_secrets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(16))
+    value_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    value_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary)
+    dek_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    key_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # SET NULL, not CASCADE: somebody leaving must not delete a project's credentials.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Stamped at the **claim**, not at the end of the run: a run may never end, and by
+    # then "this machine was handed this secret" is already a fact.
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Soft delete, with a partial unique index behind it, so that deleting a secret and
+    # creating a new one under the same name — the commonest recovery there is — works.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TaskRun(Base):

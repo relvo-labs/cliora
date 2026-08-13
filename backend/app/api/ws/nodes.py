@@ -25,6 +25,7 @@ from app.clock import now_utc
 from app.db.engine import get_session
 from app.logging import get_logger
 from app.protocol import ProtocolError, decode_binary, decode_control
+from app.protocol.codec import MAX_PAYLOAD
 from app.security.node_keys import new_challenge_id, new_request_id
 from app.services.node_update import NodeUpdateService, outcome_from_payload
 from app.services.nodes import (
@@ -37,7 +38,7 @@ from app.services.nodes import (
 from app.services.registry import get_node_registry
 from app.services.run_logs import get_run_log_buffer
 from app.services.runners import RunnerService
-from app.services.runs import RunService
+from app.services.runs import MessageService, RunService, release_claim
 from app.services.sessions import SessionService
 from app.services.terminal_relay import get_terminal_relay
 from app.services.tunnels import TunnelService
@@ -352,15 +353,37 @@ async def node_gateway(
                         runner=polling,
                         capacity=capacity if isinstance(capacity, int) else 1,
                     )
-                await session.commit()
-                await websocket.send_text(
-                    _frame(
-                        "run.offer",
-                        node_id,
-                        new_request_id(),
-                        offer.spec() if offer is not None else {"run_id": None},
-                    )
+                frame = _frame(
+                    "run.offer",
+                    node_id,
+                    new_request_id(),
+                    offer.spec() if offer is not None else {"run_id": None},
                 )
+                # **Measured before it is sent, and the claim is released if it does not
+                # fit** (ADR 0032 Consequences, plan/20/00-…md D2). `run.offer` is a
+                # 64 KiB control frame and is deliberately not in the large-frame set —
+                # this socket also carries interactive terminal bytes. Without this
+                # check the failure is the worst kind available: the receiver drops the
+                # frame *silently*, the lease expires, the card is retried to exhaustion
+                # and blocked, and nothing anywhere reports an error.
+                #
+                # The bound existed before this phase and could already be reached by a
+                # long context; delivering secrets makes it reachable in practice.
+                if offer is not None and len(frame.encode("utf-8")) > MAX_PAYLOAD:
+                    await release_claim(session, offer.run)
+                    await MessageService(session).post_event(
+                        task=offer.task,
+                        body=(
+                            "這次派工的訊息超過了單一控制訊框的上限，因此認領被釋放、"
+                            "卡片退回佇列。最可能的原因是情境包太長或宣告的機密太多。"
+                        ),
+                        event_kind="run.offer_too_large",
+                    )
+                    await session.commit()
+                    frame = _frame("run.offer", node_id, new_request_id(), {"run_id": None})
+                else:
+                    await session.commit()
+                await websocket.send_text(frame)
             elif message.type in _RUN_EVENTS:
                 await RunService(session).apply_event(
                     node_id=node_id, message_type=message.type, payload=message.payload

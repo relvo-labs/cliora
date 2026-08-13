@@ -37,6 +37,7 @@ from app.api.http.nodes import router as nodes_router
 from app.api.http.projects import router as projects_router
 from app.api.http.releases import router as releases_router
 from app.api.http.requirements import router as requirements_router
+from app.api.http.secrets import router as secrets_router
 from app.api.http.sessions import router as sessions_router
 from app.api.http.tasks import agent_router as agent_tasks_router
 from app.api.http.tasks import router as tasks_router
@@ -192,6 +193,11 @@ app.include_router(requirements_router)
 # layer off answers 404 rather than a 403 that would confirm the route exists
 # (ADR 0029, plan/18/00-…md D12).
 app.include_router(agents_router)
+# V2.3. Same two guards in the same order; the secrets surface is a separate module
+# rather than more routes on the agents router because its authorization is
+# different — `secret.manage`, Admin only — and mixing them would put a
+# credential-management route one copied decorator away from `agent.view`.
+app.include_router(secrets_router)
 # The run credential's surface, on its own prefix for the same reason V2.1's is:
 # a route that accepted either principal would need every handler to ask which one it
 # got, and the first to forget is an agent doing a person's action.

@@ -52,6 +52,17 @@ type Fetcher struct {
 	// Env is the base environment for git. Nil means "derive it", which is what
 	// production does; tests supply their own.
 	Env []string
+	// AskpassPath, Username and Password are the PAT path, and all three are empty
+	// unless this run actually received a git credential. With them empty this
+	// Fetcher's environment is byte-for-byte what V2.2 produced — which is the
+	// default deployment, because platform-managed git credentials are off unless
+	// `CLIORA_GIT_SECRET_DELIVERY_ENABLED` says otherwise (ADR 0031 amendment A1).
+	AskpassPath string
+	Username    string
+	Password    string
+	// AuthSock is the SSH path: an `ssh-agent` socket inside the run directory. It
+	// goes here and **never into the child's environment** — see ADR 0032 §4.
+	AuthSock string
 }
 
 // Errors a caller distinguishes. `RUN_SOURCE_UNAVAILABLE` carries which one it was in
@@ -87,11 +98,43 @@ func (f Fetcher) fetchEnv(base []string) []string {
 	if f.KnownHosts != "" {
 		ssh += " -o UserKnownHostsFile=" + f.KnownHosts
 	}
-	return append(append([]string{}, base...),
+	if f.AuthSock != "" {
+		// The agent is reached through the environment rather than through a config
+		// file, so nothing about this run's key survives it.
+		ssh = "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=no"
+		if f.KnownHosts != "" {
+			ssh += " -o UserKnownHostsFile=" + f.KnownHosts
+		}
+	}
+	// **`GIT_ASKPASS` was already occupied, and this is not a choice between the two
+	// behaviours.** V2.2 hard-codes `/bin/false` as one of the three variables that
+	// make "a missing credential fails in seconds" true — measured at 2.7 s. The
+	// helper replaces the value and keeps that property: with no password in the
+	// environment it prints an empty string, git's authentication fails, and
+	// `GIT_TERMINAL_PROMPT=0` still forbids falling back to a prompt.
+	askpass := "/bin/false"
+	if f.AskpassPath != "" {
+		askpass = f.AskpassPath
+	}
+	env := append(append([]string{}, base...),
 		"GIT_TERMINAL_PROMPT=0",
-		"GIT_ASKPASS=/bin/false",
+		"GIT_ASKPASS="+askpass,
 		"GIT_SSH_COMMAND="+ssh,
 	)
+	if f.Password != "" {
+		// Read by the helper, which itself contains no secret. Never in the URL
+		// (`git remote -v`, the reflog, error messages) and never in argv (`ps`).
+		env = append(env, "CLIORA_GIT_PASSWORD="+f.Password)
+		username := f.Username
+		if username == "" {
+			username = "x-access-token"
+		}
+		env = append(env, "CLIORA_GIT_USERNAME="+username)
+	}
+	if f.AuthSock != "" {
+		env = append(env, "SSH_AUTH_SOCK="+f.AuthSock)
+	}
+	return env
 }
 
 // CheckURL applies the node's half of the host allowlist and the two shape rules.

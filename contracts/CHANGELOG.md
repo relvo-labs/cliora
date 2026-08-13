@@ -4,6 +4,47 @@ Board-card run projections added in `plan/19` are HTTP/OpenAPI response fields, 
 WebSocket control messages, so this contract package and its protocol version are
 intentionally unchanged (D33).
 
+## 1.12.0 — 2026-08-13 (compatible)
+
+**Added — secrets, a branch namespace, and two node declarations (ADR 0032, ADR 0031
+and ADR 0029 amendments, `plan/20`).**
+
+No new message types. Four new fields, twenty-one new fixtures (6 valid, 15 invalid):
+
+- `run.offer`'s `spec` gains **`secrets`** (≤8 items, ≤8 KiB each) and **`branch`**
+  (`cliora/…`), and its `delivery` gains **`branch`**.
+- `runner.register` gains **`run_untagged`** and **`accept_secrets`**, both optional.
+
+**Changed — one ceiling, and it is a correction rather than a tightening:**
+`spec.context` drops from 65536 to **32768**. The old value was the size of the entire
+control frame, so one field could consume the whole budget by itself; a rendered context
+pack measures 1–2 KB, so nothing has ever come close. Every fixture predating this
+release is byte-for-byte identical.
+
+Three properties are worth reading here rather than in the schemas:
+
+- **A secret's value can travel on exactly one message.** SEC-002's revised invariant is
+  that no request payload may name a command *or carry a secret's value*; `spec.secrets`
+  travels central→node and Central fills it from its own store. Two invalid fixtures
+  assert the field is unrepresentable on `run.accept` and `run.complete`, which is the
+  machine form of that sentence rather than a promise about it.
+- **`kind` travels with the value because it decides where the value goes.** `env`
+  reaches the CLI child's environment; `git_pat` and `git_ssh_key` reach **only the
+  daemon's own git environment**, so the platform's revocable credential does not end up
+  in the agent's hands where none of the five push constraints could reach it.
+  `provider_token` is absent from the wire enum although it is a storable kind: this
+  phase has no code path that sends one, and the two git kinds are gated by a deployment
+  setting rather than by the wire. A run-time setting is not a wire shape.
+- **The bounds here are necessary and not sufficient.** Eight secrets at the per-value
+  ceiling is 64 KiB — the whole frame. So Central measures the assembled frame before
+  sending it and **releases the claim** if it does not fit. Without that the failure is
+  the worst kind this socket offers: the receiver drops the frame silently, the lease
+  expires, the card is retried to exhaustion and blocked, and nothing reports an error.
+
+**Absent from `run.complete`:** `delivery_ref`. The platform pushes a branch in this
+release, and the branch name is already on the offer; a structured delivery reference
+belongs with pull requests, in 1.13.0.
+
 ## 1.11.0 — 2026-08-11 (compatible)
 
 **Added — the agent runner (ADR 0029/0030/0031, `plan/18`).**

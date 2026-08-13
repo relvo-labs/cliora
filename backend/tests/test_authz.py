@@ -323,6 +323,17 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # The run credential's surface, `None` for the same reason V2.1's is: these are not
     # authorized by a *user* action. The caller is a run credential whose scope was
     # fixed when it was issued, and it can never resolve into a user.
+    # V2.3 project secrets (ADR 0032). **Reading the list is `secret.manage`, not
+    # `project.view`**: which credentials a project holds and when each was last used is
+    # reconnaissance in its own right. What a Developer needs — the names, to tick on a
+    # card — is `/secret-names`, which returns nothing else. There is no `PATCH`: a
+    # rename orphans every card pointing at the old name and a kind change retroactively
+    # alters where an already-delivered value was allowed to go.
+    ("GET", "/api/projects/{project_id}/secrets"): rbac.SECRET_MANAGE,
+    ("POST", "/api/projects/{project_id}/secrets"): rbac.SECRET_MANAGE,
+    ("PUT", "/api/projects/{project_id}/secrets/{secret_id}"): rbac.SECRET_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/secrets/{secret_id}"): rbac.SECRET_MANAGE,
+    ("GET", "/api/projects/{project_id}/secret-names"): rbac.TASK_UPDATE,
     ("GET", "/api/cli/runs/messages"): None,
     ("POST", "/api/cli/runs/messages"): None,
     ("POST", "/api/cli/runs/artifacts"): None,

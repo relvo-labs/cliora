@@ -68,6 +68,12 @@ const LABELS: Record<string, string> = {
   "run_token.revoke": "撤銷 Run 憑證",
   "artifact.upload": "附加產物",
   "artifact.delete": "刪除產物",
+  // 專案機密（ADR 0032）。`secret.deliver` 記的是**名稱**——永遠不含值、長度或指紋，
+  // 因為長度本身就是側通道，而指紋要回答的問題 `rotated_at` 已經回答了。
+  "secret.create": "建立機密",
+  "secret.rotate": "輪替機密",
+  "secret.delete": "刪除機密",
+  "secret.deliver": "下放機密給 Run",
 };
 
 // An action with no label would render blank, so it falls back to its own key —
@@ -130,6 +136,10 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "run_token.revoke",
       "artifact.upload",
       "artifact.delete",
+      "secret.create",
+      "secret.rotate",
+      "secret.delete",
+      "secret.deliver",
     ],
   },
   {

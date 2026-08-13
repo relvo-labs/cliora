@@ -158,6 +158,15 @@ RUN_TOKEN_REVOKE = "run_token.revoke"
 ARTIFACT_UPLOAD = "artifact.upload"
 ARTIFACT_DELETE = "artifact.delete"
 
+# V2.3 project secrets (ADR 0032). `secret.deliver` carries **names only** — never a
+# value, a length or a fingerprint. A length is a side channel (a 93-character value is
+# almost certainly a fine-grained PAT) and a fingerprint answers a question `rotated_at`
+# already answers without disclosing anything.
+SECRET_CREATE = "secret.create"
+SECRET_ROTATE = "secret.rotate"
+SECRET_DELETE = "secret.delete"
+SECRET_DELIVER = "secret.deliver"
+
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
 ALL_ACTIONS: frozenset[str] = frozenset(
@@ -205,6 +214,10 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         RUN_TOKEN_REVOKE,
         ARTIFACT_UPLOAD,
         ARTIFACT_DELETE,
+        SECRET_CREATE,
+        SECRET_ROTATE,
+        SECRET_DELETE,
+        SECRET_DELIVER,
         TASK_CREATE,
         TASK_UPDATE,
         TASK_GATE_APPROVE,

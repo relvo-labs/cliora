@@ -9,9 +9,13 @@
  *    rather than merely true.
  *  - **A derived-disabled gate says why it is disabled** and offers the way out. A gate
  *    that quietly does not exist is worse than one that explains itself (D31).
- *  - **The execution block is labelled inert.** A card saying `pull_request` produces
- *    no pull request until V2.3, and this is the one state in the phase we know
- *    misleads (ADR 0028 sec 9).
+ *  - **The execution block is no longer inert.** `source`, `delivery: branch`, the
+ *    tags and the declared secrets are all acted on from V2.3; what is still refused is
+ *    refused *at dispatch*, naming the version. A stale "nobody will act on this" is
+ *    worse than no note at all.
+ *  - **A mistyped tag is warned about where it is typed.** It is the commonest failure
+ *    of tag dispatch and its symptom is a card that waits forever, so catching it
+ *    against what online runners report costs one request and saves an investigation.
  */
 import { computed, ref } from "vue";
 
@@ -23,6 +27,7 @@ import type {
   Task,
 } from "../../api/dto";
 import { formatInstant } from "../../utils/time";
+import BaseBadge from "../ui/BaseBadge.vue";
 import DeliveryBadge from "../ui/DeliveryBadge.vue";
 import RiskBadge from "../ui/RiskBadge.vue";
 import SourceBadge from "../ui/SourceBadge.vue";
@@ -38,6 +43,9 @@ const props = defineProps<{
   sessions?: SessionSummary[];
   activity?: ActivityEvent[];
   actorNames?: Record<string, string>;
+  /** Tags the online runners actually report. Used only to warn — a runner that comes
+   *  online tomorrow is a legitimate reason for a tag nothing has yet. */
+  availableTags?: string[];
 }>();
 const emit = defineEmits<{
   (event: "changed"): void;
@@ -45,6 +53,17 @@ const emit = defineEmits<{
 }>();
 
 const error = ref<string | null>(null);
+
+const requiredLabels = computed(() => props.task.required_labels ?? []);
+const requiredSecrets = computed(() => props.task.required_secrets ?? []);
+// Only warn about a tag nothing online has. With no runner list at all (the page loaded
+// before the agents did, or the reader cannot see them) this is empty and the warning
+// stays quiet — a false "nobody has this" is worse than no warning.
+const unmatchedTags = computed(() => {
+  const available = new Set(props.availableTags ?? []);
+  if (!available.size) return [];
+  return requiredLabels.value.filter((tag) => !available.has(tag));
+});
 
 const readiness = computed(() =>
   props.process.readiness.map((item) => ({
@@ -258,7 +277,51 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           <dd><DeliveryBadge :delivery="task.delivery" /></dd>
           <dt>base branch</dt>
           <dd>{{ task.base_branch ?? "—" }}</dd>
+          <!-- Tags decide **which machine** gets this card. They are shown here even
+               when empty, because "no tag" is a dispatch-relevant fact rather than an
+               absent decoration — and the warning below is the cheapest place to catch
+               the commonest failure of the whole mechanism. -->
+          <dt>Tag</dt>
+          <dd>
+            <span v-if="requiredLabels.length" class="tags">
+              <BaseBadge
+                v-for="tag in requiredLabels"
+                :key="tag"
+                variant="quiet"
+                >{{ tag }}</BaseBadge
+              >
+            </span>
+            <span v-else class="muted">（未宣告，任一 Agent 都可能領走）</span>
+          </dd>
+          <dt>機密</dt>
+          <dd>
+            <span v-if="requiredSecrets.length" class="tags">
+              <BaseBadge
+                v-for="secretName in requiredSecrets"
+                :key="secretName"
+                variant="quiet"
+                >{{ secretName }}</BaseBadge
+              >
+            </span>
+            <span v-else class="muted">（未宣告）</span>
+          </dd>
         </dl>
+        <!-- A mistyped tag is the commonest way this mechanism fails, and the card then
+             sits in the queue forever. Catching it against the tags online runners
+             actually report costs one request and is far cheaper than discovering it
+             from a stuck card (SC-08). It **warns and does not block**: a runner that
+             comes online tomorrow is a legitimate reason. -->
+        <p v-if="unmatchedTags.length" class="hint warn">
+          ⚠ 目前沒有 runner 具備
+          <template v-for="(tag, i) in unmatchedTags" :key="tag"
+            ><code>{{ tag }}</code
+            ><span v-if="i < unmatchedTags.length - 1">、</span></template
+          >，這張卡會一直等。
+        </p>
+        <p v-if="task.delivery === 'branch'" class="hint">
+          交付方式是分支：完成時平台會推送
+          <code>cliora/{{ task.card_ref }}-&lt;執行次數&gt;</code>。
+        </p>
         <!-- V2.1 寫的是「本階段沒有任何執行者會依它行動」，而那句話在 V2.2 之後
              不再為真：`source` 的三個值與 `delivery` 的兩個值現在真的會被依循，
              其餘的在派工當下就被擋下並指名從哪一版開始生效（ADR 0029 §6）。

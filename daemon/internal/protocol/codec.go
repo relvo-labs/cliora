@@ -715,13 +715,17 @@ func validRuntimes(items []runtimeItem) bool {
 //     in `git remote -v`, in the reflog and in error messages (ADR 0031 §5).
 
 type runnerRegisterFields struct {
-	RunnerID      uuid.UUID `json:"runner_id"`
-	Name          string    `json:"name"`
-	Runtimes      []string  `json:"runtimes"`
-	Labels        []string  `json:"labels"`
-	MaxConcurrent *int      `json:"max_concurrent"`
-	MaxWaiting    *int      `json:"max_waiting"`
-	Dedicated     *bool     `json:"dedicated"`
+	RunnerID uuid.UUID `json:"runner_id"`
+	Name     string    `json:"name"`
+	Runtimes []string  `json:"runtimes"`
+	Labels   []string  `json:"labels"`
+	// Pointers, and absent means true on both — the contract's compatibility rule is
+	// a property of the payload rather than of a release version (contract v1.12.0).
+	RunUntagged   *bool `json:"run_untagged"`
+	AcceptSecrets *bool `json:"accept_secrets"`
+	MaxConcurrent *int  `json:"max_concurrent"`
+	MaxWaiting    *int  `json:"max_waiting"`
+	Dedicated     *bool `json:"dedicated"`
 }
 
 type runnerRegisteredFields struct {
@@ -754,10 +758,27 @@ type RunSpec struct {
 	Context string    `json:"context"`
 	// Credential is the run's own `cliora_rt_…` token, delivered once. The daemon
 	// writes it at 0600 and removes it the instant the run ends.
-	Credential                  string   `json:"credential,omitempty"`
+	Credential string `json:"credential,omitempty"`
+	// Secrets is what this card declared, decrypted by Central at the claim. The
+	// daemon holds them in memory only; **`Kind` decides where each value goes**, and
+	// the two git kinds never reach the child's environment (ADR 0032 §4).
+	Secrets []RunSecret `json:"secrets,omitempty"`
+	// Branch is the `cliora/…` branch this run creates and the platform later pushes.
+	// The prefix is re-checked in `gitfetch` as well: a constraint that trusts the
+	// frame it was sent is not a constraint.
+	Branch                      string   `json:"branch,omitempty"`
 	AllowedVerificationCommands []string `json:"allowed_verification_commands,omitempty"`
 	TimeoutSeconds              int      `json:"timeout_seconds"`
 	IdleTimeoutSeconds          int      `json:"idle_timeout_seconds"`
+}
+
+// RunSecret is one delivered value. It exists for the length of one run and is never
+// written to a file — the one apparent exception, `ssh-agent`'s socket, is a socket
+// and not a key (ADR 0032 §2 rule 4).
+type RunSecret struct {
+	Name  string `json:"name"`
+	Kind  string `json:"kind"`
+	Value string `json:"value"`
 }
 
 // RunOffer is a run that has **already been claimed** for this node.
@@ -819,7 +840,7 @@ var (
 	runnerRuntimeSet = map[string]bool{"claude": true, "codex": true}
 	runSourceKindSet = map[string]bool{"none": true, "repo": true, "existing_branch": true}
 	runPhaseSet      = map[string]bool{
-		"preparing": true, "fetching": true, "checked_out": true,
+		"preparing": true, "authenticating": true, "fetching": true, "checked_out": true,
 		"running": true, "waiting_for_input": true, "finishing": true,
 	}
 	runDeclineReasonSet = map[string]bool{
@@ -900,7 +921,9 @@ func validRunSpec(spec *RunSpec) bool {
 	if spec.Runtime != "" && !runnerRuntimeSet[spec.Runtime] {
 		return false
 	}
-	if spec.Context == "" || len(spec.Context) > 65536 {
+	// 32 KiB from contract 1.12.0. The old ceiling was the whole 64 KiB control frame,
+	// so one field could consume the entire budget — and it now shares it with secrets.
+	if spec.Context == "" || len(spec.Context) > 32768 {
 		return false
 	}
 	if spec.Credential != "" && !strings.HasPrefix(spec.Credential, "cliora_rt_") {
@@ -915,7 +938,65 @@ func validRunSpec(spec *RunSpec) bool {
 	if len(spec.AllowedVerificationCommands) > 16 {
 		return false
 	}
+	if len(spec.Secrets) > 8 {
+		return false
+	}
+	for _, secret := range spec.Secrets {
+		if !validSecretName(secret.Name) || !runSecretKindSet[secret.Kind] ||
+			secret.Value == "" || len(secret.Value) > 8192 {
+			return false
+		}
+	}
+	if spec.Branch != "" && !validRunBranch(spec.Branch) {
+		return false
+	}
 	return validRunSource(spec.Source)
+}
+
+// runSecretKindSet omits `provider_token` deliberately: this phase has no code path
+// that sends one, so it must be unrepresentable. The two git kinds stay, because a
+// deployment setting gates them rather than the wire (ADR 0032 §4).
+var runSecretKindSet = map[string]bool{"env": true, "git_pat": true, "git_ssh_key": true}
+
+var runDeliverySet = map[string]bool{"none": true, "artifact": true, "branch": true}
+
+// validSecretName mirrors the schema: a name becomes an environment variable, so a
+// secret called `foo-bar` and one called `PATH` are two different kinds of disaster.
+// (`PATH` and the reserved prefixes are refused by Central at creation; this layer
+// only enforces the shape.)
+func validSecretName(name string) bool {
+	if name == "" || len(name) > 128 {
+		return false
+	}
+	for i, r := range name {
+		switch {
+		case r >= 'A' && r <= 'Z':
+		case (r >= '0' && r <= '9' || r == '_') && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// validRunBranch enforces the namespace on the wire, and the daemon's push path
+// enforces it again before running git. Two checks rather than one because the second
+// is the one holding the remote (ADR 0031 amendment A2).
+func validRunBranch(branch string) bool {
+	rest, ok := strings.CutPrefix(branch, "cliora/")
+	if !ok || rest == "" || len(branch) > 255 {
+		return false
+	}
+	for i, r := range rest {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case (r == '.' || r == '_'):
+		case r == '-' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func ValidateControl(raw []byte) error {
@@ -1043,7 +1124,9 @@ func ValidateControl(raw []byte) error {
 		if p.RunID == nil {
 			return nil
 		}
-		if *p.RunID == uuid.Nil || (p.Delivery != "" && p.Delivery != "none" && p.Delivery != "artifact") ||
+		// `branch` joins the delivery set in 1.12.0; the two pull-request modes need a
+		// provider API and are refused at dispatch, so they never reach a node.
+		if *p.RunID == uuid.Nil || (p.Delivery != "" && !runDeliverySet[p.Delivery]) ||
 			!validRunSpec(p.Spec) {
 			return errors.New("INVALID_MESSAGE")
 		}

@@ -5,8 +5,10 @@ import { RouterLink, useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import {
   ACTION_PROJECT_MANAGE,
+  ACTION_SECRET_MANAGE,
   ACTION_TASK_CREATE,
   ACTION_TASK_UPDATE,
+  FEATURE_AGENT_RUNS,
 } from "../api/dto";
 import type {
   Board,
@@ -21,6 +23,7 @@ import type {
 } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import ProjectRepositories from "../components/project/ProjectRepositories.vue";
+import ProjectSecrets from "../components/project/ProjectSecrets.vue";
 import TaskBoard from "../components/project/TaskBoard.vue";
 import TaskRoadmap from "../components/project/TaskRoadmap.vue";
 import AsyncState from "../components/common/AsyncState.vue";
@@ -44,6 +47,14 @@ const projects = useProjectsStore();
 const router = useRouter();
 
 const canManage = computed(() => auth.hasPermission(ACTION_PROJECT_MANAGE));
+// **The feature flag and the permission, both** — a flag says what the deployment has,
+// a permission says what this person may do, and neither alone is authorization
+// (ADR 0027). The server checks both regardless; this only decides what is rendered.
+const canManageSecrets = computed(
+  () =>
+    auth.hasFeature(FEATURE_AGENT_RUNS) &&
+    auth.hasPermission(ACTION_SECRET_MANAGE),
+);
 const canWriteTasks = computed(() => auth.hasPermission(ACTION_TASK_UPDATE));
 const canCreateTasks = computed(() => auth.hasPermission(ACTION_TASK_CREATE));
 // In the query string, so a reload lands where the user was rather than back on
@@ -625,6 +636,14 @@ function recordActionError(error: unknown, fallback: string): void {
              is now the question a person answers first. -->
         <UiCard class="overview-card">
           <ProjectRepositories :project-id="id" :can-manage="canManage" />
+        </UiCard>
+
+        <!-- Secrets sit beside repositories because from V2.3 a repository row means
+             "which credential fetches this", and the two are edited together. Gated on
+             the runner feature rather than on a permission: a deployment without it has
+             no secrets endpoints at all, and they answer 404. -->
+        <UiCard v-if="canManageSecrets" class="overview-card">
+          <ProjectSecrets :project-id="id" />
         </UiCard>
 
         <UiCard flush class="overview-card">

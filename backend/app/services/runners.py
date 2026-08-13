@@ -58,7 +58,25 @@ BLOCKED_REASONS = frozenset({"at_capacity", "waiting_limit", "disk_quota", "disk
 # Fields `PATCH /api/agents/{id}` may set. `runtimes` and `dedicated` are absent on
 # purpose: both are the daemon's report about the machine, and letting an administrator
 # type them in would make the console show the posture somebody wished for.
-EDITABLE_RUNNER_FIELDS = frozenset({"name", "enabled", "max_concurrent", "max_waiting", "labels"})
+#
+# **`labels` left this set in V2.3**, and for a stronger version of the same reason.
+# While tags were displayed and never compared, editing one was harmless vanity; now
+# they decide which machine gets which card, and an edit here would be a second source
+# of truth that the node's next `runner.register` silently overwrites. Changing a
+# runner's tags means changing that machine's config file (ADR 0029 amendment B5).
+# `run_untagged` and `accept_secrets` never enter this set for the same reason.
+EDITABLE_RUNNER_FIELDS = frozenset({"name", "enabled", "max_concurrent", "max_waiting"})
+
+
+def _tri_state(value: Any) -> bool:
+    """A node's boolean declaration, where **absent means true**.
+
+    Not `bool(payload.get(key))`: that maps a missing key to False, which is the
+    tightening direction. A default has to equal the behaviour before the upgrade, and
+    a machine that quietly stops claiming anything after one is the hardest kind of
+    regression to trace (ADR 0029 amendment B3).
+    """
+    return value if isinstance(value, bool) else True
 
 
 def _bounded(value: Any, *, default: int) -> int:
@@ -277,6 +295,14 @@ class RunnerService:
             "name": name[:128],
             "runtimes": runtimes_value,
             "labels": labels_value,
+            # Absent means **true** for both, matching the column defaults, so a daemon
+            # that predates V2.3 behaves exactly as it did. Note this is not
+            # `bool(payload.get(...))`: that maps a missing key to False, which is the
+            # tightening direction, and a machine that silently stops claiming anything
+            # after an upgrade is the hardest kind of regression to trace back
+            # (ADR 0029 amendment B3).
+            "run_untagged": _tri_state(payload.get("run_untagged")),
+            "accept_secrets": _tri_state(payload.get("accept_secrets")),
             "max_concurrent": _bounded(payload.get("max_concurrent"), default=1),
             "max_waiting": _bounded(payload.get("max_waiting"), default=5),
             "dedicated": bool(payload.get("dedicated", False)),
@@ -324,12 +350,6 @@ class RunnerService:
                     "INVALID_ARGUMENT",
                     f"{field} must be between 0 and 64",
                     status.HTTP_400_BAD_REQUEST,
-                )
-            if field == "labels" and (
-                not isinstance(value, list) or not all(isinstance(item, str) for item in value)
-            ):
-                raise ApiError(
-                    "INVALID_ARGUMENT", "labels must be strings", status.HTTP_400_BAD_REQUEST
                 )
             setattr(runner, field, value)
         if "enabled" in changes:

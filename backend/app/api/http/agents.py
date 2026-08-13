@@ -105,6 +105,8 @@ def _runner_dto(view: RunnerView) -> AgentRunnerDTO:
         name=runner.name,
         runtimes=list(runner.runtimes or []),
         labels=list(runner.labels or []),
+        run_untagged=runner.run_untagged,
+        accept_secrets=runner.accept_secrets,
         max_concurrent=runner.max_concurrent,
         max_waiting=runner.max_waiting,
         enabled=runner.enabled,
@@ -135,7 +137,9 @@ def _repository_dto(row: ProjectRepository) -> ProjectRepositoryDTO:
     )
 
 
-def _run_dto(run: TaskRun, *, runner_name: str | None) -> TaskRunDTO:
+def _run_dto(
+    run: TaskRun, *, runner_name: str | None, secret_names: list[str] | None = None
+) -> TaskRunDTO:
     return TaskRunDTO(
         id=run.id,
         task_id=run.task_id,
@@ -161,6 +165,7 @@ def _run_dto(run: TaskRun, *, runner_name: str | None) -> TaskRunDTO:
         summary=run.summary,
         log_bytes=run.log_bytes,
         log_truncated_bytes=run.log_truncated_bytes,
+        secret_names=sorted(secret_names or []),
     )
 
 
@@ -215,11 +220,14 @@ async def list_agents(
 ) -> list[AgentRunnerDTO]:
     """Every runner in the fleet.
 
-    Not filtered by project, and that is the phase's posture rather than an oversight:
-    **V2.2's authorization boundary is enrollment.** A runner on any enrolled node can
-    claim any project's card and pull any project's code, and per-project authorization
-    arrives in V2.3 (ADR 0029 sec 3). The Agents page states this in words next to the
-    list, because it is the kind of design that gets reported as a bug otherwise.
+    Not filtered by project, and that is the platform's posture rather than an
+    oversight: **the authorization boundary is enrollment, permanently.** A runner on
+    any enrolled node can claim any project's card, pull any project's code and — from
+    V2.3 — receive the secrets that card declares. Per-project authorization is not
+    coming: the 2026-08-12 ruling cancelled `project_agents` rather than deferring it,
+    and what bounds the radius instead is four compensating controls (ADR 0032 §0).
+    The Agents page states this in words next to the list, because it is the kind of
+    design that gets reported as a bug otherwise.
     """
     views = await RunnerService(session).list_views(is_online=registry.is_connected)
     return [_runner_dto(view) for view in views]
@@ -245,11 +253,17 @@ async def update_agent(
     session: AsyncSession = Depends(get_session),
     registry: NodeConnectionRegistry = Depends(get_registry),
 ) -> AgentRunnerDTO:
-    """Enable/disable, concurrency and labels — and nothing else in this phase.
+    """Enable/disable and concurrency — the disposition of compute, and nothing else.
 
-    There is deliberately **no binding endpoint**: `project_agents` arrives in V2.3
-    together with the secrets it authorises. Creating the route now, against a table
-    that authorises nothing, would cost V2.3's security review a real checkpoint.
+    There is deliberately **no binding endpoint**, and there will not be one:
+    `project_agents` was cancelled by the 2026-08-12 ruling rather than deferred, and
+    the authorization boundary is permanently enrollment (ADR 0032 §0).
+
+    **Tags are not editable here either**, which is a different reason from the same
+    ruling: a tag is what the node's `agentd` config declares about itself, so a
+    platform-side edit would be a second source of truth that `runner.register`
+    silently overwrites on the next reconnect (ADR 0029 amendment B5). Changing a
+    runner's tags means changing that machine's config file.
     """
     service = RunnerService(session)
     runner = await service.require(runner_id)
@@ -365,7 +379,13 @@ async def dispatch_task(
     )
     reason = await service.resolve_waiting_reason(result.run, is_online=registry.is_connected)
     await session.commit()
-    return DispatchResponseDTO(run_id=result.run.id, status="queued", waiting_reason=reason)
+    return DispatchResponseDTO(
+        run_id=result.run.id,
+        status="queued",
+        waiting_reason=reason.kind,
+        missing_tags=list(reason.missing_tags),
+        runner_name=reason.runner_name,
+    )
 
 
 @router.get("/tasks/{task_id}/runs", response_model=list[TaskRunDTO])
@@ -389,9 +409,15 @@ async def read_run(
     settings: Settings = Depends(get_settings),
 ) -> TaskRunDTO:
     run = await RunService(session, settings=settings).require(run_id)
-    await _require_visible_task(session, settings, run.task_id)
+    task, _project = await _require_visible_task(session, settings, run.task_id)
     names = await _runner_names(session, [run])
-    return _run_dto(run, runner_name=names.get(run.runner_id or uuid.uuid4()))
+    return _run_dto(
+        run,
+        runner_name=names.get(run.runner_id or uuid.uuid4()),
+        # Only the detail route carries them: the list route renders rows, and a card's
+        # secret declaration is not something to repeat once per attempt.
+        secret_names=list(task.required_secrets or []),
+    )
 
 
 @router.get("/runs/{run_id}/logs", response_model=RunLogPageDTO)

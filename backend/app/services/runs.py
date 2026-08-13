@@ -29,7 +29,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import and_, cast, func, or_, select, text, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -57,6 +58,7 @@ from app.services.activity import (
 from app.services.agent_auth import RunTokenService, RunTokenSubject
 from app.services.audit import AuditService
 from app.services.runners import RepositoryService, clone_url
+from app.services.secrets import MaterialisedSecret, SecretService
 from app.settings import Settings, get_settings
 
 # Terminal for the purposes of "does this card already have a run in flight".
@@ -90,10 +92,78 @@ RUN_WALL_CLOCK_SECONDS = 6 * 60 * 60
 RUN_IDLE_TIMEOUT_SECONDS = 300
 
 UNSUPPORTED_DELIVERIES = {
-    "branch": "V2.3",
+    # `branch` left this table in V2.3: pushing a `cliora/…` branch is now the phase's
+    # main delivery path (ADR 0031 amendment A2). The two that remain need a provider
+    # API rather than git transport, which is V2.4.
     "pull_request": "V2.4",
     "existing_pr": "V2.4",
 }
+
+
+def tag_match_clause(runner: AgentRunner):  # noqa: ANN201 - a SQLAlchemy clause
+    """Eligibility condition 4, as SQL. Used by the offer query.
+
+    `required_labels <@ runner.labels` reads "what the card asks for is contained in
+    what the runner has" — a **superset** match, so extra tags on a machine are
+    irrelevant. The direction is easy to write backwards and `@>` would compile and run;
+    it would just mean a runner could only claim cards asking for exactly its own tag
+    set, which is unusable in practice. Two tests pin the direction, one per side,
+    because a reversed operator leaves one of them green.
+    """
+    declared = func.jsonb_array_length(func.coalesce(Task.required_labels, text("'[]'::jsonb")))
+    subset = or_(
+        declared == 0,
+        Task.required_labels.op("<@")(cast(list(runner.labels or []), JSONB)),
+    )
+    if runner.run_untagged:
+        return subset
+    return and_(subset, declared > 0)
+
+
+def tag_match(runner: AgentRunner, task: Task) -> bool:
+    """Eligibility condition 4, as Python. Used by the waiting reason and by dispatch.
+
+    **Two implementations exist on purpose and are pinned together by one parameterised
+    test.** The offer query has to be SQL; the waiting-reason count cannot be, because
+    its first condition is "is this node connected", which lives in the registry's
+    memory and not in a column. Storing that in a column is what ADR 0029 §1 calls a
+    stale second indicator. So the duplication is necessary — what is not necessary is
+    letting the two drift, which is what `GATE-SC-TAG-BOTH-QUERIES` prevents.
+    """
+    required = set(task.required_labels or [])
+    if not required:
+        return bool(runner.run_untagged)
+    return required <= set(runner.labels or [])
+
+
+def accepts_secrets(runner: AgentRunner, task: Task) -> bool:
+    """The node's veto, in the same family as condition 4 rather than a sixth condition.
+
+    Five conditions are the public vocabulary — the ADR, the PRD and the console all use
+    it — and `accept_secrets` is a node-side declaration like `run_untagged`, not a new
+    layer of pairing (ADR 0029 amendment B3).
+    """
+    if runner.accept_secrets:
+        return True
+    return not (task.required_secrets or [])
+
+
+@dataclass(frozen=True, slots=True)
+class WaitingReason:
+    """Why a queued run has not been claimed, with enough to act on.
+
+    V2.2 answered with one of three words. That was enough while the only reasons were
+    "wait" and "you named an offline machine"; with tag matching there is a third shape
+    — "no machine has what this card asks for" — and it is only useful if it says which
+    tags (exit condition 3e).
+    """
+
+    kind: str  # "any" | "assigned_offline" | "no_eligible_runner"
+    missing_tags: tuple[str, ...] = ()
+    runner_name: str | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "missing_tags", tuple(self.missing_tags))
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +187,12 @@ class RunOffer:
     # instant the run ends.
     credential: str = ""
     context: str = ""
+    # Decrypted at the claim and alive for exactly this frame. Never stored on the
+    # dataclass beyond that, never logged, never returned by anything else.
+    secrets: tuple[MaterialisedSecret, ...] = ()
+    # The branch this run creates, composed by Central because it holds `card_ref` and
+    # the sequence. The daemon re-checks the prefix regardless (ADR 0031 amendment A2).
+    branch: str = ""
 
     def spec(self) -> dict[str, Any]:
         source: dict[str, Any] = {"kind": self.run.source_kind or "none"}
@@ -136,6 +212,12 @@ class RunOffer:
             spec["runtime"] = self.run.runtime
         if self.credential:
             spec["credential"] = self.credential
+        if self.secrets:
+            spec["secrets"] = [
+                {"name": item.name, "kind": item.kind, "value": item.value} for item in self.secrets
+            ]
+        if self.branch:
+            spec["branch"] = self.branch
         return {
             "run_id": str(self.run.id),
             "task_id": str(self.run.task_id),
@@ -221,14 +303,53 @@ class RunService:
                 status.HTTP_409_CONFLICT,
             )
 
-        # ② declarations this phase cannot honour
+        # ② the card's declarations have to be satisfiable
         if task.required_secrets:
-            raise ApiError(
-                "TASK_REQUIRES_SECRETS",
-                "Cards that declare required secrets can be dispatched from V2.3",
-                status.HTTP_409_CONFLICT,
-                details={"phase": "V2.3", "required_secrets": list(task.required_secrets)},
+            # **Two refusals, not one.** "That name is not on the project's allowlist"
+            # is fixed in project settings; "that secret does not exist" is fixed by
+            # creating one — and the second is what deleting a secret leaves behind, so
+            # it is the commoner of the two. A single message would send half the
+            # readers to the wrong page.
+            declared = list(task.required_secrets)
+            allowed = set(project.allowed_secret_names or [])
+            unknown = sorted(set(declared) - allowed)
+            if unknown:
+                raise ApiError(
+                    "TASK_SECRETS_NOT_ALLOWED",
+                    "These secret names are not on this project's allowlist: " + ", ".join(unknown),
+                    status.HTTP_409_CONFLICT,
+                    details={
+                        "unknown": unknown,
+                        "settings_hint": f"/projects/{project.id}#secrets",
+                    },
+                )
+            missing = await SecretService(self._session, settings=self._settings).missing_names(
+                project.id, declared
             )
+            if missing:
+                raise ApiError(
+                    "TASK_SECRETS_MISSING",
+                    "These secrets have not been created yet: " + ", ".join(missing),
+                    status.HTTP_409_CONFLICT,
+                    details={
+                        "missing": missing,
+                        "settings_hint": f"/projects/{project.id}#secrets",
+                    },
+                )
+        if task.source == "existing_branch" and task.delivery == "branch":
+            # The push constraint applies to whatever branch the run ends on, so a card
+            # continuing a branch outside the namespace can never deliver. Refused here
+            # rather than at the push, where the run has already done its work
+            # (ADR 0031 amendment A4).
+            base = task.base_branch or ""
+            if not base.startswith("cliora/"):
+                raise ApiError(
+                    "TASK_BRANCH_NOT_DELIVERABLE",
+                    f"'{base or 'this branch'}' is outside the cliora/ namespace, and the "
+                    "platform only ever pushes inside it",
+                    status.HTTP_409_CONFLICT,
+                    details={"base_branch": base},
+                )
         if task.delivery in UNSUPPORTED_DELIVERIES:
             phase = UNSUPPORTED_DELIVERIES[task.delivery]
             raise ApiError(
@@ -284,6 +405,40 @@ class RunService:
                     status.HTTP_409_CONFLICT,
                     details={"runner_name": runner.name, "runtime": required_runtime},
                 )
+            # **Naming a runner does not create eligibility** (ADR 0029 amendment, D17b).
+            # The reason is correctness rather than authorization: people name a machine
+            # precisely because it is the only one with what the card needs, so letting
+            # the name override the tag would run a `docker` card on a box without
+            # docker and fail in its third minute.
+            if not tag_match(runner, task):
+                missing = sorted(set(task.required_labels or []) - set(runner.labels or []))
+                if missing:
+                    raise ApiError(
+                        "AGENT_TAG_MISMATCH",
+                        f"Agent '{runner.name}' is missing "
+                        + "、".join(f"`{tag}`" for tag in missing),
+                        status.HTTP_409_CONFLICT,
+                        details={"runner_name": runner.name, "missing_tags": missing},
+                    )
+                # The other way round: the card declares nothing and the machine is
+                # reserved for tagged work. A separate code because the fix is
+                # different — tag the card, or pick another machine.
+                raise ApiError(
+                    "AGENT_REFUSES_UNTAGGED",
+                    f"Agent '{runner.name}' only claims cards that declare a tag",
+                    status.HTTP_409_CONFLICT,
+                    details={"runner_name": runner.name},
+                )
+            if not accepts_secrets(runner, task):
+                raise ApiError(
+                    "AGENT_REFUSES_SECRETS",
+                    f"Agent '{runner.name}' does not accept secrets, and this card declares some",
+                    status.HTTP_409_CONFLICT,
+                    details={
+                        "runner_name": runner.name,
+                        "required_secrets": list(task.required_secrets or []),
+                    },
+                )
 
         # ⑤ queue it
         seq = await self._next_seq(task.id)
@@ -328,22 +483,47 @@ class RunService:
         )
         return DispatchResult(run=run, waiting_reason=waiting_reason)
 
-    async def resolve_waiting_reason(self, run: TaskRun, *, is_online) -> str:  # noqa: ANN001 - predicate
-        """Why this run is still queued, as one of three words.
+    async def resolve_waiting_reason(self, run: TaskRun, *, is_online) -> WaitingReason:  # noqa: ANN001 - predicate
+        """Why this run is still queued, and — when nothing can take it — what is missing.
 
-        Computed on the server because it needs the eligibility query, which the
-        browser does not have. It is a **hint**, not a gate: a runner may register
-        three seconds later, and nothing about the run changes if it does.
+        Computed on the server because it needs the eligibility rules, which the browser
+        does not have. It is a **hint**, not a gate: a runner may register three seconds
+        later, and nothing about the run changes if it does.
+
+        The `missing_tags` half is exit condition 3e. "Waiting for an available agent"
+        is the wrong sentence when the truth is "no machine has `docker`", and the
+        difference decides whether somebody waits or fixes something.
         """
         if run.assigned_runner_id is not None:
             runner = await self._session.get(AgentRunner, run.assigned_runner_id)
             if runner is None or not is_online(runner.node_id):
-                return "assigned_offline"
-            return "any"
-        eligible = await self._eligible_runner_count(run, is_online=is_online)
-        return "any" if eligible else "no_eligible_runner"
+                return WaitingReason(
+                    kind="assigned_offline",
+                    runner_name=runner.name if runner is not None else None,
+                )
+            return WaitingReason(kind="any")
+        task = await self._session.get(Task, run.task_id)
+        candidates = await self._online_candidates(run, task, is_online=is_online)
+        if any(match for _, match in candidates):
+            return WaitingReason(kind="any")
+        return WaitingReason(
+            kind="no_eligible_runner",
+            missing_tags=tuple(self._smallest_missing_tags(task, [r for r, _ in candidates])),
+        )
 
-    async def _eligible_runner_count(self, run: TaskRun, *, is_online) -> int:  # noqa: ANN001
+    async def _online_candidates(
+        self,
+        run: TaskRun,
+        task: Task | None,
+        *,
+        is_online,  # noqa: ANN001
+    ) -> list[tuple[AgentRunner, bool]]:
+        """Runners that are online, enabled and runtime-compatible, each with a verdict.
+
+        The verdict applies **the same predicates the offer query does** — `tag_match`
+        and `accepts_secrets` — because the console stating a reason the queue does not
+        act on is exactly the failure this pairing exists to prevent.
+        """
         runners = list(
             (
                 await self._session.execute(
@@ -351,12 +531,40 @@ class RunService:
                 )
             ).scalars()
         )
-        return sum(
-            1
-            for runner in runners
-            if is_online(runner.node_id)
-            and (run.runtime is None or run.runtime in (runner.runtimes or []))
-        )
+        candidates: list[tuple[AgentRunner, bool]] = []
+        for runner in runners:
+            if not is_online(runner.node_id):
+                continue
+            if run.runtime is not None and run.runtime not in (runner.runtimes or []):
+                continue
+            eligible = (
+                task is not None and tag_match(runner, task) and accepts_secrets(runner, task)
+            )
+            candidates.append((runner, eligible))
+        return candidates
+
+    @staticmethod
+    def _smallest_missing_tags(task: Task | None, candidates: list[AgentRunner]) -> list[str]:
+        """What the closest machine still lacks.
+
+        **The minimum missing set, not the intersection.** What the reader has to do is
+        make *one* machine eligible, and the minimum answers that directly. An
+        intersection returns the empty set as soon as two runners lack different tags,
+        and "no runner is missing any tag" would then be a false sentence printed next
+        to a card nobody is claiming.
+
+        With no online runner at all the answer is the card's whole list, and the copy
+        pairs it with "there is no online agent" — two facts pointing at two different
+        fixes.
+        """
+        required = set((task.required_labels if task else None) or [])
+        if not required:
+            return []
+        gaps = [sorted(required - set(runner.labels or [])) for runner in candidates]
+        gaps = [gap for gap in gaps if gap]
+        if not gaps:
+            return sorted(required)
+        return min(gaps, key=lambda gap: (len(gap), gap))
 
     def _runtime_for(self, task: Task) -> str | None:
         """Which CLI this card needs, or None for "any".
@@ -431,6 +639,21 @@ class RunService:
                     timeout_seconds=RUN_WALL_CLOCK_SECONDS,
                 )
             )
+            # **Decrypted here, at the claim, and audited in the same flush.** A run
+            # nobody took should never have had its secrets decrypted, and a delivery
+            # with no record is the gap the compensating controls exist to close
+            # (ADR 0032 §0). A runner that declines afterwards has still received them,
+            # and the audit says so rather than being retracted.
+            secrets: tuple[MaterialisedSecret, ...] = ()
+            if task.required_secrets:
+                secrets = tuple(
+                    await SecretService(self._session, settings=self._settings).materialise(
+                        project_id=run.project_id,
+                        names=list(task.required_secrets),
+                        run_id=run.id,
+                        runner_id=runner.id,
+                    )
+                )
             await self._activity.record(
                 RUN_CLAIMED,
                 project_id=run.project_id,
@@ -448,21 +671,20 @@ class RunService:
                 task=task,
                 repository=repository,
                 credential=issued.value,
-                context=render_run_context(task),
+                context=render_run_context(task, secret_names=[s.name for s in secrets]),
+                secrets=secrets,
+                branch=run_branch(task, run),
             )
         return None
 
     async def _eligible(self, *, runner: AgentRunner, limit: int) -> list[TaskRun]:
-        """The four conditions, as one query (ADR 0029 sec 3).
+        """The five conditions, as one query (ADR 0029 sec 3 and amendment B2).
 
-        Two joins a reader of the V2.3 plan would expect are absent, and their absence
-        is the phase's posture rather than an omission:
-
-        * `project_agents` — there is no binding in V2.2, so **any enrolled node's
-          runner sees every project's queued work**. V2.3 adds the join, and it goes
-          **first**, because by then it authorises secrets.
-        * `required_labels ⊆ labels` — label matching is a later feature. The columns
-          exist and are displayed; nothing compares them.
+        The join a reader would expect and will not find is `project_agents`, and its
+        absence is the platform's posture rather than an omission: **there is no
+        binding table and there will not be one** (2026-08-12 ruling, ADR 0032 §0), so
+        any enrolled node's runner sees every project's queued work. Tags decide which
+        machine the work goes to; they decide nothing about authorization.
 
         `ORDER BY queued_at` is the only ordering there is. No priority, no load
         balancing, no round-robin between projects — that clause is what "the platform
@@ -486,10 +708,23 @@ class RunService:
                     TaskRun.assigned_runner_id.is_(None),
                     TaskRun.assigned_runner_id == runner.id,
                 ),
+                # Condition 4, from the shared predicate. It sits after runtime because
+                # runtime is cheaper — an `IN` rather than a jsonb containment — and the
+                # order is what an `EXPLAIN` reads like when somebody asks why a card
+                # was not offered.
+                tag_match_clause(runner),
             )
             .order_by(TaskRun.queued_at)
             .limit(limit)
         )
+        if not runner.accept_secrets:
+            # The node's veto, expressed where the offer is chosen rather than checked
+            # after one is sent: a runner that has said it will not hold a secret should
+            # never see the card, not decline it.
+            query = query.where(
+                func.jsonb_array_length(func.coalesce(Task.required_secrets, text("'[]'::jsonb")))
+                == 0
+            )
         if runtimes:
             query = query.where(or_(TaskRun.runtime.is_(None), TaskRun.runtime.in_(runtimes)))
         else:
@@ -826,7 +1061,44 @@ async def claim(
     return bool(result.rowcount)
 
 
-def render_run_context(task: Task) -> str:
+def run_branch(task: Task, run: TaskRun) -> str:
+    """`cliora/<card_ref>-<run_seq>`, or empty when this card delivers nothing.
+
+    Composed here because Central holds both halves of the name. The daemon still
+    re-checks the prefix: the five hard constraints are its responsibility, and a
+    constraint that trusts the frame it was sent is not a constraint.
+
+    `existing_branch` continues a branch rather than creating one, so the name is
+    already fixed — and dispatch refuses that combination unless it is already inside
+    the namespace (ADR 0031 amendment A4).
+    """
+    if task.delivery != "branch":
+        return ""
+    if task.source == "existing_branch":
+        return task.base_branch or ""
+    return f"cliora/{task.card_ref}-{run.seq}"
+
+
+async def release_claim(session: AsyncSession, run: TaskRun) -> None:
+    """Undo a claim that could not be delivered, and leave a trace on the card.
+
+    The one caller is the frame-size guard (plan/20/00-…md D2). Without it the failure
+    is the worst kind available here: the oversized frame is dropped **silently** by the
+    receiver, the lease expires, the card is retried to exhaustion and blocked, and
+    nothing anywhere reports an error. Releasing turns that into a queued card with a
+    sentence next to it.
+
+    Shares its body with `run.decline`, which does the same four assignments for a
+    different reason.
+    """
+    run.status = "queued"
+    run.runner_id = None
+    run.claimed_at = None
+    run.lease_expires_at = None
+    await session.flush()
+
+
+def render_run_context(task: Task, *, secret_names: list[str] | None = None) -> str:
     """The task context an unattended agent is started with.
 
     **The first section is how to report progress**, and that ordering is the same
@@ -868,6 +1140,20 @@ def render_run_context(task: Task) -> str:
         lines.append("")
     if task.description:
         lines += ["## 說明", "", task.description.strip(), ""]
+    if secret_names:
+        # **Names only.** The reason this section exists at all is the same as the one
+        # that puts "how to report" first: the likeliest failure is not the agent
+        # misusing a secret, it is the agent not knowing one is there. The warning is
+        # not decoration either — redaction is best effort, and an encoded value gets
+        # through (ADR 0032 §2 rule 5).
+        lines += ["## 這次執行可用的環境變數", ""]
+        lines += [f"- `{name}`" for name in secret_names]
+        lines += [
+            "",
+            "它們已經在你的環境裡，**不要把值印出來**——平台會把它們替換成 `***`，"
+            "但編碼過的值可能漏網。",
+            "",
+        ]
     lines += [
         "## 這次執行的邊界",
         "",

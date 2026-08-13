@@ -45,11 +45,22 @@ func (m *Manager) runnerReady() bool {
 // refusing to run there would break it to guard a risk its owner accepted (ADR 0031
 // §6). `enabled` is deliberately absent: that is an administrator's switch on Central,
 // and a re-registration must not be able to turn a disabled runner back on.
+// `labels`, `run_untagged` and `accept_secrets` are the machine's declarations about
+// itself (V2.3). **`labels` was a hard-coded empty slice until this phase** — the
+// column existed on Central and the field was on the wire, but nothing could ever put
+// a value in it. Shipping Central's tag matching without this would have made every
+// card that declares a tag permanently unclaimable, with the Agents page showing every
+// runner as having no tags: a symptom that reads like a missing setting rather than a
+// missing feature (plan/20/00-…md D13).
 func (m *Manager) runnerRegisterPayload(ctx context.Context) map[string]any {
 	return map[string]any{
-		"name":           m.cfg.Node.Name,
-		"runtimes":       m.runnerRuntimes(ctx),
-		"labels":         []string{},
+		"name":     m.cfg.Node.Name,
+		"runtimes": m.runnerRuntimes(ctx),
+		// Never nil: a nil slice marshals to `null`, the contract says array, and a
+		// frame that fails validation is dropped silently by the receiver.
+		"labels":         m.cfg.Runner.TagList(),
+		"run_untagged":   m.cfg.Runner.RunUntaggedValue(),
+		"accept_secrets": m.cfg.Runner.AcceptSecretsValue(),
 		"max_concurrent": m.cfg.Runner.MaxConcurrent,
 		"max_waiting":    m.cfg.Runner.MaxWaiting,
 		"dedicated":      runner.Dedicated(m.cfg),
@@ -195,6 +206,15 @@ func (m *Manager) executeRun(
 	//
 	// Caught by `GATE-AR-DISPATCH-COVERAGE` rather than by a person, which is what
 	// that gate is for.
+	// Sorted by kind before anything else runs, because where a value goes decides what
+	// the rest of this function may do with it (ADR 0032 §4).
+	secrets := runner.SortSecrets(spec.Secrets)
+	// **The redactor wraps `send`, not the log sink.** `run.failed` carries git's
+	// stderr and `run.complete` carries free text, so the credential-shaped path out of
+	// a run is an error message rather than a log line. Wrapping here covers every
+	// frame this function will ever add without anybody remembering to (D6).
+	redactor := runner.NewRedactor(secrets.All)
+
 	send := func(kind string, payload map[string]any) {
 		payload["run_id"] = runID
 		for _, key := range []string{"summary", "message"} {
@@ -202,15 +222,46 @@ func (m *Manager) executeRun(
 				delete(payload, key)
 			}
 		}
-		_ = write(kind, protocol.NewID(), payload)
+		_ = write(kind, protocol.NewID(), redactor.Payload(payload))
 	}
 
 	send("run.progress", map[string]any{"phase": "preparing"})
 	source := runner.Source{Kind: spec.Source.Kind, URL: spec.Source.URL, Ref: spec.Source.Ref}
+
+	// The directory first, then the credentials that have to live inside it, then the
+	// fetch that uses them. The order is the reason `PrepareIn` exists.
+	layout, err := runner.Create(m.cfg.Runner.WorkDir, runID)
+	if err != nil {
+		send("run.failed", map[string]any{
+			"error_code": "RUN_INTERNAL_ERROR", "message": "could not create the run directory",
+		})
+		return
+	}
+
+	// The platform's git credentials, if this deployment delivers any. With none —
+	// **the default** (2026-08-13 ruling) — `fetch` is byte-for-byte the V2.2 Fetcher,
+	// the machine's own credentials are used, and nothing about them is hidden.
+	fetch := m.runner.Fetch
+	var agent *gitfetch.Agent
+	var isolation []string
+	if len(secrets.Git) > 0 {
+		send("run.progress", map[string]any{"phase": "authenticating"})
+		fetch, agent = m.prepareGitCredentials(ctx, layout, secrets, fetch)
+		defer agent.Close()
+		if home, homeErr := runner.PrepareIsolatedHome(layout.Cliora); homeErr == nil {
+			isolation = secrets.IsolateAmbient(home, m.cfg.Runner.Git.IsolateAmbient())
+		}
+	}
+	// Swapped for the length of this run only. Two runs on one node can hold different
+	// credentials, and neither may inherit the other's.
+	previous := m.runner.Fetch
+	m.runner.Fetch = fetch
+	defer func() { m.runner.Fetch = previous }()
+
 	if source.Kind != "none" {
 		send("run.progress", map[string]any{"phase": "fetching"})
 	}
-	layout, commit, err := m.runner.Prepare(ctx, runID, source)
+	commit, err := m.runner.PrepareIn(ctx, layout, source)
 	if err != nil {
 		// Seconds, not the wall clock. The three fail-fast git variables are what make
 		// this a fast failure, and the idle timer could not have helped: the fetch
@@ -225,6 +276,24 @@ func (m *Manager) executeRun(
 	}
 	if commit != "" {
 		send("run.progress", map[string]any{"phase": "checked_out", "commit_sha": commit})
+	}
+	// The run's own branch, created before the agent starts so that whatever it commits
+	// lands there rather than on the base branch. Central composed the name; the prefix
+	// is re-checked inside `CreateBranch`, because a constraint that trusts the frame it
+	// was sent is not a constraint (ADR 0031 amendment A2/A4).
+	//
+	// `existing_branch` continues a branch instead of creating one, and dispatch has
+	// already refused that combination unless it is inside the namespace.
+	if spec.Branch != "" && source.Kind == "repo" {
+		if err := m.runner.Fetch.CreateBranch(ctx, layout.Repo, spec.Branch); err != nil {
+			send("run.failed", map[string]any{
+				"error_code": "RUN_INTERNAL_ERROR",
+				"message":    "could not create the run's branch",
+			})
+			_ = runner.MarkFinished(layout, "failed", time.Now())
+			return
+		}
+		_ = m.runner.Fetch.SetCommitTrailers(ctx, layout.Repo, runID, offer.CardRef)
 	}
 	if err := runner.WriteContext(layout, spec.Context, spec.Credential); err != nil {
 		send("run.failed", map[string]any{
@@ -241,8 +310,12 @@ func (m *Manager) executeRun(
 		}
 	}
 	rt, _ := m.registry.Get(runtimeID)
+	// **The child's environment gets the `env` secrets and never the git ones** (D5).
+	// The isolation overrides are appended after, so `HOME` points inside the run
+	// directory only when this run actually received a platform credential.
+	childEnv := append(secrets.ChildEnv(os.Environ()), isolation...)
 	cmd := runtime.BuildRunCommand(rt, runtime.RunOptions{
-		Dir: layout.Repo, Context: spec.Context, Env: os.Environ(),
+		Dir: layout.Repo, Context: spec.Context, Env: childEnv,
 	})
 	if cmd == nil {
 		send("run.failed", map[string]any{
@@ -311,6 +384,41 @@ func (m *Manager) executeRun(
 	// summary, because an artifact that silently failed to attach is the exact thing
 	// this rule exists to prevent.
 	summaryText := runner.SummaryText(offer.Delivery, summary)
+
+	// **The platform's only remote write.** The five hard constraints live inside
+	// `Push`, and they hold whichever credential is in use — they constrain *what* is
+	// pushed (ADR 0031 amendment A2). On the default deployment that credential is the
+	// machine's own, which the platform can neither manage nor revoke; the constraints
+	// are what still applies there.
+	//
+	// The platform does **not** commit on the agent's behalf. With nothing committed
+	// there is nothing to push, and the honesty rule below takes over — deciding what
+	// counts as a commit is not the platform's to make.
+	if spec.Branch != "" && offer.Delivery == "branch" && source.Kind != "none" {
+		hasCommits, checkErr := m.runner.Fetch.HasCommitsToPush(ctx, layout.Repo)
+		switch {
+		case checkErr != nil || !hasCommits:
+			summaryText += fmt.Sprintf(" 沒有可推送的提交，因此分支 %s 未建立於遠端。", spec.Branch)
+		default:
+			pushErr := m.runner.Fetch.Push(ctx, gitfetch.PushOptions{
+				Dir:        layout.Repo,
+				Branch:     spec.Branch,
+				RemoteURL:  spec.Source.URL,
+				BaseBranch: spec.Source.Ref,
+			})
+			if pushErr != nil {
+				// A push failure does not fail the run — the work is still in the
+				// directory and the diff can still be attached — but it is said out
+				// loud, because a wrong "pushed" is far harder to diagnose than a
+				// "not pushed". The message goes through the redactor with everything
+				// else: git's stderr is the likeliest place a credential surfaces.
+				summaryText += " ⚠ 分支未能推送：" + pushErr.Error()
+			} else {
+				summaryText += fmt.Sprintf(" 已推送分支 %s。", spec.Branch)
+			}
+		}
+	}
+
 	if runner.ShouldAttachDiff(offer.Delivery, summary) {
 		uploader := runner.Uploader{
 			APIBase:    runner.APIBaseFromWebsocketURL(m.cfg.Server.URL),
@@ -422,3 +530,44 @@ func (s *chunkSink) Chunk(data string, truncated bool) {
 // where the stream is, and Central learns about activity from `run.progress` rather
 // than from a frame per event.
 func (s *chunkSink) Event() {}
+
+// prepareGitCredentials turns the delivered git secrets into a Fetcher that can use
+// them, without either value ever reaching a file.
+//
+// **Only ever called when a git secret was actually delivered**, which on the default
+// deployment is never: `CLIORA_GIT_SECRET_DELIVERY_ENABLED` is a Central setting, and
+// with it off `spec.secrets` carries no git kind. The daemon therefore has no flag to
+// read — it reacts to what it was handed, which is the shape that cannot drift out of
+// step with Central.
+//
+// A failure here is logged and the base Fetcher is returned rather than failing the
+// run: the machine may still have its own credentials, and refusing to try would turn a
+// missing `ssh-agent` into a failed card.
+func (m *Manager) prepareGitCredentials(
+	ctx context.Context, layout runner.Layout, secrets runner.Secrets, base gitfetch.Fetcher,
+) (gitfetch.Fetcher, *gitfetch.Agent) {
+	fetch := base
+	var agent *gitfetch.Agent
+	if token, ok := secrets.Git["git_pat"]; ok {
+		path, err := gitfetch.WriteAskpass(layout.Cliora)
+		if err != nil {
+			slog.Warn("could not install the credential helper", "error", err)
+		} else {
+			// The helper itself contains no secret; the value travels in the
+			// environment of the git process and nowhere else.
+			fetch.AskpassPath = path
+			fetch.Password = token
+		}
+	}
+	if key, ok := secrets.Git["git_ssh_key"]; ok {
+		started, err := gitfetch.StartAgent(ctx, layout.Cliora, key)
+		if err != nil {
+			// Never the key, and never ssh-add's stderr verbatim.
+			slog.Warn("could not load the run's ssh key", "error", err)
+		} else {
+			agent = started
+			fetch.AuthSock = started.SocketPath()
+		}
+	}
+	return fetch, agent
+}

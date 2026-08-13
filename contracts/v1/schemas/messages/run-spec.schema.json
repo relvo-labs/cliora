@@ -3,21 +3,38 @@
   "$comment": "What a claimed run is told to do, contract 1.11.0 (ADR 0029/0031). Read the *absent* fields first, because they are the design: there is no `command`, no `args` and no `env` — argv is composed by the daemon from two closed tables and SEC-002's clause is unchanged — and there is no **`workspace`**. That last absence is the 2026-08-10 ruling's most direct mark on the wire: while such a field existed, Central would have to choose one of the user's paths and send it, which is precisely the shape that was rejected. The run directory is the daemon's own, and Central does not even learn its name (plan/18/04b-…md §2).",
   "type": "object",
   "additionalProperties": false,
-  "required": ["source", "context", "timeout_seconds", "idle_timeout_seconds"],
+  "required": [
+    "source",
+    "context",
+    "timeout_seconds",
+    "idle_timeout_seconds"
+  ],
   "properties": {
-    "runtime": {"$comment": "Absent means 'whichever this runner offers'. V2.2 has no per-card runtime field, so it is usually absent.", "enum": ["claude", "codex"]},
-    "source": {"$ref": "run-source.schema.json"},
+    "runtime": {
+      "$comment": "Absent means 'whichever this runner offers'. V2.2 has no per-card runtime field, so it is usually absent.",
+      "enum": [
+        "claude",
+        "codex"
+      ]
+    },
+    "source": {
+      "$ref": "run-source.schema.json"
+    },
     "context": {
-      "$comment": "The task context, as **text for the child's stdin** — never a string destined for argv. That distinction is the whole reason D7 holds: `launch.go:23` already records that adding a caller-supplied string to the argv table is the change SEC-002 exists to prevent, and both CLIs read their prompt from stdin, so the platform never has to make that trade.",
+      "$comment": "The task context, as **text for the child's stdin** — never a string destined for argv. That distinction is the whole reason D7 holds: `launch.go:23` already records that adding a caller-supplied string to the argv table is the change SEC-002 exists to prevent, and both CLIs read their prompt from stdin, so the platform never has to make that trade. **The ceiling was 65536 until 1.12.0, and that was wrong**: this frame is a 64 KiB control frame and is deliberately not in the large-frame set, so one field could consume the entire budget on its own. Nothing ever came close — a rendered context pack measures 1–2 KB — so lowering it breaks nothing and leaves room for the secrets below (plan/20/00-…md D2).",
       "type": "string",
       "minLength": 1,
-      "maxLength": 65536
+      "maxLength": 32768
     },
     "allowed_verification_commands": {
       "$comment": "Empty in V2.2 and present so that V2.4's verification step does not need a contract change to be *refused* today: a non-empty list is currently ignored by the daemon rather than executed.",
       "type": "array",
       "maxItems": 16,
-      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      }
     },
     "credential": {
       "$comment": "The run's own CLI credential, `cliora_rt_…`, delivered once so the daemon can write it into the run directory at 0600. It travels the same way V2.1's session credential does — inside the message that sets a run up — and for the same reason: the alternative is a second fetch the daemon would have to authenticate separately. The daemon **deletes the file the moment the run ends**, not at the directory's retention deadline: a credential's lifetime is the run. Bounded and pattern-matched so a value of another kind cannot be delivered through this field.",
@@ -37,6 +54,48 @@
       "type": "integer",
       "minimum": 30,
       "maximum": 21600
+    },
+    "secrets": {
+      "$comment": "Only the secrets this card declared, and only from the project's allowlist. **Values come solely from the platform's store**: SEC-002's revised invariant is that no request payload may name a command or carry a secret's value, and this field travels central→node, filled by Central from its own database (ADR 0032 §1). A fixture asserts `secrets` is unrepresentable on every other message. `kind` travels with the value because it decides where the value goes on the node: `env` reaches the CLI child's environment, `git_pat`/`git_ssh_key` reach **only the daemon's own git environment** (plan/20/00-…md D5). Both git kinds stay in the enum although they are off by default — unlike `provider_token`, which this phase can never send, they *are* sent when CLIORA_GIT_SECRET_DELIVERY_ENABLED is on. A run-time setting is not a wire shape. Eight items of 8 KiB is 64 KiB, i.e. the whole frame: these bounds are necessary and **not sufficient**, which is why Central measures the assembled frame before sending it.",
+      "type": "array",
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "name": {
+            "$comment": "It becomes an environment variable, so the shape is the shape of one.",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Z][A-Z0-9_]*$"
+          },
+          "kind": {
+            "enum": [
+              "env",
+              "git_pat",
+              "git_ssh_key"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8192
+          }
+        }
+      }
+    },
+    "branch": {
+      "$comment": "The branch this run creates and the platform later pushes. Central composes the name because it holds `card_ref` and the sequence, **and the daemon re-checks the prefix anyway**: the five hard constraints are the daemon's responsibility, and a constraint that trusts the frame it was sent is not a constraint (ADR 0031 amendment A2). Absent when `delivery` is `none` or `artifact`. The first character after the prefix may not be `-`, the same rule `ref` carries and for the same reason: a closed argv table cannot protect a value that *is* a flag. The first draft of this pattern allowed it, and the fixture caught it.",
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 255,
+      "pattern": "^cliora/[A-Za-z0-9._][A-Za-z0-9._-]*$"
     }
   }
 }

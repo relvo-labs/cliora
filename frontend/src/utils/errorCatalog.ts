@@ -644,11 +644,94 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "看一下這次執行的結果；若要重做，重新派工一次。",
     retryable: false,
   },
-  TASK_REQUIRES_SECRETS: {
+  // V2.3 取代了 TASK_REQUIRES_SECRETS：機密存在了，所以拒絕的理由變成關於**這張卡**，
+  // 而不是關於版本。兩個碼，因為它們在不同的頁面上修（ADR 0032 §0）。
+  TASK_SECRETS_NOT_ALLOWED: {
     cause:
-      "這張卡宣告了它需要的機密，而本階段完全不管理機密。接受派工等於讓它在**沒有那些機密**的情況下執行，" +
-      "而那看起來會像 Agent 壞掉，不像缺少功能。",
-    nextStep: "移除該宣告以在沒有機密的情況下執行，或等 V2.3。",
+      "卡片只能宣告專案允許清單裡的名稱。允許清單是**意圖**（這個專案的卡片可以要求哪些名稱），" +
+      "刻意不從實際存在的機密推導——否則刪掉一枚機密會悄悄讓一批卡片不能派工。",
+    nextStep: "把名稱加進專案的允許清單，或修正卡片；回應會指名是哪幾個。",
+    retryable: false,
+  },
+  TASK_SECRETS_MISSING: {
+    cause:
+      "名稱是允許的，但底下還沒有機密——最常見的原因是它被刪掉了。照樣執行等於讓卡片在" +
+      "**沒有它宣告的值**的情況下跑，而那看起來會像 Agent 壞掉。",
+    nextStep: "到專案設定建立那枚機密，或移除卡片上的宣告。",
+    retryable: false,
+  },
+  TASK_BRANCH_NOT_DELIVERABLE: {
+    cause:
+      "平台只會推 `cliora/<卡號>-<次數>` 命名空間內的分支，所以一張接續其他分支的卡片" +
+      "永遠交付不了。在派工當下拒絕，而不是等 run 做完工作才在推送時失敗。",
+    nextStep: "把交付方式改成「附成產物」，或接續一條平台自己建立的分支。",
+    retryable: false,
+  },
+  AGENT_TAG_MISMATCH: {
+    cause:
+      "**指定不會創造資格。** 會指定某台機器，通常正是因為只有它有卡片需要的東西；" +
+      "讓指定覆蓋 tag，等於在一台沒有 docker 的機器上跑一張要 docker 的卡，然後在第三分鐘失敗。",
+    nextStep:
+      "回應會指名缺哪幾個 tag：換一台 Agent，或在那個 node 的設定檔裡加上它們。",
+    retryable: false,
+  },
+  AGENT_REFUSES_UNTAGGED: {
+    cause:
+      "那台機器被保留給有宣告 tag 的工作（`run_untagged: false`）。沒有這個設定，" +
+      "一台專機仍會被一堆普通卡片佔滿。",
+    nextStep: "給卡片加上那台機器具備的 tag，或派給另一台 Agent。",
+    retryable: false,
+  },
+  AGENT_REFUSES_SECRETS: {
+    cause:
+      "那個 node 的擁有者宣告了不收機密（`accept_secrets: false`），那是營運者對" +
+      "「哪些機器可以持有憑證」的否決權（ADR 0032 §0）。",
+    nextStep: "派給一台收機密的 Agent，或移除卡片上的機密宣告。",
+    retryable: false,
+  },
+  SECRET_NAME_INVALID: {
+    cause: "機密的名稱會變成一個環境變數，所以必須是大寫字母、數字與底線。",
+    nextStep: "改成像 GITHUB_TOKEN 這樣的名稱。",
+    retryable: false,
+  },
+  SECRET_NAME_RESERVED: {
+    cause:
+      "PATH、HOME 這類名稱與 GIT_／SSH_／CLIORA_ 前綴是保留的。一枚叫 GIT_ASKPASS 的機密" +
+      "會直接接管平台自己那條 git 憑證路徑所依賴的機制。",
+    nextStep: "換一個不在保留集合裡的名稱。",
+    retryable: false,
+  },
+  SECRET_KIND_INVALID: {
+    cause:
+      "機密的類型決定它的值在 node 上會去哪裡，所以它是一個封閉集合（ADR 0032 §4）。",
+    nextStep: "使用 env、git_pat、git_ssh_key 或 provider_token。",
+    retryable: false,
+  },
+  SECRET_EXISTS: {
+    cause: "同一個專案裡，尚未刪除的機密名稱是唯一的。",
+    nextStep: "改用「輪替」覆寫既有的那一枚，而不是建立第二枚。",
+    retryable: false,
+  },
+  SECRET_IN_USE: {
+    cause:
+      "有一個已登記的 repository 用這枚機密認證。刪掉它會讓那個 repository 指向一枚" +
+      "不存在的憑證，而失敗會在 run 跑到一半才出現。",
+    nextStep: "先把那個 repository 指向別的憑證；回應會指名是哪一個。",
+    retryable: false,
+  },
+  SECRET_TOO_LARGE: {
+    cause:
+      "上限是 8 KiB，也就是實測過最大的合法輸入（RSA-4096 私鑰 3 369 bytes）的 2.4 倍。" +
+      "八枚機密還要一起塞進一個 64 KiB 的派工訊框，旁邊還有情境包。",
+    nextStep: "ed25519 私鑰只要 399 bytes，做的是同一件事。",
+    retryable: false,
+  },
+  GIT_SECRET_DELIVERY_DISABLED: {
+    cause:
+      "**預設關閉**（2026-08-13 裁決）：現階段 git 認證由 node 的擁有者自行配置，平台不管理。" +
+      "存下一枚永遠不會被下放的憑證，是一個看起來設定完成而其實沒有的狀態。",
+    nextStep:
+      "在 node 上配置 git 認證，或在 Central 設定 CLIORA_GIT_SECRET_DELIVERY_ENABLED。",
     retryable: false,
   },
   TASK_DELIVERY_UNSUPPORTED: {

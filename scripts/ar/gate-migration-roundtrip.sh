@@ -14,6 +14,10 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 BASELINE="${1:-artifacts/ar/local/baseline/schema.txt}"
+# The revision the baseline was taken at. Parameterised rather than forked in V2.3:
+# the question ("does downgrading restore the baseline exactly") is the same one, and a
+# second copy of this script would disagree with this one the first time either is fixed.
+TARGET="${2:-0028_node_removal_sessions}"
 [ -f "$BASELINE" ] || { echo "no baseline at $BASELINE (AR-00 captures it)"; exit 2; }
 
 ROUNDTRIP_LOG="$(mktemp)"
@@ -23,14 +27,14 @@ restore_head() {
 }
 trap restore_head EXIT
 
-(cd backend && uv run --project . alembic downgrade 0028_node_removal_sessions >/dev/null)
+(cd backend && uv run --project . alembic downgrade "$TARGET" >/dev/null)
 if ! uv run --project backend python scripts/pj/schema_snapshot.py --diff "$BASELINE" \
   >"$ROUNDTRIP_LOG" 2>&1; then
-  echo "downgrade did not restore the V2.1 baseline schema:"
+  echo "downgrade to $TARGET did not restore the baseline schema:"
   sed -n '1,240p' "$ROUNDTRIP_LOG"
   exit 1
 fi
 
 restore_head
 trap - EXIT
-echo "downgrade restored the V2.1 baseline exactly; upgrade reapplied head"
+echo "downgrade to $TARGET restored the baseline exactly; upgrade reapplied head"

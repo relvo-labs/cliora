@@ -50,6 +50,8 @@ AGENT_VIEW = "agent.view"
 AGENT_MANAGE = "agent.manage"
 RUN_DISPATCH = "run.dispatch"
 RUN_CANCEL = "run.cancel"
+# V2.3 secrets and dispatch routing (ADR 0032, seed migration 0034).
+SECRET_MANAGE = "secret.manage"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -74,12 +76,16 @@ VIEWER = "Viewer"
 # this phase does not open a Viewer write path (plan/18/06-…md §1).
 #
 # **What `agent.view` does not bound, and this is a posture rather than an omission:**
-# V2.2 has no project↔agent binding, so a runner on **any** enrolled node can claim any
-# project's card and pull any project's code. The authorization boundary of this phase
-# is `enrollment.manage` — an Admin-only action — not `agent.manage`. V2.3's
-# `project_agents` narrows it (ADR 0029 sec 3). The same sentence appears in ADR 0029
-# and on the Agents page, because it is the kind of design that gets filed as a bug
-# when it is written down only once.
+# there is no project↔agent binding, so a runner on **any** enrolled node can claim any
+# project's card, pull any project's code, and — from V2.3 — receive the secrets that
+# card declares. The authorization boundary is `enrollment.manage`, an Admin-only
+# action, and it is **permanent**: the 2026-08-12 ruling cancelled `project_agents`
+# rather than deferring it (ADR 0032 §0). What narrows the radius is four compensating
+# controls, not a table: a card gets only the secrets it declares from the project's
+# allowlist, a node may refuse them, every delivery is audited and revocable, and the
+# enrollment screen says the consequence out loud. The same sentence appears in
+# ADR 0032, on the Agents page and on the enrollment page, because it is the kind of
+# design that gets filed as a bug when it is written down only once.
 _VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE, PROJECT_VIEW, AGENT_VIEW})
 # `terminal.shell` sits with the other session-mutation actions rather than in the
 # Admin set (ADR 0021): a Developer already drives a CLI in their own session. The
@@ -144,18 +150,25 @@ _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
     # `project.manage` sits with enrollment and node management, not with the
     # session-shaped Developer actions: deciding which projects exist, and which
     # machines and directories they cover, is an organisation-level call rather than
-    # day-to-day work. From V2.3 a binding means more again — binding a runner to a
-    # project authorises it to draw that project's secrets — so this action must not
-    # begin life in Developer hands and be narrowed later (ADR 0027 sec 4).
+    # day-to-day work (ADR 0027 sec 4). From V2.3 it decides one thing more — which
+    # secret **names** a project's cards may ask for — while the values themselves are
+    # `secret.manage`, a separate action, because holding a credential and shaping a
+    # project are different powers.
     PROJECT_MANAGE,
-    # Admin from the first day, and the reason is in the future tense. Today
-    # `agent.manage` covers enable/disable, concurrency and labels — three things that
-    # do not look like organisational decisions on their own. **From V2.3 it also
-    # covers binding a runner to a project, and that binding is what authorises the
-    # runner to read the project's secrets.** An action cannot be given to Developer
-    # now and taken back then, which is the same argument `project.manage` above makes
-    # (ADR 0029, plan/18/02-…md §6).
+    # Admin from the first day. `agent.manage` covers enabling a runner and its
+    # concurrency — the disposition of compute — and **nothing else**. It notably does
+    # not cover editing a runner's tags: those are declared by that node's `agentd`
+    # config, and a platform-side edit would create a second source of truth that
+    # `runner.register` overwrites on the next reconnect (ADR 0029 amendment B5).
+    # (This comment used to say the action would grow to cover binding a runner to a
+    # project. The 2026-08-12 ruling cancelled that table — see ADR 0032 §0.)
     AGENT_MANAGE,
+    # The values behind those names. Admin-only for the same reason as enrollment: a
+    # credential the platform holds on a user's behalf, hands to a machine on demand
+    # and can revoke is an organisation-level asset. It also guards repository
+    # registration from V2.3, because a repository row stopped being "where the code
+    # is" and became "which credential fetches it" (ADR 0032).
+    SECRET_MANAGE,
 }
 
 ROLE_ACTIONS: dict[str, frozenset[str]] = {

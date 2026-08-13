@@ -126,13 +126,15 @@ async def test_a_card_outside_ready_is_refused(api: tuple, projects_enabled: Non
     assert response.json()["error"]["code"] == "TASK_NOT_READY"
 
 
-async def test_a_card_that_needs_secrets_is_refused_and_names_the_version(
+async def test_a_card_declaring_a_secret_outside_the_allowlist_names_it(
     api: tuple, projects_enabled: None
 ) -> None:
-    """Refused rather than accepted-and-ignored.
+    """V2.3 replaced this refusal rather than removing it.
 
-    Accepting it would run the card **without** the secrets it says it needs, which
-    looks like a broken agent instead of a missing feature.
+    Until V2.3 the answer was "cards with secrets can be dispatched from V2.3". Now
+    secrets exist, so the refusals are about *this* card: a name the project never
+    allowed, or a name it allowed and nobody created. **Two codes, because the two are
+    fixed on different pages** (ADR 0032 §0, exit condition 3h).
     """
     client, maker = api
     owner, headers = await _actor(client, maker)
@@ -142,9 +144,34 @@ async def test_a_card_that_needs_secrets_is_refused_and_names_the_version(
     response = await client.post(f"/api/tasks/{task}/dispatch", json={}, headers=headers)
     body = response.json()
     assert response.status_code == 409
-    assert body["error"]["code"] == "TASK_REQUIRES_SECRETS"
-    # The message says when it starts working, not merely that it does not.
-    assert "V2.3" in body["error"]["message"]
+    assert body["error"]["code"] == "TASK_SECRETS_NOT_ALLOWED"
+    assert "GITHUB_TOKEN" in body["error"]["message"]
+    assert body["error"]["details"]["settings_hint"].endswith("#secrets")
+
+
+async def test_a_card_declaring_an_allowed_but_uncreated_secret_says_so_differently(
+    api: tuple, projects_enabled: None
+) -> None:
+    """The commoner of the two, because it is what deleting a secret leaves behind."""
+    import sqlalchemy as sa
+
+    client, maker = api
+    owner, headers = await _actor(client, maker)
+    project = await _project(maker, owner)
+    async with maker() as session:
+        await session.execute(
+            sa.update(Project)
+            .where(Project.id == project)
+            .values(allowed_secret_names=["GITHUB_TOKEN"])
+        )
+        await session.commit()
+    task = await _card(maker, project, required_secrets=["GITHUB_TOKEN"])
+
+    response = await client.post(f"/api/tasks/{task}/dispatch", json={}, headers=headers)
+    body = response.json()
+    assert response.status_code == 409
+    assert body["error"]["code"] == "TASK_SECRETS_MISSING"
+    assert body["error"]["details"]["missing"] == ["GITHUB_TOKEN"]
 
 
 async def test_an_unsupported_delivery_names_the_version_it_starts_in(
@@ -627,10 +654,14 @@ def tiny_artifact_quota():
     """
     from app.main import app
     from app.settings import Settings, get_settings
+    from tests.db.conftest import TEST_MASTER_KEY
 
     app.dependency_overrides[get_settings] = lambda: Settings(
         projects_enabled=True,
         agent_runs_enabled=True,
+        # Required from V2.3 whenever the runner layer is on: the settings validator
+        # refuses to construct without it (ADR 0032 §3).
+        secret_master_key=TEST_MASTER_KEY,
         # Rounded to whole MB by the setting's unit, so the first upload fits and the
         # second does not.
         artifact_project_quota_mb=1,

@@ -136,9 +136,15 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
     <!-- Stated on the page, not only in an ADR: this is the kind of design that gets
          reported as a bug when it is written down only once. -->
     <p class="posture">
-      本階段的授權邊界是<strong>節點納管</strong>：任何一台已納管節點上的 Agent
-      都能領取任何專案的卡片、取得任何專案的程式碼。逐專案的授權自 V2.3 起提供。
-      納管本身是管理者專屬的動作。
+      授權邊界是<strong>節點納管</strong>：任何一台已納管節點上的 Agent
+      都能領取任何專案的卡片、取得任何專案的程式碼，<strong>並取得那些卡片宣告的機密</strong>。
+      這是刻意的設計而不是尚未完成的功能——縮小影響範圍的是卡片級的機密宣告、
+      node
+      端的「不收機密」設定，以及機密可即時撤銷。納管本身是管理者專屬的動作。
+    </p>
+    <p class="posture">
+      tag
+      決定<strong>派給哪台機器</strong>，<strong>不決定哪台機器可以拿機密</strong>。
     </p>
 
     <AsyncState
@@ -237,12 +243,17 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
                   <dt>磁碟</dt>
                   <dd>{{ diskUsage(agent) }}</dd>
                 </div>
-                <div v-if="agent.labels.length">
-                  <dt>標籤</dt>
-                  <!-- Shown and not compared. Saying so is the honest option: a label the
-                   platform ignores would otherwise look like a filter. -->
-                  <dd>
-                    <span class="tags">
+                <!-- Tags now decide which machine gets which card, so this cell is
+                     shown even when empty: "no tags" is a dispatch-relevant fact, not
+                     an absence worth hiding. **No padlock and no word meaning
+                     "authorised" appears here** — a tag is what the runner reports
+                     about itself, and drawing it as a security control would teach
+                     exactly the wrong thing (ADR 0032 §0). AgentsView.test.ts asserts
+                     that as a rendered-DOM property, not as a promise. -->
+                <div>
+                  <dt>Tag</dt>
+                  <dd class="tag-cell">
+                    <span v-if="agent.labels.length" class="tags">
                       <BaseBadge
                         v-for="label in agent.labels"
                         :key="label"
@@ -250,8 +261,16 @@ async function setEnabled(agent: AgentRunner, enabled: boolean): Promise<void> {
                         >{{ label }}</BaseBadge
                       >
                     </span>
+                    <span v-else class="muted">（未宣告）</span>
                     <span class="muted"
-                      >labels 目前僅供辨識，不參與資格比對。</span
+                      >參與派工比對。由該 node 的 agentd
+                      設定檔宣告，此處唯讀。</span
+                    >
+                    <span v-if="!agent.run_untagged" class="muted"
+                      >只領有 tag 的卡片。</span
+                    >
+                    <span v-if="!agent.accept_secrets" class="muted"
+                      >不收機密：永不領取宣告了機密的卡片。</span
                     >
                   </dd>
                 </div>

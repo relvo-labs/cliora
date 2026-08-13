@@ -23,7 +23,10 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
-OUT="artifacts/ar/local/baseline"
+# Overridable so a later phase reuses this capturer rather than forking it: the six
+# baselines are the same six, and a second copy would drift from this one the first
+# time either is fixed (plan/20/01-…md §1 makes that reuse explicit).
+OUT="${BASELINE_OUT:-artifacts/ar/local/baseline}"
 mkdir -p "$OUT"
 
 LATENCY_ONLY=0

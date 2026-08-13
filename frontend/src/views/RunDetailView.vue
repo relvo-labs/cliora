@@ -48,6 +48,10 @@ let timer: number | undefined;
 
 const ACTIVE = new Set(["queued", "claimed", "running", "waiting_for_input"]);
 const isActive = computed(() => !!run.value && ACTIVE.has(run.value.status));
+// Names only. The list route omits the field entirely, so an absent one reads as "not
+// asked for" rather than as "none" — which is why this defaults to empty rather than
+// rendering a dash that would claim something.
+const secretNames = computed(() => run.value?.secret_names ?? []);
 const timeline = computed(() => {
   if (!run.value) return [];
   return [
@@ -181,6 +185,19 @@ async function cancel(): Promise<void> {
           <div>
             <dt>磁碟</dt>
             <dd>{{ formatBytes(run.disk_bytes) }}</dd>
+          </div>
+          <!-- **Names only, and there is no version of this that could show a value.**
+               Present even when empty, because "this run held no credential" is a fact
+               worth being able to read off the page. -->
+          <div>
+            <dt>使用的機密</dt>
+            <dd>
+              <SourceBadge :source="SOURCE_PLATFORM" />
+              <span v-if="secretNames.length">{{
+                secretNames.join("、")
+              }}</span>
+              <span v-else class="muted">無</span>
+            </dd>
           </div>
           <div v-if="run.error_code">
             <dt>錯誤</dt>

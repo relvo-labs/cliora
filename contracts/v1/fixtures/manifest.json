@@ -776,6 +776,126 @@
       "path": "invalid/run-offer-source-other-ssh-user.json",
       "accept": false,
       "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/run-offer-secrets-env.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-offer-secrets-git.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-offer-secrets-mixed.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/run-offer-delivery-branch.json",
+      "accept": true,
+      "type": "run.offer"
+    },
+    {
+      "path": "valid/runner-register-declarations.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "valid/runner-register-untagged-default.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "invalid/run-offer-secrets-too-many.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-value-too-large.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-lowercase-name.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-provider-token.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-missing-kind.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-extra-field.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-secret-empty-value.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-accept-with-secrets.json",
+      "accept": false,
+      "type": "run.accept",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-complete-with-secrets.json",
+      "accept": false,
+      "type": "run.complete",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-branch-wrong-prefix.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-branch-flag.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-branch-too-short.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-context-too-large.json",
+      "accept": false,
+      "type": "run.offer",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-register-run-untagged-not-boolean.json",
+      "accept": false,
+      "type": "runner.register",
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-register-accept-secrets-not-boolean.json",
+      "accept": false,
+      "type": "runner.register",
+      "code": "INVALID_MESSAGE"
     }
   ],
   "binary": [

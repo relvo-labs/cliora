@@ -25,6 +25,10 @@ TEST_DB_URL = os.environ.get("CLIORA_TEST_DATABASE_URL")
 
 # Tables cleared between HTTP tests (roles are seeded by migration and kept).
 # Order respects FK dependencies: children before parents.
+# 32 zero bytes, base64. Obviously not a secret, which is the point: a plausible-looking
+# key in a fixture is one somebody copies into a deployment.
+TEST_MASTER_KEY = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
 _CLEANUP_TABLES = (
     "audit_logs",
     "workspace_favorites",
@@ -57,6 +61,10 @@ _CLEANUP_TABLES = (
     "requirements",
     "user_stories",
     "epics",
+    # V2.3. Cleared before `projects` for the usual reason, and before the
+    # repository rows that hold `ON DELETE RESTRICT` FKs into it — a leftover
+    # secret makes the delete below fail as an unrelated error several tests later.
+    "project_secrets",
     "projects",
     "node_metric_samples",
     "node_credentials",
@@ -111,13 +119,32 @@ def projects_enabled():
     # for the same reason the outer one does. Measuring authorization on those routes
     # with the inner flag off would again record "refused" while meaning "absent"
     # (ADR 0029; `agent_runs_disabled` covers the other direction).
+    # `secret_master_key` is required as soon as `agent_runs_enabled` is true — the
+    # settings validator refuses to construct without one (ADR 0032 §3). A fixed test
+    # key rather than a random one, so a ciphertext written by one test is readable by
+    # the next and a failure is reproducible.
+    #
+    # **And it has to go into the environment as well as into the override**, which is
+    # not belt and braces. A dependency override reaches code that *asks FastAPI* for
+    # settings; `secret_envelope` calls `get_settings()` directly, the way `secret_box`
+    # has since ADR 0022, so the override never reaches it. Without the environment
+    # variable the routes answer 503 SECRET_KEY_MISSING while the override sits there
+    # looking correct. `test_tunnels_api` solved the same problem the same way.
+    previous = os.environ.get("CLIORA_SECRET_MASTER_KEY")
+    os.environ["CLIORA_SECRET_MASTER_KEY"] = TEST_MASTER_KEY
+    get_settings.cache_clear()
     app.dependency_overrides[get_settings] = lambda: Settings(
-        projects_enabled=True, agent_runs_enabled=True
+        projects_enabled=True, agent_runs_enabled=True, secret_master_key=TEST_MASTER_KEY
     )
     try:
         yield
     finally:
         app.dependency_overrides.pop(get_settings, None)
+        if previous is None:
+            os.environ.pop("CLIORA_SECRET_MASTER_KEY", None)
+        else:
+            os.environ["CLIORA_SECRET_MASTER_KEY"] = previous
+        get_settings.cache_clear()
 
 
 @pytest.fixture
