@@ -26,6 +26,9 @@ CLIORA_AGENT_RUNS_ENABLED=true
 CLIORA_GIT_ALLOWED_HOSTS='["github.com"]'   # empty allows nothing, by design
 ```
 
+Released as `agentd` **0.9.0** (`daemon/VERSION`, cut 2026-08-13 — the code landed
+with this phase, the version number was cut later, at the start of V2.3's `SC-00`).
+
 On a node, `agentd` **0.9.0** or newer, plus:
 
 ```yaml
