@@ -244,3 +244,103 @@ action. The platform issues no `git push` of its own in this phase, at all.
 | Promoting a run into an interactive session | The run's working directory is reclaimed on a retention schedule; making it a durable tmux would mean redesigning that lifecycle (D26) |
 | A wall clock as the liveness test | It kills agents that are working. Both CLIs expose an event stream designed for programs; §4 uses it |
 | A PTY, to get live state from the child | The direction is right — bidirectional, immediate stdio — but the mechanism is wrong. It turns a run into a session, and it turns the run log into an ANSI screen recording, which reopens ADR 0030's boundary in the worst possible way |
+
+---
+
+# Amendment (V2.3, 2026-08-13) — tag dispatch, and the fifth eligibility condition
+
+- Status: **proposed**, waiting on the same gate two as ADR 0032.
+- Scope: this amendment adds the tag half of pairing. The claim model, the lease,
+  the three timers and "a run is not a session" are unchanged above.
+- Requirements: `FR-RUNENV-008`
+- Contract: **v1.12.0** — two optional booleans on `runner.register`.
+
+## B1 — Pairing has exactly two layers
+
+| Layer | Question it answers | Who sets it |
+|---|---|---|
+| `required_labels` × `labels` | **Can** this runner do this card | The runner reports its own; the card declares what it needs |
+| `assigned_runner_id` | **Should** this card go to that one specifically | Whoever creates or dispatches the card |
+
+**There is no third layer.** `project_agents` is not built — the reasoning is in
+ADR 0032 §0 and **is not repeated here**. Authorization is a question about
+secrets, not about routing; arguing it in two documents is how two documents start
+to drift.
+
+## B2 — The five eligibility conditions
+
+A queued run is offered to a runner when all five hold:
+
+1. The task is in `ready`
+2. Its `dependsOn` are satisfied
+3. The runtime matches
+4. **The tags match** (B3)
+5. `assigned_runner_id` is null, or is exactly this runner
+
+Condition 4 is the one this amendment adds. V2.2 shipped four.
+
+## B3 — GitLab semantics
+
+- **Superset match**: `required_labels ⊆ runner.labels`. A card needing `docker`
+  and `node20` goes to a runner that has both; extra tags on the runner are
+  irrelevant. **Equality matching was rejected** — one extra tag on a machine would
+  stop it claiming anything, which is unusable in practice.
+- **`run_untagged`** (a boolean on the runner, default `true`): turned off, that
+  runner only claims cards that declare at least one tag. It is the only way to
+  reserve a machine for particular work; without it a dedicated box still fills up
+  with ordinary untagged cards.
+- **`accept_secrets`** (default `true`) is the same family of node-side declaration
+  rather than a sixth condition: with it off, the runner is only offered cards whose
+  `required_secrets` is empty.
+- **Tags are free strings.** No pre-registered dictionary, no naming scheme, no
+  per-project tag allowlist. That is consistent with GitLab and with "the runner
+  reports its own capabilities"; a dictionary can be added when three spellings of
+  one capability actually appear.
+- **A payload that omits either boolean is read as `true`**, matching the column
+  default, so behaviour is unchanged across an upgrade. The compatibility statement
+  deliberately does not name a daemon version: it asserts a property of the payload,
+  which is testable, rather than the behaviour of a release, which is not.
+
+## B4 — Matching happens in Central, not on the runner
+
+The platform is the only source of offers, so filtering on the runner would mean
+trusting a runner's self-restraint. The more practical reason is different:
+**"why has nobody claimed this card" has to be answerable on the platform** — and
+that is a query, not a piece of copy. The reverse query returns the *smallest
+missing tag set* across online, enabled, runtime-matching runners, because what the
+user needs to know is what the closest machine still lacks. An intersection would
+return the empty set whenever two runners lack different tags, and "no runner is
+missing any tag" would then be false.
+
+**The two eligibility queries share one predicate.** Central computes eligibility in
+two places — the offer query (SQL) and the waiting-reason count (Python, because it
+needs the in-memory online check). Adding condition 4 to only one of them makes the
+console state a reason that is not true, and **no test would go red**. They are
+therefore driven from one predicate each side, fed the same cases by one
+parameterised test, and `GATE-SC-TAG-BOTH-QUERIES` asserts both call it.
+
+## B5 — A tag is not authorization
+
+**A tag is a string the runner reports about itself.** A compromised or
+misconfigured runner changes what it is offered by reporting one more tag.
+
+Two consequences that are enforced rather than merely stated:
+
+- The UI shows tags **read-only**, annotated as declared by that node's `agentd`
+  config, and **no padlock icon or the word "authorised" appears anywhere near
+  them**. That is a rendered-DOM assertion in the frontend tests, not a promise in
+  a document.
+- **Editing a runner's tags through the API is not possible.** `agent.manage`
+  covers enabling a runner and its concurrency — the disposition of compute — and
+  nothing else. Allowing an edit would create a second source of truth that
+  `runner.register` overwrites on the node's next reconnect.
+
+## Alternatives rejected (amendment)
+
+| Rejected | Why |
+|---|---|
+| A binding table, or tags doubling as authorization | ADR 0032 §0. Referenced, not re-argued |
+| Exact-equality tag matching | One extra tag on a runner stops it claiming anything |
+| Central overwriting a runner's tags | Two sources of truth: `runner.register` overwrites the edit on reconnect. A tag is the runner's declaration about itself, so changing one means changing that node's config file |
+| A pre-registered tag dictionary | Premature. Let free strings run until one capability is spelled three ways |
+| Filtering on the runner | Trusts self-restraint, and leaves "why has nobody claimed this" unanswerable on the platform |

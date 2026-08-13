@@ -270,6 +270,62 @@
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-03](../../research/prd.md#fr-project-005-ac-03) | 旗標關閉時，前端導覽與專案層導入前完全一致。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-04](../../research/prd.md#fr-project-005-ac-04) | 旗標的開關不得改變伺服器掛載的路由集合。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-05](../../research/prd.md#fr-project-005-ac-05) | 既有 API 的請求與回應不得移除欄位、改名、變更型別或變更必填性； | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-01](../../research/prd.md#fr-runenv-001-ac-01) | 機密以加密形式保存；任何介面、任何回應都不得讀回它的值。 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-02](../../research/prd.md#fr-runenv-001-ac-02) | 清單只呈現名稱、類型、建立者、建立與輪替時間、最後使用時間。 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-03](../../research/prd.md#fr-runenv-001-ac-03) | 名稱在專案內唯一；軟刪除之後同名可以重新建立。 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-04](../../research/prd.md#fr-runenv-001-ac-04) | 名稱須為大寫字母、數字與底線，並拒絕會覆寫執行環境基本設定的名稱 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-05](../../research/prd.md#fr-runenv-001-ac-05) | 輪替即覆寫值；名稱與類型不可變更。 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-06](../../research/prd.md#fr-runenv-001-ac-06) | 刪除為軟刪除並立即生效於下一次派工；進行中的執行不受影響。 | — | — | — |
+| FR-RUNENV-001 | [FR-RUNENV-001.AC-07](../../research/prd.md#fr-runenv-001-ac-07) | 被 repository 引用中的機密不得刪除，拒絕訊息須指名是哪一個 repository。 | — | — | — |
+| FR-RUNENV-002 | [FR-RUNENV-002.AC-01](../../research/prd.md#fr-runenv-002-ac-01) | 採信封加密：每一筆機密各有一把資料金鑰，資料金鑰以主金鑰包裝後與密文同列保存。 | — | — | — |
+| FR-RUNENV-002 | [FR-RUNENV-002.AC-02](../../research/prd.md#fr-runenv-002-ac-02) | 金鑰版本自第一筆資料起即存在；輪替主金鑰時只重新包裝資料金鑰，密文不得被重寫。 | — | — | — |
+| FR-RUNENV-002 | [FR-RUNENV-002.AC-03](../../research/prd.md#fr-runenv-002-ac-03) | 主金鑰缺少、格式錯誤、長度不足或等於開發預設值時，在啟動時拒絕並指名是哪一種； | — | — | — |
+| FR-RUNENV-002 | [FR-RUNENV-002.AC-04](../../research/prd.md#fr-runenv-002-ac-04) | 舊金鑰版本的資料在舊金鑰仍存在時可解；舊金鑰不存在時的錯誤須指名缺少哪一個版本。 | — | — | — |
+| FR-RUNENV-002 | [FR-RUNENV-002.AC-05](../../research/prd.md#fr-runenv-002-ac-05) | 主金鑰遺失即所有機密不可復原。此後果須直接呈現在機密設定畫面上， | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-01](../../research/prd.md#fr-runenv-003-ac-01) | 下放發生在認領當下，且只送出該卡片宣告的那幾個。 | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-02](../../research/prd.md#fr-runenv-003-ac-02) | 卡片宣告的名稱必須是專案允許清單的子集；卡片編輯時與派工時各驗一次， | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-03](../../research/prd.md#fr-runenv-003-ac-03) | 每一次下放記錄一筆稽核，含執行、專案、Runner 與名稱； | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-04](../../research/prd.md#fr-runenv-003-ac-04) | Runner 於下放後放棄該工單時，稽核如實記為已下放，不得回頭刪除。 | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-05](../../research/prd.md#fr-runenv-003-ac-05) | 派工訊息在送出前須驗證其大小；超出上限時釋放認領並在卡片上說明， | — | — | — |
+| FR-RUNENV-003 | [FR-RUNENV-003.AC-06](../../research/prd.md#fr-runenv-003-ac-06) | 情境包須列出本次執行可用的機密名稱，並說明不要將值輸出。 | — | — | — |
+| FR-RUNENV-004 | [FR-RUNENV-004.AC-01](../../research/prd.md#fr-runenv-004-ac-01) | 機密在節點上只存在於記憶體，以環境變數交給執行程序，不寫入任何檔案。 | — | — | — |
+| FR-RUNENV-004 | [FR-RUNENV-004.AC-02](../../research/prd.md#fr-runenv-004-ac-02) | 節點在送出任何訊息之前，對其中的字串逐一替換已知的機密值； | — | — | — |
+| FR-RUNENV-004 | [FR-RUNENV-004.AC-03](../../research/prd.md#fr-runenv-004-ac-03) | 去識別為盡力而為：經過編碼的值可能漏網。 | — | — | — |
+| FR-RUNENV-004 | [FR-RUNENV-004.AC-04](../../research/prd.md#fr-runenv-004-ac-04) | 節點可宣告不收機密；該節點的 Runner 永不被派發宣告了機密的卡片， | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-01](../../research/prd.md#fr-runenv-007-ac-01) | 平台只能推送 cliora/<卡片編號>-<執行序號> 前綴的分支。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-02](../../research/prd.md#fr-runenv-007-ac-02) | 永不推送基準分支或目標分支。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-03](../../research/prd.md#fr-runenv-007-ac-03) | 永不強制推送、永不刪除遠端分支、永不動標籤。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-04](../../research/prd.md#fr-runenv-007-ac-04) | 只能推送到該專案登記的 repository 主機。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-05](../../research/prd.md#fr-runenv-007-ac-05) | 四種違規全部在節點內被拒，且拒絕發生在指令被執行之前。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-06](../../research/prd.md#fr-runenv-007-ac-06) | 五條約束與使用哪一種憑證無關：它們約束的是推送什麼。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-07](../../research/prd.md#fr-runenv-007-ac-07) | 提交的作者身分為機器身分（硬性）；來源標註以掛勾附加（盡力而為）。 | — | — | — |
+| FR-RUNENV-007 | [FR-RUNENV-007.AC-08](../../research/prd.md#fr-runenv-007-ac-08) | 推送失敗不使該次執行失敗，但須在摘要中明白說出。 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-01](../../research/prd.md#fr-runenv-008-ac-01) | 資格判定為五條件：卡片在就緒車道、前置任務均已完成、執行環境相符、 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-02](../../research/prd.md#fr-runenv-008-ac-02) | tag 採超集比對：卡片所需的 tag 是該 Runner 所具備 tag 的子集即成立； | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-03](../../research/prd.md#fr-runenv-008-ac-03) | Runner 可宣告只領取有宣告 tag 的卡片；該設定關閉時仍能領取未宣告 tag 的卡片。 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-04](../../research/prd.md#fr-runenv-008-ac-04) | 註冊訊息未攜帶上述兩項宣告時一律視為預設值，升級前後行為一致。 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-05](../../research/prd.md#fr-runenv-008-ac-05) | 指定一個 tag 不符的 Runner 時，派工當下即拒絕並指名缺少哪幾個 tag，且不入佇列。 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-06](../../research/prd.md#fr-runenv-008-ac-06) | 無任何 Runner 湊得齊某卡片的 tag 時，畫面須說出缺少哪幾個 tag， | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-07](../../research/prd.md#fr-runenv-008-ac-07) | 比對在平台端進行；「這張卡為什麼沒人領」必須在平台端答得出來。 | — | — | — |
+| FR-RUNENV-008 | [FR-RUNENV-008.AC-08](../../research/prd.md#fr-runenv-008-ac-08) | tag 由節點的設定檔宣告，平台端唯讀，不得經由介面編輯。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-01](../../research/prd.md#fr-runenv-009-ac-01) | 此能力由環境變數控制且預設關閉；關閉時 git 類型的機密不得建立， | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-02](../../research/prd.md#fr-runenv-009-ac-02) | 關閉時 repository 的認證方式只能是「使用該機器既有的認證」。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-03](../../research/prd.md#fr-runenv-009-ac-03) | 關閉時派工訊息不得攜帶 git 類型的機密。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-04](../../research/prd.md#fr-runenv-009-ac-04) | 關閉時不得改寫執行程序的家目錄或 git 全域設定； | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-05](../../research/prd.md#fr-runenv-009-ac-05) | 啟用時，權杖不得出現在遠端位址、提交紀錄、行程參數或任何錯誤訊息中。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-06](../../research/prd.md#fr-runenv-009-ac-06) | 啟用時，私鑰永不寫入磁碟；代理程式的通訊端不是金鑰， | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-07](../../research/prd.md#fr-runenv-009-ac-07) | 啟用時，未知主機須被主機金鑰檢查拒絕。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-08](../../research/prd.md#fr-runenv-009-ac-08) | 既有憑證的隔離只在本次執行真的收到平台憑證時才套用。 | — | — | — |
+| FR-RUNENV-009 | [FR-RUNENV-009.AC-09](../../research/prd.md#fr-runenv-009-ac-09) | 以 SSH 認證的 repository 無法建立合併請求；此後果須在設定畫面上說明。 | — | — | — |
+| FR-RUNENV-010 | [FR-RUNENV-010.AC-01](../../research/prd.md#fr-runenv-010-ac-01) | 發出納管權杖的畫面須直接寫明： | — | — | — |
+| FR-RUNENV-010 | [FR-RUNENV-010.AC-02](../../research/prd.md#fr-runenv-010-ac-02) | Agent 管理畫面須寫明授權邊界是納管，並寫明 tag 不是授權。 | — | — | — |
+| FR-RUNENV-010 | [FR-RUNENV-010.AC-03](../../research/prd.md#fr-runenv-010-ac-03) | tag 欄位周邊不得出現鎖頭圖示或「授權」字樣。 | — | — | — |
+| FR-RUNENV-010 | [FR-RUNENV-010.AC-04](../../research/prd.md#fr-runenv-010-ac-04) | 機密頁不得提供顯示值或複製值的功能。 | — | — | — |
+| FR-RUNENV-010 | [FR-RUNENV-010.AC-05](../../research/prd.md#fr-runenv-010-ac-05) | 以上四項為畫面上的可驗證性質，不得只以文件承諾。 | — | — | — |
+| FR-RUNENV-011 | [FR-RUNENV-011.AC-01](../../research/prd.md#fr-runenv-011-ac-01) | 一般環境變數類型的機密進入執行程序的環境。 | — | — | — |
+| FR-RUNENV-011 | [FR-RUNENV-011.AC-02](../../research/prd.md#fr-runenv-011-ac-02) | git 憑證類型的機密只進入節點自身的 git 環境，永不進入執行程序的環境。 | — | — | — |
+| FR-RUNENV-011 | [FR-RUNENV-011.AC-03](../../research/prd.md#fr-runenv-011-ac-03) | 用於建立合併請求的憑證類型在本階段不下放。 | — | — | — |
+| FR-RUNENV-011 | [FR-RUNENV-011.AC-04](../../research/prd.md#fr-runenv-011-ac-04) | 上述分流的後果須明白記載：執行程序無法以平台憑證自行取得或推送。 | — | — | — |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-01](../../research/prd.md#fr-runtime-001-ac-01) | Daemon 啟動時應偵測： | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | gotest:daemon/internal/runtime<br>gotest:daemon/internal/runtime#TestDetectAvailable<br>gotest:daemon/internal/runtime#TestDetectNotFound<br>gotest:daemon/internal/runtime#TestDetectNotExecutableOnError<br>gotest:daemon/internal/runtime#TestDetectTimeoutDoesNotHang |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-02](../../research/prd.md#fr-runtime-001-ac-02) | claude | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | — |
 | FR-RUNTIME-001 | [FR-RUNTIME-001.AC-03](../../research/prd.md#fr-runtime-001-ac-03) | codex | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/runtime | — |

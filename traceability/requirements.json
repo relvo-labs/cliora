@@ -6932,6 +6932,495 @@
           "risk": "medium"
         }
       ]
+    },
+    {
+      "id": "FR-RUNENV-001",
+      "kind": "functional",
+      "title": "專案機密的保管",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-001"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-001.AC-01",
+          "source_anchor": "fr-runenv-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-02",
+          "source_anchor": "fr-runenv-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-03",
+          "source_anchor": "fr-runenv-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-04",
+          "source_anchor": "fr-runenv-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-05",
+          "source_anchor": "fr-runenv-001-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-06",
+          "source_anchor": "fr-runenv-001-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-001.AC-07",
+          "source_anchor": "fr-runenv-001-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-002",
+      "kind": "functional",
+      "title": "加密與主金鑰",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-002"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-002.AC-01",
+          "source_anchor": "fr-runenv-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-002.AC-02",
+          "source_anchor": "fr-runenv-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-002.AC-03",
+          "source_anchor": "fr-runenv-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-002.AC-04",
+          "source_anchor": "fr-runenv-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-002.AC-05",
+          "source_anchor": "fr-runenv-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-003",
+      "kind": "functional",
+      "title": "按需下放與稽核",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-003.AC-01",
+          "source_anchor": "fr-runenv-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-003.AC-02",
+          "source_anchor": "fr-runenv-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-003.AC-03",
+          "source_anchor": "fr-runenv-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-003.AC-04",
+          "source_anchor": "fr-runenv-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-003.AC-05",
+          "source_anchor": "fr-runenv-003-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-003.AC-06",
+          "source_anchor": "fr-runenv-003-ac-06",
+          "verification_profile": "automated",
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-004",
+      "kind": "functional",
+      "title": "節點端的去識別與拒收",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-004.AC-01",
+          "source_anchor": "fr-runenv-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-004.AC-02",
+          "source_anchor": "fr-runenv-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-004.AC-03",
+          "source_anchor": "fr-runenv-004-ac-03",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-004.AC-04",
+          "source_anchor": "fr-runenv-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-007",
+      "kind": "functional",
+      "title": "git 送回的五條硬約束",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-007"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-007.AC-01",
+          "source_anchor": "fr-runenv-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-02",
+          "source_anchor": "fr-runenv-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-03",
+          "source_anchor": "fr-runenv-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-04",
+          "source_anchor": "fr-runenv-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-05",
+          "source_anchor": "fr-runenv-007-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-06",
+          "source_anchor": "fr-runenv-007-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-07",
+          "source_anchor": "fr-runenv-007-ac-07",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-007.AC-08",
+          "source_anchor": "fr-runenv-007-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-008",
+      "kind": "functional",
+      "title": "tag 派工",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-008"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-008.AC-01",
+          "source_anchor": "fr-runenv-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-02",
+          "source_anchor": "fr-runenv-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-03",
+          "source_anchor": "fr-runenv-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-04",
+          "source_anchor": "fr-runenv-008-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-05",
+          "source_anchor": "fr-runenv-008-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-06",
+          "source_anchor": "fr-runenv-008-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-07",
+          "source_anchor": "fr-runenv-008-ac-07",
+          "verification_profile": "automated",
+          "risk": "low"
+        },
+        {
+          "id": "FR-RUNENV-008.AC-08",
+          "source_anchor": "fr-runenv-008-ac-08",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-009",
+      "kind": "functional",
+      "title": "平台管理的 git 憑證（預設關閉）",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-009"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-009.AC-01",
+          "source_anchor": "fr-runenv-009-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-02",
+          "source_anchor": "fr-runenv-009-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-03",
+          "source_anchor": "fr-runenv-009-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-04",
+          "source_anchor": "fr-runenv-009-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-05",
+          "source_anchor": "fr-runenv-009-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-06",
+          "source_anchor": "fr-runenv-009-ac-06",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-07",
+          "source_anchor": "fr-runenv-009-ac-07",
+          "verification_profile": "manual_external",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-08",
+          "source_anchor": "fr-runenv-009-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-009.AC-09",
+          "source_anchor": "fr-runenv-009-ac-09",
+          "verification_profile": "automated",
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-010",
+      "kind": "functional",
+      "title": "授權邊界的誠實揭露",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-010"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-010.AC-01",
+          "source_anchor": "fr-runenv-010-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-010.AC-02",
+          "source_anchor": "fr-runenv-010-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-010.AC-03",
+          "source_anchor": "fr-runenv-010-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-010.AC-04",
+          "source_anchor": "fr-runenv-010-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-010.AC-05",
+          "source_anchor": "fr-runenv-010-ac-05",
+          "verification_profile": "automated",
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "id": "FR-RUNENV-011",
+      "kind": "functional",
+      "title": "機密的類型決定它的去向",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-runenv-011"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-RUNENV-011.AC-01",
+          "source_anchor": "fr-runenv-011-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-011.AC-02",
+          "source_anchor": "fr-runenv-011-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-RUNENV-011.AC-03",
+          "source_anchor": "fr-runenv-011-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-RUNENV-011.AC-04",
+          "source_anchor": "fr-runenv-011-ac-04",
+          "verification_profile": "inspection",
+          "risk": "low"
+        }
+      ]
     }
   ]
 }

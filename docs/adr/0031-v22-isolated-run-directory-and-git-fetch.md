@@ -348,3 +348,132 @@ quota. Whether to keep them is a person's call.
 | Removing the agent's shell access to stop it pushing | That degrades autonomous execution back into an interactive session (D25). This phase constrains how output leaves, not what happens inside |
 | A mount namespace or bubblewrap | Needs unprivileged user namespaces (a node kernel setting), hides the CLI config the runtimes need, and would be a half-guarantee reported as a whole one. Open an ADR if a platform-level enforcement is genuinely needed; its first question is how it relates to D25 |
 | Testing "the run process cannot read an allowed root" | On an ordinary machine that read **succeeds**. It was an assertion written wrong, not a test that would catch a bug |
+
+---
+
+# Amendment (V2.3, 2026-08-13) — the send-back half of git
+
+- Status: **proposed**, waiting on the same gate two as ADR 0032.
+- Scope: this amendment adds **push** and the branch namespace. It does not
+  restate the six directory rules or the fetch half; those are unchanged above.
+- Requirements: `FR-RUNENV-007`, `FR-RUNENV-009`
+- Ships in: `agentd` **0.10.0**, contract **v1.12.0** (`spec.branch` only — push is
+  a daemon-internal action and gets no message of its own).
+
+## A1 — Two halves, and their defaults are opposite
+
+The 2026-08-13 ruling splits this amendment in a way worth stating before anything
+else, because a reader who misses it will read A3's guarantees as though they
+described the default deployment, and they describe the opposite.
+
+| Half | Content | Default |
+|---|---|---|
+| **Send-back** | The `cliora/<card_ref>-<run_seq>` namespace, `Push`, the five hard constraints, the commit identity (A2, A4) | **On.** It pushes with whatever git credentials the node already has — the same source the fetch half has used since V2.2 |
+| **Credentials** | `GIT_ASKPASS` helper, `ssh-agent`, ambient isolation (A3) | **Off.** `CLIORA_GIT_SECRET_DELIVERY_ENABLED`, default `false` |
+
+**Two consequences that must be read together:**
+
+- **The five hard constraints are independent of which credential pushes.** They
+  constrain *what is pushed*. They hold in full on the default path.
+- **But "revocable" does not hold on the default path.** The platform now pushes on
+  a card's behalf using a credential it did not issue and cannot revoke. What
+  contains that is the node's deployment posture (`dedicated`) and red line 5 — no
+  branch nobody merges affects anybody. **This is the most easily missed
+  consequence of the ruling**, which is why it is here and in the release note
+  rather than only in the plan.
+
+## A2 — The five hard constraints, and where each one lives
+
+Compiled into `daemon/internal/gitfetch/push.go`. Each has a test.
+
+1. **Only a branch under the `cliora/` prefix may be pushed.**
+2. **Never the base or target branch.** Constraint 1 already implies it — neither
+   can carry the prefix — but an implication is not an assertion, so it is checked
+   separately.
+3. **Never a force push, never a remote branch deletion, never a tag.** Implemented
+   as *those strings are not in the argv table*, rather than as a check that they
+   are absent: a check can be bypassed by a second call site, a table that does not
+   contain the word cannot. `GATE-SC-PUSH-ARGV` asserts the absence.
+4. **Only a host on the allowlist**, through the same `CheckURL` the fetch half
+   uses.
+5. **The commit identity is a bot, and it does not impersonate a person.**
+
+**The remote URL is passed explicitly on every push rather than using `origin`.**
+`.git/config` is inside a directory the agent may write to — the sandbox git
+freedom of 2026-08-10 is deliberate — so constraint 4 has to check the address the
+*platform* knows, not the last one written into the checkout. A visible consequence:
+`git remote -v` and the platform's push target can differ, and the Run detail page
+shows both. A difference is not an error; it is a fact worth being able to see.
+
+**Constraint 5 has two tiers, and collapsing them would hide the weaker one.**
+`user.name` / `user.email` are set in the checkout's local config and the platform
+controls them: that tier is hard. The `Cliora-Run-Id` / `Cliora-Card` trailers are
+appended by a `prepare-commit-msg` hook inside the run directory — **which the agent
+can delete**. So: *the platform never impersonates a human* is a guarantee;
+*every commit is traceable to a run* is best effort.
+
+## A3 — Platform-managed credentials (off by default)
+
+Neither form may write a token or a private key to a file.
+
+**PAT.** `GIT_ASKPASS` points at a small helper in the run directory, 0700, whose
+own contents contain no secret — it echoes an environment variable the daemon sets
+for git and only for git. `GIT_TERMINAL_PROMPT=0` is kept, so a helper with no value
+still fails in seconds rather than hanging on a prompt. Not in the remote URL
+(`git remote -v`, reflog, error messages); not via `-c http.extraHeader` (`ps`).
+
+> ⚠️ **`GIT_ASKPASS` was already occupied.** V2.2 hard-codes it to `/bin/false` as
+> one of the three variables that make "a missing credential fails in seconds"
+> true — measured at 2.7 s. This is not a choice between the two behaviours: the
+> helper replaces the value and the seconds-not-hours property is re-verified.
+> With the flag off, the environment is byte-for-byte what V2.2 produced.
+
+**SSH.** An `ssh-agent` per run; the key arrives on `ssh-add -`'s **stdin**; the
+socket is inside the run directory at 0700 and dies with the run. Writing a 0600
+key file and deleting it afterwards is **not** an acceptable substitute: it breaks
+the never-on-disk rule, and a failed delete leaves the key there.
+`StrictHostKeyChecking=yes` and known-hosts pinning are unchanged from the fetch
+half.
+
+**Ambient isolation applies only when this run actually received a platform
+credential.** The 2026-08-11 default ("replace") was chosen because a revocable
+credential loses its meaning beside an unrevocable one — and *that reasoning holds
+only when a platform credential exists*. Applying it unconditionally would hide the
+machine's credentials and put nothing in their place: on the default path every
+private-repository clone would fail, and the symptom would look like a
+misconfigured credential. So the trigger is "this run received a git secret", not
+the setting alone; the setting decides what to do when it did.
+
+**And "replace" is not a sandbox.** It makes git blind to those credentials. The
+run's child shares an OS user with agentd and can read the home directory; what is
+bought is that the default path does not use them by accident, not that they cannot
+be used.
+
+## A4 — Which branch, from which source
+
+| `source` | Branch |
+|---|---|
+| `repo` | Clone, then `checkout -b cliora/<card_ref>-<run_seq>`. The name is composed by Central (which holds `card_ref` and the sequence) and **the prefix is re-checked by the daemon** — a constraint that trusts its caller is not a constraint |
+| `existing_branch` | Check out the existing branch; create nothing. Constraint 1 still applies, so a branch outside the `cliora/` namespace **cannot be pushed** — dispatch refuses that combination up front rather than letting the run reach the push and fail |
+| `none` | No `repo/` at all; `delivery` may only be `none` or `artifact` |
+
+**Pushing from a shallow clone is the first thing `SC-07b` verifies against a real
+remote.** The V2.2 layout is `--depth 1 --single-branch`; if a host refuses a
+shallow push, the fallback is an `--unshallow` fetch before pushing, and its cost on
+a large repository is a number that has to be measured rather than assumed.
+
+**The platform does not commit on the agent's behalf.** If the agent changed files
+and never committed, there is nothing to push — the honesty rule from §7 above takes
+over and the diff is attached as an artifact. A push failure does **not** fail the
+run, but it is said out loud in the summary: a wrong "pushed" is much harder to
+diagnose than a "not pushed".
+
+## Alternatives rejected (amendment)
+
+| Rejected | Why |
+|---|---|
+| Letting the agent choose the push target | A constraint that is a configuration value is not a constraint |
+| Enforcing the five constraints in Central | The daemon holds the remote. A constraint that trusts the frame it was sent is the same mistake as trusting the branch name without re-checking the prefix |
+| Making the trailers a guarantee rather than best effort | The hook lives in a directory the agent can write to. Stating a two-tier guarantee as one tier hides which half is soft |
+| Applying ambient isolation whenever the setting is on | With git-credential delivery off by default, that hides the machine's credentials and supplies no replacement — every private-repository clone fails, and it looks like a credential problem |
+| Committing on the agent's behalf before pushing | The platform would be deciding what constitutes a commit. The honesty rule already covers the uncommitted case without inventing an author |
