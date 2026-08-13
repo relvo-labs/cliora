@@ -29,11 +29,26 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_ARTIFACTS_DIR` | ❌ **leave unset** | — | The image sets it to `/srv/artifacts`, which is where the image puts the release. Override it only to point at a different directory, and only if something is mounted there — a wrong path means `/api/downloads` and `/api/install-script` answer 404 and the manifest goes empty (not 404) |
 | `CLIORA_METRICS_ENABLED` | — | `false` | `true` without a ≥16-character `CLIORA_METRICS_SCRAPE_TOKEN` → startup fails (deliberate). The endpoint is also refused at the edge either way |
 | `CLIORA_PROJECTS_ENABLED` | — | `false` | The V2 project layer. Off means every `/api/projects*` path answers 404 and the rail is unchanged. On grants **every role** a new read: project names, bound node names and absolute workspace paths. No per-project membership yet — see `docs/release-note-project-layer.md` |
+| `CLIORA_AGENT_RUNS_ENABLED` | — | `false` | The V2.2+ runner layer, **nested inside `CLIORA_PROJECTS_ENABLED`** — on alone it does nothing, because `features` only carries `agent_runs` when both are on. Off means `/api/agents*`, `/api/runs*` and the secrets routes all answer 404 and the rail shows neither **Projects** nor **Agents**. ⚠️ **This row was missing until V2.3**, which is why a deployment can look "exactly like V1" after a successful V2 deploy: nothing is broken, the flags are simply off. On grants unattended execution on enrolled nodes — read `docs/release-note-agent-runner.md` and `docs/release-note-secrets-and-dispatch.md` before turning it on |
 | `CLIORA_SESSION_TOKEN_TTL_H` | — | `24` | Hours a session credential stays valid (V2.1, ADR 0028). It is revoked the moment its session ends, so this only bounds a session left open for days. The credential is readable by anyone who can read the workspace — see `docs/security-review-v21.md` §1 |
 | `CLIORA_METRICS_SCRAPE_TOKEN` | — | unset | See above |
 | `CLIORA_SECRET_MASTER_KEY` | ✅ **when `CLIORA_AGENT_RUNS_ENABLED` is true** | unset | `openssl rand -base64 32`. Wraps every project secret's data key (ADR 0032). **Central refuses to start without a usable one when the runner layer is on**, and names which of four ways it is unusable — checked at startup rather than at first use, because the alternative fails on a node three minutes into a run. **Keep it somewhere other than the database backup**: the backup cannot restore a secret without it, and losing it loses every secret irrecoverably. Deliberately **not** the same key as `CLIORA_SECRET_ENCRYPTION_KEY` — the two rotate for different reasons, and sharing makes each rotation hostage to the other |
 | `CLIORA_SECRET_MASTER_KEY_VERSION` | — | `1` | Which version a newly written secret is stamped with. Rotation is: old key into `CLIORA_SECRET_MASTER_KEY_V<n>`, new key into `CLIORA_SECRET_MASTER_KEY`, raise this. Existing rows keep opening under their own version |
 | `CLIORA_GIT_SECRET_DELIVERY_ENABLED` | — | `false` | Whether the platform delivers git credentials to runners at all. **Off by default** (2026-08-13 ruling): at this stage git authentication is configured on the node by its owner. With it off, `git_pat`/`git_ssh_key` secrets cannot be created and a repository may only use the machine's existing credentials. ⚠️ The platform still **pushes** on a card's behalf either way — with this off it does so using a credential it cannot revoke, bounded by the five constraints in ADR 0031's amendment |
+
+### Checking which layer is actually on
+
+The two flags are not observable from the navigation alone — an empty rail looks the same
+as a broken deploy. `GET /api/auth/me` answers it directly:
+
+```
+features: []                          both off — the console is V1, by design
+features: ["projects"]                board on, runner off
+features: ["projects","agent_runs"]   both on
+```
+
+`features` says what the **deployment** has; `permissions` says what the **person** may
+do. The server checks both independently, and neither alone is authorization (ADR 0027).
 
 Build-time only (Docker build args, read by `deploy/backend.Dockerfile`):
 
