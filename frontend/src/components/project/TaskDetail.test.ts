@@ -76,6 +76,33 @@ function task(): Task {
   };
 }
 
+// One mount helper for the V2.3 tests below. The original test mounts inline and is
+// left as it is: it pins a different property and rewriting it would put an unrelated
+// diff in front of whoever reviews this.
+function render(
+  overrides: {
+    canEdit?: boolean;
+    client?: Record<string, unknown>;
+    task?: Partial<ReturnType<typeof task>>;
+  } = {},
+) {
+  return mount(TaskDetail, {
+    props: {
+      task: { ...task(), ...(overrides.task ?? {}) },
+      process,
+      client: {
+        decideGate: vi.fn(),
+        updateTask: vi.fn(),
+        ...(overrides.client ?? {}),
+      } as never,
+      canApprove: false,
+      canEdit: overrides.canEdit ?? false,
+      canStartSession: false,
+    },
+    global: { stubs: { RouterLink: true } },
+  });
+}
+
 describe("TaskDetail", () => {
   it("keeps a failed check expanded and preserves evidence provenance", () => {
     const wrapper = mount(TaskDetail, {
@@ -84,6 +111,7 @@ describe("TaskDetail", () => {
         process,
         client: { decideGate: vi.fn() } as never,
         canApprove: false,
+        canEdit: false,
         canStartSession: false,
       },
       global: { stubs: { RouterLink: true } },
@@ -95,5 +123,56 @@ describe("TaskDetail", () => {
     expect(wrapper.findAll(".criteria details")).toHaveLength(1);
     expect(wrapper.get("[data-evidence]").text()).toContain("Run 狀態");
     expect(wrapper.findAllComponents(SourceBadge)).toHaveLength(4);
+  });
+});
+
+describe("TaskDetail execution settings", () => {
+  // **The gap this closes made the whole V2.3 dispatch path unreachable.** A new card
+  // defaults to `delivery: pull_request`, which is refused at dispatch until V2.4 — and
+  // until now nothing on this page could change it. A field the platform acts on and
+  // the console cannot set is worse than one the platform ignores.
+  it("lets an editor change source and delivery", async () => {
+    const updateTask = vi.fn().mockResolvedValue({});
+    const wrapper = render({ canEdit: true, client: { updateTask } });
+    const selects = wrapper.findAll("select");
+    expect(selects.length).toBeGreaterThanOrEqual(2);
+
+    const delivery = selects.find((s) =>
+      s.findAll("option").some((o) => o.attributes("value") === "branch"),
+    );
+    expect(delivery).toBeDefined();
+    await delivery!.setValue("artifact");
+    // The optimistic lock travels with the change: two tabs editing one card is the
+    // case `version` exists for.
+    expect(updateTask).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        delivery: "artifact",
+        version: expect.any(Number),
+      }),
+    );
+  });
+
+  it("shows the two V2.4 modes rather than hiding them", async () => {
+    // Removing them would turn "will this platform ever open a PR" into a question
+    // somebody has to ask a person. They are refused at dispatch, naming the version.
+    const wrapper = render({ canEdit: true });
+    const values = wrapper.findAll("option").map((o) => o.attributes("value"));
+    expect(values).toContain("pull_request");
+    expect(values).toContain("existing_pr");
+  });
+
+  it("warns on the default, because the default cannot be dispatched", async () => {
+    const wrapper = render({
+      canEdit: true,
+      task: { delivery: "pull_request" },
+    });
+    expect(wrapper.text()).toContain("從 V2.4 起生效");
+    expect(wrapper.text()).toContain("artifact");
+  });
+
+  it("shows a badge instead of a select without task.update", async () => {
+    const wrapper = render({ canEdit: false });
+    expect(wrapper.findAll("select")).toHaveLength(0);
   });
 });
