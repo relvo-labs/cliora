@@ -6,6 +6,7 @@ import { ApiError } from "../api/client";
 import {
   ACTION_SESSION_CREATE,
   ACTION_TASK_APPROVE,
+  ACTION_TASK_UPDATE,
   type ActivityEvent,
   type ProcessDefinition,
   type SessionSummary,
@@ -97,6 +98,7 @@ onMounted(() => resource.run());
         :process="process"
         :client="api()"
         :can-approve="auth.hasPermission(ACTION_TASK_APPROVE)"
+        :can-edit="auth.hasPermission(ACTION_TASK_UPDATE)"
         :can-start-session="auth.hasPermission(ACTION_SESSION_CREATE)"
         :sessions="sessions"
         :activity="activity"

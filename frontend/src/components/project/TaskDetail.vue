@@ -39,6 +39,10 @@ const props = defineProps<{
   process: ProcessDefinition;
   client: ApiClient;
   canApprove: boolean;
+  /** `task.update`, **not** `task.approve`. Editing a card's execution settings is an
+   *  edit; approving a gate is a different power and the two must not share a flag —
+   *  that separation is what makes "an agent's output is not an approval" hold. */
+  canEdit: boolean;
   canStartSession: boolean;
   sessions?: SessionSummary[];
   activity?: ActivityEvent[];
@@ -96,6 +100,31 @@ function isFailed(item: Record<string, unknown>): boolean {
   return [false, "failed", "fail", "error"].includes(
     item.result as false | string,
   );
+}
+
+// The execution settings, editable rather than merely displayed.
+//
+// **They were display-only until V2.3, and that made the whole dispatch path
+// unreachable from the console**: a new card defaults to `delivery: pull_request`,
+// which is refused at dispatch until V2.4, and nothing on this page could change it.
+// A field the platform acts on and the console cannot set is worse than one it ignores.
+async function setExecution(changes: Record<string, unknown>): Promise<void> {
+  error.value = null;
+  try {
+    await props.client.updateTask(props.task.id, {
+      ...changes,
+      // Optimistic lock: two tabs editing one card is the case this exists for.
+      version: props.task.version,
+    });
+    emit("changed");
+  } catch (caught) {
+    error.value =
+      caught instanceof ApiError && caught.status === 409
+        ? "這張卡剛被別人改過，請重新載入。"
+        : caught instanceof ApiError
+          ? caught.message
+          : "操作失敗。";
+  }
 }
 
 async function toggleGate(key: string, approved: boolean): Promise<void> {
@@ -272,9 +301,46 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           <dt>Runner</dt>
           <dd>{{ task.assigned_runner_id ?? "任一 Agent" }}</dd>
           <dt>來源</dt>
-          <dd><SourceBadge :source="task.source" /></dd>
+          <dd>
+            <select
+              v-if="canEdit"
+              :value="task.source"
+              @change="
+                setExecution({
+                  source: ($event.target as HTMLSelectElement).value,
+                })
+              "
+            >
+              <option value="none">none — 不需要程式碼</option>
+              <option value="repo">repo — clone 專案的 repository</option>
+              <option value="existing_branch">
+                existing_branch — 接續一條既有分支
+              </option>
+            </select>
+            <SourceBadge v-else :source="task.source" />
+          </dd>
           <dt>交付</dt>
-          <dd><DeliveryBadge :delivery="task.delivery" /></dd>
+          <dd>
+            <select
+              v-if="canEdit"
+              :value="task.delivery"
+              @change="
+                setExecution({
+                  delivery: ($event.target as HTMLSelectElement).value,
+                })
+              "
+            >
+              <option value="none">none — 不交付</option>
+              <option value="artifact">artifact — 附成卡片產物</option>
+              <option value="branch">branch — 推一條 cliora/ 分支</option>
+              <!-- Shown rather than removed: hiding them would turn "will this
+                   platform ever open a PR" into a question somebody has to ask. They
+                   are refused at dispatch, and the refusal names the version. -->
+              <option value="pull_request">pull_request — V2.4 起生效</option>
+              <option value="existing_pr">existing_pr — V2.4 起生效</option>
+            </select>
+            <DeliveryBadge v-else :delivery="task.delivery" />
+          </dd>
           <dt>base branch</dt>
           <dd>{{ task.base_branch ?? "—" }}</dd>
           <!-- Tags decide **which machine** gets this card. They are shown here even
@@ -317,6 +383,19 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
             ><code>{{ tag }}</code
             ><span v-if="i < unmatchedTags.length - 1">、</span></template
           >，這張卡會一直等。
+        </p>
+        <!-- Every new card starts here, and every one of them is refused at dispatch.
+             The default was chosen for the end state (a PR is the common case); until
+             V2.4 exists it means the out-of-the-box card cannot be dispatched, so the
+             page says which values do work rather than leaving the reader at a 409. -->
+        <p
+          v-if="
+            task.delivery === 'pull_request' || task.delivery === 'existing_pr'
+          "
+          class="hint warn"
+        >
+          ⚠ 這個交付方式從 V2.4 起生效，現在派工會被拒絕。可用的是
+          <code>none</code>、<code>artifact</code> 與 <code>branch</code>。
         </p>
         <p v-if="task.delivery === 'branch'" class="hint">
           交付方式是分支：完成時平台會推送
