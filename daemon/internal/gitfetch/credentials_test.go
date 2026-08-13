@@ -8,6 +8,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // The SSH credential path, against a real `ssh-agent` and a real `ssh`.
@@ -117,7 +118,16 @@ func TestAnUnknownHostIsRefusedRatherThanTrusted(t *testing.T) {
 	if err := os.WriteFile(empty, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := Fetcher{AllowedHosts: []string{"github.com"}, KnownHosts: empty, Env: os.Environ()}
+	// **A short timeout of its own.** The Fetcher's default is 15 minutes, which is
+	// right for a real clone and wrong for a test: on a machine where outbound port 22
+	// is blocked this hung for the full quarter hour instead of skipping. A test that
+	// depends on the network has to be able to give up faster than the thing it tests.
+	f := Fetcher{
+		AllowedHosts: []string{"github.com"},
+		KnownHosts:   empty,
+		Env:          os.Environ(),
+		Timeout:      10 * time.Second,
+	}
 
 	_, err := f.Clone(
 		context.Background(), "ssh://git@github.com/Lei-k/Traqora", "main", t.TempDir()+"/repo",
@@ -165,6 +175,7 @@ func TestAPatNeverSurfacesInTheURLTheReflogArgvOrAnError(t *testing.T) {
 		Env:          os.Environ(),
 		AskpassPath:  askpass,
 		Password:     token,
+		Timeout:      15 * time.Second,
 	}
 	dest := filepath.Join(run, "repo")
 	_, cloneErr := f.Clone(
