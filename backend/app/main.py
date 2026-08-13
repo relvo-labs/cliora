@@ -22,6 +22,8 @@ from fastapi import FastAPI, Response, status
 from sqlalchemy import text
 
 from app.api.errors import install_error_handlers
+from app.api.http.agents import router as agents_router
+from app.api.http.agents import run_router as agent_runs_cli_router
 from app.api.http.audit import router as audit_router
 from app.api.http.auth import router as auth_router
 from app.api.http.dashboard import router as dashboard_router
@@ -32,8 +34,13 @@ from app.api.http.files import router as files_router
 from app.api.http.integrations import router as integrations_router
 from app.api.http.metrics import router as metrics_router
 from app.api.http.nodes import router as nodes_router
+from app.api.http.projects import router as projects_router
 from app.api.http.releases import router as releases_router
+from app.api.http.requirements import router as requirements_router
+from app.api.http.secrets import router as secrets_router
 from app.api.http.sessions import router as sessions_router
+from app.api.http.tasks import agent_router as agent_tasks_router
+from app.api.http.tasks import router as tasks_router
 from app.api.http.tunnels import router as tunnels_router
 from app.api.middleware import (
     AuthzDenialAuditMiddleware,
@@ -46,6 +53,7 @@ from app.db.engine import get_database, reset_database
 from app.logging import configure_logging, get_logger
 from app.security import secret_box
 from app.services.registry import get_node_registry
+from app.services.run_reaper import get_run_reaper
 from app.services.shell_reaper import get_shell_reaper
 from app.services.terminal_relay import get_terminal_relay
 from app.settings import get_settings
@@ -58,6 +66,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     _logger.info("central_startup", extra={"event": "central_startup"})
     await _rearm_shell_reaper()
+    await _start_run_reaper()
     try:
         yield
     finally:
@@ -84,6 +93,27 @@ async def _rearm_shell_reaper() -> None:
         _logger.warning(
             "shell_reaper_reconcile_failed",
             extra={"event": "shell_reaper_reconcile_failed", "error": type(exc).__name__},
+        )
+
+
+async def _start_run_reaper() -> None:
+    """Reclaim expired leases, then keep doing it (ADR 0029 sec 5).
+
+    Started here rather than lazily on the first poll, and it reconciles **before**
+    entering its loop, for the same reason `_rearm_shell_reaper` does: whatever expired
+    while this process was not running is still expired, and a run whose lease died
+    during a deploy would otherwise wait a full period before being re-queued.
+
+    A failure here must not stop Central from serving. The cost of skipping it is a run
+    that stays `claimed` until the next successful sweep; the cost of refusing to boot
+    is the whole product.
+    """
+    try:
+        await get_run_reaper().start()
+    except Exception as exc:  # noqa: BLE001 - startup must not depend on this
+        _logger.warning(
+            "run_reaper_start_failed",
+            extra={"event": "run_reaper_start_failed", "error": type(exc).__name__},
         )
 
 
@@ -116,6 +146,10 @@ async def _drain() -> None:
             # Drop the idle-shell timers rather than letting them fire mid-drain:
             # a deploy must not turn into a fleet-wide teardown of open terminals.
             await get_shell_reaper().cancel_all()
+            # Stop the sweep too. Unlike the shell timers this one is safe to lose —
+            # it reconciles on the next start — but leaving it running through a drain
+            # means a transaction can still be opening while the pool is going away.
+            await get_run_reaper().stop()
             await registry.close_all(code=1012)
     except TimeoutError:
         _logger.warning(
@@ -147,6 +181,30 @@ install_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(enrollment_router)
 app.include_router(nodes_router)
+# Mounted unconditionally; every route inside carries `require_projects_enabled`,
+# which answers 404 while the flag is off. Conditional mounting would make the
+# route matrix's verdict depend on the environment the suite ran in (ADR 0027).
+app.include_router(projects_router)
+# Same unconditional mount, same router-level `require_projects_enabled` (ADR 0028).
+app.include_router(tasks_router)
+app.include_router(requirements_router)
+# V2.2. Unconditional mount again, with **two** router-level guards whose order is
+# load-bearing: projects first, agent runs second, so a deployment with the project
+# layer off answers 404 rather than a 403 that would confirm the route exists
+# (ADR 0029, plan/18/00-…md D12).
+app.include_router(agents_router)
+# V2.3. Same two guards in the same order; the secrets surface is a separate module
+# rather than more routes on the agents router because its authorization is
+# different — `secret.manage`, Admin only — and mixing them would put a
+# credential-management route one copied decorator away from `agent.view`.
+app.include_router(secrets_router)
+# The run credential's surface, on its own prefix for the same reason V2.1's is:
+# a route that accepted either principal would need every handler to ask which one it
+# got, and the first to forget is an agent doing a person's action.
+app.include_router(agent_runs_cli_router)
+# The agent surface: four routes on their own prefix, authenticated by a session
+# credential rather than by a user session (ADR 0028 sec 3).
+app.include_router(agent_tasks_router)
 app.include_router(sessions_router)
 app.include_router(tunnels_router)
 app.include_router(integrations_router)

@@ -45,16 +45,74 @@ def _no_surface_for(*words: str) -> list[str]:
 
 
 def test_scope_001_no_surface_parses_runtime_internal_events() -> None:
-    """The terminal is a byte pipe. Parsing Claude's or Codex's internal events
-    would need a message type carrying them; there is none, and terminal output
-    travels as an opaque binary frame rather than a structured payload."""
-    assert _no_surface_for("agent", "tool_call", "toolcall", "thought", "turn") == []
+    """The terminal is a byte pipe, and a run's event stream is stored **unparsed**.
+
+    V2.2 puts the word this guard used to scan for (`agent`) on a route and an action,
+    so — exactly as SCOPE-002 had to in V2.1 — the guard now has to say what it means
+    rather than what it matches. Two things are being kept apart:
+
+    * **The forbidden one** is the platform *interpreting* a runtime's internal events:
+      a message type or an API field that models a tool call, a thought or a turn.
+      That would make a third-party CLI's schema part of our contract, and it would
+      change every time that CLI shipped.
+    * **The permitted one** is carrying a run's JSONL output as an **opaque string**.
+      `run_logs.data` is text, `GET /api/runs/{id}/logs` returns it verbatim, and no
+      route, action or message names anything inside it (plan/18/06-…md §2.1).
+
+    So the assertion drops the bare word and keeps the structural claim: nothing in the
+    surface names an event *shape*.
+    """
+    assert _no_surface_for("tool_call", "toolcall", "thought", "turn") == []
     # Every declared message is control-plane or filesystem; none models runtime output.
     assert not [name for name in _message_names() if name.startswith("terminal-output")]
+    # And the run log stays a string on the way out: the DTO exposes `data`, never a
+    # parsed field. A `tool_name`, `event_type` or `content` column here would be the
+    # first step towards owning somebody else's schema.
+    from app.api.http import schemas
+
+    assert set(schemas.RunLogLineDTO.model_fields) == {
+        "seq",
+        "data",
+        "truncated",
+        "received_at",
+    }
 
 
 def test_scope_002_no_central_approval_mechanism() -> None:
-    assert _no_surface_for("approve", "approval", "consent", "authoriz") == []
+    """SCOPE-002 forbids the platform standing between an agent and its own actions.
+
+    V2.1 adds `task.approve` and `POST /api/tasks/{id}/gates/{gate}`, and both contain
+    the word this guard used to scan for — so the guard has to say what it means
+    rather than what it matches. The two are different mechanisms:
+
+    * **The forbidden one** gates *execution*: a request the agent's runtime makes,
+      held until Central says yes. That would need an approval surface on the session,
+      terminal or filesystem path, and a way for the daemon to ask and wait.
+    * **The task-layer one** gates *governance*: a person ticks a review gate on a
+      card. Nothing is held, nothing is waiting on it, and it cannot stop or permit a
+      single byte the agent runs — in V2.1 nothing executes at all (ADR 0028 sec 1).
+
+    So the assertion narrows to the execution path and keeps its teeth there, and the
+    task layer is named explicitly rather than allowed by an unexamined word list.
+    """
+    execution_surface = " ".join(
+        sorted(
+            path
+            for path in _route_paths()
+            if "/sessions" in path or "/nodes" in path or "/tunnels" in path
+        )
+        + sorted(_message_names())
+        + sorted(
+            action for action in rbac.ALL_ACTIONS if not action.startswith(("task.", "project."))
+        )
+    ).lower()
+    hits = [
+        word for word in ("approve", "approval", "consent", "authoriz") if word in execution_surface
+    ]
+    assert hits == []
+    # And the governance one stays where it is: on a card, never on a session.
+    assert "task.approve" in rbac.ALL_ACTIONS
+    assert not [path for path in _route_paths() if "gates" in path and "/sessions" in path]
 
 
 def test_scope_003_nothing_intercepts_the_cli_native_permission_prompt() -> None:
@@ -78,7 +136,23 @@ def test_scope_004_no_multi_agent_collaboration_flow() -> None:
 
 
 def test_scope_005_no_automatic_task_dispatch() -> None:
-    assert _no_surface_for("dispatch", "schedule", "assignment", "backlog") == []
+    """The non-goal is **automatic** dispatch, not dispatch.
+
+    V2.2 adds `POST /api/tasks/{id}/dispatch`, and it is a person pressing a button:
+    it creates a queued row and returns. Nothing selects a machine, nothing is sent to
+    one, and a runner only ever acquires work by polling for it (ADR 0029 sec 2). The
+    words that would betray the forbidden shape are the ones about *choosing* — a
+    schedule, an assignment, a priority ordering — so those stay in the list and the
+    bare verb leaves it.
+
+    `SCOPE-014`'s own file carries the harder half of this claim: that no code path
+    pushes work at a node.
+    """
+    assert _no_surface_for("schedule", "assignment", "backlog", "autoassign") == []
+    # Dispatch exists, is guarded by its own action, and that action is held by a
+    # person's role — never by a run credential (which holds `task.update` only).
+    assert "run.dispatch" in rbac.ALL_ACTIONS
+    assert not [path for path in _route_paths() if "dispatch" in path and "/cli/" in path]
 
 
 def test_scope_006_the_console_is_not_an_ide() -> None:

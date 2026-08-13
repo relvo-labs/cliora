@@ -36,6 +36,11 @@ LARGE_FRAME_TYPES = frozenset(
         "filesystem.search_result",
         "filesystem.upload",
         "filesystem.store",
+        # context.project (ADR 0028) is the sixth, and like filesystem.store it does
+        # not move the bound: its own schema caps a file at the base64 length of
+        # 64 KiB and the array at 32, so the widest legal message is well inside the
+        # room already granted. Its response is two short arrays and a scalar.
+        "context.project",
     }
 )
 HEADER_SIZE = 18

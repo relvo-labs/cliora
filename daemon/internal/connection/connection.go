@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -22,8 +23,10 @@ import (
 
 	"github.com/cliora/cliora/daemon/internal/config"
 	"github.com/cliora/cliora/daemon/internal/files"
+	"github.com/cliora/cliora/daemon/internal/gitfetch"
 	"github.com/cliora/cliora/daemon/internal/metrics"
 	"github.com/cliora/cliora/daemon/internal/protocol"
+	"github.com/cliora/cliora/daemon/internal/runner"
 	"github.com/cliora/cliora/daemon/internal/runtime"
 	"github.com/cliora/cliora/daemon/internal/session"
 	"github.com/cliora/cliora/daemon/internal/systeminfo"
@@ -59,6 +62,21 @@ type Manager struct {
 	// files performs the P3 read-only filesystem relay (list/read/search),
 	// confined to a session's workspace via the workspace guard (ADR 0014).
 	files *files.Service
+	// processVersion is learned from the latest successful context.project and
+	// protects that process directory from the 30-day projection retention sweep.
+	// It is deliberately not inferred from directory names after restart.
+	projectionMu   sync.RWMutex
+	processVersion string
+
+	// V2.2 agent runner (ADR 0029/0031). Nil unless runner mode is enabled **and**
+	// the run root passed `CheckIsolation` — a node that would refuse to start a run
+	// must not advertise that it can take one.
+	runner *runner.Runner
+	// The run-capability probe's cache, held for **one connection** rather than for
+	// the process. A stale "not capable" means this runner silently never claims a
+	// card while the console shows a reason that is no longer true.
+	runCapMu      sync.Mutex
+	runCapability []string
 
 	// P11 port forwarding (ADR 0022). The supervisor owns the ssh child processes; this
 	// manager only translates between it and the protocol. `tunnelSend` is set for the life
@@ -116,7 +134,57 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 	if reaped := m.tunnels.ReapOrphans(); reaped > 0 {
 		slog.Warn("reaped port-forwarding tunnels left by a previous run", "count", reaped)
 	}
+	m.attachRunner()
 	return m
+}
+
+// attachRunner turns runner mode on, or refuses to.
+//
+// The isolation self-check is a **refusal**, not a warning, and this is where that
+// refusal lands. Its failure mode is not small: with the run root inside an allowed
+// root, the agent's intermediate files appear in the user's file browser and the
+// user's `filesystem.store` can write into a live run's directory — red lines 2 and 3
+// bypassed at once by one line of configuration. A daemon that logged and carried on
+// would leave that true on a machine for months.
+//
+// What it does *not* do is stop the daemon: interactive sessions are unaffected, and
+// taking a node's terminals away to punish a runner misconfiguration would be the
+// wrong trade. The node simply reports `agent_runner: false`, so Central never offers
+// it a run and the console can say why.
+func (m *Manager) attachRunner() {
+	if !m.cfg.Runner.Enabled {
+		return
+	}
+	if err := runner.CheckIsolation(m.cfg.Runner.WorkDir, m.cfg.Workspace.AllowedRoots); err != nil {
+		slog.Error("runner mode refused: the run root is not isolated", "error", err)
+		return
+	}
+	if err := os.MkdirAll(m.cfg.Runner.WorkDir, 0o700); err != nil {
+		slog.Error("runner mode refused: the run root is not writable", "error", err)
+		return
+	}
+	m.runner = runner.New(m.cfg.Runner, m.cfg.Node.Name)
+	m.runner.Fetch = gitfetch.Fetcher{
+		AllowedHosts: m.cfg.Runner.Git.AllowedHosts,
+		KnownHosts:   m.cfg.Runner.Git.KnownHostsPath,
+		Timeout:      time.Duration(m.cfg.Runner.Git.FetchTimeoutSeconds) * time.Second,
+		Env:          os.Environ(),
+	}
+	slog.Info("runner mode enabled",
+		"work_dir", m.cfg.Runner.WorkDir,
+		"dedicated", runner.Dedicated(m.cfg))
+}
+
+// writerFor adapts the dispatch loop's raw `send` into the (type, id, payload) form
+// the run handlers use, so they never build a frame by hand.
+func (m *Manager) writerFor(send func([]byte) error) func(string, string, any) error {
+	return func(messageType, requestID string, payload any) error {
+		frame, err := protocol.BuildControl(messageType, m.creds.NodeID, requestID, payload, m.now())
+		if err != nil {
+			return err
+		}
+		return send(frame)
+	}
 }
 
 // newTmuxClient builds the tmux client for this node: Cliora's own server plus the
@@ -149,6 +217,16 @@ func (m *Manager) url() string {
 
 // Run connects and reconnects until the context is cancelled.
 func (m *Manager) Run(ctx context.Context) error {
+	// This loop is owned by Run: cancellation is shared with the connection
+	// lifecycle and the deferred receive proves the goroutine has exited before
+	// the manager returns (no orphan ticker across daemon restarts).
+	retentionDone := make(chan struct{})
+	go func() {
+		defer close(retentionDone)
+		m.projectionRetentionLoop(ctx)
+	}()
+	defer func() { <-retentionDone }()
+
 	for attempt := 0; ctx.Err() == nil; attempt++ {
 		conn, _, err := m.dialer.DialContext(ctx, m.url(), nil)
 		if err == nil {
@@ -242,6 +320,14 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 		return err
 	}
 
+	// Runner registration rides the same connection, after node.register, so Central
+	// already has the node row when the runner row is upserted.
+	if m.runnerReady() {
+		if err := write("runner.register", protocol.NewID(), m.runnerRegisterPayload(ctx)); err != nil {
+			return err
+		}
+	}
+
 	sctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var wg sync.WaitGroup
@@ -250,6 +336,13 @@ func (m *Manager) session(ctx context.Context, conn *websocket.Conn) error {
 		defer wg.Done()
 		m.heartbeatLoop(sctx, write)
 	}()
+	if m.runnerReady() {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			m.pollLoop(sctx, write)
+		}()
+	}
 
 	readErr := make(chan error, 1)
 	go func() { readErr <- m.dispatch(sctx, conn, send, sendBinary) }()
@@ -331,6 +424,13 @@ func (m *Manager) heartbeatLoop(ctx context.Context, write func(string, string, 
 			if res := resourcesPayload(sample); len(res) > 0 {
 				payload["resources"] = res
 			}
+			// Runner mode only. A node that is not a runner sends no `runner` object at
+			// all, rather than an empty one — "this machine does not do agent work" and
+			// "this machine does agent work and is fine" are different facts, and the
+			// Agents page has different words for them.
+			if m.runnerReady() {
+				payload["runner"] = m.runner.Pressure()
+			}
 			if err := write("node.heartbeat", protocol.NewID(), payload); err != nil {
 				return
 			}
@@ -403,7 +503,16 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		// and "may it put arbitrary files anywhere in my workspace" are
 		// different-sized grants, and a node owner is entitled to answer them
 		// differently (ADR 0026 §9).
-		"file_upload":     m.files.FileUploadEnabled(),
+		"file_upload": m.files.FileUploadEnabled(),
+		// Reported, never configured: this is a statement about what this binary can
+		// do, and 0.8.0 is the first that can (ADR 0028 sec 5).
+		"context_projection": true,
+		// The fourth capability of the same shape (ADR 0029 sec 7). Unlike the three
+		// above it is not simply "this binary can": runner mode has to be switched on
+		// **and** the run root has to have passed the isolation self-check, because a
+		// node that would refuse to start a run should not advertise that it can take
+		// one.
+		"agent_runner":    m.runnerReady(),
 		"name":            m.cfg.Node.Name,
 		"hostname":        hostname,
 		"os":              m.info.OS,
@@ -514,12 +623,28 @@ func (m *Manager) dispatch(
 			m.handleFsUpload(env, data, send)
 		case "filesystem.store":
 			m.handleFsStore(env, data, send)
+		case "context.project":
+			m.handleContextProject(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
 			m.handleTunnelOpen(ctx, env, data, send)
 		case "tunnel.close":
 			m.handleTunnelClose(env, send)
+		case "run.offer":
+			// Explicit, like every other type. The daemon's switch drops anything it
+			// does not name, and a dropped run frame looks like "the message vanished
+			// with no error" — the hardest bug in this phase to find.
+			if m.runnerReady() {
+				m.handleRunOffer(ctx, env, data, m.writerFor(send))
+			}
+		case "run.cancel":
+			if m.runnerReady() {
+				m.handleRunCancel(env, data)
+			}
+		case "runner.registered":
+			// An ack, like node.registered. Nothing to do with it beyond not treating
+			// it as an unknown type.
 		}
 	}
 }
@@ -577,6 +702,7 @@ func (m *Manager) handleStart(
 	// hot path deliberately: a directory walk must never delay the reply that
 	// tells the browser its terminal is ready.
 	go m.pruneWorkspaceUploads(resolved)
+	go m.pruneWorkspaceProjection(resolved)
 	frame, _ := protocol.BuildResponse(
 		"session.started", m.creds.NodeID, env.RequestID, true,
 		map[string]any{"session_id": p.SessionID.String(), "runtime": p.Runtime, "workspace": resolved},
@@ -598,6 +724,71 @@ func (m *Manager) pruneWorkspaceUploads(workspacePath string) {
 		slog.Info("pruned expired workspace uploads",
 			"event", "filesystem.upload_prune", "removed", removed, "freed_bytes", freed)
 	}
+}
+
+// projectionRetentionLoop periodically sweeps only workspaces belonging to
+// live sessions. An immediate pass makes restart behaviour deterministic; the
+// normal cadence defaults to six hours and is operator-configurable.
+func (m *Manager) projectionRetentionLoop(ctx context.Context) {
+	hours := m.cfg.Filesystem.Projection.CleanupIntervalHours
+	if hours <= 0 {
+		hours = config.DefaultProjectionCleanupHours
+	}
+	m.pruneActiveWorkspaceProjections()
+	ticker := time.NewTicker(time.Duration(hours) * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			m.pruneActiveWorkspaceProjections()
+		}
+	}
+}
+
+func (m *Manager) pruneActiveWorkspaceProjections() {
+	for _, workspacePath := range m.sessions.Workspaces() {
+		m.pruneWorkspaceProjection(workspacePath)
+	}
+}
+
+// pruneWorkspaceProjection is best-effort housekeeping. Its file service has a
+// closed subtree allowlist, so uploads and .gitignore are unreachable here.
+func (m *Manager) pruneWorkspaceProjection(workspacePath string) {
+	root, err := m.guard.OpenWorkspace(workspacePath)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	days := m.cfg.Filesystem.Projection.RetentionDays
+	if days <= 0 {
+		days = config.DefaultProjectionRetentionDays
+	}
+	m.projectionMu.RLock()
+	keepVersion := m.processVersion
+	m.projectionMu.RUnlock()
+	removed, err := m.files.ProjectRetention(
+		root, keepVersion, time.Duration(days)*24*time.Hour, m.now(),
+	)
+	if err != nil {
+		slog.Warn("workspace projection retention failed",
+			"event", "context.projection_prune", "error", safeErr(err))
+		return
+	}
+	if removed > 0 {
+		slog.Info("pruned expired workspace projections",
+			"event", "context.projection_prune", "removed", removed)
+	}
+}
+
+func (m *Manager) rememberProcessVersion(version string) {
+	if version == "" {
+		return
+	}
+	m.projectionMu.Lock()
+	m.processVersion = version
+	m.projectionMu.Unlock()
 }
 
 // terminalChunk keeps each binary frame within the 64 KiB control/binary cap;

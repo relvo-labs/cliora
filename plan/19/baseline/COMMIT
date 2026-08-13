@@ -1,0 +1,7 @@
+b6f66e5a0530405fb26a2b31a8feef31c91d678a
+
+Working-tree note: plan/19 and its governing research edits were uncommitted when
+implementation started. Product-code measurements were taken from this commit before
+the UI-01/UI-02 changes; the baseline make-check run began before the token target was
+added and demonstrates that the previous eight-target gate passed with 104 unresolved
+references.

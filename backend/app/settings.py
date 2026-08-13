@@ -111,6 +111,10 @@ class Settings(BaseSettings):
     # than manual retention, and there is no other background job to attach to.
     audit_retention_days: int = 365
     node_metric_retention_days: int = 30
+    # Revoked session-token rows remain long enough for audit metadata's token_id
+    # to be attributable. Live/unrevoked rows have revoked_at NULL and are never
+    # selected by the retention command (plan/17 D9).
+    session_token_retention_days: int = 90
 
     # --- P4 audit query bounds (ADR 0016) ---
     audit_page_default: int = 50
@@ -137,6 +141,86 @@ class Settings(BaseSettings):
     dashboard_resource_window_seconds: int = 300
     dashboard_recent_activity_limit: int = 20
     dashboard_unhealthy_limit: int = 10
+
+    # --- V2.0 project layer (ADR 0027) ---
+    # Off by default. With it off the system behaves exactly as it did before the
+    # project layer existed: every `/api/projects*` path answers 404, `features` is
+    # empty, and the navigation rail is unchanged.
+    #
+    # Enforced **inside the handlers**, never by mounting the router conditionally.
+    # `tests/test_authz.py::test_every_mounted_route_is_in_the_matrix` reads
+    # `app.routes`, which is fixed at import time, so conditional mounting would make
+    # `make check` pass or fail according to the environment it ran in — and a gate
+    # whose verdict depends on a `.env` file is not a gate.
+    #
+    projects_enabled: bool = False
+    # Ceiling on a session credential's life (ADR 0028 sec 3). The *first* condition is
+    # the session ending — this is the backstop for a session that stays open for days.
+    session_token_ttl_hours: int = 24
+
+    # --- V2.2 agent runner (ADR 0029/0030/0031) ---
+    # Off by default, and **the inner of two flags**: every V2.2 route carries
+    # `require_projects_enabled` first and this one second. The order matters — the
+    # other way round, a deployment with the project layer off would answer 403 where
+    # it should answer 404, and a 403 confirms the route exists (plan/18/00-…md D12).
+    #
+    # One flag for four half-systems (queue, node execution, node directory,
+    # artifacts) because none of them is useful alone, and their failure modes are
+    # different enough that shipping any one on its own would be a liability rather
+    # than a feature.
+    agent_runs_enabled: bool = False
+    # Which git hosts this **deployment** may reach. The node keeps its own list
+    # (`runner.git.allowed_hosts`), and both must pass: Central is the coarse filter,
+    # the node is the final authority — exactly the split `sessions.py:73` documents
+    # for workspace paths. Empty means no repository can be registered at all, which
+    # is the right default for a deployment that has not thought about it yet.
+    git_allowed_hosts: list[str] = []
+    # Artifact quotas, three layers (ADR 0030 Part B). All three answer 413 with the
+    # current usage and the limit in `details`; none of them fails silently.
+    artifact_max_bytes: int = 10 * 1024 * 1024
+    artifact_run_max_count: int = 20
+    artifact_project_quota_mb: int = 1024
+    # A run's log is bounded and truncated **from the middle**, with the dropped byte
+    # count stated (exit condition 14). The content is a JSONL event stream, so this
+    # number should be re-checked against M-AR-2 rather than reasoned about.
+    run_log_max_bytes: int = 5 * 1024 * 1024
+    # Lease semantics (ADR 0029 sec 4/5). The renewal period is the daemon's; these are
+    # what Central judges by.
+    run_lease_timeout_seconds: int = 180
+    run_max_attempts: int = 3
+    # A run waiting on a person renews its lease and accrues no execution timeout, but
+    # it cannot wait forever: at this point the card goes back to `blocked`.
+    run_waiting_timeout_hours: int = 24
+    # The run credential's ceiling. Shorter than a session token's because a run is a
+    # bounded piece of work, and the wall clock backstop is six hours.
+    run_token_ttl_hours: int = 12
+
+    # --- V2.3 project secrets (ADR 0032) ---
+    # The master key that wraps every project secret's data key. 32 bytes, base64:
+    # `openssl rand -base64 32`. **Separate from `secret_encryption_key` on purpose**:
+    # the two rotate for different reasons, and sharing one key makes each rotation
+    # hostage to the other (ADR 0032 §3).
+    #
+    # **Keep it somewhere other than the database backup.** The backup cannot restore a
+    # secret without it, and losing it loses every secret irrecoverably.
+    secret_master_key: str = ""
+    # Which version a newly written secret is stamped with. Rotation is: put the old key
+    # in `CLIORA_SECRET_MASTER_KEY_V<n>`, put the new one in `CLIORA_SECRET_MASTER_KEY`,
+    # raise this. Existing rows keep opening under their own version until they are
+    # rewrapped, and rewrapping never rewrites a ciphertext.
+    secret_master_key_version: int = 1
+    # Whether the platform delivers git credentials to runners at all (2026-08-13
+    # ruling). **Off by default**: at this stage git authentication is the node owner's
+    # manual configuration and the platform does not manage it. With this off, secrets
+    # of kind `git_pat`/`git_ssh_key` cannot be created, a repository's `auth_kind` may
+    # only be `ambient`, `spec.secrets` never carries a git kind, and the daemon's
+    # ambient-credential isolation does not engage.
+    #
+    # The consequence of the default, stated where it is set: the platform pushes on a
+    # card's behalf using a credential it did not issue and cannot revoke. The five hard
+    # constraints still hold — they constrain *what* is pushed — but "revocable" does
+    # not apply to that path.
+    git_secret_delivery_enabled: bool = False
 
     # --- P4 metrics export (ADR 0018) ---
     # Off by default. An always-on metrics endpoint is a permanent read surface on the
@@ -242,6 +326,38 @@ class Settings(BaseSettings):
             )
         if self.metrics_enabled and len(self.metrics_scrape_token) < 16:
             raise ValueError("metrics_scrape_token must be at least 16 characters")
+        return self
+
+    @model_validator(mode="after")
+    def require_master_key_when_agent_runs_enabled(self) -> "Settings":
+        """Refuse to start without a usable master key — **but only when it is needed**.
+
+        Conditional, and that is the whole decision. Checking unconditionally would stop
+        every existing deployment that does not use V2 from booting, in order to protect
+        zero rows: with the flag off there are no secrets endpoints and no secrets. All
+        three precedents in this file are conditional too — `metrics_scrape_token` on
+        `metrics_enabled` just below, and the dev-secret check on `environment`.
+
+        Refusing at startup rather than at the first decryption, because the alternative
+        fails on a node three minutes into a run, where the message is furthest from the
+        person who can fix it.
+        """
+        if not self.agent_runs_enabled:
+            return self
+        # Imported here rather than at module scope: `secret_envelope` reads settings to
+        # find the key, so a top-level import would be a cycle. The function itself is
+        # pure over the string — it never calls `get_settings()` — which is what lets it
+        # run while `Settings` is still being constructed.
+        from app.security import secret_envelope
+
+        ok, reason = secret_envelope.master_key_status_for(self.secret_master_key)
+        if not ok:
+            raise ValueError(
+                f"CLIORA_SECRET_MASTER_KEY {reason} — it is required when "
+                "CLIORA_AGENT_RUNS_ENABLED is true (32 bytes, base64: "
+                "`openssl rand -base64 32`), and it must be kept separately from the "
+                "database backup because the backup cannot restore a secret without it"
+            )
         return self
 
     @model_validator(mode="after")

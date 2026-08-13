@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Where a run has got to, contract 1.11.0. `phase` is a closed vocabulary because the Run detail page renders a fixed set of steps; a free string would make the page show whatever the daemon happened to say. This message also carries the run's *liveness* on Central's side — `last_event_at` — but note the split (ADR 0029 sec 4): the idle decision is the daemon's, because the daemon has the event stream, and this column exists so the page can say 'last activity: 3 minutes ago'.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "phase"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "phase": {
+      "enum": [
+        "preparing",
+        "authenticating",
+        "fetching",
+        "checked_out",
+        "running",
+        "waiting_for_input",
+        "finishing"
+      ],
+      "$comment": " `authenticating` joins in 1.12.0, between preparing and fetching: with platform-managed credentials in play, \"stuck on a credential\" and \"stuck on the network\" are different facts and the Run detail page should not have to guess which."
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "commit_sha": {
+      "$comment": "Reported once, with `phase: checked_out`, so the Run detail page can answer 'which version of the code did this run actually execute'.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "waiting_for_input": {
+      "$comment": "True when the agent asked a question and is blocked on a person. A run in this state renews its lease and accrues no execution timeout, and it occupies `max_waiting` rather than `max_concurrent`.",
+      "type": "boolean"
+    }
+  }
+}

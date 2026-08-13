@@ -183,10 +183,7 @@ h2 {
   color: var(--text-secondary);
 }
 .file {
-  font-family:
-    JetBrains Mono,
-    ui-monospace,
-    monospace;
+  font-family: var(--font-mono);
 }
 .readonly {
   padding: 1px 6px;
@@ -241,7 +238,7 @@ h2 {
   margin: 0;
   padding: 16px;
   font-size: 12px;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 .hint.bad {
   color: var(--status-error);

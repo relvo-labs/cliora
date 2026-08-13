@@ -228,6 +228,156 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
   },
 
   // --- Workspace ---
+  // --- 專案層（ADR 0027）---
+  //
+  // 旗標關閉時的 /api/projects* 刻意回一個沒有錯誤碼的 404，所以這裡沒有
+  // PROJECTS_DISABLED —— 一個具名的碼會洩漏「這個功能存在，只是關著」，
+  // 而那正是裸 404 要藏住的事。
+  PROJECT_NOT_FOUND: {
+    cause: "該專案不存在，或已被移除。",
+    nextStep: "回到專案列表重新整理。",
+    retryable: false,
+  },
+  PROJECT_SLUG_TAKEN: {
+    cause: "已有專案使用這個識別碼；識別碼在整個平台上唯一，且建立後不可變更。",
+    nextStep: "換一個識別碼。顯示名稱不受限制，可以維持原本想要的名字。",
+    retryable: false,
+  },
+  PROJECT_SLUG_INVALID: {
+    cause:
+      "識別碼只能用小寫英數字與連字號；若名稱全為非拉丁字元，系統無法自動推導。",
+    nextStep: "自行指定一個識別碼，例如 traqora-api。",
+    retryable: false,
+  },
+  PROJECT_STATUS_INVALID: {
+    cause: "專案狀態只有進行中、暫停、已封存三種。",
+    nextStep: "改用其中一種。",
+    retryable: false,
+  },
+  PROJECT_ARCHIVED: {
+    cause:
+      "已封存的專案不接受新的 Session 與新的 Workspace 綁定；既有的一律不受影響。",
+    nextStep: "先解除封存，或改用其他專案。",
+    retryable: false,
+  },
+  PROJECT_WORKSPACE_NOT_FOUND: {
+    cause: "該綁定已被解除，或屬於另一個專案。",
+    nextStep: "重新整理專案頁面。",
+    retryable: false,
+  },
+  // --- 任務層（ADR 0028）---
+  //
+  // 兩組看起來像、其實不同：相依未滿足是「等一下就好」，循環相依是「這個圖永遠
+  // 滿足不了」；關卡不存在是打錯字，關卡被停用是這個部署的狀態。合併任何一組，
+  // 使用者就分不出該等待還是該去改東西。
+  TASK_NOT_FOUND: {
+    cause: "該卡片、Epic、User Story 或相依關係不存在於這個專案。",
+    nextStep: "重新整理看板。",
+    retryable: false,
+  },
+  TASK_VERSION_CONFLICT: {
+    cause:
+      "這張卡剛被別人改過。每次寫入都帶著讀取當下的版本，所以兩個人同時拖同一張卡不會互相覆蓋。",
+    // 不是 retryable：同一個請求原樣重送會再撞一次版本。要重來的是「讀新版 → 再拖」，
+    // 那是使用者的動作，不是一個重試按鈕。
+    nextStep: "看板已重新載入這張卡，請再拖一次。",
+    retryable: false,
+  },
+  TASK_DEPENDENCY_UNSATISFIED: {
+    cause:
+      "前置卡片尚未完成。進入「就緒」之後的車道等於宣告這張卡可以動工，而未完成的前置卡與這個宣告矛盾。",
+    nextStep: "先完成訊息中指名的卡片，或解除已經不成立的相依關係。",
+    retryable: false,
+  },
+  TASK_DEPENDENCY_CYCLE: {
+    cause:
+      "前置卡片已經（直接或間接）相依於這張卡，加上這條會形成一個永遠無法滿足的循環。",
+    nextStep: "先移除循環中的其中一條相依關係。",
+    retryable: false,
+  },
+  TASK_STAGE_INVALID: {
+    cause: "車道、風險、優先權、來源或交付模式不在流程定義的詞彙裡。",
+    nextStep: "查看該專案的流程定義所允許的值。",
+    retryable: false,
+  },
+  TASK_ACCEPTANCE_CRITERIA_INVALID: {
+    cause: "驗收標準必須是物件陣列，才能在卡片與 Agent 情境中逐項呈現。",
+    nextStep: "把每一項改成至少含有 text 欄位的物件。",
+    retryable: false,
+  },
+  TASK_CONTEXT_TOO_LARGE: {
+    cause: "驗收標準必須完整保留在 4 KB 任務情境包中，目前內容超過保留預算。",
+    nextStep: "縮短或合併驗收標準；描述類區塊會由系統自動省略。",
+    retryable: false,
+  },
+  FORBIDDEN_FIELD: {
+    cause:
+      "這個欄位不能用這種方式設定。被拒絕而不是被忽略，是因為靜默丟掉的欄位是使用者以為改成功的變更。審查關卡尤其如此：它有自己的端點與自己的權限。",
+    nextStep: "改用擁有該欄位的端點。",
+    retryable: false,
+  },
+  GATE_UNKNOWN: {
+    cause: "流程定義裡沒有這個關卡。",
+    nextStep: "查看該專案的流程定義所列的關卡。",
+    retryable: false,
+  },
+  GATE_DISABLED: {
+    cause:
+      "這個關卡依賴一項未啟用的整合（介面審查需要 tunnel 整合）。它在讀取時就被停用，而不是留著一個永遠無法通過的關卡——那是死鎖不是嚴謹。",
+    nextStep: "啟用該整合，或不經過這個關卡繼續。",
+    retryable: false,
+  },
+  GATE_REQUIRES_HUMAN_ACTOR: {
+    cause: "審查關卡必須由人核准；Agent 的輸出不等於核准。",
+    nextStep: "由具備核准權限的人在平台上勾選。",
+    retryable: false,
+  },
+  // --- 需求與拆解（D28）---
+  REQUIREMENT_NOT_FOUND: {
+    cause: "該需求不存在於這個專案。",
+    nextStep: "重新整理需求列表。",
+    retryable: false,
+  },
+  REQUIREMENT_NOT_SPECIFIED: {
+    cause: "核准是「核准某個東西」；還沒有任何規格版本時沒有東西可以核准。",
+    nextStep: "先新增一版規格。",
+    retryable: false,
+  },
+  SPEC_HAS_OPEN_QUESTIONS: {
+    cause:
+      "還有問題既沒有答案、也沒有被明確標為「已知未知」。規格在這種狀態下不得核准。",
+    nextStep: "逐一回答，或把它標記為已知未知，再核准。",
+    retryable: false,
+  },
+  REQUIREMENT_ALREADY_APPROVED: {
+    cause:
+      "規格版本在核准前只新增不修改；核准之後改變主意是一個新的需求，而不是把舊的改寫。",
+    nextStep: "另提一個需求。",
+    retryable: false,
+  },
+  REQUIREMENT_NOT_APPROVED: {
+    cause:
+      "拆解一個還沒有人同意的東西，產出的是會被丟掉的工作。這條由 API 強制，不是畫面隱藏——V2.5 的 Agent 走的是同一條路。",
+    nextStep: "先核准規格。",
+    retryable: false,
+  },
+  PROPOSAL_NOT_FOUND: {
+    cause: "該拆解提案不存在。",
+    nextStep: "重新整理需求頁面。",
+    retryable: false,
+  },
+  PROPOSAL_ALREADY_DECIDED: {
+    cause: "接受提案會建立真的卡片，所以只做一次；再決定一次會建出重複的卡。",
+    nextStep: "計畫有變的話，另建一個提案。",
+    retryable: false,
+  },
+  SESSION_PROJECT_MISMATCH: {
+    cause:
+      "Session 指定專案時，其 Workspace 必須是該專案的綁定之一。比對是完全相等的，所以已綁定路徑的子目錄本身並未綁定。",
+    nextStep:
+      "從該專案的綁定清單中選一個路徑、先綁定這個路徑，或不要指定專案。",
+    retryable: false,
+  },
   WORKSPACE_OUTSIDE_ALLOWED_ROOT: {
     cause: "此路徑解析後落在該 Node 允許的所有根目錄之外。",
     nextStep: "改選允許根目錄內的路徑（agentd workspace list）。",
@@ -435,6 +585,265 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     cause:
       "三個上限之一已滿：平台的整體併發預算、此 Node 的上限，或你自己的上限。",
     nextStep: "關閉不再需要的隧道，或請管理員把預算調整為與服務商方案一致。",
+    retryable: false,
+  },
+  // 卡片產物（ADR 0030 Part B）。三個配額碼各自要說清楚是哪一層滿了——
+  // 出口條件明寫「不是靜默失敗」：一個附不上產物的 Agent 必須能在卡片上說出來。
+  ARTIFACT_TOO_LARGE: {
+    cause: "單一產物不得超過此部署的單件上限。",
+    nextStep: "拆開、壓縮，或附一份摘要並把完整輸出放在別處。",
+    retryable: false,
+  },
+  ARTIFACT_RUN_LIMIT: {
+    cause:
+      "單次執行可附加的件數有上限，這樣一個迴圈就不會把整個專案的配額吃光。",
+    nextStep: "把多個檔案合併成一件再附加。",
+    retryable: false,
+  },
+  ARTIFACT_PROJECT_QUOTA: {
+    cause:
+      "產物跟著卡片走、不會被定時刪除，所以一個專案會一直累積到有人決定刪哪些。",
+    nextStep:
+      "刪掉不再需要的產物——刪除會真的釋放空間，而「誰以什麼理由刪的」仍然留著。",
+    retryable: false,
+  },
+  ARTIFACT_DIGEST_MISMATCH: {
+    cause:
+      "這不是防竄改（連線本來就是 TLS），而是防截斷：一個被中途砍斷的上傳應該失敗，而不是變成一件打不開的產物。",
+    nextStep: "重新上傳一次。",
+    retryable: true,
+  },
+  ARTIFACT_DELETED: {
+    cause: "它的內容已經被刪除；而「誰以什麼理由刪的」是刻意留著的。",
+    nextStep: "卡片上那一列旁邊寫著理由。",
+    retryable: false,
+  },
+  RUN_TOKEN_TTL_EXCEEDED: {
+    cause:
+      "一枚 run 憑證的效期不得超過此部署對「Agent 憑證最長活多久」的既有承諾。" +
+      "牆鐘從 1 小時放大到 6 小時之後這個上限開始會咬到，所以在這裡拒絕，而不是發一枚會在 run 中途過期的 token。",
+    nextStep: "調低 run 的逾時，或調高 CLIORA_RUN_TOKEN_TTL_HOURS。",
+    retryable: false,
+  },
+  // Agent Runner（ADR 0029）。這一組全部發生在「派工」那一刻，而它們的順序是設計的一
+  // 部分：先擋卡片本身的問題，再擋本期做不到的宣告，最後才是設定與 Agent。
+  TASK_NOT_READY: {
+    cause:
+      "只有在「就緒」車道的卡片可以派給 Agent。派工是一個執行動作，而還沒進就緒的卡片代表還沒有人同意要動工。",
+    nextStep: "先把卡片移到「就緒」。",
+    retryable: false,
+  },
+  RUN_ALREADY_ACTIVE: {
+    cause:
+      "一張卡同時只會有一次執行。兩個 Agent 同時改同一份工作，沒有辦法合併結果。",
+    nextStep: "等這次執行結束，或先取消它。",
+    retryable: false,
+  },
+  RUN_NOT_ACTIVE: {
+    cause: "取消只對排隊中或執行中的 run 有意義。",
+    nextStep: "看一下這次執行的結果；若要重做，重新派工一次。",
+    retryable: false,
+  },
+  // V2.3 取代了 TASK_REQUIRES_SECRETS：機密存在了，所以拒絕的理由變成關於**這張卡**，
+  // 而不是關於版本。兩個碼，因為它們在不同的頁面上修（ADR 0032 §0）。
+  TASK_SECRETS_NOT_ALLOWED: {
+    cause:
+      "卡片只能宣告專案允許清單裡的名稱。允許清單是**意圖**（這個專案的卡片可以要求哪些名稱），" +
+      "刻意不從實際存在的機密推導——否則刪掉一枚機密會悄悄讓一批卡片不能派工。",
+    nextStep: "把名稱加進專案的允許清單，或修正卡片；回應會指名是哪幾個。",
+    retryable: false,
+  },
+  TASK_SECRETS_MISSING: {
+    cause:
+      "名稱是允許的，但底下還沒有機密——最常見的原因是它被刪掉了。照樣執行等於讓卡片在" +
+      "**沒有它宣告的值**的情況下跑，而那看起來會像 Agent 壞掉。",
+    nextStep: "到專案設定建立那枚機密，或移除卡片上的宣告。",
+    retryable: false,
+  },
+  TASK_BRANCH_NOT_DELIVERABLE: {
+    cause:
+      "平台只會推 `cliora/<卡號>-<次數>` 命名空間內的分支，所以一張接續其他分支的卡片" +
+      "永遠交付不了。在派工當下拒絕，而不是等 run 做完工作才在推送時失敗。",
+    nextStep: "把交付方式改成「附成產物」，或接續一條平台自己建立的分支。",
+    retryable: false,
+  },
+  AGENT_TAG_MISMATCH: {
+    cause:
+      "**指定不會創造資格。** 會指定某台機器，通常正是因為只有它有卡片需要的東西；" +
+      "讓指定覆蓋 tag，等於在一台沒有 docker 的機器上跑一張要 docker 的卡，然後在第三分鐘失敗。",
+    nextStep:
+      "回應會指名缺哪幾個 tag：換一台 Agent，或在那個 node 的設定檔裡加上它們。",
+    retryable: false,
+  },
+  AGENT_REFUSES_UNTAGGED: {
+    cause:
+      "那台機器被保留給有宣告 tag 的工作（`run_untagged: false`）。沒有這個設定，" +
+      "一台專機仍會被一堆普通卡片佔滿。",
+    nextStep: "給卡片加上那台機器具備的 tag，或派給另一台 Agent。",
+    retryable: false,
+  },
+  AGENT_REFUSES_SECRETS: {
+    cause:
+      "那個 node 的擁有者宣告了不收機密（`accept_secrets: false`），那是營運者對" +
+      "「哪些機器可以持有憑證」的否決權（ADR 0032 §0）。",
+    nextStep: "派給一台收機密的 Agent，或移除卡片上的機密宣告。",
+    retryable: false,
+  },
+  SECRET_NAME_INVALID: {
+    cause: "機密的名稱會變成一個環境變數，所以必須是大寫字母、數字與底線。",
+    nextStep: "改成像 GITHUB_TOKEN 這樣的名稱。",
+    retryable: false,
+  },
+  SECRET_NAME_RESERVED: {
+    cause:
+      "PATH、HOME 這類名稱與 GIT_／SSH_／CLIORA_ 前綴是保留的。一枚叫 GIT_ASKPASS 的機密" +
+      "會直接接管平台自己那條 git 憑證路徑所依賴的機制。",
+    nextStep: "換一個不在保留集合裡的名稱。",
+    retryable: false,
+  },
+  SECRET_KIND_INVALID: {
+    cause:
+      "機密的類型決定它的值在 node 上會去哪裡，所以它是一個封閉集合（ADR 0032 §4）。",
+    nextStep: "使用 env、git_pat、git_ssh_key 或 provider_token。",
+    retryable: false,
+  },
+  SECRET_EXISTS: {
+    cause: "同一個專案裡，尚未刪除的機密名稱是唯一的。",
+    nextStep: "改用「輪替」覆寫既有的那一枚，而不是建立第二枚。",
+    retryable: false,
+  },
+  SECRET_IN_USE: {
+    cause:
+      "有一個已登記的 repository 用這枚機密認證。刪掉它會讓那個 repository 指向一枚" +
+      "不存在的憑證，而失敗會在 run 跑到一半才出現。",
+    nextStep: "先把那個 repository 指向別的憑證；回應會指名是哪一個。",
+    retryable: false,
+  },
+  SECRET_TOO_LARGE: {
+    cause:
+      "上限是 8 KiB，也就是實測過最大的合法輸入（RSA-4096 私鑰 3 369 bytes）的 2.4 倍。" +
+      "八枚機密還要一起塞進一個 64 KiB 的派工訊框，旁邊還有情境包。",
+    nextStep: "ed25519 私鑰只要 399 bytes，做的是同一件事。",
+    retryable: false,
+  },
+  GIT_SECRET_DELIVERY_DISABLED: {
+    cause:
+      "**預設關閉**（2026-08-13 裁決）：現階段 git 認證由 node 的擁有者自行配置，平台不管理。" +
+      "存下一枚永遠不會被下放的憑證，是一個看起來設定完成而其實沒有的狀態。",
+    nextStep:
+      "在 node 上配置 git 認證，或在 Central 設定 CLIORA_GIT_SECRET_DELIVERY_ENABLED。",
+    retryable: false,
+  },
+  TASK_DELIVERY_UNSUPPORTED: {
+    cause:
+      "本階段的交付方式是把產物附加到卡片上；分支與 PR 要等平台自己的 git 寫入路徑。",
+    nextStep:
+      "先把交付方式設成「不交付」或「附成產物」；回應會指名宣告的模式從哪一版開始生效。",
+    retryable: false,
+  },
+  PROJECT_NO_REPOSITORY: {
+    cause:
+      "Agent 會自己把程式碼拉下來，所以平台必須知道程式碼在哪裡。這不是卡片上的欄位能回答的——它是專案設定。",
+    nextStep:
+      "到專案設定登記 repository 之後再派工一次；回應帶著那一頁的連結。",
+    retryable: false,
+  },
+  REPOSITORY_HOST_NOT_ALLOWED: {
+    cause:
+      "有兩份允許清單：這個部署的，以及每一台 Node 的。這是部署的那一份，而它在管理員設定之前是空的。",
+    nextStep: "請管理員把該 host 加進 CLIORA_GIT_ALLOWED_HOSTS。",
+    retryable: false,
+  },
+  REPOSITORY_EXISTS: {
+    cause: "一個專案可以登記多個 repository，但同一個不能登記兩次。",
+    nextStep: "直接用既有的那一筆；若要改分支，先移除再重新登記。",
+    retryable: false,
+  },
+  AGENT_DISABLED: {
+    cause:
+      "卡片指定了一個被停用的 Agent。這在派工當下就擋下而不是排進佇列，因為「被停用」是有人做的決定，" +
+      "不是一台等一下會回來的機器。",
+    nextStep: "啟用那個 Agent，或不指定 Agent 直接派工。",
+    retryable: false,
+  },
+  // 從 node 送回來的那一組。它們會經由 relay 到達畫面，所以每一個都要有指引。
+  AGENT_RUNS_DISABLED: {
+    cause:
+      "有一台 daemon 想註冊成 Runner，但這個部署把 Agent 執行關掉了。該 node 的互動式 Session 不受影響。",
+    nextStep: "若這個部署要提供無人值守執行，請在 Central 打開該旗標。",
+    retryable: false,
+  },
+  RUNNER_NOT_REGISTERED: {
+    cause:
+      "poll 在 register 之前抵達——通常是 daemon 剛重連、還沒重新宣告自己。",
+    nextStep: "不需要處理；daemon 在下一次連線時會註冊並繼續 poll。",
+    retryable: true,
+  },
+  RUNNER_DISABLED: {
+    cause: "管理員把它停用了，所以即使它的 node 在線上，它仍然不會被派工。",
+    nextStep: "在 Agents 頁把它啟用。",
+    retryable: false,
+  },
+  RUN_NOT_FOUND: {
+    cause:
+      "這個 run id 在平台上不存在——通常是一個延遲或重複的訊框，而那個 run 已經被回收了。",
+    nextStep: "不需要處理；租約逾時之後這是正常現象。",
+    retryable: false,
+  },
+  RUN_INVALID_STATE: {
+    cause: "對一個已經進入終態的 run 送了續租或進度回報。",
+    nextStep: "不需要處理；node 發現那個 run 不在之後就會停止回報。",
+    retryable: false,
+  },
+  RUN_SOURCE_UNAVAILABLE: {
+    cause:
+      "三件事之一：那台機器沒有該 repository 的憑證、host 不在該 node 的允許清單內，或 ref 不存在。" +
+      "details 會指名是哪一種——而且**永遠不會回顯 URL**，因為有人可能把憑證貼進去了。",
+    nextStep:
+      "看 details：在那台機器上補憑證、把 host 加進該 node 的允許清單，或修正卡片上的分支。",
+    retryable: false,
+  },
+  RUN_DISK_QUOTA: {
+    cause:
+      "單次執行的目錄或該 node 的總量超過配額。配額存在的理由很具體：一個失控的建置會把磁碟塞滿，" +
+      "而那會連互動式 Session 一起拖下去。",
+    nextStep:
+      "等清理迴圈，或在那台 node 上調高 runner.run_quota_bytes——如果那份工作真的需要更多。",
+    retryable: false,
+  },
+  RUN_IDLE_TIMEOUT: {
+    cause:
+      "存活判定看的是執行環境的事件流而不是牆鐘。在閒置上限內沒有任何事件抵達，所以這次執行被中止了。",
+    nextStep:
+      "看 run log 的最後幾筆；若那份工作合理地會安靜更久，調高 runner.idle_timeout_seconds。",
+    retryable: false,
+  },
+  RUN_TIMEOUT: {
+    cause:
+      "這是兜底而不是存活判定：這次執行一直有在吐事件，只是沒能在時限內做完。",
+    nextStep: "把卡片拆小，或調高這個部署的 run 牆鐘上限。",
+    retryable: false,
+  },
+  RUN_RUNTIME_UNAVAILABLE: {
+    cause: "那支 CLI 沒裝、不可執行，或版本太舊而沒有帶事件流的非互動介面。",
+    nextStep: "在那台機器上安裝或更新 CLI，並讓 daemon 重新註冊。",
+    retryable: false,
+  },
+  RUN_CANCELLED: {
+    cause: "有人按了取消，或那台 node 正在關機。",
+    nextStep: "準備好之後重新派工一次。",
+    retryable: false,
+  },
+  RUN_INTERNAL_ERROR: {
+    cause:
+      "daemon 的執行路徑裡出了問題。細節只在那台 node 的 log 裡，連同 request id。",
+    nextStep: "重試；若持續發生，收集那個 run id 前後的 daemon log。",
+    retryable: true,
+  },
+  AGENT_RUNTIME_MISMATCH: {
+    cause:
+      "被指定的 Node 沒有回報這張卡需要的執行環境——常見原因是那支 CLI 有裝但版本太舊，偵測不到非互動介面。",
+    nextStep: "改指定別的 Agent，或更新那台機器上的 CLI 並讓它重新註冊。",
     retryable: false,
   },
 };

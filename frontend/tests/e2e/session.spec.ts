@@ -290,6 +290,7 @@ test.describe("session & terminal", () => {
         .catch(() => false)
     ) {
       await readme.click();
+      await expect(page.locator("#panel-preview")).toBeVisible();
       await expect(page.locator(".monaco-editor")).toBeVisible({
         timeout: 20_000,
       });
@@ -344,6 +345,7 @@ test.describe("session & terminal", () => {
   test("layout: the CLI terminal fills the centre pane and the page does not scroll", async ({
     page,
   }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     const nodeCount = await openDialogAndCountNodes(page);
     test.skip(nodeCount === 0, "no online node available in this stack");
@@ -377,9 +379,17 @@ test.describe("session & terminal", () => {
         const screen = pane.querySelector(".xterm-screen") as HTMLElement;
         const root = document.documentElement;
         const main = document.querySelector("main") as HTMLElement;
+        const chromeHeight = Array.from(pane.children)
+          .filter((child) => child !== host)
+          .reduce(
+            (height, child) =>
+              height + (child as HTMLElement).getBoundingClientRect().height,
+            0,
+          );
         return {
           paneHeight: pane.clientHeight,
           hostHeight: host.clientHeight,
+          chromeHeight: Math.round(chromeHeight),
           screenHeight: Math.round(screen.getBoundingClientRect().height),
           // One <div> per row; xterm's own rows/cols are not exposed to the page.
           rows: pane.querySelectorAll(".xterm-rows > div").length,
@@ -393,19 +403,19 @@ test.describe("session & terminal", () => {
 
     const wide = await measure();
     const why = (m: object) => JSON.stringify(m);
-    // The host takes the whole pane. 4px of slack, not 0: the pane's own border
-    // radius and sub-pixel rounding are not a layout bug.
+    // The host takes all space left after optional controls such as image upload.
+    // Four pixels of slack cover borders and sub-pixel rounding.
     expect(
       wide.hostHeight,
       `host did not fill the pane: ${why(wide)}`,
-    ).toBeGreaterThanOrEqual(wide.paneHeight - 4);
+    ).toBeGreaterThanOrEqual(wide.paneHeight - wide.chromeHeight - 4);
     // …and xterm actually re-fitted into it. The screen is rows × cell height, so
     // it always leaves under one row spare; 90% is well clear of that and well
     // clear of the 50% the collapsed layout produced.
     expect(
       wide.screenHeight,
       `xterm did not re-fit to the host: ${why(wide)}`,
-    ).toBeGreaterThanOrEqual(wide.paneHeight * 0.9);
+    ).toBeGreaterThanOrEqual(wide.hostHeight * 0.9);
     // A ratio alone would also pass on a correct-but-tiny terminal. 24 rows was
     // the broken value at every window size, so the floor is set above it.
     expect(
@@ -449,6 +459,10 @@ test.describe("session & terminal", () => {
       // The preview pane fills its own height too — the same defect lived in
       // PreviewPane, where the row template only worked while the meta line was
       // rendered.
+      await expect(page.locator("#panel-preview")).toBeVisible();
+      await expect(page.locator("#panel-preview .body")).toBeVisible({
+        timeout: 20_000,
+      });
       const preview = await page.evaluate(() => {
         const pane = document.querySelector("#panel-preview") as HTMLElement;
         const body = pane.querySelector(".body") as HTMLElement;
@@ -477,11 +491,13 @@ test.describe("session & terminal", () => {
     expect(
       narrow.hostHeight,
       `host did not fill at 1000x800: ${why(narrow)}`,
-    ).toBeGreaterThanOrEqual(narrow.paneHeight - 4);
+    ).toBeGreaterThanOrEqual(
+      narrow.paneHeight - narrow.chromeHeight - 4,
+    );
     expect(
       narrow.screenHeight,
       `xterm did not re-fit at 1000x800: ${why(narrow)}`,
-    ).toBeGreaterThanOrEqual(narrow.paneHeight * 0.9);
+    ).toBeGreaterThanOrEqual(narrow.hostHeight * 0.9);
     expect(
       narrow.rows,
       `too few rows at 1000x800: ${why(narrow)}`,
@@ -755,7 +771,9 @@ test.describe("session & terminal", () => {
       .innerText();
 
     await host.hover();
-    for (let i = 0; i < 12; i += 1) await page.mouse.wheel(0, -240);
+    // tmux consumes one wheel event as a small fixed step regardless of delta;
+    // enough events are needed to traverse the 500 generated lines.
+    for (let i = 0; i < 110; i += 1) await page.mouse.wheel(0, -240);
 
     await expect(shell).toContainText("SCROLLBACK_MARKER", { timeout: 10_000 });
     const promptAfter = await page
@@ -767,7 +785,7 @@ test.describe("session & terminal", () => {
     // And back: scrolling to the bottom leaves copy mode on its own (tmux's default
     // wheel binding uses `copy-mode -e`), so the user is not stranded in a mode the
     // console gives no indication of.
-    for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, 240);
+    for (let i = 0; i < 120; i += 1) await page.mouse.wheel(0, 240);
     await expect(shell).toContainText("500", { timeout: 10_000 });
     expect(promptBefore.length).toBeGreaterThanOrEqual(0);
 

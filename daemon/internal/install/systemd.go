@@ -36,6 +36,13 @@ const hardeningPrivileged = `# NoNewPrivileges is deliberately NOT set on this n
 // starts services without one, and a TERM-less tmux client refuses to attach.
 // RuntimeDirectory gives the non-root service a private /run/agentd, which is
 // where the generated tmux config lives (PV-04).
+//
+// StateDirectory gives it /var/lib/agentd, created 0700 as the service user, and it
+// is where an agent run's isolated working directory lives (ADR 0031 §3). It cannot
+// be RuntimeDirectory: that is tmpfs, and a **failed** run's directory has to survive
+// 14 days so somebody can look at it. systemd's own directive rather than a mkdir +
+// chown at startup, because doing it by hand would add a root/non-root branch to this
+// package — and this one line is the only change V2.2 makes to it.
 func UnitFile(p UnitParams) string {
 	hardening := "NoNewPrivileges=true"
 	if p.PrivilegedTerminal {
@@ -56,6 +63,7 @@ Restart=always
 RestartSec=5
 LimitNOFILE=65535
 RuntimeDirectory=agentd
+StateDirectory=agentd
 %[4]s
 PrivateTmp=true
 

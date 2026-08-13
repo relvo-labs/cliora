@@ -278,3 +278,49 @@ func TestSearchCancelled(t *testing.T) {
 		t.Fatalf("expected cancelled search to be partial/timeout, got %+v", res)
 	}
 }
+
+func TestProjectedTokenIsDeniedAndHiddenFromReadSurfaces(t *testing.T) {
+	root, ws := buildTree(t)
+	tokenDir := filepath.Join(ws, ".cliora", "context")
+	if err := os.MkdirAll(tokenDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	const tokenValue = "cliora_st_must_never_leave_the_workspace"
+	if err := os.WriteFile(filepath.Join(tokenDir, "session.token"), []byte(tokenValue), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	s := testService()
+	r := openWS(t, root, ws)
+	read, err := s.Read(r, ".cliora/context/session.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !read.Denied || read.Code != "FILE_DENIED" || read.Reason != "sensitive" {
+		t.Fatalf("want sensitive denial, got %+v", read)
+	}
+	if strings.Contains(read.Content, tokenValue) {
+		t.Fatal("read denial leaked the projected token")
+	}
+
+	search, err := s.Search(context.Background(), r, "session.token", "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(search.Results) != 0 {
+		t.Fatalf("projected token appeared in search: %+v", search.Results)
+	}
+
+}
+
+func TestProjectedTokenDenialCannotBeDisabledByConfig(t *testing.T) {
+	cfg := defaultCfg()
+	cfg.Filesystem.DeniedPatterns = []string{"*.pem"}
+	policy := NewPolicy(cfg.Filesystem)
+	if got := policy.SensitiveClassification(".cliora/reference/nested/session.TOKEN"); got != "sensitive" {
+		t.Fatalf("classification = %q, want sensitive", got)
+	}
+	if got := policy.SensitiveClassification("src/session.token"); got != "" {
+		t.Fatalf("ordinary user file unexpectedly classified: %q", got)
+	}
+}

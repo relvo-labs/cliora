@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Central asking a node to stop a run, contract 1.11.0. Sent with `registry.send_text_frame` and never awaited — the same one-way shape `terminal.resize` uses. Termination on the node is three phases against the whole **process group**: SIGINT, a bounded wait, then SIGKILL, so `run.cancel` leaves no orphans behind (plan/18/04-…md §3.3).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "reason"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"},
+    "reason": {"enum": ["user_cancelled", "lease_lost", "shutting_down"]}
+  }
+}

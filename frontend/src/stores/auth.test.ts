@@ -39,6 +39,7 @@ describe("auth store", () => {
       display_name: "Admin",
       role: "Admin",
       permissions: ["node.manage"],
+      features: [],
     };
     auth.clearTokens();
     expect(auth.isAuthenticated).toBe(false);
@@ -55,6 +56,7 @@ describe("auth store", () => {
       display_name: "Dev",
       role: "Developer",
       permissions: ["node.view"],
+      features: [],
     };
     expect(auth.hasPermission("node.view")).toBe(true);
     expect(auth.hasPermission("node.manage")).toBe(false);

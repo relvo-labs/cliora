@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import (
+    CHAR,
+    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -103,6 +105,22 @@ class Node(Base):
     # column from `image_upload` rather than a widening of it: the two grants are
     # different sizes, and a node owner is entitled to answer them differently.
     file_upload: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
+    # True when this machine's agentd is new enough to receive a task context pack
+    # (0.8.0+, ADR 0028 sec 5). A capability the daemon *reports*, exactly like the two
+    # above — never something the platform sets. An older node keeps working: sessions
+    # start and run as before, Central simply does not send `context.project`, and the
+    # console says which version would be needed rather than answering 500 or dropping
+    # the node from a list.
+    context_projection: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
+    # True when this machine's agentd can run agent work unattended (0.9.0+, ADR 0029
+    # sec 7). The fourth instance of the same shape, and reported for the same reason:
+    # a 0.8.0 node keeps serving interactive sessions and is simply never offered a
+    # run, so the console can say "needs 0.9.0" instead of failing.
+    agent_runner: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), index=True
     )
 
@@ -242,6 +260,22 @@ class TerminalSession(Base):
     parent_session_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("terminal_sessions.id", ondelete="CASCADE"), nullable=True
     )
+    # Nullable, and permanently so (ADR 0027): a session belonging to no project is
+    # an *ad-hoc* session, which is part of the product rather than a transitional
+    # state. The platform never infers this from the workspace — one path may be
+    # bound to several projects, so there is no unique answer, and "is this ad-hoc"
+    # has to stay the caller's statement rather than ours. `task_id` joins it in
+    # V2.1's 0023, when `tasks` exists and it can be a real foreign key.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="SET NULL"), nullable=True
+    )
+    # Nullable, and permanently so, for the same reason as ``project_id``: a session
+    # that belongs to no card is part of the product, and the platform never infers
+    # one from the workspace. ``SET NULL`` rather than cascade — an archived or
+    # mistakenly removed card must not erase the record that a session really ran.
+    task_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -289,6 +323,877 @@ class WorkspaceFavorite(Base):
     path: Mapped[str] = mapped_column(String(4096))
     display_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Project(Base):
+    """A project: a name for work that spans workspaces on several nodes (ADR 0027).
+
+    Platform data, not files in the user's repository. That is the whole of decision
+    D1/D2 in one sentence — the repo holds code, the platform holds everything about
+    the work.
+
+    ``slug`` is fixed at creation while ``name`` is not, and the split is
+    load-bearing: V2.1 builds card references (``TASK-123``) on the slug and V2.3
+    namespaces secrets by it, so a mutable slug would strand both. Renaming is a
+    display concern and stays free.
+
+    There is no delete, only ``archived``. ``activity_events`` is history and
+    ``terminal_sessions.project_id`` points here, so deleting would either orphan
+    rows or erase something that really happened. Archiving refuses new sessions and
+    new bindings; everything already running is untouched.
+    """
+
+    __tablename__ = "projects"
+    __table_args__ = (UniqueConstraint("slug"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(128))
+    slug: Mapped[str] = mapped_column(String(64))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    owner_user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    # The card-reference counter (V2.1). Allocated with one `UPDATE … RETURNING`,
+    # which takes the row lock — `count(*) + 1` collides between two browser tabs,
+    # and `card_ref` goes on to name a branch and a pull request. Epics, stories and
+    # tasks share it, so numbers skip: it is an identifier, not a count.
+    next_card_seq: Mapped[int] = mapped_column(Integer, default=1)
+    # Which secret **names** this project's cards may declare (V2.3, ADR 0032 sec 0).
+    # Intent, not inventory: it is deliberately not derived from the rows that happen
+    # to exist in `project_secrets`, because deriving it would make deleting one secret
+    # silently un-dispatchable a batch of cards with nothing on screen relating the two.
+    allowed_secret_names: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectWorkspace(Base):
+    """One workspace path on one node, bound to a project.
+
+    **A binding, never an authorization** — the same sentence, and the same rule, as
+    `WorkspaceFavorite`. `sessions.authorize_workspace()` runs when the binding is
+    created *and again on every use*, because roots get disabled and directories get
+    deleted: a path that was legal when bound may not be now (SEC-001). Two
+    implementations of one prefix rule would eventually disagree, and the day they
+    disagree is a security event rather than a bug.
+
+    Node removal is a soft delete (ADR 0011), so the `ON DELETE CASCADE` in the
+    migration is a safety net rather than the normal path; the service filters
+    soft-deleted nodes out of its listing instead.
+
+    Unique on `(project_id, node_id, path)`, which makes binding idempotent: a second
+    request for the same triple returns the existing row rather than a duplicate the
+    user would then have to unbind twice. At most one row per project may be
+    `is_primary`, enforced by a partial unique index rather than by application code,
+    because concurrency defeats the application-code version.
+    """
+
+    __tablename__ = "project_workspaces"
+    __table_args__ = (UniqueConstraint("project_id", "node_id", "path"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    path: Mapped[str] = mapped_column(String(4096))
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ActivityEvent(Base):
+    """What happened on a project (FR-PROJECT-004, ADR 0027 sec 7).
+
+    **Not a second audit log.** The two answer different questions and are cleaned up
+    differently, which is the distinction most easily lost:
+
+    ==================  ==============================  ==========================
+    .                   ``audit_logs``                  ``activity_events``
+    ==================  ==============================  ==========================
+    question            who did what, fleet-wide        what happened on *this*
+                                                        project
+    who may read it     metadata needs ``audit.view``   ``project.view`` — which
+                                                        **all three roles hold**
+    who cleans it up    existing retention              nobody; it lives as long
+                                                        as the project
+    ==================  ==============================  ==========================
+
+    Two consequences follow from the wider audience, and both are enforced rather
+    than documented: the audit module's forbidden-key list also guards this payload
+    (a constraint on a wider surface can only be tighter), and **actor identity is
+    redacted for callers without** ``audit.view`` — the same rule
+    ``services/dashboard.py::project_for`` already applies to the dashboard's recent
+    activity. Without that, this table would quietly reopen a channel P4 closed.
+
+    ``task_id``, ``session_id`` and ``actor_user_id`` carry no foreign key, matching
+    ``audit_logs``. ``task_id`` points at a table V2.1 creates; the other two are
+    deliberate, because a timeline is history and a hard-deleted session must not
+    blank out the row saying it once ran.
+    """
+
+    __tablename__ = "activity_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), index=True
+    )
+    task_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    session_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    # ``user`` / ``agent`` / ``system`` (V2.1). Without it a NULL ``actor_user_id``
+    # would mean three different things at once — a system event, an agent's write,
+    # and a user event whose actor :func:`services.activity.redact_actors` stripped
+    # for a reader without ``audit.view`` — and a timeline that cannot tell them
+    # apart says none of them. ``redact_actors`` deliberately leaves this field
+    # alone: "an agent did this" is the nature of the event, not an actor's identity.
+    actor_kind: Mapped[str] = mapped_column(String(16), default="user")
+    kind: Mapped[str] = mapped_column(String(64))
+    activity_payload: Mapped[dict[str, Any]] = mapped_column("payload", JSONB, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class ProcessDefinition(Base):
+    """The internalised process: lanes, readiness items, review gates, templates.
+
+    Monstrare's process (MIT) as platform data rather than files in the user's
+    repository — ADR 0027's central move, and ADR 0028 sec 1 is where it stops being
+    prose and starts refusing requests.
+
+    One global row in V2.1 (``key = 'default'``), not overridable per project: V2.4
+    adds the minimal override, and configurability with no users is the easiest thing
+    in this system to over-build (research/02/01 D15).
+
+    ``version`` is a **content** version, not a serial. It becomes the directory name
+    under ``.cliora/process/<version>/``, so it has to change when the content
+    changes and stay put when it does not — otherwise a second session in the same
+    workspace either re-projects unnecessarily or projects into a stale directory.
+
+    Every entry in ``gates`` carries ``requires_human``. It is a constant today, and
+    writing it as data anyway is the point: "an agent's output is not an approval"
+    needs somewhere it can be pointed at.
+    """
+
+    __tablename__ = "process_definitions"
+    __table_args__ = (UniqueConstraint("key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    key: Mapped[str] = mapped_column(String(64))
+    version: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str] = mapped_column(String(64), default="monstrare")
+    lanes: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    readiness: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    gates: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    templates: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Epic(Base):
+    """A named body of work inside a project (FR-TASK-001).
+
+    An entity rather than a string on a card: before internalisation an epic was a
+    value in someone's JSON file and the platform could only group by it (D4). With a
+    row, a story points at it with a foreign key, the roadmap is a join, and renaming
+    it does not strand anything.
+    """
+
+    __tablename__ = "epics"
+    __table_args__ = (UniqueConstraint("project_id", "card_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    card_ref: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class UserStory(Base):
+    """A user story, optionally under an epic (FR-TASK-001).
+
+    ``epic_id`` is nullable and its foreign key is ``SET NULL``: a story that has not
+    been filed under an epic yet is a legitimate state, and an epic that goes away
+    drops its stories into the unclassified bucket rather than taking them with it.
+    A card must never vanish because of how it was filed — that bucket is Monstrare's
+    semantics, kept deliberately (D4).
+    """
+
+    __tablename__ = "user_stories"
+    __table_args__ = (UniqueConstraint("project_id", "card_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    epic_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("epics.id", ondelete="SET NULL"), nullable=True
+    )
+    card_ref: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(200))
+    narrative: Mapped[str | None] = mapped_column(Text, nullable=True)
+    order_index: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class Requirement(Base):
+    """One vague sentence, before it is a specification (FR-TASK-005).
+
+    ``raw_text`` is the whole intake surface on purpose: the flow starts with someone
+    saying what they want in their own words, and a form with ten required fields at
+    that moment is how the flow stops being used. V2.5 lets an agent interrogate it
+    into a spec through the same API; V2.1 is a human doing it, and whether anyone
+    does is the early signal for whether V2.5 is worth building (D28 sec 4).
+    """
+
+    __tablename__ = "requirements"
+    __table_args__ = (UniqueConstraint("project_id", "card_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    card_ref: Mapped[str] = mapped_column(String(32))
+    raw_text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="intake")
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class FeatureSpec(Base):
+    """One version of a requirement's specification. Append-only (FR-TASK-005).
+
+    Rows are inserted, never updated — the same shape ADR 0027 chose for execution
+    plans and for the same reason: "version N versus N-1" is what the review screen
+    is for, and a specification that was quietly edited is exactly what someone will
+    need to see later.
+
+    ``open_questions`` is a column rather than a table because it is read and written
+    with its version and has no independent query. It also carries a rule: while one
+    is unresolved the requirement cannot be approved, and that refusal is in the API
+    (FR-TASK-005.AC-03), not in a disabled button.
+    """
+
+    __tablename__ = "feature_specs"
+    __table_args__ = (UniqueConstraint("requirement_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE")
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    non_goals: Mapped[str | None] = mapped_column(Text, nullable=True)
+    acceptance_criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    open_questions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    authored_by_kind: Mapped[str] = mapped_column(String(16), default="user")
+    authored_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskProposal(Base):
+    """A proposed epic/story/task tree, before a human accepts it (FR-TASK-005).
+
+    Proposals are not cards. Accepting one is what creates rows in ``tasks``, which is
+    "an agent's output is not an approval" applied to decomposition — and it is also
+    where the Definition of Ready gets somewhere to bite: a proposed card missing its
+    readiness items is accepted into ``backlog`` rather than into ``ready`` (D28).
+    """
+
+    __tablename__ = "task_proposals"
+    __table_args__ = (UniqueConstraint("requirement_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requirement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("requirements.id", ondelete="CASCADE")
+    )
+    spec_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("feature_specs.id", ondelete="SET NULL"), nullable=True
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    tree: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    status: Mapped[str] = mapped_column(String(24), default="pending")
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class Task(Base):
+    """A task card (FR-TASK-001…004, ADR 0028).
+
+    Three columns carry decisions that are easy to undo by accident:
+
+    * ``version`` is an optimistic lock. A plain integer is enough **because the
+      platform is the only writer** — the design this replaced kept cards in the
+      repository and needed a content hash for the same job (research/02/01 D6).
+    * ``gates`` holds ``{gate_key: {approved_by, approved_at}}``, never a boolean.
+      That cell always names a human, which is what makes "an agent's output is not
+      an approval" a property of the data rather than a rule in a document.
+    * ``card_ref`` comes from ``projects.next_card_seq`` and is **immutable**. It goes
+      on to name a branch in V2.3 and a pull request in V2.4, so a value that could
+      change — or that could collide — surfaces three phases after the mistake.
+
+    ``acceptance_criteria``, ``readiness`` and ``links`` are JSONB by ADR 0027's rule:
+    read and written with the card, no independent query, so a table would make
+    "edit one acceptance criterion" a multi-row upsert with orphans to clean.
+
+    The execution settings (``source``, ``delivery``, ``repository_id``,
+    ``base_branch``, ``target_branch``, ``existing_pr_ref``, ``required_secrets``)
+    are **declared but inert** in V2.1: nothing reads them until V2.3/V2.4. They exist
+    now because people state the intent now, and because adding them later would
+    leave every existing card without them (ADR 0028 sec 9).
+    """
+
+    __tablename__ = "tasks"
+    __table_args__ = (UniqueConstraint("project_id", "card_ref"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    epic_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("epics.id", ondelete="SET NULL"), nullable=True
+    )
+    user_story_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("user_stories.id", ondelete="SET NULL"), nullable=True
+    )
+    card_ref: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    objective: Mapped[str | None] = mapped_column(Text, nullable=True)
+    scope: Mapped[str | None] = mapped_column(Text, nullable=True)
+    non_goals: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stage: Mapped[str] = mapped_column(String(16), default="backlog")
+    risk: Mapped[str] = mapped_column(String(16), default="medium")
+    priority: Mapped[str] = mapped_column(String(16), default="normal")
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # No foreign key: `agent_runners` lands in V2.2, `project_repositories` in V2.3.
+    # `activity_events.task_id` set this precedent in 0021.
+    assigned_runner_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    required_labels: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    readiness: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    gates: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    acceptance_criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    links: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    source: Mapped[str] = mapped_column(String(16), default="repo")
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    base_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery: Mapped[str] = mapped_column(String(16), default="pull_request")
+    target_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    existing_pr_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    required_secrets: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
+    )
+    proposal_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_proposals.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TaskDependency(Base):
+    """ "This card cannot start until that one is done" (FR-TASK-003).
+
+    A table rather than a JSONB list because it is the one relation with a query of
+    its own: the cycle check walks it, and the board asks "is anything still blocking
+    this" for every card in a lane.
+
+    Self-dependency is refused by a database constraint; longer cycles are refused by
+    a graph walk in the service, so that the error can name the path it found.
+    """
+
+    __tablename__ = "task_dependencies"
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    depends_on_task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SessionToken(Base):
+    """The credential an agent inside a session may hold (FR-TASK-008, ADR 0028 sec 3).
+
+    **Only the HMAC is stored**, keyed by the existing token pepper (ADR 0008). There
+    is no path that returns a plaintext token, because none is kept — the value exists
+    for exactly as long as it takes to project it into the workspace.
+
+    ``scopes`` is snapshotted at issue time rather than read live: a credential is a
+    fixed grant, and consulting a constant per request would mean editing that
+    constant silently re-authorises every token already issued.
+
+    Revocation is written into the session state machine rather than into the four
+    routes that can end a session — the same reasoning
+    ``SessionService._record_ended`` documents, and for the same reason: a fifth door
+    will be added one day.
+    """
+
+    __tablename__ = "session_tokens"
+    __table_args__ = (UniqueConstraint("token_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    session_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("terminal_sessions.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(128))
+    scopes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    issued_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class AgentRunner(Base):
+    """A node's ability to run agent work, as one row (FR-AGENT-001, ADR 0029 sec 1).
+
+    **One row per node**, and ``runtimes`` is a set rather than a row per runtime. The
+    upstream plan modelled it the other way; on a single WebSocket that immediately
+    raises "which row is online", and the answer is always the node's own status — so
+    the column would be a fake indicator light.
+
+    For the same reason there is no ``status`` and no ``last_seen_at``: a runner is
+    online exactly when its node is, and the API computes that from
+    ``NodeConnectionRegistry.is_connected`` on the same path the Nodes page uses.
+
+    ``dedicated`` is a **posture report**, in the sense ADR 0023 established for the
+    codex sandbox flag: the daemon sets it from ``len(workspace.allowed_roots) == 0``
+    and the platform displays it. The platform has no technical isolation between a
+    run and the node's allowed roots (ADR 0031 sec 6); on a node with none, "the run
+    cannot read one" is vacuously true. Nothing refuses to register because of it —
+    one person's dev VM serving both purposes is the common case, and it should be a
+    visible choice rather than an unnoticed fact.
+
+    ``labels`` were displayed and never compared in V2.2. **From V2.3 they are the
+    fourth eligibility condition** (ADR 0029 amendment B2), matched as a superset:
+    ``required_labels ⊆ labels``. They remain **read-only through the API** — a tag is
+    what the node's own config declares, so a platform-side edit would be a second
+    source of truth that ``runner.register`` overwrites on the next reconnect.
+
+    **A tag is not authorization.** It is a string the runner reports about itself, so
+    a compromised runner changes what it is offered by reporting one more. The
+    authorization boundary is enrollment, permanently (ADR 0032 sec 0).
+    """
+
+    __tablename__ = "agent_runners"
+    __table_args__ = (UniqueConstraint("node_id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    node_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("nodes.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    runtimes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    labels: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    max_concurrent: Mapped[int] = mapped_column(Integer, default=1)
+    max_waiting: Mapped[int] = mapped_column(Integer, default=5)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    dedicated: Mapped[bool] = mapped_column(Boolean, default=False)
+    registered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    last_registered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Why this runner stopped polling, reported on the heartbeat. **Not** an online
+    # indicator: a runner at capacity and a runner whose machine is gone are both
+    # silent, and the console needs to tell them apart (migration 0032). Null means
+    # "no report", which is why these are nullable rather than defaulted.
+    blocked_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    disk_used_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    disk_quota_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Two node-side declarations, both defaulting to the permissive value — because a
+    # default has to equal the behaviour before the upgrade, and a payload that omits
+    # them is read as true (ADR 0029 amendment B3). `run_untagged` off reserves a
+    # machine for tagged work; `accept_secrets` off keeps it away from cards that
+    # declare secrets, which is the node operator's veto (ADR 0032 sec 0).
+    run_untagged: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    accept_secrets: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectRepository(Base):
+    """Where a project's code lives, as platform configuration (FR-AGENT-012).
+
+    The URL is **three columns, not one string**, and that is a security property
+    rather than tidiness: ``runner.git.allowed_hosts`` compares ``host`` exactly, and
+    extracting a host from a free-form URL is how ``https://github.com@evil.example/``
+    gets through. Split this way, userinfo is not representable at all — which is the
+    schema form of ADR 0031's rule that a credential must never appear in a remote
+    URL, where it would surface in ``git remote -v``, the reflog and error messages.
+
+    The three credential columns arrived in V2.3 (migration 0033), once
+    ``project_secrets`` existed for them to point at. ``auth_kind`` has **three**
+    values rather than the two the design named: ``ambient`` is what every repository
+    registered under V2.2 is actually using — the node's own git credentials — and
+    after the 2026-08-13 ruling it is the default going forward as well, because
+    platform-managed git credentials are gated behind
+    ``CLIORA_GIT_SECRET_DELIVERY_ENABLED`` and that flag is off by default. Back-filling
+    those rows as ``pat`` with a null credential would have written down a row that is
+    not true.
+    """
+
+    __tablename__ = "project_repositories"
+    __table_args__ = (UniqueConstraint("project_id", "host", "path"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    scheme: Mapped[str] = mapped_column(String(8))
+    host: Mapped[str] = mapped_column(String(255))
+    path: Mapped[str] = mapped_column(String(512))
+    default_branch: Mapped[str] = mapped_column(String(255))
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    auth_kind: Mapped[str] = mapped_column(String(16), default="ambient", server_default="ambient")
+    credential_secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_secrets.id", ondelete="RESTRICT"), nullable=True
+    )
+    provider_token_secret_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_secrets.id", ondelete="RESTRICT"), nullable=True
+    )
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class ProjectSecret(Base):
+    """A value the platform holds for a project and hands to a runner on demand.
+
+    FR-RUNENV-001/002, ADR 0032. **Nothing about this row is readable back.** No API
+    returns the value, the DTO has no field for it, and the service's queries name the
+    columns they want so that a future ``dict(row.__dict__)`` cannot reach the
+    ciphertext by accident.
+
+    **Four ciphertext columns, because the envelope has two layers.** The value is
+    encrypted under a per-row data key; the data key is encrypted under the master key.
+    Each AES-GCM operation needs its own nonce, stored beside its ciphertext. Rotating
+    the master key rewrites ``dek_wrapped`` and leaves ``value_encrypted`` byte-for-byte
+    identical — which is what makes rotation something other than a full-table
+    re-encryption, and what keeps the upgrade path to a KMS down to one function.
+
+    **No fingerprint and no length.** A fingerprint answers "is this the one I rotated
+    last week" and ``rotated_at`` answers that without disclosing anything; a length is
+    a side channel, because a 93-character value is almost certainly a fine-grained PAT.
+
+    ``kind`` decides where the value goes on the node (ADR 0032 sec 4): ``env`` reaches
+    the CLI child's environment, ``git_pat``/``git_ssh_key`` reach **only the daemon's
+    own git environment** and are gated off by default, and ``provider_token`` is not
+    delivered at all in this phase.
+    """
+
+    __tablename__ = "project_secrets"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(128))
+    kind: Mapped[str] = mapped_column(String(16))
+    value_encrypted: Mapped[bytes] = mapped_column(LargeBinary)
+    value_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    dek_wrapped: Mapped[bytes] = mapped_column(LargeBinary)
+    dek_nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    key_version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    # SET NULL, not CASCADE: somebody leaving must not delete a project's credentials.
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Stamped at the **claim**, not at the end of the run: a run may never end, and by
+    # then "this machine was handed this secret" is already a fact.
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Soft delete, with a partial unique index behind it, so that deleting a secret and
+    # creating a new one under the same name — the commonest recovery there is — works.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class TaskRun(Base):
+    """One attempt at running a card unattended (FR-AGENT-003…005, ADR 0029).
+
+    Three properties are easy to undo by accident:
+
+    * ``assigned_runner_id`` is a **snapshot** of the card's assignment, not a live
+      read of ``tasks.assigned_runner_id``. A re-queue must keep the original
+      assignment while the card stays editable mid-run; editing the card affects the
+      *next* dispatch. ``repository_id``, ``source_kind`` and ``source_ref`` are
+      snapshots for the same reason — a run executes the card as it was at dispatch.
+    * ``last_event_at`` is **not the lease**. The lease answers "is the runner alive"
+      and Central judges it; this answers "is the child making progress" and the
+      daemon judges it, because the daemon is where the event stream is. This column
+      exists so the Run detail page can say "last activity: 3 minutes ago".
+    * ``lost`` is terminal. A re-queue inserts a **new row** (``seq + 1``,
+      ``attempt + 1``) rather than moving this one back to ``queued``, so the Run
+      detail page can show where the second attempt failed. The upstream state diagram
+      drew it the other way (ADR 0029 sec 4).
+
+    There is no ``workspace_node_id`` and no ``workspace_path``, and that absence is
+    load-bearing: while such a column exists, somebody joins it to
+    ``project_workspaces``, and that join is the first step towards the run directory
+    and the user's allowed roots sharing one authorization model.
+    """
+
+    __tablename__ = "task_runs"
+    __table_args__ = (UniqueConstraint("task_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    seq: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(24), default="queued")
+    attempt: Mapped[int] = mapped_column(Integer, default=1)
+    assigned_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    repository_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("project_repositories.id", ondelete="SET NULL"), nullable=True
+    )
+    source_kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    commit_sha: Mapped[str | None] = mapped_column(CHAR(40), nullable=True)
+    disk_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    runtime: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    waiting_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    result: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    log_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    log_truncated_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
+    logs_expire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RunLog(Base):
+    """One **aggregated segment** of a run's output, not one chunk (ADR 0030 Part A).
+
+    Central buffers a run's chunks until 64 KiB or two seconds have passed, then
+    writes one row. So ``seq`` — the first chunk number in the segment — **skips**; it
+    is a sort key, not a counter, the same property ``card_ref`` has.
+
+    The content is the CLI's JSONL event stream plus stderr, never terminal bytes. The
+    chunker may not split a JSON line: half an event cannot be rendered, and "do not
+    split a line" outranks "fill the chunk".
+
+    Rows are normally deleted as a group by the retention sweep, driven by
+    ``TaskRun.logs_expire_at``; the cascade is a safety net. Half a run's log is harder
+    to explain than none of it.
+    """
+
+    __tablename__ = "run_logs"
+    __table_args__ = (UniqueConstraint("run_id", "seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_runs.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    data: Mapped[str] = mapped_column(Text)
+    truncated: Mapped[bool] = mapped_column(Boolean, default=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class TaskMessage(Base):
+    """The conversation on a card: human, agent and system, interleaved (FR-AGENT-007).
+
+    ``author_kind`` plus two nullable author columns, rather than one polymorphic
+    ``author_id``, for the reason ``ActivityEvent.actor_kind`` documents: a NULL author
+    already means "the system", and giving that NULL a second meaning would make both
+    unreadable.
+
+    System events are stored **here as well as** in ``activity_events``, and the two
+    have different readers: ``activity_events`` is the project timeline, this is one
+    card's conversation, and the product requires the three sources interleaved. The
+    duplication is the price of that, and it is cheap — system events are short and
+    drawn from a closed vocabulary.
+
+    ``run_id`` is SET NULL rather than CASCADE: a run's record may be reclaimed on a
+    retention schedule, but **a card's conversation has no retention**.
+    """
+
+    __tablename__ = "task_messages"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    author_kind: Mapped[str] = mapped_column(String(16))
+    author_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    author_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    body: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(String(24), default="message")
+    event_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskArtifact(Base):
+    """A deliverable attached to a card — metadata only (FR-AGENT-009, ADR 0030 Part B).
+
+    The bytes live in :class:`TaskArtifactBlob`. Splitting the tables is what makes
+    "list ten artifacts and pull 100 MB into memory" impossible rather than merely
+    discouraged.
+
+    ``content_type`` is **determined by the server** from the extension and magic
+    bytes, never taken from the uploader's declaration, and anything outside a closed
+    table becomes ``application/octet-stream``. This column is the primary stored-XSS
+    entry point in the phase.
+
+    Deletion is soft **here** and hard for the bytes. Requiring ``project.manage`` and
+    a written reason is pointless if the delete erases who did it and why; but a quota
+    that cannot be freed by deleting something is not a quota. Metadata stays, content
+    goes.
+
+    There is no update path anywhere — an attached artifact is immutable, and an
+    OpenAPI assertion in `AR-12` holds ``/api/artifacts/{id}`` to ``GET`` and
+    ``DELETE``.
+    """
+
+    __tablename__ = "task_artifacts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(128))
+    size: Mapped[int] = mapped_column(BigInteger)
+    # Not for deduplication — the same file attached twice is two artifacts, and the
+    # timeline shows that as versions. It is for verification on download.
+    sha256: Mapped[str] = mapped_column(CHAR(64))
+    storage_ref: Mapped[str] = mapped_column(String(255))
+    uploaded_by_kind: Mapped[str] = mapped_column(String(16))
+    uploaded_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    uploaded_by_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    delete_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class TaskArtifactBlob(Base):
+    """An artifact's bytes, in a table nothing lists (ADR 0030 Part B).
+
+    Read on download and on nothing else. The primary key is the artifact id rather
+    than a surrogate: there is exactly one blob per artifact, and a second id would be
+    a second thing to keep consistent.
+    """
+
+    __tablename__ = "task_artifact_blobs"
+
+    artifact_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("task_artifacts.id", ondelete="CASCADE"), primary_key=True
+    )
+    bytes: Mapped[bytes] = mapped_column(LargeBinary)
+
+
+class RunToken(Base):
+    """The credential an agent inside a run may hold (ADR 0029 sec 6, plan/18/05-…md).
+
+    A separate table from :class:`SessionToken` for one concrete reason:
+    ``session_tokens.session_id`` is NOT NULL against ``terminal_sessions``, and a run
+    must not have a session row. Making that column nullable would put two kinds of
+    subject in one table and turn "revoking for a session covers every token" into a
+    false statement.
+
+    Everything else is deliberately identical: only the HMAC is stored, keyed by the
+    same ``CLIORA_TOKEN_PEPPER``; ``scopes`` is snapshotted at issue time; revoked rows
+    are kept 90 days because the audit trail names a token id.
+
+    There is no ``issued_by``. A run is not opened by a person — who dispatched it is
+    ``TaskRun.created_by``, one join away — and copying it here would give "who holds
+    this token" a second, plausible, wrong answer.
+    """
+
+    __tablename__ = "run_tokens"
+    __table_args__ = (UniqueConstraint("token_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="CASCADE"), index=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    token_hash: Mapped[str] = mapped_column(String(128))
+    scopes: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class NodeMetricSample(Base):

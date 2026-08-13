@@ -28,6 +28,11 @@ export const useAuthStore = defineStore("auth", {
     hasPermission(action: string): boolean {
       return this.user?.permissions.includes(action) ?? false;
     },
+    // What the deployment has, as opposed to what this person may do. Both are
+    // required before a control is shown, and the server checks both again.
+    hasFeature(feature: string): boolean {
+      return this.user?.features?.includes(feature) ?? false;
+    },
     setTokens(pair: TokenPair): void {
       this.accessToken = pair.access_token;
       this.refreshToken = pair.refresh_token;

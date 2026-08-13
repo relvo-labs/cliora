@@ -2,10 +2,9 @@
  *
  * Split from tokens.css in P4-07 so that file holds only design tokens (custom
  * properties) and this one holds behaviour applied to elements. Everything visual
- * beyond this lives in a component's own scoped style — there is deliberately no
- * global class layer any more, because the prototype's one (src/styles.css, 1326
- * lines) had become entirely shadowed by scoped styles while still shipping in the
- * bundle.
+ * beyond this lives in a component's own scoped style or a shared Vue primitive.
+ * P4-07 removed the prototype's global class sheet and specified shared components
+ * for the patterns still in use; plan/19 D34 completes that component layer.
  *
  * Fonts are a system stack, not a webfont. The prototype pulled Inter and JetBrains
  * Mono from fonts.googleapis.com, which put a third-party request in the production
@@ -24,6 +23,7 @@
     "PingFang TC",
     "Microsoft JhengHei",
     sans-serif;
+  font-size: var(--font-base);
 }
 
 * {

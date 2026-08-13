@@ -414,6 +414,225 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "Attach read-only, or take over if you have permission.",
             origin=DAEMON,
         ),
+        # --- Project layer (ADR 0027) ---
+        #
+        # There is deliberately no `PROJECT_*` code for "the project layer is
+        # disabled". With the flag off those paths answer a bare 404, because a body
+        # naming the feature would leak exactly what the 404 withholds — that the
+        # capability exists and is merely switched off (deps.require_projects_enabled).
+        #
+        # There is also no new code for a rejected workspace path: binding reuses
+        # `WORKSPACE_OUTSIDE_ALLOWED_ROOT` below. A second, synonymous code would give
+        # "why is this path not allowed" two answers depending on which endpoint the
+        # user happened to reach.
+        _entry(
+            "PROJECT_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Project not found",
+            "The project does not exist, or was archived and then removed from view.",
+            "Reload the project list.",
+        ),
+        _entry(
+            "PROJECT_SLUG_TAKEN",
+            status.HTTP_409_CONFLICT,
+            "A project with this slug already exists",
+            "Slugs are unique across the platform, and fixed once the project exists.",
+            "Choose a different slug. The display name can still be whatever you like.",
+        ),
+        _entry(
+            "PROJECT_SLUG_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Slug must be lowercase letters, digits and hyphens",
+            "The supplied slug has an unusable character, or a name written entirely "
+            "in non-Latin script left nothing to derive one from.",
+            "Supply a slug explicitly, for example `traqora-api`.",
+        ),
+        _entry(
+            "PROJECT_STATUS_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown project status",
+            "A project is active, paused or archived; nothing else.",
+            "Use one of the three states.",
+        ),
+        _entry(
+            "PROJECT_ARCHIVED",
+            status.HTTP_409_CONFLICT,
+            "This project is archived",
+            "An archived project accepts no new sessions and no new workspace "
+            "bindings. Everything already running is untouched.",
+            "Un-archive the project first, or use a different one.",
+        ),
+        # --- Task layer (ADR 0028) ---
+        #
+        # Two pairs here look similar and are not, and the difference is what makes
+        # them worth separate codes: `TASK_DEPENDENCY_UNSATISFIED` is a card that will
+        # be movable later, `TASK_DEPENDENCY_CYCLE` is a graph that can never be
+        # satisfied; `GATE_UNKNOWN` is a typo, `GATE_DISABLED` is a state of the
+        # deployment. Collapsing either pair would leave the user unable to tell
+        # "wait" from "fix something".
+        _entry(
+            "TASK_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Task not found",
+            "The card, epic, story or dependency does not exist in this project.",
+            "Reload the board.",
+        ),
+        _entry(
+            "TASK_VERSION_CONFLICT",
+            status.HTTP_409_CONFLICT,
+            "This card was changed by someone else",
+            "Every write carries the version it was read at, so two people dragging "
+            "one card cannot silently overwrite each other. The response carries the "
+            "card's current version.",
+            "The board reloads the card; try the move again.",
+        ),
+        _entry(
+            "TASK_DEPENDENCY_UNSATISFIED",
+            status.HTTP_409_CONFLICT,
+            "A blocking card is not finished",
+            "Entering `ready` or a later lane claims the card is workable, and an "
+            "unfinished dependency contradicts that. `details.blocking_refs` names "
+            "the cards.",
+            "Finish the named cards, or drop the dependency if it no longer holds.",
+        ),
+        _entry(
+            "TASK_DEPENDENCY_CYCLE",
+            status.HTTP_409_CONFLICT,
+            "That would create a circular dependency",
+            "The blocking card already depends on this one, directly or through "
+            "others. `details.path` shows the loop.",
+            "Remove one edge of the loop first.",
+        ),
+        _entry(
+            "TASK_STAGE_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown value",
+            "A lane, risk, priority, source or delivery outside the process "
+            "definition's vocabulary.",
+            "Read the project's process definition for the accepted values.",
+        ),
+        _entry(
+            "TASK_ACCEPTANCE_CRITERIA_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Acceptance criteria must be a list of objects",
+            "The task context renderer requires each criterion to be an object.",
+            "Send each criterion as an object with a text field.",
+        ),
+        _entry(
+            "TASK_CONTEXT_TOO_LARGE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Acceptance criteria do not fit the task context budget",
+            "Acceptance criteria are preserved in full in the 4 KB agent context pack, "
+            "so their rendered form has a fixed upper bound.",
+            "Shorten or combine acceptance criteria; optional task description sections "
+            "are omitted automatically.",
+        ),
+        _entry(
+            "FORBIDDEN_FIELD",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That field cannot be set this way",
+            "Refused rather than ignored: a silently dropped field is a change the "
+            "caller believes it made. Review gates in particular have their own "
+            "endpoint and their own action.",
+            "Use the endpoint that owns the field.",
+        ),
+        _entry(
+            "GATE_UNKNOWN",
+            status.HTTP_404_NOT_FOUND,
+            "Unknown review gate",
+            "The process definition has no gate by that key.",
+            "Read the project's process definition for the gate keys.",
+        ),
+        _entry(
+            "GATE_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "This gate is unavailable in this deployment",
+            "A gate may depend on an integration that is switched off — the mockup "
+            "gate needs tunnel integration. It is disabled on read rather than left "
+            "unsatisfiable, because a gate nobody can ever tick is a deadlock.",
+            "Enable the integration, or proceed without that gate.",
+        ),
+        _entry(
+            "GATE_REQUIRES_HUMAN_ACTOR",
+            status.HTTP_403_FORBIDDEN,
+            "A review gate must be approved by a person",
+            "An agent's output is not an approval. A session credential cannot reach "
+            "this endpoint at all; this code is the second line of defence.",
+            "Approve it yourself in the console.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Requirement not found",
+            "The requirement does not exist in this project.",
+            "Reload the requirements list.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_SPECIFIED",
+            status.HTTP_409_CONFLICT,
+            "Write a specification before approving",
+            "Approval is approval *of* something: a requirement with no specification "
+            "version has nothing to approve.",
+            "Add a specification version first.",
+        ),
+        _entry(
+            "SPEC_HAS_OPEN_QUESTIONS",
+            status.HTTP_409_CONFLICT,
+            "Unresolved questions remain",
+            "A specification cannot be approved while a question has neither an "
+            "answer nor an explicit 'known unknown' marking. `details.questions` "
+            "names them.",
+            "Answer them, or mark them as known unknowns, then approve.",
+        ),
+        _entry(
+            "REQUIREMENT_ALREADY_APPROVED",
+            status.HTTP_409_CONFLICT,
+            "This requirement is approved",
+            "Specification versions are append-only up to approval; after it, a "
+            "change of mind is a new requirement rather than a rewritten one.",
+            "Raise a new requirement.",
+        ),
+        _entry(
+            "REQUIREMENT_NOT_APPROVED",
+            status.HTTP_409_CONFLICT,
+            "Approve the specification before decomposing it",
+            "Decomposing something nobody has agreed to produces work that will be "
+            "thrown away. This is refused by the API rather than hidden in the UI, "
+            "because V2.5 sends an agent down the same path.",
+            "Approve the specification first.",
+        ),
+        _entry(
+            "PROPOSAL_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Proposal not found",
+            "The decomposition proposal does not exist.",
+            "Reload the requirement.",
+        ),
+        _entry(
+            "PROPOSAL_ALREADY_DECIDED",
+            status.HTTP_409_CONFLICT,
+            "This proposal was already decided",
+            "Acceptance creates real cards, so it happens once. A second decision "
+            "would duplicate them.",
+            "Create a new proposal if the plan changed.",
+        ),
+        _entry(
+            "PROJECT_WORKSPACE_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Workspace binding not found",
+            "The binding was already removed, or belongs to another project.",
+            "Reload the project.",
+        ),
+        _entry(
+            "SESSION_PROJECT_MISMATCH",
+            status.HTTP_400_BAD_REQUEST,
+            "The workspace does not belong to this project",
+            "A session may name a project only when its workspace is one of that "
+            "project's bindings. The match is exact, so a subdirectory of a bound "
+            "path is not itself bound.",
+            "Pick a path from the project's bindings, bind this one first, or create "
+            "the session without a project.",
+        ),
         # --- Workspace ---
         _entry(
             "WORKSPACE_OUTSIDE_ALLOWED_ROOT",
@@ -756,6 +975,372 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "Close a tunnel that is no longer needed, or ask an administrator to raise "
             "the budget to match the provider plan.",
             origin=DAEMON,
+        ),
+        # --- V2.2 agent runner: dispatch (ADR 0029) ---
+        # The order these can occur in is fixed (plan/18/00-…md D13) precisely so that
+        # the *first* thing a person is told is the thing they can act on.
+        _entry(
+            "TASK_NOT_READY",
+            status.HTTP_409_CONFLICT,
+            "Only a card in the ready lane can be dispatched to an agent",
+            "The card is in another lane. Dispatch is an execution action, and a card "
+            "that is not ready has not been agreed to be worked on yet.",
+            "Move the card to Ready first.",
+        ),
+        _entry(
+            "RUN_ALREADY_ACTIVE",
+            status.HTTP_409_CONFLICT,
+            "This card already has a run in progress",
+            "A card has at most one run in flight; a second would mean two agents "
+            "changing the same work with no way to reconcile them.",
+            "Wait for the run to finish, or cancel it first.",
+        ),
+        _entry(
+            "RUN_NOT_ACTIVE",
+            status.HTTP_409_CONFLICT,
+            "This run has already finished",
+            "Cancel only applies to a run that is queued or running.",
+            "Look at the run's result; if it needs doing again, dispatch the card again.",
+        ),
+        # V2.3 replaced `TASK_REQUIRES_SECRETS` rather than removing it: secrets exist
+        # now, so the refusals are about *this card* rather than about the version.
+        # **Two codes, because they are fixed on different pages** (ADR 0032 §0).
+        _entry(
+            "TASK_SECRETS_NOT_ALLOWED",
+            status.HTTP_409_CONFLICT,
+            "This card asks for a secret name the project does not allow",
+            "A card may only declare names on its project's allowlist. The allowlist is "
+            "intent — which names a card *may* ask for — and it is deliberately not "
+            "derived from the secrets that happen to exist.",
+            "Add the name to the project's allowlist, or correct the card. The response "
+            "names the offending entries and links to the settings page.",
+        ),
+        _entry(
+            "TASK_SECRETS_MISSING",
+            status.HTTP_409_CONFLICT,
+            "This card asks for a secret that has not been created",
+            "The name is allowed, but nothing has been stored under it — most often "
+            "because the secret was deleted. Running anyway would start the card "
+            "**without** a value it says it needs, which looks like a broken agent.",
+            "Create the secret in project settings, or remove the declaration.",
+        ),
+        _entry(
+            "TASK_BRANCH_NOT_DELIVERABLE",
+            status.HTTP_409_CONFLICT,
+            "That branch is outside the cliora/ namespace",
+            "The platform only ever pushes inside `cliora/<card>-<run>`, so a card "
+            "continuing a branch elsewhere could never deliver. Refused here rather "
+            "than at the push, where the run has already done its work.",
+            "Set delivery to artifact, or continue a branch the platform created.",
+        ),
+        _entry(
+            "AGENT_TAG_MISMATCH",
+            status.HTTP_409_CONFLICT,
+            "That agent does not have the tags this card needs",
+            "Naming an agent does not create eligibility. People name a machine "
+            "precisely because it is the only one with what the card needs, so letting "
+            "the name override the tag would run the card somewhere it fails minutes in.",
+            "The response names the missing tags: pick another agent, or add them to "
+            "that node's agentd configuration.",
+        ),
+        _entry(
+            "AGENT_REFUSES_UNTAGGED",
+            status.HTTP_409_CONFLICT,
+            "That agent only claims cards that declare a tag",
+            "The node is reserved for tagged work (`run_untagged: false`). Without that "
+            "setting a dedicated machine fills up with ordinary untagged cards.",
+            "Give the card a tag that machine has, or dispatch to another agent.",
+        ),
+        _entry(
+            "AGENT_REFUSES_SECRETS",
+            status.HTTP_409_CONFLICT,
+            "That agent does not accept secrets",
+            "The node's owner declared `accept_secrets: false`, which is the operator's "
+            "veto over which machines may hold a credential (ADR 0032 §0).",
+            "Dispatch to a node that accepts secrets, or remove the declaration.",
+        ),
+        _entry(
+            "SECRET_NAME_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That is not a usable secret name",
+            "A secret's name becomes an environment variable, so it must be upper-case "
+            "letters, digits and underscores.",
+            "Rename it, for example GITHUB_TOKEN.",
+        ),
+        _entry(
+            "SECRET_NAME_RESERVED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That name would replace part of the execution environment",
+            "Names like PATH or HOME, and the GIT_/SSH_/CLIORA_ prefixes, are reserved. "
+            "A secret called GIT_ASKPASS would take over the credential helper the "
+            "platform's own git path is built on.",
+            "Choose a name outside the reserved set.",
+        ),
+        _entry(
+            "SECRET_KIND_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown secret kind",
+            "A secret's kind decides where its value goes on the node, so it is a "
+            "closed set (ADR 0032 §4).",
+            "Use env, git_pat, git_ssh_key or provider_token.",
+        ),
+        _entry(
+            "SECRET_EXISTS",
+            status.HTTP_409_CONFLICT,
+            "This project already has a secret with that name",
+            "Names are unique per project among the secrets that have not been deleted.",
+            "Rotate the existing one instead of creating a second.",
+        ),
+        _entry(
+            "SECRET_IN_USE",
+            status.HTTP_409_CONFLICT,
+            "A registered repository authenticates with this secret",
+            "Deleting it would leave that repository pointing at a credential that no "
+            "longer exists, and the failure would surface minutes into a run.",
+            "Point the repository at another credential first; the response names it.",
+        ),
+        _entry(
+            "SECRET_TOO_LARGE",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That value is larger than a secret should be",
+            "Eight KiB, which is 2.4x the largest legitimate input measured (an "
+            "RSA-4096 private key at 3 369 bytes). Eight of these also have to fit "
+            "inside one 64 KiB dispatch frame alongside the task context.",
+            "An ed25519 key is 399 bytes and does the same job.",
+        ),
+        _entry(
+            "GIT_SECRET_DELIVERY_DISABLED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "This deployment does not deliver git credentials from the platform",
+            "Off by default (2026-08-13 ruling): at this stage git authentication is "
+            "configured on the node by its owner, and the platform does not manage it. "
+            "Storing a credential that would never be delivered is a setting that looks "
+            "finished and is not.",
+            "Configure git authentication on the node, or set "
+            "CLIORA_GIT_SECRET_DELIVERY_ENABLED on Central.",
+        ),
+        _entry(
+            "TASK_DELIVERY_UNSUPPORTED",
+            status.HTTP_409_CONFLICT,
+            "That delivery mode takes effect in a later version",
+            "This version delivers by attaching artifacts to the card. Branches and "
+            "pull requests arrive with the platform's own git write path.",
+            "Set delivery to none or artifact for now; the response names the version "
+            "the declared mode starts working in.",
+        ),
+        _entry(
+            "PROJECT_NO_REPOSITORY",
+            status.HTTP_409_CONFLICT,
+            "This project has no repository registered",
+            "An agent fetches the code itself, so the platform has to know where the "
+            "code is. Nothing on the card can supply that — it is project settings.",
+            "Register the repository in the project's settings, then dispatch again. "
+            "The response carries a link to the right page.",
+        ),
+        _entry(
+            "REPOSITORY_HOST_NOT_ALLOWED",
+            status.HTTP_400_BAD_REQUEST,
+            "This deployment does not allow repositories on that host",
+            "Two allowlists apply: the deployment's and each node's. This is the "
+            "deployment's, and it is empty until an administrator sets it.",
+            "Ask an administrator to add the host to CLIORA_GIT_ALLOWED_HOSTS.",
+        ),
+        _entry(
+            "REPOSITORY_EXISTS",
+            status.HTTP_409_CONFLICT,
+            "That repository is already registered for this project",
+            "A project may list several repositories, but not the same one twice.",
+            "Use the existing entry, or remove it first if the branch needs changing.",
+        ),
+        _entry(
+            "AGENT_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "That agent is disabled",
+            "The card named a specific agent, and it is switched off. This is refused "
+            "at dispatch rather than queued, because a disabled agent is a decision "
+            "somebody made rather than a machine that will come back.",
+            "Enable the agent, or dispatch without naming one.",
+        ),
+        # --- V2.2 card artifacts (ADR 0030 Part B) ---
+        # The three quota codes answer 413 and each says which layer was hit. None of
+        # them fails silently: an agent that could not attach its work has to be able
+        # to say so on the card.
+        _entry(
+            "ARTIFACT_TOO_LARGE",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That file is larger than the per-file limit",
+            "One artifact may not exceed the deployment's single-file limit.",
+            "Split it, compress it, or attach a summary and keep the full output elsewhere.",
+        ),
+        _entry(
+            "ARTIFACT_RUN_LIMIT",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "This run has attached as many artifacts as it may",
+            "A single run has a cap on how many files it can attach, so one loop "
+            "cannot fill a project's quota by itself.",
+            "Attach one combined file instead of many.",
+        ),
+        _entry(
+            "ARTIFACT_PROJECT_QUOTA",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "This project's artifact quota is full",
+            "Artifacts follow the card and are never deleted on a timer, so a project "
+            "accumulates them until somebody decides which to remove.",
+            "Delete artifacts that are no longer needed — deletion frees the bytes "
+            "even though the record of the deletion stays.",
+        ),
+        _entry(
+            "ARTIFACT_DIGEST_MISMATCH",
+            status.HTTP_400_BAD_REQUEST,
+            "The upload did not match its stated digest",
+            "Not tamper protection — the connection is already TLS. It catches a "
+            "**truncated** upload, which should fail rather than become a broken "
+            "artifact nobody can open.",
+            "Retry the upload.",
+            retryable=True,
+        ),
+        _entry(
+            "ARTIFACT_DELETED",
+            status.HTTP_410_GONE,
+            "That artifact was deleted",
+            "Its bytes are gone; the record of who deleted it and why is deliberately still there.",
+            "The card shows the reason next to the entry.",
+        ),
+        _entry(
+            "RUN_TOKEN_TTL_EXCEEDED",
+            status.HTTP_409_CONFLICT,
+            "This run would need a credential that outlives the platform's limit",
+            "A run credential may not live longer than the deployment's ceiling on "
+            "agent credentials. That started to bite when the run wall clock grew to "
+            "six hours, so it is refused here rather than issued and expiring mid-run.",
+            "Lower the run timeout, or raise CLIORA_RUN_TOKEN_TTL_HOURS.",
+        ),
+        # --- V2.2 agent runner: the wire's own codes (ADR 0029/0031) ---
+        # These arrive from a node, so a client can see any of them through the relay
+        # and each needs guidance rather than a bare string.
+        _entry(
+            "AGENT_RUNS_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "Agent runs are switched off in this deployment",
+            "A daemon tried to register as a runner while `CLIORA_AGENT_RUNS_ENABLED` "
+            "is false. The node keeps serving interactive sessions.",
+            "Enable the flag on Central if unattended execution is wanted here.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUNNER_NOT_REGISTERED",
+            status.HTTP_409_CONFLICT,
+            "That node has not registered as a runner",
+            "A poll arrived before registration — usually a daemon that reconnected "
+            "and has not yet re-announced itself.",
+            "None; the daemon registers on its next connection and resumes polling.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUNNER_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "That agent is switched off",
+            "An administrator disabled it, so it is refused work even though its node is online.",
+            "Enable it on the Agents page.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Run not found",
+            "The run id is unknown here — usually a late or duplicated frame from a "
+            "node about a run that has already been reclaimed.",
+            "None; this is normal after a lease expires.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_INVALID_STATE",
+            status.HTTP_409_CONFLICT,
+            "That run has already finished",
+            "A lease renewal or progress report arrived for a run in a terminal state.",
+            "None; the node stops reporting once it sees the run is gone.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_SOURCE_UNAVAILABLE",
+            status.HTTP_409_CONFLICT,
+            "The agent could not fetch the code",
+            "One of three things: the machine has no credential for that repository, "
+            "the host is not on that node's allowlist, or the ref does not exist. The "
+            "details say which — **and never echo the URL**, because somebody may have "
+            "pasted a credential into it.",
+            "Check the details: supply the credential on that machine, add the host to "
+            "the node's allowlist, or correct the branch on the card.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_DISK_QUOTA",
+            status.HTTP_409_CONFLICT,
+            "The agent ran out of its disk allowance",
+            "A run directory or the node's total exceeded its quota. Quotas exist "
+            "because a runaway build would otherwise fill the disk and take interactive "
+            "sessions down with it.",
+            "Wait for the cleanup loop, or raise `runner.run_quota_bytes` on that node "
+            "if the work genuinely needs more.",
+            origin=DAEMON,
+        ),
+        _entry(
+            # Deliberately separate from RUN_TIMEOUT: to a person one means "it is
+            # stuck, look at the last event" and the other means "it cannot finish,
+            # look at whether the card is too big".
+            "RUN_IDLE_TIMEOUT",
+            status.HTTP_409_CONFLICT,
+            "The agent stopped producing events",
+            "Liveness is judged from the runtime's event stream, not from a wall clock. "
+            "No event arrived within the idle limit, so the run was stopped.",
+            "Look at the last entries in the run log; if the work legitimately goes "
+            "quiet for longer, raise `runner.idle_timeout_seconds`.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_TIMEOUT",
+            status.HTTP_409_CONFLICT,
+            "The run hit its wall-clock limit",
+            "The backstop, not the liveness test: the run was still emitting events and "
+            "simply did not finish in time.",
+            "Split the card, or raise the run timeout for this deployment.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_RUNTIME_UNAVAILABLE",
+            status.HTTP_409_CONFLICT,
+            "The runtime is not usable on that node",
+            "The CLI is missing, not executable, or too old to expose a non-interactive "
+            "interface with an event stream.",
+            "Install or update the CLI on that machine and let the daemon re-register.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_CANCELLED",
+            status.HTTP_409_CONFLICT,
+            "The run was cancelled",
+            "Somebody pressed cancel, or the node was shutting down.",
+            "Dispatch the card again when you are ready.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "RUN_INTERNAL_ERROR",
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "The agent run failed for an internal reason",
+            "Something went wrong inside the daemon's run path. The detail is in that "
+            "node's log with the request id.",
+            "Retry; if it persists, collect the daemon log around that run id.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "AGENT_RUNTIME_MISMATCH",
+            status.HTTP_409_CONFLICT,
+            "That agent does not offer the runtime this card needs",
+            "The named node reported no usable non-interactive interface for the "
+            "runtime required — often because that CLI is installed but too old.",
+            "Pick another agent, or update the CLI on that node and let it re-register.",
         ),
     ]
 )

@@ -108,6 +108,64 @@ TUNNEL_PUBLIC_ACKNOWLEDGED = "tunnel.public_acknowledged"
 # the question an incident review starts from. Not recorded on every register: a
 # reconnect is not a change, and a row per heartbeat would bury the ones that matter.
 NODE_POSTURE_CHANGED = "node.posture_changed"
+# --- V2.0 project layer (ADR 0027) ---
+PROJECT_CREATE = "project.create"
+PROJECT_UPDATE = "project.update"
+# Archiving happens through the same PATCH as a rename, but it gets its own action
+# for the same reason `node.enable` was split out of `node.disable` in P4-04: "who
+# archived that project" is a question asked on its own, and an operator filtering
+# for it should not also receive every description edit. The project *timeline*
+# keeps one `project.updated` kind, because a reader there is scanning one project
+# in order rather than searching across the fleet (services/activity.py).
+PROJECT_ARCHIVE = "project.archive"
+# Bind and unbind are separate for the same reason. They are also separate from
+# `node.manage`'s actions: removing a machine and detaching a directory from a
+# project are different operations on different things.
+# V2.1 task layer (ADR 0028). Three actions rather than one: "created a card",
+# "changed a card" and "approved a review gate" are asked about separately, and a
+# filter over a merged action could not answer the third — which is the one an
+# auditor actually comes looking for.
+TASK_CREATE = "task.create"
+TASK_UPDATE = "task.update"
+TASK_GATE_APPROVE = "task.gate_approve"
+REQUIREMENT_CREATE = "requirement.create"
+REQUIREMENT_APPROVE = "requirement.approve"
+PROPOSAL_ACCEPT = "requirement.proposal_accept"
+# Issue and revoke each get a row, and both record only the token id — never the value.
+SESSION_TOKEN_ISSUE = "session_token.issue"
+SESSION_TOKEN_REVOKE = "session_token.revoke"
+SESSION_CONTEXT_PROJECTION = "session.context_project"
+PROJECT_WORKSPACE_BIND = "project.workspace_bind"
+PROJECT_WORKSPACE_UNBIND = "project.workspace_unbind"
+# --- V2.2 agent runner (ADR 0029) ---
+# `agent.register` is written by the node gateway when a daemon registers, so its actor
+# is the system rather than a person. The other two are a person's decisions and are
+# deliberately separate from `task.update`: queueing work spends compute, and an
+# auditor filtering for "who started a run on a machine" cannot get that from a merged
+# action.
+# Written by the node gateway when a daemon registers, so its actor is the system
+# rather than a person — `audit_logs.user_id` has been nullable since V2.1.
+AGENT_REGISTER = "agent.register"
+AGENT_UPDATE = "agent.update"
+RUN_DISPATCH = "run.dispatch"
+RUN_CANCEL = "run.cancel"
+# Same shape as `session_token.*`, and the same rule: the id, never the value.
+RUN_TOKEN_ISSUE = "run_token.issue"
+RUN_TOKEN_REVOKE = "run_token.revoke"
+# Upload records the uploader's kind through `user_id` being null for an agent;
+# delete always names a person, because only `project.manage` may do it and it needs a
+# reason.
+ARTIFACT_UPLOAD = "artifact.upload"
+ARTIFACT_DELETE = "artifact.delete"
+
+# V2.3 project secrets (ADR 0032). `secret.deliver` carries **names only** — never a
+# value, a length or a fingerprint. A length is a side channel (a 93-character value is
+# almost certainly a fine-grained PAT) and a fingerprint answers a question `rotated_at`
+# already answers without disclosing anything.
+SECRET_CREATE = "secret.create"
+SECRET_ROTATE = "secret.rotate"
+SECRET_DELETE = "secret.delete"
+SECRET_DELIVER = "secret.deliver"
 
 # The closed vocabulary, used by the audit query API to reject unknown filter
 # values rather than pattern-matching them into an arbitrary query surface.
@@ -143,6 +201,32 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         TUNNEL_CLOSE,
         TUNNEL_PUBLIC_ACKNOWLEDGED,
         NODE_POSTURE_CHANGED,
+        PROJECT_CREATE,
+        PROJECT_UPDATE,
+        PROJECT_ARCHIVE,
+        PROJECT_WORKSPACE_BIND,
+        PROJECT_WORKSPACE_UNBIND,
+        AGENT_REGISTER,
+        AGENT_UPDATE,
+        RUN_DISPATCH,
+        RUN_CANCEL,
+        RUN_TOKEN_ISSUE,
+        RUN_TOKEN_REVOKE,
+        ARTIFACT_UPLOAD,
+        ARTIFACT_DELETE,
+        SECRET_CREATE,
+        SECRET_ROTATE,
+        SECRET_DELETE,
+        SECRET_DELIVER,
+        TASK_CREATE,
+        TASK_UPDATE,
+        TASK_GATE_APPROVE,
+        REQUIREMENT_CREATE,
+        REQUIREMENT_APPROVE,
+        PROPOSAL_ACCEPT,
+        SESSION_TOKEN_ISSUE,
+        SESSION_TOKEN_REVOKE,
+        SESSION_CONTEXT_PROJECTION,
     }
 )
 

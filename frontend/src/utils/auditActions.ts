@@ -38,11 +38,42 @@ const LABELS: Record<string, string> = {
   "integration.node_settings_updated": "變更 Node 埠轉發設定",
   "tunnel.create": "建立埠轉發",
   "tunnel.close": "關閉埠轉發",
+  // 專案層（ADR 0027）。封存與一般更新分開記，因為「誰封存了那個專案」會被單獨查。
+  "project.create": "建立專案",
+  "project.update": "更新專案",
+  "project.archive": "封存專案",
+  "project.workspace_bind": "綁定 Workspace",
+  "project.workspace_unbind": "解綁 Workspace",
+  "task.create": "建立任務",
+  "task.update": "更新任務",
+  "task.gate_approve": "審查關卡核准",
+  "requirement.create": "提出需求",
+  "requirement.approve": "核准規格",
+  "requirement.proposal_accept": "接受任務提案",
+  "session_token.issue": "發行 Session 憑證",
+  "session_token.revoke": "撤銷 Session 憑證",
+  "session.context_project": "投影 Session 任務情境",
   // 單獨一個動作而不是 tunnel.create 的一個欄位：「誰同意這個 port 對任何拿到網址的人開放」
   // 是事後會被問到的問題，而藏在別的動作裡的欄位無法被篩選。
   "tunnel.public_acknowledged": "確認開放無保護預覽",
   "daemon.update_started": "觸發 Daemon 更新",
   "daemon.update_result": "Daemon 更新結果",
+  // Agent Runner（ADR 0029）。派工與取消與 task.update 分開記：掛上佇列會在一台機器上
+  // clone 一個 repo 並跑一個程序，而「誰讓某台機器開始跑東西」是會被單獨查的問題。
+  "agent.register": "Agent Runner 註冊",
+  "agent.update": "更新 Agent 設定",
+  "run.dispatch": "派工給 Agent",
+  "run.cancel": "取消 Run",
+  "run_token.issue": "發行 Run 憑證",
+  "run_token.revoke": "撤銷 Run 憑證",
+  "artifact.upload": "附加產物",
+  "artifact.delete": "刪除產物",
+  // 專案機密（ADR 0032）。`secret.deliver` 記的是**名稱**——永遠不含值、長度或指紋，
+  // 因為長度本身就是側通道，而指紋要回答的問題 `rotated_at` 已經回答了。
+  "secret.create": "建立機密",
+  "secret.rotate": "輪替機密",
+  "secret.delete": "刪除機密",
+  "secret.deliver": "下放機密給 Run",
 };
 
 // An action with no label would render blank, so it falls back to its own key —
@@ -73,6 +104,42 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
       "credential.rotate",
       "daemon.update_started",
       "daemon.update_result",
+    ],
+  },
+  {
+    title: "專案 / Project",
+    actions: [
+      "project.create",
+      "project.update",
+      "project.archive",
+      "project.workspace_bind",
+      "project.workspace_unbind",
+    ],
+  },
+  {
+    title: "任務 / Task",
+    actions: [
+      "task.create",
+      "task.update",
+      "task.gate_approve",
+      "requirement.create",
+      "requirement.approve",
+      "requirement.proposal_accept",
+      "session_token.issue",
+      "session_token.revoke",
+      "session.context_project",
+      "agent.register",
+      "agent.update",
+      "run.dispatch",
+      "run.cancel",
+      "run_token.issue",
+      "run_token.revoke",
+      "artifact.upload",
+      "artifact.delete",
+      "secret.create",
+      "secret.rotate",
+      "secret.delete",
+      "secret.deliver",
     ],
   },
   {

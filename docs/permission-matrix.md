@@ -25,6 +25,12 @@ Developer terminate any colleague's session.
 | 終止 Session / Terminate session | `session.terminate` | ✓ | ✓ | — |
 | 瀏覽檔案 / Browse & preview files | `file.browse` | ✓ | ✓ | ✓ |
 | 查看 Audit Log / View audit log | `audit.view` | ✓ | — | — |
+| 查看專案 / View projects | `project.view` | ✓ | ✓ | ✓ |
+| 管理專案 / Manage projects & workspace bindings | `project.manage` | ✓ | — | — |
+| 查看 Agent / View agent runners | `agent.view` | ✓ | ✓ | ✓ |
+| 管理 Agent / Manage agent runners | `agent.manage` | ✓ | — | — |
+| 派工給 Agent / Dispatch a card to an agent | `run.dispatch` | ✓ | ✓ | — |
+| 取消 Run / Cancel a run | `run.cancel` | ✓ | ✓ | — |
 
 Roles are strictly nested: Viewer ⊂ Developer ⊂ Admin. Viewer holds no mutation
 action, so a forged Viewer mutation fails before any resource is loaded.

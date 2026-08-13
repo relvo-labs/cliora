@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "A run that finished on its own terms, contract 1.11.0. `result` distinguishes `no_changes` from `succeeded` because they lead a person to do different things — the second means read the diff, the first means the card may have been a no-op or the agent misread it.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["run_id", "result"],
+  "properties": {
+    "run_id": {"type": "string", "format": "uuid"},
+    "result": {"enum": ["succeeded", "no_changes"]},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
+    "disk_bytes": {"$comment": "The run directory's size at the end. Feeds M12 in production, which is what the two quotas get re-tuned from.", "type": "integer", "minimum": 0},
+    "git_remotes": {"$comment": "The output of `git remote -v` with any userinfo masked. This is the **observability** that replaced blocking the agent from pushing (ADR 0031 sec 5, consequence four): the second ruling of 2026-08-10 made that freedom deliberate, and two zero-cost lines make 'did this run touch a remote' a visible fact instead of a guess.", "type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 512}},
+    "unpushed_commits": {"$comment": "The line count of `git log --oneline --branches --not --remotes`. Not perfect detection — an agent can rewrite refs after pushing — but it costs nothing and assumes nothing.", "type": "integer", "minimum": 0},
+    "untracked_files": {"$comment": "Counted and deliberately **not** packaged: one `node_modules/` would blow the artifact quota, so the summary says how many were left behind and a person decides (ADR 0031 sec 7).", "type": "integer", "minimum": 0}
+  }
+}

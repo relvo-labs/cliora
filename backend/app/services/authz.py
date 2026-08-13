@@ -35,6 +35,7 @@ from app.services.rbac import (
     FILE_UPLOAD,
     INTEGRATION_MANAGE,
     NODE_MANAGE,
+    SESSION_CREATE,
     SESSION_TERMINATE,
     SESSION_VIEW,
     TERMINAL_OPERATE,
@@ -195,6 +196,14 @@ def authorize_session_terminate(user: User, session: TerminalSession) -> None:
         raise _forbidden(SESSION_TERMINATE, user, REASON_SCOPE)
 
 
+def authorize_session_context_projection(user: User, session: TerminalSession) -> None:
+    """A projection retry mints a fresh session credential: owner or Admin only."""
+    if not has_action(user, SESSION_CREATE):
+        raise _forbidden(SESSION_CREATE, user, REASON_ACTION)
+    if not (is_owner(user, session) or has_action(user, NODE_MANAGE)):
+        raise _forbidden(SESSION_CREATE, user, REASON_SCOPE)
+
+
 def forbidden_shell(user: User, session: TerminalSession) -> ApiError:
     """The 403 for a refused system terminal, with the layer that refused it.
 
@@ -296,6 +305,27 @@ def authorize_node_manage(user: User) -> None:
     same way and none of them re-implements a check locally."""
     if not has_action(user, NODE_MANAGE):
         raise _forbidden(NODE_MANAGE, user, REASON_ACTION)
+
+
+def may_view_activity_actors(user: User) -> bool:
+    """Whether this caller may see *who* performed a project-timeline event.
+
+    Not a guard — a projection. The timeline itself is readable with `project.view`,
+    which all three roles hold; this decides only whether each row keeps its actor,
+    and `services/activity.py::redact_actors` applies it.
+
+    The rule is not new. `services/dashboard.py::project_for` already withholds actor
+    identity from the dashboard's recent activity for anyone without `audit.view`,
+    reasoning that knowing *that* a node was removed is operational context while
+    knowing *who* removed it is the audit trail (FR-AUTH-002). The project timeline is
+    the second surface with that shape, and it is the wider one — so without this it
+    would hand every Viewer the actor feed P4 deliberately closed.
+
+    Lives here rather than in the route because this is a question about a user's
+    reach, and `test_authorization_logic_is_confined_to_two_modules` is what keeps
+    that kind of question from spreading across route modules.
+    """
+    return has_action(user, AUDIT_VIEW)
 
 
 # --- Capability projection for the UI (ADR 0016) ---

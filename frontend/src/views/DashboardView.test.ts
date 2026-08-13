@@ -50,6 +50,7 @@ function signIn(permissions: string[]): void {
     display_name: "U",
     role: "Admin",
     permissions,
+    features: [],
   };
 }
 

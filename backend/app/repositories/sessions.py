@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import SessionConnection, TerminalSession
+from app.db.models import Node, SessionConnection, TerminalSession
 
 # Non-terminal states count against a node's active-session budget.
 ACTIVE_STATES = ("starting", "running", "disconnected", "terminating")
@@ -33,6 +33,9 @@ class SessionRepository:
         *,
         node_id: uuid.UUID | None = None,
         status: str | None = None,
+        project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
+        ad_hoc_only: bool = False,
         limit: int = 50,
         offset: int = 0,
     ) -> Sequence[TerminalSession]:
@@ -42,11 +45,28 @@ class SessionRepository:
         # everywhere capacity is reported — `active_count_*` and
         # `list_active_for_node` below deliberately do *not* filter — because a
         # list that disagrees with the node's own occupancy is worse than a long list.
-        query = select(TerminalSession).where(TerminalSession.parent_session_id.is_(None))
+        # A removed node is a soft-deleted historical record. Its sessions remain in
+        # the database for audit/history, but they are no longer operable fleet
+        # sessions and must leave the main list with the node (same rule as project
+        # bindings, favourites and recents).
+        query = (
+            select(TerminalSession)
+            .join(Node, Node.id == TerminalSession.node_id)
+            .where(
+                TerminalSession.parent_session_id.is_(None),
+                Node.deleted_at.is_(None),
+            )
+        )
         if node_id is not None:
             query = query.where(TerminalSession.node_id == node_id)
         if status is not None:
             query = query.where(TerminalSession.status == status)
+        if project_id is not None:
+            query = query.where(TerminalSession.project_id == project_id)
+        elif ad_hoc_only:
+            query = query.where(TerminalSession.project_id.is_(None))
+        if task_id is not None:
+            query = query.where(TerminalSession.task_id == task_id)
         query = query.order_by(TerminalSession.created_at.desc()).limit(limit).offset(offset)
         result = await self._session.execute(query)
         return result.scalars().all()
@@ -132,9 +152,11 @@ class SessionRepository:
         result = await self._session.execute(
             select(func.count())
             .select_from(TerminalSession)
+            .join(Node, Node.id == TerminalSession.node_id)
             .where(
                 TerminalSession.user_id == user_id,
                 TerminalSession.status.in_(ACTIVE_STATES),
+                Node.deleted_at.is_(None),
             )
         )
         return int(result.scalar() or 0)

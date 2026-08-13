@@ -135,6 +135,18 @@ async function confirmRevoke(): Promise<void> {
       <section class="panel create">
         <h2>Create a token</h2>
         <form @submit.prevent="create">
+          <!-- **Compensating control 4 of four** (ADR 0032 §0), and its position is the
+               whole of it: this sentence has to be on the page that issues the token,
+               not on the Agents page and not in a runbook. There is no project-level
+               authorization and there will not be one — enrollment *is* the boundary,
+               so the person creating it is told what they are creating.
+
+               Warning rather than danger: it is a consequence to know, not an error.
+               `EnrollmentView.test.ts` asserts the text and that it sits inside this
+               form, because the value of this control is the sentence itself. -->
+          <p class="boundary">
+            這台機器將可以領取<strong>任何專案</strong>的卡片，並取得那些卡片宣告的<strong>機密</strong>。
+          </p>
           <label>
             Expires in (minutes)
             <input v-model.number="ttlMinutes" type="number" min="1" />
@@ -299,6 +311,15 @@ async function confirmRevoke(): Promise<void> {
 </template>
 
 <style scoped>
+.boundary {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-left: 3px solid var(--risk-medium);
+  background: var(--surface-canvas);
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+}
+
 .head {
   margin-bottom: 20px;
 }
@@ -486,6 +507,6 @@ th {
   margin: 0 0 4px;
   font-size: 20px;
   font-weight: 700;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 </style>

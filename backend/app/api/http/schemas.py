@@ -16,6 +16,7 @@ from app.services.nodes import RegisterNodeInput, RuntimeInput, WorkspaceRootInp
 from app.services.rbac import role_actions
 from app.services.releases import Manifest
 from app.services.tunnels import TunnelView
+from app.settings import Settings, get_settings
 
 
 class LoginRequest(BaseModel):
@@ -39,15 +40,36 @@ class UserResponse(BaseModel):
     display_name: str
     role: str
     permissions: list[str]
+    # What this **deployment** has, as opposed to what this **person** may do. The
+    # browser ANDs the two and the server checks both independently — a feature flag
+    # is not a permission and must never be read as one.
+    #
+    # It cannot be folded into `permissions`: seed migrations run unconditionally, so
+    # an Admin holds `project.manage` even where the project layer is switched off.
+    # Shaped like `permissions` (a sorted string array) so V2.2 adds one string
+    # rather than a new response shape.
+    features: list[str] = []
 
     @classmethod
-    def from_user(cls, user: User) -> UserResponse:
+    def from_user(cls, user: User, *, settings: Settings | None = None) -> UserResponse:
+        resolved = settings or get_settings()
+        features: list[str] = []
+        if resolved.projects_enabled:
+            features.append("projects")
+        # One more string, exactly as the comment above anticipated — not a new response
+        # shape. **Both flags**, because the runner layer is the inner of two: a
+        # deployment with the project layer off does not have agent runs either, and a
+        # `features` array that said otherwise would have the console offer a page that
+        # answers 404.
+        if resolved.projects_enabled and resolved.agent_runs_enabled:
+            features.append("agent_runs")
         return cls(
             id=user.id,
             username=user.username,
             display_name=user.display_name,
             role=user.role.name,
             permissions=sorted(role_actions(user)),
+            features=features,
         )
 
 
@@ -76,6 +98,19 @@ class CreateSessionRequest(BaseModel):
     workspace: str = Field(min_length=1, max_length=4096)
     rows: int = Field(default=24, ge=2, le=300)
     columns: int = Field(default=80, ge=2, le=500)
+    # Optional, and permanently so (ADR 0027): a session belonging to no project is
+    # an *ad-hoc* session, which is part of the product rather than a transitional
+    # state. The platform never infers it from the workspace — one path may be bound
+    # to several projects, so there is no unique answer, and "is this ad-hoc" has to
+    # stay the caller's statement. Present in the schema whichever way the feature
+    # flag is set, because the OpenAPI document is static; the refusal happens at
+    # run time.
+    project_id: uuid.UUID | None = None
+    # Optional, and permanently so for the same reason `project_id` is (ADR 0028).
+    # Requires `project_id`: a card belongs to a project, and inferring one from the
+    # other would make "is this ad-hoc" a platform judgement instead of the caller's
+    # statement.
+    task_id: uuid.UUID | None = None
 
 
 class OpenShellRequest(BaseModel):
@@ -126,6 +161,12 @@ class SessionSummary(BaseModel):
     ended_at: datetime | None
     created_at: datetime
     capabilities: SessionCapabilities
+    # Always present, `null` for an ad-hoc session and for every session in a
+    # deployment with the flag off. Deliberately not omitted in that case: a field
+    # whose presence depends on configuration gives the browser two response shapes
+    # to type.
+    project_id: uuid.UUID | None = None
+    task_id: uuid.UUID | None = None
 
     @classmethod
     def from_model(cls, s: TerminalSession, *, viewer: User) -> SessionSummary:
@@ -148,17 +189,34 @@ class SessionSummary(BaseModel):
             ended_at=s.ended_at,
             created_at=s.created_at,
             capabilities=_capabilities(s, viewer),
+            project_id=s.project_id,
+            task_id=s.task_id,
         )
 
 
 class SessionDetail(SessionSummary):
     exit_code: int | None = None
     error_message: str | None = None
+    context_projection: str | None = None
+    context_projection_detail: str | None = None
 
     @classmethod
-    def from_model(cls, s: TerminalSession, *, viewer: User) -> SessionDetail:
+    def from_model(
+        cls,
+        s: TerminalSession,
+        *,
+        viewer: User,
+        context_projection: str | None = None,
+        context_projection_detail: str | None = None,
+    ) -> SessionDetail:
         base = SessionSummary.from_model(s, viewer=viewer)
-        return cls(**base.model_dump(), exit_code=s.exit_code, error_message=s.error_message)
+        return cls(
+            **base.model_dump(),
+            exit_code=s.exit_code,
+            error_message=s.error_message,
+            context_projection=context_projection,
+            context_projection_detail=context_projection_detail,
+        )
 
 
 def _capabilities(s: TerminalSession, viewer: User) -> SessionCapabilities:
@@ -825,3 +883,732 @@ class UpdateNodeTunnelSettingsRequest(BaseModel):
     clear_allowed_ports: bool = False
     max_tunnels: int | None = Field(default=None, ge=1, le=100)
     clear_max_tunnels: bool = False
+
+
+# --- V2.0 project layer (ADR 0027, PJ-04) ---
+
+
+class CreateProjectRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=128)
+    # Optional: derived from the name when absent. Never auto-suffixed on collision —
+    # a name the user did not choose, chosen silently, is a name they will later fail
+    # to find (the same judgement ADR 0026 makes about `data (1).csv`).
+    slug: str | None = Field(default=None, min_length=1, max_length=64)
+    description: str | None = Field(default=None, max_length=4096)
+    # `owner_user_id` is deliberately absent: the server assigns the authenticated
+    # caller, exactly as it does for a session's `user_id`.
+
+
+class UpdateProjectRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    description: str | None = Field(default=None, max_length=4096)
+    # `slug` is deliberately absent: it is fixed at creation because V2.1 card
+    # references and V2.3 secret namespaces are built on it.
+    status: Literal["active", "paused", "archived"] | None = None
+
+
+class BindWorkspaceRequest(BaseModel):
+    node_id: uuid.UUID
+    path: str = Field(min_length=1, max_length=4096)
+    label: str | None = Field(default=None, max_length=128)
+    is_primary: bool = False
+
+
+class ProjectWorkspaceDTO(BaseModel):
+    """One binding, with whether it can be used *right now*.
+
+    `usability` reuses the favourites vocabulary rather than defining a parallel one:
+    the question is identical (can this stored path start a session on that node), and
+    the browser already renders these four values.
+
+    One limitation is honest rather than hidden: `usable` does not promise the
+    directory still exists. Detecting that needs a `filesystem.*` round trip, and V2.0
+    adds no protocol message — so a deleted directory surfaces when the session is
+    created, exactly as it does for a path typed by hand.
+    """
+
+    id: uuid.UUID
+    node_id: uuid.UUID
+    node_name: str
+    node_enabled: bool
+    path: str
+    label: str | None
+    is_primary: bool
+    usability: Usability
+    created_at: datetime
+
+
+class ProjectSummaryDTO(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: str | None
+    status: str
+    owner_user_id: uuid.UUID
+    owner_name: str
+    # Counts, not stored columns: a stored count is a second source of truth for a
+    # fact the rows already carry.
+    workspace_count: int
+    node_count: int
+    active_session_count: int
+    last_activity_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProjectDetailDTO(ProjectSummaryDTO):
+    """The project page in one response.
+
+    Deliberately not split into `GET /{id}` plus `GET /{id}/overview`: both would
+    serve one screen, need the same action, and have no separate caching semantics —
+    so the split would only cost the page a second round trip. `/activity` *is*
+    separate, because it has its own pagination and the overview needs only its head.
+    """
+
+    workspaces: list[ProjectWorkspaceDTO]
+
+
+class ActivityEventDTO(BaseModel):
+    id: uuid.UUID
+    kind: str
+    occurred_at: datetime
+    payload: dict[str, Any]
+    # Both null together, never one without the other. Null means either a
+    # system-originated event or a reader without `audit.view` — `actors_hidden` on
+    # the page is what tells those two apart, and the UI must say so, because a blank
+    # actor that silently means "you may not see this" reads as "nobody did it".
+    actor_id: uuid.UUID | None
+    actor_name: str | None
+    session_id: uuid.UUID | None
+    # Survives redaction: it says what *kind* of actor, never which one. Without it a
+    # blank actor means three different things at once — the system, an agent, or a
+    # person the reader may not be told about (ADR 0028 sec 3).
+    actor_kind: str = "user"
+
+
+class ActivityPageDTO(BaseModel):
+    items: list[ActivityEventDTO]
+    # Same field name as the dashboard's recent-activity block, so one component can
+    # render the same sentence in both places.
+    actors_hidden: bool
+    next_before: str | None
+
+
+# --- V2.1: the task layer (ADR 0028) --------------------------------------------
+
+
+class GateDTO(BaseModel):
+    key: str
+    label: str
+    order: int
+    requires_human: bool
+    enabled: bool
+    # Set only when the gate is derived-disabled. A gate that is merely unapproved is
+    # available, not disabled — and a disabled one always says why, because a gate
+    # that quietly does not exist is worse than one that explains itself.
+    disabled_reason: str | None
+
+
+class ProcessDTO(BaseModel):
+    key: str
+    version: str
+    source: str
+    lanes: list[dict[str, Any]]
+    readiness: list[dict[str, Any]]
+    gates: list[GateDTO]
+    templates: dict[str, Any]
+
+
+class BoardCardDTO(BaseModel):
+    """One card as the board renders it.
+
+    **Deliberately without `acceptance_criteria` and without gate detail.** M1
+    measured the full shape at 439 KB for 200 cards and over a megabyte at 500, while
+    this shape is 74 KB and 180 KB (`plan/17/10-…md` §1). That measurement is what
+    replaced pagination, so `test_the_board_card_stays_a_summary` pins it: the day
+    someone adds one of those fields back "just for convenience", the board silently
+    becomes the thing the measurement ruled out.
+    """
+
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+    risk: str
+    priority: str
+    owner_user_id: uuid.UUID | None
+    owner_name: str | None
+    delivery: str
+    blocking_count: int
+    gates_approved_count: int
+    active_run_status: str | None = None
+    active_run_runner_name: str | None = None
+    waiting_reason: str | None = None
+    version: int
+    updated_at: datetime
+
+
+class BoardLaneDTO(BaseModel):
+    stage: str
+    label: str
+    wip_suggested: int | None
+    count: int
+    cards: list[BoardCardDTO]
+
+
+class BoardDTO(BaseModel):
+    lanes: list[BoardLaneDTO]
+    # Always false in V2.1. Present from the first release anyway: a field added later
+    # forces every existing client to handle its absence, while one that is always
+    # there makes a future move to paging a server-side change only.
+    has_more: bool = False
+
+
+class TaskDependencyDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+
+
+class TaskDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    card_ref: str
+    title: str
+    description: str | None
+    objective: str | None
+    scope: str | None
+    non_goals: str | None
+    stage: str
+    risk: str
+    priority: str
+    owner_user_id: uuid.UUID | None
+    epic_id: uuid.UUID | None
+    user_story_id: uuid.UUID | None
+    readiness: dict[str, Any]
+    # `{gate_key: {approved_by, approved_at}}` — never a boolean, because that cell
+    # is where "an agent's output is not an approval" lives (ADR 0028 sec 1).
+    gates: dict[str, Any]
+    acceptance_criteria: list[dict[str, Any]]
+    links: dict[str, Any]
+    required_labels: list[str]
+    version: int
+    # Declared, inert until V2.3/V2.4. The console labels this block accordingly:
+    # a card that says `pull_request` produces no pull request in this phase.
+    source: str
+    repository_id: uuid.UUID | None
+    base_branch: str | None
+    delivery: str
+    target_branch: str | None
+    existing_pr_ref: str | None
+    required_secrets: list[str]
+    assigned_runner_id: uuid.UUID | None
+    requirement_id: uuid.UUID | None
+    proposal_id: uuid.UUID | None
+    depends_on: list[TaskDependencyDTO]
+    blocking_refs: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskWriteDTO(BaseModel):
+    """A card plus anything the platform wants to say without refusing.
+
+    `warnings` is part of the success response rather than a log line: the Definition
+    of Ready reports through it, and a report nobody surfaces is no report.
+    """
+
+    task: TaskDTO
+    warnings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateEpicRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+
+
+class CreateUserStoryRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    narrative: str | None = Field(default=None, max_length=8000)
+    epic_id: uuid.UUID | None = None
+
+
+class UpdateEpicRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+    order_index: int | None = Field(default=None, ge=0)
+    status: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class UpdateUserStoryRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    narrative: str | None = Field(default=None, max_length=8000)
+    epic_id: uuid.UUID | None = None
+    order_index: int | None = Field(default=None, ge=0)
+    status: str | None = Field(default=None, min_length=1, max_length=16)
+
+
+class CreateTaskRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=8000)
+    objective: str | None = Field(default=None, max_length=4000)
+    scope: str | None = Field(default=None, max_length=4000)
+    non_goals: str | None = Field(default=None, max_length=4000)
+    stage: str = "backlog"
+    risk: str = "medium"
+    priority: str = "normal"
+    epic_id: uuid.UUID | None = None
+    user_story_id: uuid.UUID | None = None
+    owner_user_id: uuid.UUID | None = None
+    acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list)
+    readiness: dict[str, Any] = Field(default_factory=dict)
+    links: dict[str, Any] = Field(default_factory=dict)
+    required_labels: list[str] = Field(default_factory=list)
+    source: str = "repo"
+    delivery: str = "pull_request"
+    base_branch: str | None = None
+    target_branch: str | None = None
+
+
+class UpdateTaskRequest(BaseModel):
+    """A patch, and the version it was written against.
+
+    `version` is required rather than optional: an optional precondition is one every
+    caller eventually forgets, and the failure it prevents — two people dragging the
+    same card — is silent.
+
+    `model_extra` is refused rather than ignored, so a typo'd field name is an error
+    the caller can see instead of a change they believe they made.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    version: int
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = None
+    objective: str | None = None
+    scope: str | None = None
+    non_goals: str | None = None
+    stage: str | None = None
+    risk: str | None = None
+    priority: str | None = None
+    owner_user_id: uuid.UUID | None = None
+    epic_id: uuid.UUID | None = None
+    user_story_id: uuid.UUID | None = None
+    readiness: dict[str, Any] | None = None
+    acceptance_criteria: list[dict[str, Any]] | None = None
+    links: dict[str, Any] | None = None
+    required_labels: list[str] | None = None
+    source: str | None = None
+    delivery: str | None = None
+    base_branch: str | None = None
+    target_branch: str | None = None
+    existing_pr_ref: str | None = None
+    required_secrets: list[str] | None = None
+    assigned_runner_id: uuid.UUID | None = None
+
+
+class AddDependencyRequest(BaseModel):
+    depends_on_task_id: uuid.UUID
+
+
+class GateDecisionRequest(BaseModel):
+    approved: bool = True
+
+
+class RoadmapTaskDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    stage: str
+
+
+class RoadmapStoryDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    done_count: int
+    total_count: int
+    tasks: list[RoadmapTaskDTO]
+
+
+class RoadmapEpicDTO(BaseModel):
+    id: uuid.UUID
+    card_ref: str
+    title: str
+    done_count: int
+    total_count: int
+    stories: list[RoadmapStoryDTO]
+    # Cards filed under this epic but under no story. Monstrare's semantics, kept
+    # deliberately: a card must never disappear because of how it was filed (D4).
+    unclassified: list[RoadmapTaskDTO]
+
+
+class RoadmapDTO(BaseModel):
+    epics: list[RoadmapEpicDTO]
+    # Stories with no epic, and — in `unclassified` — cards with neither.
+    orphan_stories: list[RoadmapStoryDTO]
+    unclassified: list[RoadmapTaskDTO]
+    done_count: int
+    total_count: int
+
+
+# --- V2.1: requirements, specs and proposals (TK-05, D28) ------------------------
+
+
+class FeatureSpecDTO(BaseModel):
+    id: uuid.UUID
+    seq: int
+    objective: str | None
+    scope: str | None
+    non_goals: str | None
+    acceptance_criteria: list[dict[str, Any]]
+    # `[{id, question, answer, resolved_as}]`. An entry with neither an answer nor an
+    # explicit `resolved_as` blocks approval — a known unknown is recorded, not
+    # pretended away.
+    open_questions: list[dict[str, Any]]
+    authored_by_kind: str
+    authored_by: uuid.UUID | None
+    created_at: datetime
+
+
+class RequirementSummaryDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    card_ref: str
+    raw_text: str
+    status: str
+    created_by: uuid.UUID | None
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
+    spec_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class TaskProposalDTO(BaseModel):
+    id: uuid.UUID
+    seq: int
+    spec_id: uuid.UUID | None
+    tree: dict[str, Any]
+    status: str
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    created_at: datetime
+
+
+class RequirementDetailDTO(RequirementSummaryDTO):
+    specs: list[FeatureSpecDTO]
+    proposals: list[TaskProposalDTO]
+    # Which questions currently block approval. Sent with the requirement so the
+    # review screen can disable the button *and say why* in one response — a silently
+    # disabled control is the thing FR-TASK-005.AC-03 exists to prevent.
+    blocking_questions: list[str]
+
+
+class CreateRequirementRequest(BaseModel):
+    """Intake. One field, deliberately.
+
+    The flow begins with someone saying what they want in their own words; a form with
+    ten required fields at that moment is how it stops being used.
+    """
+
+    raw_text: str = Field(min_length=1, max_length=8000)
+
+
+class CreateSpecRequest(BaseModel):
+    objective: str | None = Field(default=None, max_length=8000)
+    scope: str | None = Field(default=None, max_length=8000)
+    non_goals: str | None = Field(default=None, max_length=8000)
+    acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list)
+    open_questions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CreateProposalRequest(BaseModel):
+    """The proposed tree. `{"tasks": [ … ]}` in V2.1; epics and stories join in V2.5."""
+
+    tree: dict[str, Any]
+
+
+class AcceptProposalRequest(BaseModel):
+    # `None` means "all of them". Partial acceptance is the normal case, so the field
+    # selects rather than confirms.
+    accept_ids: list[str] | None = None
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class AcceptProposalResultDTO(BaseModel):
+    created: list[TaskDTO]
+    # card_ref -> the readiness items it lacked. A card that landed in `backlog`
+    # instead of `ready` has to say why, on the same screen (FR-TASK-005.AC-06).
+    incomplete: dict[str, list[str]]
+
+
+# --- V2.2 agent runner (ADR 0029/0030/0031) ---------------------------------
+
+
+class AgentRunnerDTO(BaseModel):
+    """A runner as the console sees it.
+
+    `online`, `active_runs` and `waiting_runs` are **derived**, not columns: a runner
+    is online exactly when its node is, and storing a second copy of that is storing
+    something that can go stale (ADR 0029 sec 1).
+    """
+
+    id: uuid.UUID
+    node_id: uuid.UUID
+    node_name: str
+    name: str
+    runtimes: list[str]
+    # **Matched from V2.3**, as a superset: a card reaches this runner when its
+    # `required_labels` are a subset of these. Read-only — the node's config declares
+    # them (ADR 0029 amendment B5) — and the console must not draw them as a security
+    # control: a tag decides which machine, never which machine may hold a secret.
+    labels: list[str]
+    # The two node-side declarations, also read-only. `run_untagged` false reserves the
+    # machine for tagged work; `accept_secrets` false keeps it away from cards that
+    # declare secrets.
+    run_untagged: bool
+    accept_secrets: bool
+    max_concurrent: int
+    max_waiting: int
+    enabled: bool
+    # `len(workspace.allowed_roots) == 0` on the node, as **reported** by the daemon.
+    # False means the machine also serves interactive sessions, and an agent running
+    # there can read those directories — the platform does not prevent that and says
+    # so (ADR 0031 sec 6).
+    dedicated: bool
+    online: bool
+    active_runs: int
+    waiting_runs: int
+    # Cards pinned to this runner, whether or not any of them has ever run. Shows an
+    # over-subscribed machine that occupancy alone makes look idle.
+    assigned_cards: int
+    # Why the runner stopped polling, as it last reported. **Not** an online flag: a
+    # runner expresses "no capacity" by going quiet, so without this a full runner and
+    # a dead machine are the same silence — and the console would show a perfectly
+    # healthy node as offline (exit condition 21). Null means it never said.
+    blocked_reason: str | None
+    disk_used_bytes: int | None
+    disk_quota_bytes: int | None
+    registered_at: datetime
+    last_registered_at: datetime | None
+
+
+class UpdateAgentRequest(BaseModel):
+    """`runtimes` and `dedicated` are deliberately absent: they are the daemon's report
+    about the machine, and a field an administrator can type would make the console
+    display the posture somebody wished for (ADR 0023 D3).
+
+    **`labels`, `run_untagged` and `accept_secrets` are absent for the same reason, and
+    from V2.3 the reason is stronger.** They now decide which machine gets which card
+    and which machine may hold a secret, so an edit here would be a second source of
+    truth that the node's next `runner.register` silently overwrites. Changing them
+    means changing that machine's config file (ADR 0029 amendment B5)."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=128)
+    enabled: bool | None = None
+    max_concurrent: int | None = Field(default=None, ge=0, le=64)
+    max_waiting: int | None = Field(default=None, ge=0, le=64)
+
+
+# The closed set of kinds, named once so the DTO, the create request and the route
+# helper cannot drift apart.
+SecretKind = Literal["env", "git_pat", "git_ssh_key", "provider_token"]
+
+
+class ProjectSecretDTO(BaseModel):
+    """A secret's metadata. **There is no field for the value, and there never will be.**
+
+    Also absent, and each for its own reason: a **fingerprint** answers "is this the one
+    I rotated last week", which `rotated_at` already answers without disclosing anything;
+    a **length** is a side channel, because a 93-character value is almost certainly a
+    fine-grained PAT (ADR 0032 §2 rule 8).
+    """
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    name: str
+    kind: SecretKind
+    created_by: uuid.UUID | None
+    created_at: datetime
+    rotated_at: datetime | None
+    # The most useful column on the page: it is how somebody tells a live credential
+    # from one nothing has touched since it was created.
+    last_used_at: datetime | None
+
+
+class CreateProjectSecretRequest(BaseModel):
+    # Bounded here as well as in the envelope module, so an oversized body is refused
+    # before it is encrypted rather than after.
+    name: str = Field(min_length=1, max_length=128)
+    kind: SecretKind
+    value: str = Field(min_length=1, max_length=8192)
+
+
+class RotateProjectSecretRequest(BaseModel):
+    """Only the value. Name and kind are immutable — see `SecretService.rotate`."""
+
+    value: str = Field(min_length=1, max_length=8192)
+
+
+class ProjectRepositoryDTO(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID
+    scheme: str
+    host: str
+    path: str
+    default_branch: str
+    label: str | None
+    # Assembled from the three fields for display. There is no stored URL anywhere,
+    # which is what makes a credential in one impossible rather than filtered.
+    url: str
+    created_at: datetime
+
+
+class CreateRepositoryRequest(BaseModel):
+    """Three fields, **never a URL**.
+
+    An endpoint that accepted a URL would receive `https://user:token@host/…` on its
+    first day, and that token would then live in the database, in `git remote -v`, in
+    the reflog and in error messages. Split like this, userinfo cannot be expressed
+    (ADR 0031 sec 5). An OpenAPI assertion in AR-12 pins the absence of a `url` field.
+    """
+
+    scheme: Literal["https", "ssh"]
+    host: str = Field(min_length=1, max_length=255)
+    path: str = Field(min_length=1, max_length=512)
+    default_branch: str = Field(min_length=1, max_length=255)
+    label: str | None = Field(default=None, max_length=128)
+
+
+class DispatchRequest(BaseModel):
+    # Absent means "any eligible runner", which is the default. Naming one makes it a
+    # `WHERE` clause in that runner's own poll query — never a push (ADR 0029 sec 3).
+    assigned_runner_id: uuid.UUID | None = None
+
+
+class DispatchResponseDTO(BaseModel):
+    run_id: uuid.UUID
+    status: str
+    # "any" | "assigned_offline" | "no_eligible_runner". Computed on the server because
+    # it needs the eligibility rules; the three pieces of UI copy behind it must differ
+    # word for word, or a person cannot tell "I misconfigured this" from "wait".
+    waiting_reason: str
+    # Which tags nothing online has, when that is why nobody claimed it. **The smallest
+    # missing set across the online runners**, not the intersection: what the reader has
+    # to do is make one machine eligible, and the minimum answers that directly
+    # (exit condition 3e). Empty for the other two reasons.
+    missing_tags: list[str] = []
+    # Named only for `assigned_offline`, so the copy can say which machine.
+    runner_name: str | None = None
+
+
+class TaskRunDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    project_id: uuid.UUID
+    seq: int
+    status: str
+    attempt: int
+    runner_id: uuid.UUID | None
+    runner_name: str | None
+    assigned_runner_id: uuid.UUID | None
+    runtime: str | None
+    source_kind: str | None
+    source_ref: str | None
+    # Which version of the code this run actually executed. Reported by the runner
+    # once the worktree exists.
+    commit_sha: str | None
+    disk_bytes: int | None
+    queued_at: datetime
+    claimed_at: datetime | None
+    started_at: datetime | None
+    finished_at: datetime | None
+    # "is the child making progress", as opposed to the lease's "is the runner alive".
+    last_event_at: datetime | None
+    result: str | None
+    error_code: str | None
+    summary: str | None
+    log_bytes: int
+    log_truncated_bytes: int
+    # **The card's declaration, not a per-run snapshot** — and the difference is stated
+    # rather than papered over. The authoritative record of what was actually handed to
+    # which machine is the `secret.deliver` audit row; this is what the card asked for,
+    # which is what a reader of the run page is trying to see. Names only: there is no
+    # version of this field that could carry a value.
+    secret_names: list[str] = []
+
+
+class RunLogLineDTO(BaseModel):
+    seq: int
+    # The stored segment, returned **unparsed**. The event schema belongs to a
+    # third-party CLI and changes with its version; parsing it here would make that
+    # schema part of our API (plan/18/06-…md §2.1).
+    data: str
+    truncated: bool
+    received_at: datetime
+
+
+class RunLogPageDTO(BaseModel):
+    lines: list[RunLogLineDTO]
+    next_after_seq: int | None
+    log_bytes: int
+    truncated_bytes: int
+
+
+class TaskMessageDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    run_id: uuid.UUID | None
+    author_kind: str
+    author_user_id: uuid.UUID | None
+    author_name: str | None
+    author_runner_id: uuid.UUID | None
+    body: str
+    kind: str
+    event_kind: str | None
+    created_at: datetime
+
+
+class PostMessageRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=20000)
+    # `question` puts the run into `waiting_for_input` and makes the card say "waiting
+    # for your reply" — readable from the thread alone, without consulting run state
+    # for every card on a board.
+    kind: Literal["message", "question", "answer"] = "message"
+
+
+class TaskArtifactDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    run_id: uuid.UUID | None
+    message_id: uuid.UUID | None
+    filename: str
+    # Determined by the server, never taken from the uploader. This field is the
+    # primary stored-XSS entry point in the phase (ADR 0030 Part B).
+    content_type: str
+    size: int
+    sha256: str
+    uploaded_by_kind: str
+    uploaded_by_user_id: uuid.UUID | None
+    uploaded_by_runner_id: uuid.UUID | None
+    created_at: datetime
+    # A deleted artifact keeps its row and loses its bytes. The console shows it as a
+    # grey line rather than removing it — the same rule the activity timeline follows,
+    # and the reason a reason is required in the first place.
+    deleted_at: datetime | None
+    delete_reason: str | None
+    # Whether `/preview` exists for this one. Computed rather than stored, because the
+    # allowlist is a property of the code and not of the row.
+    previewable: bool
+
+
+class DeleteArtifactRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=2000)

@@ -22,6 +22,7 @@ function testRouter(): Router {
     history: createWebHistory(),
     routes: [
       { path: "/dashboard", name: "dashboard", component: blank },
+      { path: "/projects", name: "projects", component: blank },
       { path: "/nodes", name: "nodes", component: blank },
       { path: "/sessions", name: "sessions", component: blank },
       { path: "/enrollment", name: "enrollment", component: blank },
@@ -42,7 +43,9 @@ async function render(
     "enrollment.manage",
     "audit.view",
     "integration.manage",
+    "project.view",
   ],
+  features: string[] = ["projects"],
 ) {
   const store = useAuthStore();
   store.user = {
@@ -51,6 +54,7 @@ async function render(
     display_name: "U",
     role: "Admin",
     permissions,
+    features,
   };
   const router = testRouter();
   await router.push("/dashboard");
@@ -101,5 +105,99 @@ describe("AppLayout", () => {
 
     const developer = await render({}, ["tunnel.view", "tunnel.manage"]);
     expect(developer.get("nav").text()).not.toContain("Integrations");
+  });
+});
+
+// --- V2.0 navigation regrouping (plan/16 PJ-06, ADR 0027) ---
+//
+// The claim being defended is narrow and specific: **this is a regrouping, not a
+// move.** Everything else here follows from that.
+
+describe("AppLayout navigation groups", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+  });
+
+  const ALL = [
+    "enrollment.manage",
+    "audit.view",
+    "integration.manage",
+    "project.view",
+  ];
+
+  function hrefs(wrapper: ReturnType<typeof mount>): string[] {
+    return wrapper.findAll("nav a").map((a) => a.attributes("href") ?? "");
+  }
+
+  it("keeps every existing route path identical whether or not the layer is on", async () => {
+    // The one assertion that would catch a regrouping turning into a move. Paths
+    // are what bookmarks and the e2e suite hold; the grouping is presentation.
+    const on = await render({}, ALL, ["projects"]);
+    const off = await render({}, ALL, []);
+    const existing = [
+      "/dashboard",
+      "/nodes",
+      "/sessions",
+      "/enrollment",
+      "/audit",
+      "/settings/integrations",
+    ];
+    for (const path of existing) {
+      expect(hrefs(on)).toContain(path);
+      expect(hrefs(off)).toContain(path);
+    }
+  });
+
+  it("renders no group heading at all when the feature is off", async () => {
+    // Flag off must be the *original* flat rail, not "the new rail minus one
+    // entry" — that is what the screenshot baseline compares against.
+    const wrapper = await render({}, ALL, []);
+    expect(wrapper.findAll("[data-nav-group]")).toHaveLength(0);
+    // Order included: "the regrouped rail minus one row" is a different picture
+    // from "the rail as it was", and the screenshot baseline is the latter.
+    expect(hrefs(wrapper)).toEqual([
+      "/dashboard",
+      "/nodes",
+      "/sessions",
+      "/enrollment",
+      "/audit",
+      "/settings/integrations",
+    ]);
+  });
+
+  it("shows Projects and exactly one group heading when the feature is on", async () => {
+    const wrapper = await render({}, ALL, ["projects"]);
+    expect(hrefs(wrapper)).toContain("/projects");
+    // One, not three: `Projects` and `Sessions` are single-entry groups and
+    // collapse to plain rows rather than repeating themselves as a heading.
+    const groups = wrapper.findAll("[data-nav-group]");
+    expect(groups).toHaveLength(1);
+    expect(groups[0].text()).toBe("Infrastructure");
+  });
+
+  it("hides Projects when the deployment has it but the person may not see it", async () => {
+    // `features` AND `permissions`. Either alone would be the wrong rule, and
+    // neither is authorization — the server refuses regardless.
+    const wrapper = await render({}, ["audit.view"], ["projects"]);
+    expect(hrefs(wrapper)).not.toContain("/projects");
+  });
+
+  it("hides Projects when the person may see it but the deployment has no such thing", async () => {
+    const wrapper = await render({}, ALL, []);
+    expect(hrefs(wrapper)).not.toContain("/projects");
+  });
+
+  it("still groups when a Viewer sees only two infrastructure entries", async () => {
+    // Viewer holds project.view but neither enrollment nor audit, so the group has
+    // two children. An empty-looking group would be worse than none, so this pins
+    // the case that decides it.
+    const wrapper = await render({}, ["project.view"], ["projects"]);
+    expect(hrefs(wrapper)).toEqual([
+      "/projects",
+      "/sessions",
+      "/dashboard",
+      "/nodes",
+    ]);
+    expect(wrapper.findAll("[data-nav-group]")).toHaveLength(1);
   });
 });

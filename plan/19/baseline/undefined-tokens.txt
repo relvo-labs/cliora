@@ -1,0 +1,139 @@
+Script started on 2026-08-12 12:36:14+00:00 [<not executed on terminal>]
+WARN   frontend/src/components/file/FileTreeNode.vue:261  var(--surface-raised, rgba(127, 127, 127, 0.12)  繞過 token，實際使用 fallback
+ERROR  frontend/src/components/project/TaskBoard.vue:190  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:194  var(--color-surface-2)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:195  var(--color-border)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:197  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:204  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:207  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:211  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:212  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:216  var(--color-warning)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:225  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:228  var(--color-surface)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:229  var(--color-border)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:231  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:247  var(--font-mono)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:248  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:249  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:253  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:259  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:262  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:263  var(--color-border)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:268  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:271  var(--color-warning)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:272  var(--color-warning)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:276  var(--color-surface)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:277  var(--color-border)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:283  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:286  var(--color-warning)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:288  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:289  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskBoard.vue:292  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskBoard.vue:294  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:259  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:263  var(--font-size-lg)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:266  var(--font-mono)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:267  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:272  var(--space-4)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:273  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:276  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:280  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:281  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:281  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:284  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:293  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:297  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:298  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:303  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:310  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:311  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:314  var(--color-success)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:315  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:320  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:321  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:324  var(--font-mono)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:325  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:326  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskDetail.vue:329  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskDetail.vue:330  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:106  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskRoadmap.vue:107  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:110  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:117  var(--font-mono)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:118  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:119  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskRoadmap.vue:120  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:123  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/components/project/TaskRoadmap.vue:124  var(--font-size-xs)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:125  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:129  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:130  var(--space-4)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:136  var(--font-size-sm)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:137  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:137  var(--space-1)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:137  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/components/project/TaskRoadmap.vue:140  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+WARN   frontend/src/components/session/NewSessionDialog.vue:657  var(--font-mono, monospace)  繞過 token，實際使用 fallback
+WARN   frontend/src/components/session/NewSessionDialog.vue:661  var(--status-warning, var(--text-muted)  繞過 token，實際使用 fallback
+WARN   frontend/src/components/session/NewSessionDialog.vue:754  var(--font-mono, monospace)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/AgentsView.vue:268  var(--color-border, #d0d0d0)  繞過 token，實際使用 fallback
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+WARN   frontend/src/views/AgentsView.vue:281  var(--color-border, #d0d0d0)  繞過 token，實際使用 fallback
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+WARN   frontend/src/views/EnrollmentView.vue:489  var(--font-mono, monospace)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:740  var(--font-mono, monospace)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:751  var(--status-warning, var(--border-focus)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:813  var(--border-subtle, var(--border-default)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:824  var(--status-success, seagreen)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:827  var(--status-warning, darkorange)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:834  var(--font-mono, monospace)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:869  var(--status-danger, crimson)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectDetailView.vue:872  var(--status-danger, crimson)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectsView.vue:282  var(--border-subtle, var(--border-default)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectsView.vue:318  var(--status-warning, var(--border-focus)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectsView.vue:319  var(--status-warning, var(--text-secondary)  繞過 token，實際使用 fallback
+WARN   frontend/src/views/ProjectsView.vue:375  var(--status-danger, crimson)  繞過 token，實際使用 fallback
+ERROR  frontend/src/views/RequirementDetailView.vue:290  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/views/RequirementDetailView.vue:296  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/views/RequirementDetailView.vue:301  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/views/RequirementDetailView.vue:307  var(--space-3)  宣告會被丟棄
+ERROR  frontend/src/views/RequirementDetailView.vue:311  var(--space-2)  宣告會被丟棄
+WARN   frontend/src/views/RunDetailView.vue:249  var(--color-border, #d0d0d0)  繞過 token，實際使用 fallback
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+WARN   frontend/src/views/SessionWorkspaceView.vue:1147  var(--status-success, var(--text-secondary)  繞過 token，實際使用 fallback
+ERROR  frontend/src/views/TaskDetailView.vue:123  var(--space-4)  宣告會被丟棄
+ERROR  frontend/src/views/TaskDetailView.vue:127  var(--space-2)  宣告會被丟棄
+ERROR  frontend/src/views/TaskDetailView.vue:128  var(--color-text-muted)  宣告會被丟棄
+       tokens.css 沒有 --color-* 命名空間；請使用 --surface- / --text- / --border- / --action- / --status-。
+ERROR  frontend/src/views/TaskDetailView.vue:129  var(--font-size-sm)  宣告會被丟棄
+Token references: 83 ERROR, 21 WARN
+
+Script done on 2026-08-12 12:36:14+00:00 [COMMAND_EXIT_CODE="1"]

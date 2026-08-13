@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Central handing a *already claimed* run to the runner that polled, contract 1.11.0 (ADR 0029 sec 2). It is a one-way frame with a fresh id rather than a correlated reply, for two reasons that are facts about this repository rather than preferences: the node gateway's loop resolves its own responses, so awaiting one from inside it can only time out; and the daemon keeps no pending map for requests it originates (`connection.go` has a single switch). `run_id: null` is the 'nothing for you' answer — a shape rather than an absence, so the daemon's switch has exactly one branch to write.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id"
+  ],
+  "properties": {
+    "run_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "uuid"
+    },
+    "task_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "project_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "card_ref": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 16
+    },
+    "delivery": {
+      "$comment": "`branch` joins the set in 1.12.0: the platform now pushes inside the `cliora/<card>-<run>` namespace (ADR 0031 amendment). `pull_request` and `existing_pr` need a provider API rather than git transport and are still refused at dispatch, so they cannot reach a node.",
+      "enum": [
+        "none",
+        "artifact",
+        "branch"
+      ]
+    },
+    "spec": {
+      "$comment": "Everything the daemon needs to run it. `source` lives in here rather than beside it so there is exactly one object to validate against SEC-002's absent-fields rule.",
+      "$ref": "run-spec.schema.json"
+    }
+  }
+}

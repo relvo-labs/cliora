@@ -22,7 +22,20 @@ export interface User {
   display_name: string;
   role: string;
   permissions: string[];
+  /** What this *deployment* has. **Not a permission** — `hasPermission` answers
+   *  that, and the server checks both independently. The UI rule is
+   *  `hasFeature(...) && hasPermission(...)`; neither alone is authorization.
+   *
+   *  It cannot live in `permissions`: seed migrations run unconditionally, so an
+   *  Admin holds `project.manage` even where the project layer is switched off. */
+  features: string[];
 }
+
+/** Feature keys carried by `User.features` (ADR 0027). V2.2 adds `agent_runs`. */
+export const FEATURE_PROJECTS = "projects";
+// The inner of the two flags: present only when the project layer is on as well,
+// because the runner layer is nested inside it (ADR 0029).
+export const FEATURE_AGENT_RUNS = "agent_runs";
 
 export interface LoginResponse {
   tokens: TokenPair;
@@ -210,11 +223,17 @@ export interface SessionSummary {
   ended_at: string | null;
   created_at: string;
   capabilities: SessionCapabilities;
+  /** `null` for an ad-hoc session, and for every session where the project layer
+   *  is switched off. Always present, so the shape does not depend on config. */
+  project_id: string | null;
+  task_id: string | null;
 }
 
 export interface SessionDetail extends SessionSummary {
   exit_code: number | null;
   error_message: string | null;
+  context_projection: "pending" | "ok" | "failed" | "node_unsupported" | null;
+  context_projection_detail: string | null;
 }
 
 export interface CreateSessionInput {
@@ -224,6 +243,10 @@ export interface CreateSessionInput {
   workspace: string;
   rows?: number;
   columns?: number;
+  project_id?: string;
+  /** Optional, and permanently so. Requires `project_id`: a card belongs to a
+   *  project, and the platform never infers one from the other (FR-TASK-006). */
+  task_id?: string;
 }
 
 export interface AttachTicket {
@@ -516,6 +539,42 @@ export const AUDIT_ACTIONS = [
   "tunnel.close",
   "tunnel.public_acknowledged",
   "node.posture_changed",
+  // 專案層（ADR 0027）。`project.archive` 與 `project.update` 分開，理由與
+  // `node.enable`／`node.disable` 分開相同：「誰封存了那個專案」是一個會被單獨問的
+  // 問題，而在另一個動作的 metadata 裡過濾不是答案。綁定與解綁同理。
+  "project.create",
+  "project.update",
+  "project.archive",
+  "project.workspace_bind",
+  "project.workspace_unbind",
+  // 任務層（ADR 0028）。三個動作而不是一個：「建了一張卡」「改了一張卡」「核准了一個
+  // 審查關卡」是分開被問的問題，而第三個正是稽核最常來找的那一個——在合併後的動作
+  // metadata 裡過濾不是答案。
+  "task.create",
+  "task.update",
+  "task.gate_approve",
+  "requirement.create",
+  "requirement.approve",
+  "requirement.proposal_accept",
+  "session_token.issue",
+  "session_token.revoke",
+  "session.context_project",
+  // Agent Runner（ADR 0029）。派工與取消不併進 `task.update`：掛上佇列會在一台機器上
+  // clone 一個 repo 並跑一個程序，與改一個欄位不是同一個量級，而稽核要分得出來。
+  "agent.register",
+  "agent.update",
+  "run.dispatch",
+  "run.cancel",
+  "run_token.issue",
+  "run_token.revoke",
+  "artifact.upload",
+  "artifact.delete",
+  // V2.3 project secrets (ADR 0032). `secret.deliver` carries **names only** — never a
+  // value, a length or a fingerprint.
+  "secret.create",
+  "secret.rotate",
+  "secret.delete",
+  "secret.deliver",
 ] as const;
 
 // --- P4-13 workspace favourites and recents (FR-WORKSPACE-004/005) ---
@@ -705,3 +764,514 @@ export const ACTION_AUDIT_VIEW = "audit.view";
 export const ACTION_TUNNEL_VIEW = "tunnel.view";
 export const ACTION_TUNNEL_MANAGE = "tunnel.manage";
 export const ACTION_INTEGRATION_MANAGE = "integration.manage";
+// V2.0 project layer (ADR 0027). `project.view` is held by every role, like
+// `node.view`; `project.manage` is Admin-only, with enrollment and node
+// management, because it decides which projects exist and what they cover.
+export const ACTION_PROJECT_VIEW = "project.view";
+export const ACTION_PROJECT_MANAGE = "project.manage";
+
+// V2.1 task layer (ADR 0028). `task.approve` is separate from `task.update` even
+// though the same two roles hold both: that split is what lets a session
+// credential's scope exclude approval, and an action that does not exist cannot be
+// excluded from a scope. Do not merge them.
+export const ACTION_TASK_CREATE = "task.create";
+export const ACTION_TASK_UPDATE = "task.update";
+export const ACTION_TASK_APPROVE = "task.approve";
+
+// V2.2 agent runner (ADR 0029). `agent.view` joins the read-only set for the same
+// reason `node.view` is in it — a runner is part of the shape of the fleet.
+// `agent.manage` is Admin-only because it is the disposition of compute: enabling a
+// runner and setting its concurrency. It does **not** cover editing tags, which the
+// node's own config declares (ADR 0029 amendment B5). `run.dispatch` is separate from
+// `task.update` because queueing work clones a repository onto a machine and starts a
+// process there.
+export const ACTION_AGENT_VIEW = "agent.view";
+export const ACTION_AGENT_MANAGE = "agent.manage";
+export const ACTION_RUN_DISPATCH = "run.dispatch";
+export const ACTION_RUN_CANCEL = "run.cancel";
+
+// V2.3 project secrets (ADR 0032). Admin-only for the same reason `enrollment.manage`
+// is: a credential the platform holds on a user's behalf, hands to a machine on demand
+// and can revoke is an organisation-level asset. It also guards repository registration
+// from V2.3, because a repository row stopped being "where the code is" and became
+// "which credential fetches it".
+export const ACTION_SECRET_MANAGE = "secret.manage";
+
+// --- V2.0 project layer (ADR 0027) ---
+
+/** Why a binding cannot be used right now. Deliberately the *same* vocabulary as
+ *  `FavoriteUsability`: the question is identical — can this stored path start a
+ *  session on that node — and a parallel set of names would mean two ways of
+ *  saying the same thing.
+ *
+ *  `usable` does not promise the directory still exists. Detecting that needs a
+ *  round trip to the node, which V2.0 does not add; a deleted directory surfaces
+ *  when the session is created, exactly as for a hand-typed path. */
+export type BindingUsability = FavoriteUsability;
+
+export type ProjectStatus = "active" | "paused" | "archived";
+
+export interface ProjectWorkspace {
+  id: string;
+  node_id: string;
+  node_name: string;
+  node_enabled: boolean;
+  path: string;
+  label: string | null;
+  is_primary: boolean;
+  usability: BindingUsability;
+  created_at: string;
+}
+
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: ProjectStatus;
+  owner_user_id: string;
+  owner_name: string;
+  workspace_count: number;
+  node_count: number;
+  active_session_count: number;
+  last_activity_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  workspaces: ProjectWorkspace[];
+}
+
+export interface ActivityEvent {
+  id: string;
+  kind: string;
+  occurred_at: string;
+  payload: Record<string, unknown>;
+  /** Both null together. Null means either a system-originated event *or* a
+   *  reader without `audit.view`; `ActivityPage.actors_hidden` is what tells the
+   *  two apart, and the UI must say which — a blank actor that silently means
+   *  "you may not see this" reads as "nobody did it". */
+  actor_id: string | null;
+  actor_name: string | null;
+  session_id: string | null;
+  /** `user` / `agent` / `system` — what *kind* of actor, never which one, so it
+   *  survives redaction. Without it those three render identically (ADR 0028). */
+  actor_kind: "user" | "agent" | "system";
+}
+
+export interface ActivityPage {
+  items: ActivityEvent[];
+  actors_hidden: boolean;
+  next_before: string | null;
+}
+
+// --- V2.1 task layer (ADR 0028) -------------------------------------------------
+
+export type TaskStage =
+  | "backlog"
+  | "blocked"
+  | "ready"
+  | "implementing"
+  | "verify"
+  | "done";
+
+/** A card as the *board* renders it. Deliberately without acceptance criteria and
+ *  without gate detail: M1 measured the full card at 439 KB for 200 cards against
+ *  74 KB for this shape, and that measurement is what replaced pagination
+ *  (`plan/17/10-…md` §1). Widening this type is how that decision gets undone. */
+export interface BoardCard {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+  risk: string;
+  priority: string;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  delivery: string;
+  blocking_count: number;
+  gates_approved_count: number;
+  active_run_status: RunStatus | null;
+  active_run_runner_name: string | null;
+  waiting_reason: string | null;
+  version: number;
+  updated_at: string;
+}
+
+export interface BoardLane {
+  stage: TaskStage;
+  label: string;
+  wip_suggested: number | null;
+  count: number;
+  cards: BoardCard[];
+}
+
+export interface Board {
+  lanes: BoardLane[];
+  /** Always false in V2.1, and present anyway: a field added later would force
+   *  every existing client to handle its absence. */
+  has_more: boolean;
+}
+
+export interface ProcessGate {
+  key: string;
+  label: string;
+  order: number;
+  requires_human: boolean;
+  enabled: boolean;
+  /** Set only when the gate is *derived*-disabled — the mockup gate without tunnel
+   *  integration. A gate that quietly does not exist is worse than one that says
+   *  why (D31), so the console shows this rather than hiding the row. */
+  disabled_reason: string | null;
+}
+
+export interface ProcessDefinition {
+  key: string;
+  version: string;
+  source: string;
+  lanes: Array<{
+    stage: TaskStage;
+    label: string;
+    order: number;
+    wip_suggested: number | null;
+  }>;
+  readiness: Array<{ key: string; label: string; hint: string }>;
+  gates: ProcessGate[];
+  templates: Record<string, unknown>;
+}
+
+export interface TaskDependency {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+}
+
+export interface Task {
+  id: string;
+  project_id: string;
+  card_ref: string;
+  title: string;
+  description: string | null;
+  objective: string | null;
+  scope: string | null;
+  non_goals: string | null;
+  stage: TaskStage;
+  risk: string;
+  priority: string;
+  owner_user_id: string | null;
+  epic_id: string | null;
+  user_story_id: string | null;
+  readiness: Record<string, boolean>;
+  /** `{gate: {approved_by, approved_at}}` — never a boolean, because that cell is
+   *  where "an agent's output is not an approval" lives. */
+  gates: Record<string, { approved_by: string; approved_at: string } | null>;
+  acceptance_criteria: Array<Record<string, unknown>>;
+  links: Record<string, unknown>;
+  required_labels: string[];
+  version: number;
+  /** Declared, and inert until V2.3/V2.4. The console labels this block so that a
+   *  card saying `pull_request` does not read as a promise (ADR 0028 sec 9). */
+  source: string;
+  repository_id: string | null;
+  base_branch: string | null;
+  delivery: string;
+  target_branch: string | null;
+  existing_pr_ref: string | null;
+  required_secrets: string[];
+  assigned_runner_id: string | null;
+  requirement_id: string | null;
+  proposal_id: string | null;
+  depends_on: TaskDependency[];
+  /** The cards still blocking this one, by reference — the same list the refusal
+   *  message names, so the board can show it before the user tries. */
+  blocking_refs: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskWrite {
+  task: Task;
+  /** Definition-of-Ready reporting. Never a refusal (ADR 0028 sec 1). */
+  warnings: Array<{ code: string; missing?: string[] }>;
+}
+
+export interface RoadmapTask {
+  id: string;
+  card_ref: string;
+  title: string;
+  stage: TaskStage;
+}
+
+export interface RoadmapStory {
+  id: string;
+  card_ref: string;
+  title: string;
+  done_count: number;
+  total_count: number;
+  tasks: RoadmapTask[];
+}
+
+export interface RoadmapEpic {
+  id: string;
+  card_ref: string;
+  title: string;
+  done_count: number;
+  total_count: number;
+  stories: RoadmapStory[];
+  /** Cards filed under this epic but under no story. Monstrare's semantics, kept
+   *  because a card must never disappear because of how it was filed (D4). */
+  unclassified: RoadmapTask[];
+}
+
+export interface Roadmap {
+  epics: RoadmapEpic[];
+  orphan_stories: RoadmapStory[];
+  unclassified: RoadmapTask[];
+  done_count: number;
+  total_count: number;
+}
+
+export interface Requirement {
+  id: string;
+  project_id: string;
+  card_ref: string;
+  raw_text: string;
+  status: string;
+  created_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  spec_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FeatureSpec {
+  id: string;
+  seq: number;
+  objective: string | null;
+  scope: string | null;
+  non_goals: string | null;
+  acceptance_criteria: Array<Record<string, unknown>>;
+  open_questions: Array<Record<string, unknown>>;
+  authored_by_kind: string;
+  authored_by: string | null;
+  created_at: string;
+}
+
+export interface TaskProposal {
+  id: string;
+  seq: number;
+  spec_id: string | null;
+  tree: Record<string, unknown>;
+  status: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
+export interface RequirementDetail extends Requirement {
+  specs: FeatureSpec[];
+  proposals: TaskProposal[];
+  /** Why the approve button is disabled, in the same response that disables it. */
+  blocking_questions: string[];
+}
+
+export interface AcceptProposalResult {
+  created: Task[];
+  incomplete: Record<string, string[]>;
+}
+
+// --- V2.2 agent runner (ADR 0029/0030/0031) --------------------------------
+
+/** A secret's kind decides where its value goes on the node (ADR 0032 §4): `env`
+ *  reaches the CLI child's environment, the two git kinds reach **only the daemon's own
+ *  git environment**, and `provider_token` is not delivered at all in this phase. */
+export type SecretKind = "env" | "git_pat" | "git_ssh_key" | "provider_token";
+
+/** A project secret's metadata. **There is no field for the value, and there never will
+ *  be** — nor for a fingerprint (`rotated_at` answers the same question without
+ *  disclosing anything) or a length (a 93-character value is almost certainly a
+ *  fine-grained PAT). */
+export interface ProjectSecret {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: SecretKind;
+  created_by: string | null;
+  created_at: string;
+  rotated_at: string | null;
+  /** The most useful column on the page: it separates a live credential from one
+   *  nothing has touched since it was created. */
+  last_used_at: string | null;
+}
+
+export interface AgentRunner {
+  id: string;
+  node_id: string;
+  node_name: string;
+  name: string;
+  runtimes: string[];
+  // **Matched from V2.3**, as a superset: a card reaches this runner when its
+  // `required_labels` are a subset of these. Read-only — the node's own config
+  // declares them — and the console must never draw them as a security control: a tag
+  // decides *which machine*, never *which machine may hold a secret*.
+  labels: string[];
+  // Read-only node declarations. `run_untagged` false reserves this machine for cards
+  // that declare a tag; `accept_secrets` false keeps it away from cards that declare
+  // secrets.
+  run_untagged: boolean;
+  accept_secrets: boolean;
+  max_concurrent: number;
+  max_waiting: number;
+  enabled: boolean;
+  // `len(workspace.allowed_roots) === 0` on the node, **as reported by the daemon**.
+  // False means the machine also serves interactive sessions, and an agent running
+  // there can read those directories — the platform does not prevent that and the
+  // Agents page says so rather than implying an isolation that does not exist.
+  dedicated: boolean;
+  online: boolean;
+  active_runs: number;
+  waiting_runs: number;
+  // Cards pinned to this runner, whether or not any has run. A machine can be
+  // over-subscribed and still show zero occupancy.
+  assigned_cards: number;
+  // Why the runner stopped polling, as it last reported — **not** an online flag. A
+  // runner with no capacity goes quiet, so without this a full runner and a dead
+  // machine look identical and the page would call a healthy node offline.
+  blocked_reason: RunnerBlockedReason | null;
+  disk_used_bytes: number | null;
+  disk_quota_bytes: number | null;
+  registered_at: string;
+  last_registered_at: string | null;
+}
+
+export type RunnerBlockedReason =
+  | "at_capacity"
+  | "waiting_limit"
+  | "disk_quota"
+  | "disk_low";
+
+export interface ProjectRepository {
+  id: string;
+  project_id: string;
+  scheme: "https" | "ssh";
+  host: string;
+  path: string;
+  default_branch: string;
+  label: string | null;
+  // Assembled by the server from the three fields, for display. There is no stored URL
+  // anywhere, which is what makes a credential in one impossible rather than filtered.
+  url: string;
+  created_at: string;
+}
+
+export interface DispatchResult {
+  run_id: string;
+  status: string;
+  // "any" | "assigned_offline" | "no_eligible_runner". The three pieces of copy behind
+  // this must read differently, or a person cannot tell "I misconfigured something"
+  // from "wait a moment".
+  waiting_reason: string;
+  // Which tags nothing online has, when that is why nobody claimed it — **the smallest
+  // missing set, not the intersection**. "Waiting for an available agent" is the wrong
+  // sentence when the truth is "no machine has `docker`", and the two lead somewhere
+  // different (V2.3, exit condition 3e). Empty for the other two reasons.
+  missing_tags: string[];
+  // Named only for `assigned_offline`, so the copy can say which machine.
+  runner_name: string | null;
+}
+
+export type RunStatus =
+  | "queued"
+  | "claimed"
+  | "running"
+  | "waiting_for_input"
+  | "succeeded"
+  | "failed"
+  | "lost"
+  | "cancelled";
+
+export interface TaskRun {
+  id: string;
+  task_id: string;
+  project_id: string;
+  seq: number;
+  status: RunStatus;
+  attempt: number;
+  runner_id: string | null;
+  runner_name: string | null;
+  assigned_runner_id: string | null;
+  runtime: string | null;
+  source_kind: string | null;
+  source_ref: string | null;
+  commit_sha: string | null;
+  disk_bytes: number | null;
+  queued_at: string;
+  claimed_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  // "is the child progressing", as opposed to the lease's "is the runner alive".
+  last_event_at: string | null;
+  result: string | null;
+  error_code: string | null;
+  summary: string | null;
+  log_bytes: number;
+  log_truncated_bytes: number;
+  /** **The card's declaration, not a per-run snapshot.** The authoritative record of
+   *  what was handed to which machine is the `secret.deliver` audit row. Names only —
+   *  there is no version of this field that could carry a value. Absent on the list
+   *  route, which renders rows rather than one run. */
+  secret_names?: string[];
+}
+
+export interface RunLogLine {
+  seq: number;
+  // The stored segment, **unparsed**. The event schema belongs to a third-party CLI
+  // and changes with its version; parsing it here would make that schema part of this
+  // application.
+  data: string;
+  truncated: boolean;
+  received_at: string;
+}
+
+export interface RunLogPage {
+  lines: RunLogLine[];
+  next_after_seq: number | null;
+  log_bytes: number;
+  truncated_bytes: number;
+}
+
+export interface TaskMessage {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  author_kind: "user" | "agent" | "system";
+  author_user_id: string | null;
+  author_name: string | null;
+  author_runner_id: string | null;
+  body: string;
+  kind: "message" | "question" | "answer" | "event";
+  event_kind: string | null;
+  created_at: string;
+}
+
+export interface TaskArtifact {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  message_id: string | null;
+  filename: string;
+  content_type: string;
+  size: number;
+  sha256: string;
+  uploaded_by_kind: string;
+  uploaded_by_user_id: string | null;
+  uploaded_by_runner_id: string | null;
+  created_at: string;
+  deleted_at: string | null;
+  delete_reason: string | null;
+  previewable: boolean;
+}

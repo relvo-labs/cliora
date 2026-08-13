@@ -21610,10 +21610,10 @@
       "type": "guards_scope",
       "target": {
         "kind": "pytest",
-        "locator": "backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface"
+        "locator": "backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive"
       },
       "role": "primary",
-      "assertion": "Every mounted file route is a GET and no write action exists.",
+      "assertion": "Both workspace write paths are additive only; neither can replace or remove a file.",
       "owner": "architecture",
       "applicability": [
         "mvp"
@@ -27752,6 +27752,4222 @@
       "owner": "architecture",
       "applicability": [
         "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-01-PLANNED-BY",
+      "from": "FR-PROJECT-001.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-01-SPECIFIED-BY",
+      "from": "FR-PROJECT-001.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-01-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-001.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-01-VERIFIED-BY",
+      "from": "FR-PROJECT-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-02-PLANNED-BY",
+      "from": "FR-PROJECT-001.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-02-SPECIFIED-BY",
+      "from": "FR-PROJECT-001.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-02-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-001.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-02-VERIFIED-BY",
+      "from": "FR-PROJECT-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-03-PLANNED-BY",
+      "from": "FR-PROJECT-001.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-03-SPECIFIED-BY",
+      "from": "FR-PROJECT-001.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-03-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-001.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-03-VERIFIED-BY",
+      "from": "FR-PROJECT-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-04-PLANNED-BY",
+      "from": "FR-PROJECT-001.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-04-SPECIFIED-BY",
+      "from": "FR-PROJECT-001.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-04-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-001.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-04-VERIFIED-BY",
+      "from": "FR-PROJECT-001.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-05-PLANNED-BY",
+      "from": "FR-PROJECT-001.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-05-SPECIFIED-BY",
+      "from": "FR-PROJECT-001.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-05-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-001.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-001-AC-05-VERIFIED-BY",
+      "from": "FR-PROJECT-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-01-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-01-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-01-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-01-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-02-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-02-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-02-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-02-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-03-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-03-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-03-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-03-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-04-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-04-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-04-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-04-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-05-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-05-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-05-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-05-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-06-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-06-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-06-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-06-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-07-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-07-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-07-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-07-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-08-PLANNED-BY",
+      "from": "FR-PROJECT-002.AC-08",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/03-rbac-and-project-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-08-SPECIFIED-BY",
+      "from": "FR-PROJECT-002.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-08-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-002.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/projects.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-002-AC-08-VERIFIED-BY",
+      "from": "FR-PROJECT-002.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-01-PLANNED-BY",
+      "from": "FR-PROJECT-003.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-01-SPECIFIED-BY",
+      "from": "FR-PROJECT-003.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-01-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-003.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-01-VERIFIED-BY",
+      "from": "FR-PROJECT-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-02-PLANNED-BY",
+      "from": "FR-PROJECT-003.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-02-SPECIFIED-BY",
+      "from": "FR-PROJECT-003.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-02-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-003.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-02-VERIFIED-BY",
+      "from": "FR-PROJECT-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-03-PLANNED-BY",
+      "from": "FR-PROJECT-003.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-03-SPECIFIED-BY",
+      "from": "FR-PROJECT-003.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-03-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-003.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-03-VERIFIED-BY",
+      "from": "FR-PROJECT-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-04-PLANNED-BY",
+      "from": "FR-PROJECT-003.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-04-SPECIFIED-BY",
+      "from": "FR-PROJECT-003.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-04-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-003.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-003-AC-04-VERIFIED-BY",
+      "from": "FR-PROJECT-003.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-01-PLANNED-BY",
+      "from": "FR-PROJECT-004.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-01-SPECIFIED-BY",
+      "from": "FR-PROJECT-004.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-01-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-004.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/activity.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-01-VERIFIED-BY",
+      "from": "FR-PROJECT-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-02-PLANNED-BY",
+      "from": "FR-PROJECT-004.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-02-SPECIFIED-BY",
+      "from": "FR-PROJECT-004.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-02-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-004.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/activity.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-02-VERIFIED-BY",
+      "from": "FR-PROJECT-004.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-03-PLANNED-BY",
+      "from": "FR-PROJECT-004.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-03-SPECIFIED-BY",
+      "from": "FR-PROJECT-004.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-03-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-004.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/activity.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-03-VERIFIED-BY",
+      "from": "FR-PROJECT-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-04-PLANNED-BY",
+      "from": "FR-PROJECT-004.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-04-SPECIFIED-BY",
+      "from": "FR-PROJECT-004.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-04-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-004.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/activity.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-04-VERIFIED-BY",
+      "from": "FR-PROJECT-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-05-PLANNED-BY",
+      "from": "FR-PROJECT-004.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-05-SPECIFIED-BY",
+      "from": "FR-PROJECT-004.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-05-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-004.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/activity.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-004-AC-05-VERIFIED-BY",
+      "from": "FR-PROJECT-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_projects_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-01-PLANNED-BY",
+      "from": "FR-PROJECT-005.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-01-SPECIFIED-BY",
+      "from": "FR-PROJECT-005.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-01-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-005.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/deps.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-01-VERIFIED-BY",
+      "from": "FR-PROJECT-005.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-02-PLANNED-BY",
+      "from": "FR-PROJECT-005.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-02-SPECIFIED-BY",
+      "from": "FR-PROJECT-005.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-02-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-005.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/deps.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-02-VERIFIED-BY",
+      "from": "FR-PROJECT-005.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-03-PLANNED-BY",
+      "from": "FR-PROJECT-005.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-03-SPECIFIED-BY",
+      "from": "FR-PROJECT-005.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-03-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-005.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/deps.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-03-VERIFIED-BY",
+      "from": "FR-PROJECT-005.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-04-PLANNED-BY",
+      "from": "FR-PROJECT-005.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-04-SPECIFIED-BY",
+      "from": "FR-PROJECT-005.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-04-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-005.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/deps.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-04-VERIFIED-BY",
+      "from": "FR-PROJECT-005.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-05-PLANNED-BY",
+      "from": "FR-PROJECT-005.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/16/04-session-association-and-feature-flag.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-05-SPECIFIED-BY",
+      "from": "FR-PROJECT-005.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.11 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-05-IMPLEMENTED-BY",
+      "from": "FR-PROJECT-005.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/deps.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-PROJECT-005-AC-05-VERIFIED-BY",
+      "from": "FR-PROJECT-005.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-SCOPE-014-AC-04-GUARDS-SCOPE",
+      "from": "SCOPE-014.AC-04",
+      "type": "guards_scope",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_scope_014_dispatch_is_pull_based.py::test_no_route_pushes_work_to_a_runner"
+      },
+      "role": "primary",
+      "assertion": "No mounted route assigns work to a runner; claiming is pull-side only.",
+      "owner": "architecture",
+      "applicability": [
+        "all"
+      ],
+      "gate_id": "GATE-BACKEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-01-PLANNED-BY",
+      "from": "FR-TASK-001.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-001.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-001.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-001.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-02-PLANNED-BY",
+      "from": "FR-TASK-001.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-001.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-001.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-001.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-03-PLANNED-BY",
+      "from": "FR-TASK-001.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-001.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-001.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-001.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-04-PLANNED-BY",
+      "from": "FR-TASK-001.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-001.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-001.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-001.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-05-PLANNED-BY",
+      "from": "FR-TASK-001.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/02-data-layer.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-001.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-001.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-001-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-001.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-01-PLANNED-BY",
+      "from": "FR-TASK-002.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-002.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-002.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-002.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-02-PLANNED-BY",
+      "from": "FR-TASK-002.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-002.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-002.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-002.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-03-PLANNED-BY",
+      "from": "FR-TASK-002.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-002.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-002.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-002.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-04-PLANNED-BY",
+      "from": "FR-TASK-002.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-002.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-002.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-002.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-05-PLANNED-BY",
+      "from": "FR-TASK-002.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-002.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-002.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-002-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-002.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-01-PLANNED-BY",
+      "from": "FR-TASK-003.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-003.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-003.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-003.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-02-PLANNED-BY",
+      "from": "FR-TASK-003.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-003.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-003.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-003.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-03-PLANNED-BY",
+      "from": "FR-TASK-003.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-003.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-003.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-003.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-04-PLANNED-BY",
+      "from": "FR-TASK-003.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-003.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-003.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/tasks.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-003-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-003.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_task_data_layer.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-01-PLANNED-BY",
+      "from": "FR-TASK-004.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-004.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-004.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/process.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-004.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-02-PLANNED-BY",
+      "from": "FR-TASK-004.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-004.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-004.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/process.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-004.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-03-PLANNED-BY",
+      "from": "FR-TASK-004.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-004.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-004.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/process.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-004.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-04-PLANNED-BY",
+      "from": "FR-TASK-004.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-004.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-004.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/process.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-004.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-05-PLANNED-BY",
+      "from": "FR-TASK-004.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-004.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-004.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/process.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-004-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-004.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_tasks_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-01-PLANNED-BY",
+      "from": "FR-TASK-005.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-02-PLANNED-BY",
+      "from": "FR-TASK-005.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-03-PLANNED-BY",
+      "from": "FR-TASK-005.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-04-PLANNED-BY",
+      "from": "FR-TASK-005.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-05-PLANNED-BY",
+      "from": "FR-TASK-005.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-06-PLANNED-BY",
+      "from": "FR-TASK-005.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-06-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-06-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-07-PLANNED-BY",
+      "from": "FR-TASK-005.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/03-process-rbac-and-task-api.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-07-SPECIFIED-BY",
+      "from": "FR-TASK-005.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-07-IMPLEMENTED-BY",
+      "from": "FR-TASK-005.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/requirements.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-005-AC-07-VERIFIED-BY",
+      "from": "FR-TASK-005.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_requirements_api.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-01-PLANNED-BY",
+      "from": "FR-TASK-006.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/07-frontend-board-and-requirements.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-006.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-006.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-006.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-02-PLANNED-BY",
+      "from": "FR-TASK-006.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/07-frontend-board-and-requirements.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-006.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-006.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-006.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-03-PLANNED-BY",
+      "from": "FR-TASK-006.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/07-frontend-board-and-requirements.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-006.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-006.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-006.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-04-PLANNED-BY",
+      "from": "FR-TASK-006.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/07-frontend-board-and-requirements.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-006.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-006.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/sessions.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-006-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-006.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_sessions_project_link.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "central",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-01-PLANNED-BY",
+      "from": "FR-TASK-007.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-02-PLANNED-BY",
+      "from": "FR-TASK-007.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-03-PLANNED-BY",
+      "from": "FR-TASK-007.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-04-PLANNED-BY",
+      "from": "FR-TASK-007.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-05-PLANNED-BY",
+      "from": "FR-TASK-007.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-06-PLANNED-BY",
+      "from": "FR-TASK-007.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-06-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-06-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-07-PLANNED-BY",
+      "from": "FR-TASK-007.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/05-contract-and-daemon-projection.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-07-SPECIFIED-BY",
+      "from": "FR-TASK-007.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-07-IMPLEMENTED-BY",
+      "from": "FR-TASK-007.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/project.go"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-007-AC-07-VERIFIED-BY",
+      "from": "FR-TASK-007.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/project_test.go"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "daemon",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-01-PLANNED-BY",
+      "from": "FR-TASK-008.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-01-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-01-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-01-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-02-PLANNED-BY",
+      "from": "FR-TASK-008.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-02-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-02-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-02-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-03-PLANNED-BY",
+      "from": "FR-TASK-008.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-03-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-03-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-03-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-04-PLANNED-BY",
+      "from": "FR-TASK-008.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-04-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-04-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-04-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-05-PLANNED-BY",
+      "from": "FR-TASK-008.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-05-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-05-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-05-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-06-PLANNED-BY",
+      "from": "FR-TASK-008.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/17/04-session-token-and-agent-principal.md"
+      },
+      "role": "primary",
+      "assertion": "Execution plan for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-06-SPECIFIED-BY",
+      "from": "FR-TASK-008.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "PRD section 8.12 states this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TASK-008.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/agent_auth.py"
+      },
+      "role": "primary",
+      "assertion": "Primary implementation surface.",
+      "owner": "security",
+      "applicability": [
+        "all"
+      ]
+    },
+    {
+      "id": "LNK-FR-TASK-008-AC-06-VERIFIED-BY",
+      "from": "FR-TASK-008.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_agent_credential.py"
+      },
+      "role": "primary",
+      "assertion": "Automated coverage for this criterion.",
+      "owner": "security",
+      "applicability": [
+        "all"
       ]
     }
   ]

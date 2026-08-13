@@ -19,10 +19,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.clock import now_utc
-from app.db.models import Node, TerminalSession
+from app.db.models import Node, Project, TerminalSession
 from app.repositories.nodes import NodeRepository
 from app.repositories.sessions import SessionRepository
 from app.services import audit
+from app.services.activity import SESSION_ENDED, SESSION_STARTED, ActivityService
 from app.services.nodes import ensure_node_enabled
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.settings import Settings, get_settings
@@ -143,6 +144,7 @@ class SessionService:
         self._repo = SessionRepository(session)
         self._nodes = NodeRepository(session)
         self._audit = audit.AuditService(session)
+        self._activity = ActivityService(session)
         self._registry = registry or get_node_registry()
 
     async def get(self, session_id: uuid.UUID) -> TerminalSession:
@@ -155,12 +157,42 @@ class SessionService:
         self,
         *,
         node_id: uuid.UUID | None = None,
+        project_id: str | None = None,
+        task_id: uuid.UUID | None = None,
         status_filter: str | None = None,
         limit: int = 50,
         offset: int = 0,
     ) -> list[TerminalSession]:
+        """`project_id` is a string because it has three value ranges, not two.
+
+        Absent means every session — byte-identical to the behaviour before the
+        project layer existed. A uuid means that project's. The literal ``none``
+        means the ad-hoc ones, which is how "what fraction of sessions actually
+        belong to no project" becomes answerable rather than a guess.
+        """
+        scoped: uuid.UUID | None = None
+        ad_hoc_only = False
+        if project_id == "none":
+            ad_hoc_only = True
+        elif project_id is not None:
+            try:
+                scoped = uuid.UUID(project_id)
+            except ValueError as exc:
+                raise ApiError(
+                    "INVALID_QUERY",
+                    "project_id must be a uuid or 'none'",
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                ) from exc
         return list(
-            await self._repo.list(node_id=node_id, status=status_filter, limit=limit, offset=offset)
+            await self._repo.list(
+                node_id=node_id,
+                status=status_filter,
+                project_id=scoped,
+                task_id=task_id,
+                ad_hoc_only=ad_hoc_only,
+                limit=limit,
+                offset=offset,
+            )
         )
 
     async def list_live_shells(self) -> Sequence[TerminalSession]:
@@ -184,6 +216,8 @@ class SessionService:
         workspace: str,
         rows: int,
         columns: int,
+        project_id: uuid.UUID | None = None,
+        task_id: uuid.UUID | None = None,
     ) -> TerminalSession:
         node = await self._nodes.get(node_id)
         if node is None:
@@ -193,6 +227,11 @@ class SessionService:
             raise ApiError("NODE_OFFLINE", "Node is not connected", status.HTTP_409_CONFLICT)
         _require_runtime(node, runtime)
         authorize_workspace(node, workspace)
+        # After the workspace check, not before: a path outside the allowed roots is
+        # refused on its own terms whether or not a project was named, so the caller
+        # gets the same error for the same mistake either way.
+        project = await self._resolve_project(project_id, node_id=node_id, workspace=workspace)
+        task = await self._resolve_task(task_id, project=project)
         if rows < 2 or rows > 300 or columns < 2 or columns > 500:
             raise ApiError("INVALID_TERMINAL_SIZE", "Terminal size out of range")
         active = await self._repo.active_count_for_node(node_id)
@@ -226,6 +265,8 @@ class SessionService:
             status=STARTING,
             rows=rows,
             columns=columns,
+            project_id=project.id if project is not None else None,
+            task_id=task.id if task is not None else None,
         )
         self._repo.add(session)
         await self._session.flush()
@@ -267,6 +308,7 @@ class SessionService:
             session.pid = _payload_int(message.payload, "pid")
             session.started_at = now_utc()
             session.last_activity_at = session.started_at
+            await self._record_started(session)
             return session
 
         code = "SESSION_START_FAILED"
@@ -388,6 +430,7 @@ class SessionService:
             },
         )
         await self._terminate_children(session, actor_id=actor_id)
+        await self._revoke_tokens_then_record_ended(session, actor_user_id=actor_id)
         return session
 
     async def _terminate_children(self, parent: TerminalSession, *, actor_id: uuid.UUID) -> None:
@@ -439,6 +482,19 @@ class SessionService:
             )
         await self._session.delete(session)
 
+    async def fail_for_removed_node(self, *, session: TerminalSession, actor_id: uuid.UUID) -> None:
+        """Close Central's side when a removed node cannot confirm a stop.
+
+        Removal is permanent for this node identity: its credentials are revoked and
+        it can never reconnect. Leaving a row active would therefore be a lie and
+        would keep consuming the owner's fleet-wide session allowance. We prefer a
+        confirmed ``terminated`` result when the daemon answers; this is the bounded
+        fallback for an offline or unresponsive node.
+        """
+        if session.status in TERMINAL_STATES:
+            return
+        await self._fail(session, "NODE_REMOVED", actor_id=actor_id)
+
     async def apply_status_changed(
         self, session_id: uuid.UUID, new_status: str, *, exit_code: int | None = None
     ) -> TerminalSession | None:
@@ -457,9 +513,135 @@ class SessionService:
             # (FR-SHELL-001.AC-04). `actor_id` is the session owner: nobody pressed
             # a button, so attributing it to the owner is the honest record.
             await self._terminate_children(session, actor_id=session.user_id)
+            await self._revoke_tokens_then_record_ended(session, actor_user_id=None)
         elif new_status == RUNNING:
             session.last_activity_at = now_utc()
         return session
+
+    async def _resolve_project(
+        self, project_id: uuid.UUID | None, *, node_id: uuid.UUID, workspace: str
+    ) -> Project | None:
+        """Validate an optional project association (FR-PROJECT-003).
+
+        `None` means an **ad-hoc** session, which is part of the product rather than
+        a transitional state — so this never infers a project from the workspace. One
+        path may be bound to several projects, so there would be no unique answer, and
+        "is this ad-hoc" has to remain the caller's statement rather than ours
+        (ADR 0027 sec 3).
+
+        When a project *is* named, a mismatch is a 400 rather than a silently dropped
+        field: a session that quietly failed to join the project it was created for
+        would only be noticed much later, by its absence from a timeline.
+        """
+        if project_id is None:
+            return None
+        if not self._settings.projects_enabled:
+            # The field exists in the schema whichever way the flag is set — the
+            # OpenAPI document is static — so the refusal has to happen here. 422
+            # rather than 404: what is being rejected is a body field that means
+            # nothing in this deployment, not a missing route.
+            raise ApiError(
+                "INVALID_ARGUMENT",
+                "The project layer is not enabled",
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        # Imported here rather than at module scope: services.projects imports
+        # services.sessions for `authorize_workspace`, so a top-level import would be
+        # circular.
+        from app.services.projects import ProjectService
+
+        projects = ProjectService(self._session, settings=self._settings)
+        project = await projects.require(project_id)
+        await projects.authorize_session_workspace(project, node_id=node_id, workspace=workspace)
+        return project
+
+    async def _resolve_task(self, task_id: uuid.UUID | None, *, project: Project | None):
+        """Validate an optional task association (FR-TASK-006).
+
+        Two refusals, and both are 400s rather than silent drops: a session created
+        "for" a card that quietly failed to attach would only be noticed much later, by
+        its absence from that card's history.
+
+        The platform never infers a task — not from the workspace, not from the
+        project. A project has many cards, so there is no unique answer, and an
+        ad-hoc-within-a-project session is a legitimate thing to want.
+        """
+        if task_id is None:
+            return None
+        if project is None:
+            raise ApiError(
+                "SESSION_PROJECT_MISMATCH",
+                "A task needs the project it belongs to",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        from app.repositories.tasks import TaskRepository
+
+        task = await TaskRepository(self._session).get(task_id)
+        if task is None or task.project_id != project.id:
+            raise ApiError(
+                "SESSION_PROJECT_MISMATCH",
+                "That task does not belong to this project",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        return task
+
+    async def _record_started(self, session: TerminalSession) -> None:
+        if session.project_id is None:
+            return
+        await self._activity.record(
+            SESSION_STARTED,
+            project_id=session.project_id,
+            actor_user_id=session.user_id,
+            session_id=session.id,
+            payload={"runtime": session.runtime, "name": session.name},
+        )
+
+    async def _revoke_tokens(
+        self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
+    ) -> None:
+        """A session's credential dies with the session (FR-TASK-008.AC-03).
+
+        Written here rather than in the four routes that can end a session, for the
+        same reason `_record_ended` is: there will be a fifth door, and the door that
+        forgets is the one that leaves a live credential in a workspace nobody is
+        watching any more.
+        """
+        from app.services.agent_auth import SessionTokenService
+
+        await SessionTokenService(self._session, settings=self._settings).revoke_for_session(
+            session.id, actor_id=actor_user_id
+        )
+
+    async def _revoke_tokens_then_record_ended(
+        self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
+    ) -> None:
+        """The single exit for a session that has stopped.
+
+        Revocation first: if the timeline write failed for some reason, a credential
+        that outlived its session would be the worse of the two losses.
+        """
+        await self._revoke_tokens(session, actor_user_id=actor_user_id)
+        await self._record_ended(session, actor_user_id=actor_user_id)
+
+    async def _record_ended(
+        self, session: TerminalSession, *, actor_user_id: uuid.UUID | None
+    ) -> None:
+        """Written from the state machine, not from the routes.
+
+        A session reaches a terminal state through at least four doors — POST
+        /terminate, DELETE, a daemon-pushed status change, and the shell reaper — and
+        a copy of this call in each of them would be three chances to forget and one
+        more when the fifth door is added.
+        """
+        if session.project_id is None:
+            return
+        await self._activity.record(
+            SESSION_ENDED,
+            project_id=session.project_id,
+            actor_user_id=actor_user_id,
+            session_id=session.id,
+            payload={"status": session.status, "exit_code": session.exit_code},
+        )
 
     def _transition(self, session: TerminalSession, to: str) -> None:
         if not can_transition(session.status, to):
@@ -482,3 +664,4 @@ class SessionService:
             session_id=session.id,
             metadata={"error_code": code},
         )
+        await self._revoke_tokens_then_record_ended(session, actor_user_id=actor_id)

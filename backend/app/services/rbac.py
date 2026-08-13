@@ -38,6 +38,20 @@ AUDIT_VIEW = "audit.view"
 TUNNEL_VIEW = "tunnel.view"
 TUNNEL_MANAGE = "tunnel.manage"
 INTEGRATION_MANAGE = "integration.manage"
+# V2.0 project layer (ADR 0027, seed migration 0022).
+PROJECT_VIEW = "project.view"
+PROJECT_MANAGE = "project.manage"
+# V2.1 task layer (ADR 0028, seed migration 0025).
+TASK_CREATE = "task.create"
+TASK_UPDATE = "task.update"
+TASK_APPROVE = "task.approve"
+# V2.2 agent runner (ADR 0029, seed migration 0030).
+AGENT_VIEW = "agent.view"
+AGENT_MANAGE = "agent.manage"
+RUN_DISPATCH = "run.dispatch"
+RUN_CANCEL = "run.cancel"
+# V2.3 secrets and dispatch routing (ADR 0032, seed migration 0034).
+SECRET_MANAGE = "secret.manage"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -49,13 +63,53 @@ VIEWER = "Viewer"
 # P2/ADR 0013) and file.browse (read-only browse + preview, ADR 0015). It holds
 # no mutation action, so a Viewer's forged create/terminate/takeover/enrollment
 # request fails at the action layer before any resource is loaded.
-_VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE})
+#
+# `project.view` joins the read-only set for the same reason `node.view` is in it:
+# a Viewer may look at the shape of the fleet, and a project is a name for part of
+# that shape. What it must *not* become is an actor feed — the project timeline is
+# readable with this action, so `services/activity.py:redact_actors` strips actor
+# identity from it unless the caller also holds `audit.view` (ADR 0027 sec 7).
+#
+# `agent.view` joins it for the same reason again: the fleet's runners are part of the
+# shape of the fleet. It is read-only in the strict sense — posting a message on a card
+# or attaching an artifact requires `task.update`, not `project.view`, precisely so that
+# this phase does not open a Viewer write path (plan/18/06-…md §1).
+#
+# **What `agent.view` does not bound, and this is a posture rather than an omission:**
+# there is no project↔agent binding, so a runner on **any** enrolled node can claim any
+# project's card, pull any project's code, and — from V2.3 — receive the secrets that
+# card declares. The authorization boundary is `enrollment.manage`, an Admin-only
+# action, and it is **permanent**: the 2026-08-12 ruling cancelled `project_agents`
+# rather than deferring it (ADR 0032 §0). What narrows the radius is four compensating
+# controls, not a table: a card gets only the secrets it declares from the project's
+# allowlist, a node may refuse them, every delivery is audited and revocable, and the
+# enrollment screen says the consequence out loud. The same sentence appears in
+# ADR 0032, on the Agents page and on the enrollment page, because it is the kind of
+# design that gets filed as a bug when it is written down only once.
+_VIEWER_ACTIONS = frozenset({NODE_VIEW, SESSION_VIEW, FILE_BROWSE, PROJECT_VIEW, AGENT_VIEW})
 # `terminal.shell` sits with the other session-mutation actions rather than in the
 # Admin set (ADR 0021): a Developer already drives a CLI in their own session. The
 # boundary is ownership, not role — `authz.may_open_shell` requires the caller to own
 # the session, and nobody may attach to a shell they did not open.
 _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     SESSION_CREATE,
+    # The task layer's three actions sit with the session-shaped ones: writing down
+    # and moving work is day-to-day, in the way that deciding which projects exist is
+    # not (ADR 0028).
+    #
+    # `task.approve` and `task.update` have **deliberately identical holders**, and
+    # that is not an oversight waiting to be tidied up. Splitting them separates
+    # nothing at the role layer; the entire effect is that a session credential's
+    # scope can exclude approval — and an action that does not exist cannot be
+    # excluded from a scope (research/02/01 D13, ruling 3). Merging them because "the
+    # holders are the same anyway" would silently open the path to an agent approving
+    # its own work.
+    #
+    # Not raised to Admin either: a gate that needs an administrator for every card
+    # makes the internalised Review Gates something nobody can afford to use.
+    TASK_CREATE,
+    TASK_UPDATE,
+    TASK_APPROVE,
     # Image drop writes to the node's workspace, so it is deliberately NOT part of
     # `file.browse` — all three roles hold that one, and handing Viewer a write
     # would contradict the read-only viewer the rest of the system promises
@@ -73,6 +127,16 @@ _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
     # application's behalf — "read-only user" and "can open the preview" do not compose.
     TUNNEL_VIEW,
     TUNNEL_MANAGE,
+    # Dispatching a card to an agent is deliberately **not** covered by `task.update`.
+    # Editing a field changes a record; queueing work spends compute — it clones a
+    # repository onto a machine and starts a process there (ADR 0029, ADR 0031). The
+    # audit trail has to be able to tell those apart, and a filter over one merged
+    # action could not.
+    RUN_DISPATCH,
+    # Cancelling sits with dispatching rather than with `project.manage`: whoever may
+    # start the work may stop it, and needing an administrator to stop a runaway run
+    # is how a stop button stops being used.
+    RUN_CANCEL,
 }
 # `integration.manage` is Admin-only for the same reason as enrollment and node management:
 # it covers supplying the organisation's third-party credential and deciding that traffic
@@ -83,6 +147,28 @@ _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
     NODE_MANAGE,
     AUDIT_VIEW,
     INTEGRATION_MANAGE,
+    # `project.manage` sits with enrollment and node management, not with the
+    # session-shaped Developer actions: deciding which projects exist, and which
+    # machines and directories they cover, is an organisation-level call rather than
+    # day-to-day work (ADR 0027 sec 4). From V2.3 it decides one thing more — which
+    # secret **names** a project's cards may ask for — while the values themselves are
+    # `secret.manage`, a separate action, because holding a credential and shaping a
+    # project are different powers.
+    PROJECT_MANAGE,
+    # Admin from the first day. `agent.manage` covers enabling a runner and its
+    # concurrency — the disposition of compute — and **nothing else**. It notably does
+    # not cover editing a runner's tags: those are declared by that node's `agentd`
+    # config, and a platform-side edit would create a second source of truth that
+    # `runner.register` overwrites on the next reconnect (ADR 0029 amendment B5).
+    # (This comment used to say the action would grow to cover binding a runner to a
+    # project. The 2026-08-12 ruling cancelled that table — see ADR 0032 §0.)
+    AGENT_MANAGE,
+    # The values behind those names. Admin-only for the same reason as enrollment: a
+    # credential the platform holds on a user's behalf, hands to a machine on demand
+    # and can revoke is an organisation-level asset. It also guards repository
+    # registration from V2.3, because a repository row stopped being "where the code
+    # is" and became "which credential fetches it" (ADR 0032).
+    SECRET_MANAGE,
 }
 
 ROLE_ACTIONS: dict[str, frozenset[str]] = {

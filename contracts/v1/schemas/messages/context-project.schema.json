@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Platform context projection, contract 1.10.0 (ADR 0028). Compare filesystem-store.schema.json: THAT verb may write anywhere in the workspace EXCEPT .cliora/, and this one may write ONLY under .cliora/{context,process,reference}/ - the two writable sets are disjoint, and neither replaces a byte. The path pattern is the enforcement, not a comment: a destination outside those three subtrees, a traversal segment, or .cliora/uploads (the user's image-drop area) and .cliora/.gitignore (which the user may own) are unrepresentable rather than merely refused. Still absent, and enforced by additionalProperties:false: overwrite, mode beyond the single allowed value, precondition. Nothing in this payload can ask to replace something.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_id",
+    "process_version",
+    "files"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "process_version": {
+      "$comment": "The content version of the process definition. It becomes a directory name, so it is bounded and free of separators.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "files": {
+      "$comment": "At most 32. A context pack is one file, a credential is one file, and the process notes are a handful; a projection that needed more than this would be projecting something it should be pointing at (D8).",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "mode",
+          "data"
+        ],
+        "properties": {
+          "path": {
+            "$comment": "Workspace-relative and confined to the three platform-owned subtrees. The negative lookahead refuses a `..` segment anywhere, the same construction filesystem-store uses: containment has to be unrepresentable rather than merely checked. `uploads` and `.gitignore` under .cliora/ belong to the user-facing write path and are outside this pattern by construction.",
+            "type": "string",
+            "minLength": 12,
+            "maxLength": 4096,
+            "pattern": "^(?!.*(?:^|/)\\.\\.(?:/|$))\\.cliora/(context|process|reference)/[^/\\u0000-\\u001f]+(/[^/\\u0000-\\u001f]+)*$"
+          },
+          "mode": {
+            "$comment": "One legal value. The field exists so a future 0700 does not need a schema change; today anything else is refused on the wire.",
+            "type": "string",
+            "enum": [
+              "0600"
+            ]
+          },
+          "data": {
+            "$comment": "Canonical standard-alphabet base64, capped at the base64 length of 64 KiB. Far below filesystem.store's ceiling on purpose: the context pack's budget is 4 KB (D8), and a projection large enough to need more is one that should be giving the agent a path instead of a payload. minLength 0 accepts an empty file.",
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 87384,
+            "pattern": "^([A-Za-z0-9+/]+={0,2})?$"
+          }
+        }
+      }
+    }
+  }
+}

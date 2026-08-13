@@ -1,5 +1,117 @@
 # Contract changelog
 
+Board-card run projections added in `plan/19` are HTTP/OpenAPI response fields, not
+WebSocket control messages, so this contract package and its protocol version are
+intentionally unchanged (D33).
+
+## 1.12.0 — 2026-08-13 (compatible)
+
+**Added — secrets, a branch namespace, and two node declarations (ADR 0032, ADR 0031
+and ADR 0029 amendments, `plan/20`).**
+
+No new message types. Four new fields, twenty-one new fixtures (6 valid, 15 invalid):
+
+- `run.offer`'s `spec` gains **`secrets`** (≤8 items, ≤8 KiB each) and **`branch`**
+  (`cliora/…`), and its `delivery` gains **`branch`**.
+- `runner.register` gains **`run_untagged`** and **`accept_secrets`**, both optional.
+
+**Changed — one ceiling, and it is a correction rather than a tightening:**
+`spec.context` drops from 65536 to **32768**. The old value was the size of the entire
+control frame, so one field could consume the whole budget by itself; a rendered context
+pack measures 1–2 KB, so nothing has ever come close. Every fixture predating this
+release is byte-for-byte identical.
+
+Three properties are worth reading here rather than in the schemas:
+
+- **A secret's value can travel on exactly one message.** SEC-002's revised invariant is
+  that no request payload may name a command *or carry a secret's value*; `spec.secrets`
+  travels central→node and Central fills it from its own store. Two invalid fixtures
+  assert the field is unrepresentable on `run.accept` and `run.complete`, which is the
+  machine form of that sentence rather than a promise about it.
+- **`kind` travels with the value because it decides where the value goes.** `env`
+  reaches the CLI child's environment; `git_pat` and `git_ssh_key` reach **only the
+  daemon's own git environment**, so the platform's revocable credential does not end up
+  in the agent's hands where none of the five push constraints could reach it.
+  `provider_token` is absent from the wire enum although it is a storable kind: this
+  phase has no code path that sends one, and the two git kinds are gated by a deployment
+  setting rather than by the wire. A run-time setting is not a wire shape.
+- **The bounds here are necessary and not sufficient.** Eight secrets at the per-value
+  ceiling is 64 KiB — the whole frame. So Central measures the assembled frame before
+  sending it and **releases the claim** if it does not fit. Without that the failure is
+  the worst kind this socket offers: the receiver drops the frame silently, the lease
+  expires, the card is retried to exhaustion and blocked, and nothing reports an error.
+
+**Absent from `run.complete`:** `delivery_ref`. The platform pushes a branch in this
+release, and the branch name is already on the offer; a structured delivery reference
+belongs with pull requests, in 1.13.0.
+
+## 1.11.0 — 2026-08-11 (compatible)
+
+**Added — the agent runner (ADR 0029/0030/0031, `plan/18`).**
+
+Twelve new types, all in the `runner.*` / `run.*` family: `runner.register`,
+`runner.registered`, `runner.poll`, `run.offer`, `run.accept`, `run.decline`,
+`run.lease_renew`, `run.progress`, `run.log_chunk`, `run.complete`, `run.failed` and
+`run.cancel`. Thirty-eight new fixtures (15 valid, 23 invalid).
+
+**Nothing existing changed on the wire**, and every fixture that predates this release
+is byte-for-byte identical (`scripts/tk/contract_snapshot.py`, asserted per file).
+
+Three properties are worth reading here rather than in the schemas, because each is a
+decision the shape enforces rather than a rule someone has to remember:
+
+- **The queue is pull-only, and backpressure is structural.** A runner at capacity
+  simply stops sending `runner.poll` — there is no `capacity: 0` frame, and so there is
+  no scheduler on the platform. The claim happens when the poll *arrives*, which is why
+  `run.offer` is a one-way statement of fact ("this is yours, the lease has started")
+  rather than a request. `run_id: null` is the "nothing for you" answer, present as a
+  shape so the daemon's switch has exactly one branch to write.
+- **`run.lease_renew` is unconditional, on purpose.** The lease answers "is the runner
+  alive" and nothing else. Making renewal depend on the child having produced output
+  would collapse it with the idle timer, and those two must end differently: a lost
+  runner re-queues the card, a hung child does not.
+- **`run.log_chunk` is capped at 32 KiB and is deliberately not in the large-frame
+  set.** That socket also carries interactive terminal bytes, and promoting an agent's
+  debug output to the 8 MiB tier would buy it with the terminal's responsiveness. The
+  content is a JSONL event stream, so the chunker may not split a line.
+
+**One existing message gains one optional field:** `node.heartbeat` may carry a
+`runner` object (`blocked_reason`, `disk_used_bytes`, `disk_quota_bytes`). It exists
+because of the first property above: a runner with no capacity goes quiet, so from
+Central a full runner, a runner with nowhere to put a checkout and a machine somebody
+unplugged are the same silence. Without this the console would show a healthy machine as
+offline. Absent means "not a runner", and an absent `blocked_reason` inside a present
+object means "polling normally" — there is no empty-string member, because a runner that
+is fine says nothing rather than saying it is fine. Every daemon before 0.9.0 omits the
+object entirely and is unaffected.
+
+Requires `agentd` 0.9.0 on the node for the runner types; the heartbeat field is
+optional in both directions.
+
+## 1.10.0 — 2026-08-09 (compatible)
+
+**Added — the platform's context projection (ADR 0028, `plan/17`).**
+
+- `context.project` (Central → daemon) and `context.projected` (the reply). One
+  message carries the task context pack, the session credential and the process notes
+  into `.cliora/{context,process,reference}/`.
+- `node.register` gains an optional `context_projection` boolean, the same shape
+  `image_upload` and `file_upload` already use. **Absent means incapable**, which is
+  the correct reading of every daemon before 0.8.0: sessions there start and run
+  unchanged, and Central simply does not send the new message.
+
+**Nothing existing changed.** Every message, field and fixture that predates this
+release is byte-for-byte identical; `scripts/tk/contract_snapshot.py` asserts it per
+file.
+
+Two constraints are worth reading in the schema rather than here, because they are
+what make this a *narrow* addition rather than a general write path: the destination
+pattern admits only the three platform-owned subtrees (so `.cliora/uploads/`, a
+`.gitignore` the user may own, and anything outside `.cliora/` are unrepresentable),
+and `mode` has exactly one legal value.
+
+Requires `agentd` 0.8.0 on the node.
+
 ## 1.9.0 — 2026-08-03 (compatible)
 
 - **One new type pair and one additive report field** (`version` stays `1`): `filesystem.store` (Central → daemon), `filesystem.stored` (daemon → Central), and `node-register.file_upload`. Together they place one file, under a name the user chose, into a directory the user chose. See ADR 0026 and `plan/15`.

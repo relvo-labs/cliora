@@ -229,10 +229,119 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/enrollment-tokens"): rbac.ENROLLMENT_MANAGE,
     ("DELETE", "/api/enrollment-tokens/{token_id}"): rbac.ENROLLMENT_MANAGE,
     ("POST", "/api/sessions"): rbac.SESSION_CREATE,
+    # Project layer (ADR 0027). `project.view` is held by all three roles for the same
+    # reason `node.view` is: a Viewer may look at the shape of the fleet. The read it
+    # grants carries one obligation — the activity timeline strips actor identity
+    # unless the caller *also* holds `audit.view`, so a read every role has cannot
+    # become the actor feed `dashboard.project_for` exists to prevent.
+    ("GET", "/api/projects"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/activity"): rbac.PROJECT_VIEW,
+    # `project.manage` sits with enrollment and node management: which projects exist,
+    # and which machines and directories they cover, is an organisation-level call —
+    # and from V2.3 a binding also authorises a runner to draw that project's secrets.
+    ("POST", "/api/projects"): rbac.PROJECT_MANAGE,
+    ("PATCH", "/api/projects/{project_id}"): rbac.PROJECT_MANAGE,
+    ("POST", "/api/projects/{project_id}/workspaces"): rbac.PROJECT_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/workspaces/{binding_id}"): rbac.PROJECT_MANAGE,
+    # Task layer (ADR 0028). Reads ride on `project.view` — a board is a view of a
+    # project — while the three writes split by *kind of authority*: creating and
+    # editing a card is day-to-day work, and approving a review gate is deliberately
+    # its own action even though the same two roles hold both. That split is what lets
+    # a session credential's scope exclude approval, and an action that does not exist
+    # cannot be excluded from a scope (research/02/01 D13).
+    ("GET", "/api/projects/{project_id}/process"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/board"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/roadmap"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/tasks"): rbac.PROJECT_VIEW,
+    ("GET", "/api/tasks/{task_id}"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/epics"): rbac.TASK_CREATE,
+    ("POST", "/api/projects/{project_id}/user-stories"): rbac.TASK_CREATE,
+    ("POST", "/api/projects/{project_id}/tasks"): rbac.TASK_CREATE,
+    ("PATCH", "/api/epics/{epic_id}"): rbac.TASK_UPDATE,
+    ("PATCH", "/api/user-stories/{story_id}"): rbac.TASK_UPDATE,
+    ("PATCH", "/api/tasks/{task_id}"): rbac.TASK_UPDATE,
+    ("POST", "/api/tasks/{task_id}/dependencies"): rbac.TASK_UPDATE,
+    ("DELETE", "/api/tasks/{task_id}/dependencies/{depends_on_id}"): rbac.TASK_UPDATE,
+    ("POST", "/api/tasks/{task_id}/gates/{gate_key}"): rbac.TASK_APPROVE,
+    # Requirements (D28). Approval and acceptance are `task.approve` rather than
+    # `task.update`: both are decisions, and a decision is precisely what a session
+    # credential's scope is written to exclude.
+    ("GET", "/api/projects/{project_id}/requirements"): rbac.PROJECT_VIEW,
+    ("GET", "/api/requirements/{requirement_id}"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/requirements"): rbac.TASK_CREATE,
+    ("POST", "/api/requirements/{requirement_id}/specs"): rbac.TASK_UPDATE,
+    ("POST", "/api/requirements/{requirement_id}/approve"): rbac.TASK_APPROVE,
+    ("POST", "/api/requirements/{requirement_id}/proposals"): rbac.TASK_CREATE,
+    ("POST", "/api/proposals/{proposal_id}/accept"): rbac.TASK_APPROVE,
+    ("DELETE", "/api/proposals/{proposal_id}"): rbac.TASK_APPROVE,
+    # The agent surface (ADR 0028 sec 3). `None`, like `/api/auth/login`, because these
+    # are not authorized by a *user* action at all: the caller is a session credential
+    # whose scope was fixed when it was issued, and it can never resolve into a user.
+    # `test_the_agent_surface_is_exactly_four_routes` is what keeps this set small.
+    ("GET", "/api/cli/tasks"): None,
+    ("GET", "/api/cli/tasks/{task_id}"): None,
+    ("PATCH", "/api/cli/tasks/{task_id}"): None,
+    ("GET", "/api/cli/process"): None,
+    # --- V2.2 agent runner (ADR 0029) ---
+    # `agent.view` is a read-only action held by all three roles, like `node.view`.
+    ("GET", "/api/agents"): rbac.AGENT_VIEW,
+    ("GET", "/api/agents/{runner_id}"): rbac.AGENT_VIEW,
+    # Admin-only from day one: from V2.3 this action also covers binding a runner to a
+    # project, and a binding authorises that runner to read the project's secrets. An
+    # action cannot be given to Developer now and narrowed later (ADR 0029 sec 3).
+    ("PATCH", "/api/agents/{runner_id}"): rbac.AGENT_MANAGE,
+    # Registering where a project's code lives is project configuration, not day-to-day
+    # work — and it is the one path where a person's input becomes part of the daemon's
+    # git argv (ADR 0031 sec 5).
+    ("GET", "/api/projects/{project_id}/repositories"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/repositories"): rbac.PROJECT_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/repositories/{repository_id}"): rbac.PROJECT_MANAGE,
+    # Separate from `task.update` because queueing work spends compute: it clones a
+    # repository onto a machine and starts a process there.
+    ("POST", "/api/tasks/{task_id}/dispatch"): rbac.RUN_DISPATCH,
+    ("GET", "/api/tasks/{task_id}/runs"): rbac.PROJECT_VIEW,
+    ("GET", "/api/runs/{run_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/runs/{run_id}/logs"): rbac.PROJECT_VIEW,
+    ("POST", "/api/runs/{run_id}/cancel"): rbac.RUN_CANCEL,
+    # Reading the thread is `project.view`; **writing to it is not**. The upstream plan
+    # had the write at `project.view`, which all three roles hold — that would have been
+    # a Viewer write path, contradicting the read-only viewer promised everywhere else
+    # (plan/18/06-…md §1). `task.update` is also exactly what a run credential carries,
+    # so the agent's route in AR-08 requires the same action rather than a weaker one.
+    ("GET", "/api/tasks/{task_id}/messages"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/messages"): rbac.TASK_UPDATE,
+    # Artifacts follow the same read/write split, for the same reason: attaching a file
+    # to a card is a write, and `project.view` is held by every role.
+    ("GET", "/api/tasks/{task_id}/artifacts"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/artifacts"): rbac.TASK_UPDATE,
+    ("GET", "/api/artifacts/{artifact_id}"): rbac.PROJECT_VIEW,
+    ("GET", "/api/artifacts/{artifact_id}/preview"): rbac.PROJECT_VIEW,
+    # Deletion is `project.manage` and needs a written reason. There is deliberately no
+    # `PUT`/`PATCH` here at all: an attached artifact is immutable.
+    ("DELETE", "/api/artifacts/{artifact_id}"): rbac.PROJECT_MANAGE,
+    # The run credential's surface, `None` for the same reason V2.1's is: these are not
+    # authorized by a *user* action. The caller is a run credential whose scope was
+    # fixed when it was issued, and it can never resolve into a user.
+    # V2.3 project secrets (ADR 0032). **Reading the list is `secret.manage`, not
+    # `project.view`**: which credentials a project holds and when each was last used is
+    # reconnaissance in its own right. What a Developer needs — the names, to tick on a
+    # card — is `/secret-names`, which returns nothing else. There is no `PATCH`: a
+    # rename orphans every card pointing at the old name and a kind change retroactively
+    # alters where an already-delivered value was allowed to go.
+    ("GET", "/api/projects/{project_id}/secrets"): rbac.SECRET_MANAGE,
+    ("POST", "/api/projects/{project_id}/secrets"): rbac.SECRET_MANAGE,
+    ("PUT", "/api/projects/{project_id}/secrets/{secret_id}"): rbac.SECRET_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/secrets/{secret_id}"): rbac.SECRET_MANAGE,
+    ("GET", "/api/projects/{project_id}/secret-names"): rbac.TASK_UPDATE,
+    ("GET", "/api/cli/runs/messages"): None,
+    ("POST", "/api/cli/runs/messages"): None,
+    ("POST", "/api/cli/runs/artifacts"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/terminate"): rbac.SESSION_TERMINATE,
+    ("POST", "/api/sessions/{session_id}/context-projection"): rbac.SESSION_CREATE,
     ("POST", "/api/sessions/{session_id}/shell"): rbac.TERMINAL_SHELL,
     ("DELETE", "/api/sessions/{session_id}"): rbac.SESSION_TERMINATE,
     ("GET", "/api/sessions/{session_id}/files/tree"): rbac.FILE_BROWSE,

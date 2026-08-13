@@ -24,7 +24,8 @@
 # Requires: uv, go, tmux, and a migrated-or-migratable PostgreSQL at
 # CLIORA_DATABASE_URL. Honours E2E_ADMIN_USER / E2E_ADMIN_PASSWORD /
 # CLIORA_ADMIN_PASSWORD, CENTRAL_PORT (default 8000), E2E_TUNNEL_APP_PORT
-# (default 5199).
+# (default 5199), and E2E_SECOND_NODE=1 to enroll a second node with its own
+# workspace root (off by default — see the block that reads it).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -48,6 +49,7 @@ export CLIORA_SECRET_ENCRYPTION_KEY="${CLIORA_SECRET_ENCRYPTION_KEY:-Y2xpb3JhLWU
 WORK="$(mktemp -d)"
 BIN="$WORK/bin"
 WORKSPACE="$WORK/workspace"
+export E2E_WORKSPACE_ROOT="$WORKSPACE"
 mkdir -p "$BIN" "$WORKSPACE"
 
 # P3 workspace fixtures: one previewable file per interesting policy branch, so
@@ -147,6 +149,57 @@ if [ -z "$online" ]; then
   exit 1
 fi
 echo "==> node online; workspace root: $WORKSPACE"
+
+# A second node, opt-in (plan/16 06-…md §2.5). The V2.0 project layer's whole point
+# is that a project spans machines, and one node cannot demonstrate that.
+#
+# **Opt-in rather than always-on**, deliberately: the existing P2/P3 specs pick
+# `nodes[0]` or "the first node that is online", and with two nodes racing to
+# connect, which one that is stops being determinate. Leaving it off by default
+# makes the question "does a second node destabilise the older suites" not arise,
+# instead of answering it by reading every one of them.
+#
+# Its workspace root is a *different* directory on purpose. Two mounts of one
+# directory would let a cross-node assertion pass on a path that happens to exist
+# in both places, which is not the property being tested.
+if [ "${E2E_SECOND_NODE:-}" = "1" ]; then
+  WORKSPACE2="$WORK/workspace-b"
+  mkdir -p "$WORKSPACE2/src"
+  printf '# second node workspace\n' >"$WORKSPACE2/README.md"
+  printf "print('E2E_SECOND_NODE_MARKER')\n" >"$WORKSPACE2/src/main.py"
+
+  echo "==> enrolling a second node (e2e-node-2)"
+  "$BIN/enroll-dev" --server "$BASE" --token "$ENROLL_TOKEN" --name e2e-node-2 \
+    --workspace-root "$WORKSPACE2" --runtime-binary "$BIN/fakecli" \
+    --config "$WORK/config2.yaml" --credentials "$WORK/credentials2.yaml" --allow-insecure
+  sed -i "s|known_hosts_path:.*|known_hosts_path: $ROOT/daemon/internal/tunnel/pinggy_known_hosts|" "$WORK/config2.yaml"
+  # A distinct state directory: two daemons sharing one would fight over the same
+  # tmux socket and credential file.
+  sed -i "s|state_dir:.*|state_dir: $WORK/state2|" "$WORK/config2.yaml" || true
+
+  setsid env CLIORA_TUNNEL_PROVIDER_COMMAND_FOR_TESTS="$BIN/faketunnelprovider" \
+    "$BIN/agentd" run --config "$WORK/config2.yaml" --credentials "$WORK/credentials2.yaml" \
+    >"$WORK/agentd2.log" 2>&1 &
+  PIDS+=($!)
+
+  second=""
+  for _ in $(seq 1 30); do
+    NODES="$(curl -fsS "$BASE/api/nodes" -H "authorization: Bearer $ACCESS" 2>/dev/null || echo '[]')"
+    second="$(python3 -c 'import json,sys
+try: nodes=json.load(sys.stdin)
+except Exception: nodes=[]
+print("1" if sum(1 for n in nodes if n.get("status")=="online") >= 2 else "")' <<<"$NODES")"
+    [ -n "$second" ] && break
+    sleep 1
+  done
+  if [ -z "$second" ]; then
+    echo "!! the second node did not come online; agentd2.log tail:" >&2
+    tail -n 20 "$WORK/agentd2.log" >&2 || true
+    exit 1
+  fi
+  echo "==> second node online; workspace root: $WORKSPACE2"
+  export E2E_SECOND_NODE_WORKSPACE="$WORKSPACE2"
+fi
 
 export E2E_TUNNEL_APP_PORT="$TUNNEL_APP_PORT"
 

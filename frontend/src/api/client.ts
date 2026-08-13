@@ -4,6 +4,17 @@
 // by default (same-origin / vite proxy) and overridable via VITE_API_BASE_URL.
 
 import type {
+  ActivityPage,
+  AcceptProposalResult,
+  Board,
+  FeatureSpec,
+  ProcessDefinition,
+  Requirement,
+  RequirementDetail,
+  Roadmap,
+  Task,
+  TaskProposal,
+  TaskWrite,
   AttachTicket,
   AuditPage,
   AuditQuery,
@@ -21,6 +32,10 @@ import type {
   NodeDetail,
   NodeSummary,
   NodeTunnelPolicy,
+  ProjectDetail,
+  ProjectStatus,
+  ProjectSummary,
+  ProjectWorkspace,
   RecentWorkspace,
   ReleaseManifest,
   SessionDetail,
@@ -34,6 +49,15 @@ import type {
   UpdateTunnelIntegrationInput,
   User,
   WorkspaceFavorite,
+  AgentRunner,
+  ProjectSecret,
+  SecretKind,
+  ProjectRepository,
+  DispatchResult,
+  TaskRun,
+  RunLogPage,
+  TaskMessage,
+  TaskArtifact,
 } from "./dto";
 
 export class ApiError extends Error {
@@ -206,14 +230,269 @@ export class ApiClient {
     return this.request("POST", "/api/ws-ticket", { resource });
   }
 
+  // --- V2.0 projects (ADR 0027) ---
+  //
+  // Every one of these answers 404 when the deployment has the project layer
+  // switched off. The browser is expected to know that from `User.features`
+  // rather than by probing.
+
+  listProjects(params?: {
+    status?: ProjectStatus;
+    owned_by_me?: boolean;
+  }): Promise<ProjectSummary[]> {
+    const query = new URLSearchParams();
+    if (params?.status) query.set("status", params.status);
+    if (params?.owned_by_me) query.set("owned_by_me", "true");
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.request("GET", `/api/projects${suffix}`);
+  }
+
+  getProject(id: string): Promise<ProjectDetail> {
+    return this.request("GET", `/api/projects/${encodeURIComponent(id)}`);
+  }
+
+  createProject(input: {
+    name: string;
+    slug?: string;
+    description?: string;
+  }): Promise<ProjectDetail> {
+    return this.request("POST", "/api/projects", input);
+  }
+
+  updateProject(
+    id: string,
+    input: { name?: string; description?: string; status?: ProjectStatus },
+  ): Promise<ProjectSummary> {
+    return this.request(
+      "PATCH",
+      `/api/projects/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  bindProjectWorkspace(
+    id: string,
+    input: {
+      node_id: string;
+      path: string;
+      label?: string;
+      is_primary?: boolean;
+    },
+  ): Promise<ProjectWorkspace> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(id)}/workspaces`,
+      input,
+    );
+  }
+
+  unbindProjectWorkspace(id: string, bindingId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(id)}/workspaces/${encodeURIComponent(bindingId)}`,
+    );
+  }
+
+  listProjectActivity(
+    id: string,
+    params?: { limit?: number; before?: string; task_id?: string },
+  ): Promise<ActivityPage> {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set("limit", String(params.limit));
+    if (params?.before) query.set("before", params.before);
+    if (params?.task_id) query.set("task_id", params.task_id);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(id)}/activity${suffix}`,
+    );
+  }
+
+  // --- V2.1 task layer (ADR 0028) ---
+  //
+  // Same 404-while-disabled rule as the project routes above: the browser knows from
+  // `User.features` rather than by probing.
+
+  getBoard(projectId: string): Promise<Board> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/board`,
+    );
+  }
+
+  getRoadmap(projectId: string): Promise<Roadmap> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/roadmap`,
+    );
+  }
+
+  getProcess(projectId: string): Promise<ProcessDefinition> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/process`,
+    );
+  }
+
+  getTask(taskId: string): Promise<Task> {
+    return this.request("GET", `/api/tasks/${encodeURIComponent(taskId)}`);
+  }
+
+  createEpic(projectId: string, input: { title: string }): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/epics`,
+      input,
+    );
+  }
+
+  createUserStory(
+    projectId: string,
+    input: { title: string; epic_id?: string },
+  ): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/user-stories`,
+      input,
+    );
+  }
+
+  updateEpic(id: string, input: Record<string, unknown>): Promise<Task> {
+    return this.request("PATCH", `/api/epics/${encodeURIComponent(id)}`, input);
+  }
+
+  updateUserStory(id: string, input: Record<string, unknown>): Promise<Task> {
+    return this.request(
+      "PATCH",
+      `/api/user-stories/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  createTask(
+    projectId: string,
+    input: Record<string, unknown>,
+  ): Promise<TaskWrite> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/tasks`,
+      input,
+    );
+  }
+
+  /** Every write carries the version it was read at. Not optional: an optional
+   *  precondition is the one every caller eventually forgets, and the failure it
+   *  prevents — two people dragging one card — is silent. */
+  updateTask(
+    taskId: string,
+    input: Record<string, unknown> & { version: number },
+  ): Promise<TaskWrite> {
+    return this.request(
+      "PATCH",
+      `/api/tasks/${encodeURIComponent(taskId)}`,
+      input,
+    );
+  }
+
+  addTaskDependency(taskId: string, dependsOnTaskId: string): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/dependencies`,
+      { depends_on_task_id: dependsOnTaskId },
+    );
+  }
+
+  decideGate(taskId: string, gate: string, approved: boolean): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/gates/${encodeURIComponent(gate)}`,
+      { approved },
+    );
+  }
+
+  listRequirements(projectId: string): Promise<Requirement[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/requirements`,
+    );
+  }
+
+  getRequirement(id: string): Promise<RequirementDetail> {
+    return this.request("GET", `/api/requirements/${encodeURIComponent(id)}`);
+  }
+
+  createRequirement(
+    projectId: string,
+    input: { raw_text: string },
+  ): Promise<Requirement> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/requirements`,
+      input,
+    );
+  }
+
+  addSpec(
+    requirementId: string,
+    input: Record<string, unknown>,
+  ): Promise<FeatureSpec> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/specs`,
+      input,
+    );
+  }
+
+  approveRequirement(requirementId: string): Promise<Requirement> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/approve`,
+    );
+  }
+
+  createProposal(
+    requirementId: string,
+    tree: Record<string, unknown>,
+  ): Promise<TaskProposal> {
+    return this.request(
+      "POST",
+      `/api/requirements/${encodeURIComponent(requirementId)}/proposals`,
+      { tree },
+    );
+  }
+
+  acceptProposal(
+    proposalId: string,
+    input: { accept_ids?: string[] | null; note?: string | null } = {},
+  ): Promise<AcceptProposalResult> {
+    return this.request(
+      "POST",
+      `/api/proposals/${encodeURIComponent(proposalId)}/accept`,
+      input,
+    );
+  }
+
+  deleteProposal(proposalId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/proposals/${encodeURIComponent(proposalId)}`,
+    );
+  }
+
   // --- P2 sessions ---
   listSessions(params?: {
     node_id?: string;
     status?: string;
+    // A uuid scopes to one project; the literal "none" returns only the ad-hoc
+    // sessions. Omitted means everything, exactly as before the project layer.
+    project_id?: string;
+    task_id?: string;
   }): Promise<SessionSummary[]> {
     const query = new URLSearchParams();
     if (params?.node_id) query.set("node_id", params.node_id);
     if (params?.status) query.set("status", params.status);
+    if (params?.project_id) query.set("project_id", params.project_id);
+    if (params?.task_id) query.set("task_id", params.task_id);
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return this.request("GET", `/api/sessions${suffix}`);
   }
@@ -228,6 +507,10 @@ export class ApiClient {
 
   terminateSession(id: string): Promise<SessionDetail> {
     return this.request("POST", `/api/sessions/${id}/terminate`);
+  }
+
+  retryContextProjection(id: string): Promise<SessionDetail> {
+    return this.request("POST", `/api/sessions/${id}/context-projection`);
   }
 
   // Terminate fired from a page-unload handler — a reload, a closed tab, a
@@ -619,6 +902,211 @@ export class ApiClient {
       });
     }
     return this.refreshInFlight;
+  }
+
+  // --- V2.2: agent runners, runs, messages and artifacts (ADR 0029/0030) ---
+  //
+  // Every one of these answers **404** when either flag is off, and the browser is
+  // expected to know that from `User.features` rather than by probing. That is the
+  // same contract the project layer already has, and the reason both flags answer 404
+  // rather than 403: a 403 would confirm the route exists.
+
+  // --- V2.3: project secrets (ADR 0032) ---
+  //
+  // **No method returns a value, and there is no endpoint that could.** The listing is
+  // `secret.manage` because "which credentials does this project hold, and when was
+  // each last used" is reconnaissance; `listSecretNames` is what a Developer needs to
+  // tick names on a card, and it returns nothing else.
+
+  listSecrets(projectId: string): Promise<ProjectSecret[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets`,
+    );
+  }
+
+  listSecretNames(projectId: string): Promise<string[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/secret-names`,
+    );
+  }
+
+  createSecret(
+    projectId: string,
+    input: { name: string; kind: SecretKind; value: string },
+  ): Promise<ProjectSecret> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets`,
+      input,
+    );
+  }
+
+  // Rotation is an overwrite of the value and nothing else: a rename would orphan every
+  // card pointing at the old name, and a kind change would retroactively alter where an
+  // already-delivered value was allowed to go.
+  rotateSecret(
+    projectId: string,
+    secretId: string,
+    value: string,
+  ): Promise<ProjectSecret> {
+    return this.request(
+      "PUT",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(secretId)}`,
+      { value },
+    );
+  }
+
+  deleteSecret(projectId: string, secretId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(projectId)}/secrets/${encodeURIComponent(secretId)}`,
+    );
+  }
+
+  listAgents(): Promise<AgentRunner[]> {
+    return this.request("GET", "/api/agents");
+  }
+
+  getAgent(id: string): Promise<AgentRunner> {
+    return this.request("GET", `/api/agents/${encodeURIComponent(id)}`);
+  }
+
+  updateAgent(
+    id: string,
+    input: {
+      name?: string;
+      enabled?: boolean;
+      max_concurrent?: number;
+      max_waiting?: number;
+      // No `labels`, `run_untagged` or `accept_secrets`: they are what the node's own
+      // config declares, and an edit here would be a second source of truth that the
+      // next `runner.register` silently overwrites (ADR 0029 amendment B5).
+    },
+  ): Promise<AgentRunner> {
+    return this.request(
+      "PATCH",
+      `/api/agents/${encodeURIComponent(id)}`,
+      input,
+    );
+  }
+
+  listProjectRepositories(projectId: string): Promise<ProjectRepository[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories`,
+    );
+  }
+
+  // Three fields, **never a URL**. An endpoint that took a URL would receive
+  // `https://user:token@host/…` on its first day, and that token would then live in
+  // the database, in `git remote -v` and in error messages (ADR 0031 §5).
+  createProjectRepository(
+    projectId: string,
+    input: {
+      scheme: "https" | "ssh";
+      host: string;
+      path: string;
+      default_branch: string;
+      label?: string;
+    },
+  ): Promise<ProjectRepository> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories`,
+      input,
+    );
+  }
+
+  deleteProjectRepository(
+    projectId: string,
+    repositoryId: string,
+  ): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${encodeURIComponent(projectId)}/repositories/${encodeURIComponent(repositoryId)}`,
+    );
+  }
+
+  dispatchTask(
+    taskId: string,
+    input?: { assigned_runner_id?: string },
+  ): Promise<DispatchResult> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/dispatch`,
+      input ?? {},
+    );
+  }
+
+  listTaskRuns(taskId: string): Promise<TaskRun[]> {
+    return this.request("GET", `/api/tasks/${encodeURIComponent(taskId)}/runs`);
+  }
+
+  getRun(runId: string): Promise<TaskRun> {
+    return this.request("GET", `/api/runs/${encodeURIComponent(runId)}`);
+  }
+
+  // Paged, not streamed. A run's log lands at most every two seconds because Central
+  // aggregates before writing, so polling is enough — and the alternative would be a
+  // second real-time channel beside the terminal relay, which is the one thing this
+  // phase should not touch.
+  getRunLogs(runId: string, afterSeq?: number): Promise<RunLogPage> {
+    const query = afterSeq === undefined ? "" : `?after_seq=${afterSeq}`;
+    return this.request(
+      "GET",
+      `/api/runs/${encodeURIComponent(runId)}/logs${query}`,
+    );
+  }
+
+  cancelRun(runId: string): Promise<TaskRun> {
+    return this.request(
+      "POST",
+      `/api/runs/${encodeURIComponent(runId)}/cancel`,
+    );
+  }
+
+  listTaskMessages(taskId: string, since?: string): Promise<TaskMessage[]> {
+    const query = since ? `?since=${encodeURIComponent(since)}` : "";
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/messages${query}`,
+    );
+  }
+
+  postTaskMessage(
+    taskId: string,
+    input: { body: string; kind?: "message" | "question" | "answer" },
+  ): Promise<TaskMessage> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/messages`,
+      input,
+    );
+  }
+
+  listTaskArtifacts(taskId: string): Promise<TaskArtifact[]> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/artifacts`,
+    );
+  }
+
+  deleteArtifact(artifactId: string, reason: string): Promise<TaskArtifact> {
+    return this.request(
+      "DELETE",
+      `/api/artifacts/${encodeURIComponent(artifactId)}`,
+      { reason },
+    );
+  }
+
+  // **A URL, never a fetch-and-render.** The download endpoint always answers with
+  // `attachment` plus `nosniff` plus a `sandbox` CSP, so pointing an anchor at it is
+  // the whole interaction — and there is deliberately no code anywhere in this app
+  // that puts an artifact's bytes into the DOM (ADR 0030 Part B).
+  artifactDownloadUrl(artifactId: string): string {
+    return `${BASE}/api/artifacts/${encodeURIComponent(artifactId)}`;
   }
 
   private raw(

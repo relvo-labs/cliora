@@ -37,6 +37,22 @@ PRD_ROWS: list[tuple[str, str]] = [
     ("終止 Session / Terminate session", rbac.SESSION_TERMINATE),
     ("瀏覽檔案 / Browse & preview files", rbac.FILE_BROWSE),
     ("查看 Audit Log / View audit log", rbac.AUDIT_VIEW),
+    # V2.0 project layer (ADR 0027). `project.view` is held by every role, like
+    # `node.view`; `project.manage` is Admin-only, alongside enrollment and node
+    # management, because it decides which projects exist and which machines and
+    # directories they cover.
+    ("查看專案 / View projects", rbac.PROJECT_VIEW),
+    ("管理專案 / Manage projects & workspace bindings", rbac.PROJECT_MANAGE),
+    # V2.2 agent runner (ADR 0029). `agent.view` joins the read-only set for the same
+    # reason `node.view` is in it. `agent.manage` is Admin-only from day one **because
+    # of what it becomes**: from V2.3 it also covers binding a runner to a project, and
+    # a binding authorises that runner to read the project's secrets. `run.dispatch` is
+    # separate from `task.update` because queueing work clones a repository onto a
+    # machine and starts a process there.
+    ("查看 Agent / View agent runners", rbac.AGENT_VIEW),
+    ("管理 Agent / Manage agent runners", rbac.AGENT_MANAGE),
+    ("派工給 Agent / Dispatch a card to an agent", rbac.RUN_DISPATCH),
+    ("取消 Run / Cancel a run", rbac.RUN_CANCEL),
 ]
 
 ROLES = (rbac.ADMIN, rbac.DEVELOPER, rbac.VIEWER)

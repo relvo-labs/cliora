@@ -1,0 +1,1 @@
+{"version": 1, "type": "runner.register", "request_id": "01K0ABCDEFGHJKMNPQRSTVWX30", "node_id": "00000000-0000-4000-8000-0000000000aa", "timestamp": "2026-08-11T10:00:00Z", "payload": {"name": "dev-runner-01", "runtimes": ["claude"], "labels": ["docker"], "max_concurrent": 1, "max_waiting": 5, "dedicated": true, "run_untagged": true, "accept_secrets": true}}

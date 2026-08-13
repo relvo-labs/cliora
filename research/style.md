@@ -818,6 +818,45 @@ Rotate
 
 # 22. Design Tokens
 
+## V2 工作語彙
+
+V2 任務層使用下列語意 token（來源：`research/02/12` §2；實作裁決：
+`plan/19` D32）。Session 進行中沿用 `--status-online` 綠；Task 進行中使用
+`--stage-implementing` 藍；Run 執行中使用 `--run-running` 琥珀並附文字與動態點。
+顏色不是唯一線索。
+
+```text
+Task stage
+--stage-backlog       #8892A0
+--stage-blocked       #B4574F
+--stage-ready         #4A7C8C
+--stage-implementing  #3F6FA8
+--stage-verify        #7A5EA8
+--stage-done          #2F7A56
+
+Run
+--run-queued          #8892A0
+--run-running         #C68C37
+--run-waiting         #D2691E
+--run-succeeded       #2F9B63
+--run-failed          #D25454
+--run-lost            #A0673F
+
+Risk
+--risk-low            #6B7684
+--risk-medium         #C68C37
+--risk-high           #C45C5C
+
+Evidence source
+--source-machine      #2F7A56  (machine_verified, solid)
+--source-platform     #4A7C8C  (platform_observed, outline)
+--source-agent        #8892A0  (agent_reported, quiet)
+```
+
+共用尺度為 `--space-1` … `--space-6`（4、8、12、16、24、32px）、
+`--font-xs` … `--font-xl`（11、12、13、15、19、24px），以及系統內建的
+`--font-mono` 等寬字堆疊。元件不得猜測 `--font-size-*` 或 `--color-*` 名稱。
+
 ```yaml
 radius:
   sm: 4
@@ -972,4 +1011,3 @@ Desktop Only（MVP）
 整體應讓使用者第一眼聯想到的是：
 
 > 一個讓工程團隊可以安心、穩定、高效率管理 AI CLI 與遠端開發節點的專業平台，而不是一個強調 AI 炫技的聊天介面。
-
