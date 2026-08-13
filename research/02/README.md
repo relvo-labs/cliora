@@ -20,6 +20,13 @@
 | 4 | **納入 Monstrare 的需求釐清與任務拆解能力** | 新增 V2.5。釐清的「問」直接落在既有的看板溝通管道上，不新增介面 |
 | 5 | **Agent 可交付產物到任務卡**（執行中亦可留言附檔） | 紅線 5 從「列舉三種出口」改為**陳述原則**：每一種出口都必須落在人看過才生效的地方。卡片產物是其中最安全的一種 |
 
+**後續裁決**（本表之後、已寫入各文件）：2026-08-10 兩次（Agent 自己拉專案到隔離目錄；沙箱內的 git 自由）、
+2026-08-11（紅線 4 主詞修訂、留言與產物的 RBAC、log 聚合）、
+**2026-08-12（Agent 配對）**：**不做 Project × Agent 綁定**——`project_agents` 整張表取消，
+「這類卡片給這類機器」改用**卡片 tag × runner tag** 比對（GitLab Runner 的形狀），
+tag 比對從「後續功能」提前到 **V2.3**，**授權邊界永久是 enrollment**。
+決策全文在 `01` D18，落地在 `05`。
+
 ## 文件導覽
 
 | 文件 | 用途 |
@@ -31,7 +38,7 @@
 | [03-phase-v21-task-board.md](./03-phase-v21-task-board.md) | V2.1 任務看板與流程內化（`TK-`） |
 | [04-phase-v22-agent-runner.md](./04-phase-v22-agent-runner.md) | V2.2 Agent Runner 與任務認領（`AR-`） |
 | [12-phase-v22_1-ui-remediation.md](./12-phase-v22_1-ui-remediation.md) | **V2.2_1 前端修復期（`UI-`）**——V2.0–V2.2 的前端引用了 104 個未定義的 CSS token，三個 V2 主畫面實際上以無樣式 HTML 渲染。這一期修它，並加上守門 |
-| [05-phase-v23-secrets-and-isolation.md](./05-phase-v23-secrets-and-isolation.md) | V2.3 機密下放與隔離工作目錄（`SC-`） |
+| [05-phase-v23-secrets-and-isolation.md](./05-phase-v23-secrets-and-isolation.md) | V2.3 機密下放、git 送回與 **tag 派工**（`SC-`） |
 | [06-phase-v24-delivery-and-verification.md](./06-phase-v24-delivery-and-verification.md) | V2.4 交付、驗證與證據（`DV-`） |
 | [07-phase-v25-requirements-and-decomposition.md](./07-phase-v25-requirements-and-decomposition.md) | V2.5 需求釐清與任務拆解（`RQ-`） |
 | [08-data-model-and-contract.md](./08-data-model-and-contract.md) | 資料表、protocol 新增訊息、RBAC、兩種憑證、版本節奏 |
@@ -82,7 +89,8 @@ tmux attach -t cliora-v22        # 需要看的時候才 attach
 > **V2.0 → [`plan/16/`](../../plan/16/README.md)（已實作）**、
 > **V2.1 → [`plan/17/`](../../plan/17/README.md)（已實作，`evidence.sh` 10/10；合併提案待人工）**、
 > **V2.2 → [`plan/18/`](../../plan/18/README.md)**、
-> **V2.2_1 → [`plan/19/`](../../plan/19/README.md)（前端修復期）**。
+> **V2.2_1 → [`plan/19/`](../../plan/19/README.md)（前端修復期）**、
+> **V2.3 → [`plan/20/`](../../plan/20/README.md)**。
 > 執行計畫與本目錄不一致時，**以執行計畫為準並回寫這裡**——它讀的是程式碼，本目錄讀的是構想。
 > 2026-08-09 的一次回寫：V2.1 動 contract v1.10.0 ＋ `agentd` 0.8.0，V2.2 起的版本號與
 > ADR 編號各順移一格。

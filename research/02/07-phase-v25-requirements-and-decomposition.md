@@ -115,7 +115,7 @@ task_proposals            拆解提案（一次拆解一列，內含整棵樹）
 驗收標準可測試 / 非目標明確 / 風險等級 / 驗證方法
 ```
 
-外加 V2 執行模型需要的欄位：`source`、`delivery`、`target_branch`、`required_labels`、`required_secrets`、`dependsOn`。
+外加 V2 執行模型需要的欄位：`source`、`delivery`、`target_branch`、`required_labels`（**卡片 tag，V2.3 起真的參與派工比對**——拆解時填錯或漏填，卡片會等在佇列上沒人領）、`required_secrets`、`dependsOn`。
 
 **`delivery` 由拆解決定，這是它最有價值的判斷之一**：哪些卡要出 PR、哪些只交付一份報告（`artifact`）、哪些純執行不留東西（`none`）。拆解時就分清楚，比事後補救便宜得多。
 

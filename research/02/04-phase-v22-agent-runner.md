@@ -12,6 +12,12 @@
 > 這次裁決把 D19（隔離工作目錄）與 D20 的**取得半邊**從 V2.3 提前到 V2.2，
 > 並把 D18（綁定與 labels）從 V2.2 延後到 V2.3。§0 記錄搬動了什麼、為什麼。
 
+> **⚠️ 2026-08-12 裁決（Agent 配對）：本期的行為不變，但它的「之後」變了。**
+> `project_agents` 綁定表**不做了**（不是延後到 V2.3），**tag 比對則提前到 V2.3**。
+> 所以本文件裡凡是寫「V2.3 會加回綁定」的地方，正確的讀法是
+> **「V2.3 會加上 tag 比對，而授權邊界永遠停在 enrollment」**。
+> V2.2 已交付的程式碼一行都不用改——那一期本來就沒有綁定。詳見 `01` D18 與 `05`。
+
 ## 0. 這次裁決搬動了什麼
 
 | | 原本 | 現在 | 為什麼 |
@@ -21,8 +27,8 @@
 | **平台的** git 送回（push） | V2.3 | **仍是 V2.3** | 取得與送回是兩件事。**平台**在 V2.2 的成果出口只有卡片產物 |
 | **Agent 自己**的 git 操作（含 push） | 未明說 | **允許**（2026-08-10 第二次裁決） | 沙箱內的自由是刻意給的（D25）。收斂點是紅線 5 的原則 ＋ 可觀測性，不是 daemon 的 argv 表（§AR-04b 第 3 點） |
 | 機密（PAT／SSH key） | V2.3 | **仍是 V2.3** | V2.2 用 node 上**既有的** git 認證，平台不管理、不注入任何憑證（§AR-04b） |
-| `project_agents` 綁定 | V2.2 | **V2.3**（與機密同一份 ADR） | 綁定在 V2.2 沒有授權任何東西；它要授權的是機密，所以與機密一起做才有讀者 |
-| `labels` × `required_labels` 比對 | V2.2 | **後續**（欄位已在，不比對） | 裁決明文「後續可以加入 label match」 |
+| `project_agents` 綁定 | V2.2 | ~~V2.3~~ → **不做**（2026-08-12 裁決） | 2026-08-10 的理由是「綁定要與機密同期才有讀者」；2026-08-12 直接取消整張表——配對用 tag，授權邊界是 enrollment（`01` D18） |
+| `labels` × `required_labels` 比對 | V2.2 | ~~後續~~ → **V2.3**（2026-08-12 裁決提前） | 綁定取消之後，「這類卡片給這類機器」只剩 tag 能表達；它接手綁定原本在 V2.3 的位置 |
 | ADR 0031（隔離目錄與 git） | V2.3 | **V2.2 發佈，V2.3 增補 push 半邊** | 文件跟著能力走 |
 
 **紅線 2 的適用範圍因此變得更乾淨**：`workspace.Root` 管的是使用者的 allowed root，
@@ -40,7 +46,8 @@
 ## 前置條件
 
 - V2.1 出口條件全數通過。
-- D16、D17、D17b、D19、D24、D26、D27、D29 已裁決；**D18 延後至 V2.3**。
+- D16、D17、D17b、D19、D24、D26、D27、D29 已裁決；**D18 不在本期**
+  （2026-08-10 延後至 V2.3；**2026-08-12 改為綁定不做、tag 比對在 V2.3**）。
 - ADR 0029（Agent Runner 模型與 run 生命週期）、ADR 0030（run 的輸出：log 與產物）、
   **ADR 0031（隔離工作目錄與 git 取得）** 已撰寫並接受。
 - **M11（clone 與 worktree 耗時）與 M12（run 目錄大小）已量**——原本是 V2.3 開工前，
@@ -60,6 +67,8 @@
    runtime 相符、`assigned_runner_id` 為 null 或等於該 runner。
    **`project_agents` 與 labels 不在本期的判定裡**，而**enrollment 是 runner 在本期唯一的授權邊界**
    ——這句話要明寫，它是一個姿態宣告而不是遺漏。
+   （**2026-08-12 更新**：綁定表取消之後，這句話不再有「本期」兩個字——
+   enrollment 是**永久的**授權邊界。ADR 0029 若已發佈，由 V2.3 的 amend 改這一句，見 `05` SC-02b。）
 4. **租約語意**：續租週期、逾時判定、重排上限、用完進 `blocked`。
 5. **Agent Run 不是 Session**：不進 `terminal_sessions`、不走 Terminal relay、不佔 writer 名額、
    沒有 tmux 持久化。**也不使用 workspace 綁定**——那一層從此只服務互動式 Session。
@@ -175,6 +184,8 @@ run 目錄有保留期，那份工作若不附成產物就會消失。
 
 ```text
 runner.register    { runner_id, name, runtimes[], labels[], max_concurrent, max_waiting }
+                                                  ↑ 本期只存不比對；V2.3 起參與資格判定，
+                                                    並新增 run_untagged（contract v1.12.0）
 runner.registered  { accepted, reason? }
 runner.poll        { runner_id, capacity }
 run.offer          { run_id, task_id, project_id, spec }
@@ -280,7 +291,8 @@ migration（編號依實作當下的現況，見 `08` §2）：
   `summary`、`created_by`。
   **沒有 `workspace_node_id`／`workspace_path`**——run 不再使用 workspace。
 - `run_logs`、`task_messages`、`task_artifacts`（＋ blob 分表）、`run_tokens`。
-- **`project_agents` 不在本期**（D18 延後到 V2.3，與機密同一份 migration）。
+- **`project_agents` 不在本期**——**2026-08-12 裁決之後也永遠不會有這張表**（`01` D18）。
+  V2.3 在 `agent_runners` 上加的是一格 `run_untagged`，不是一張綁定表。
 
 **狀態機**：
 
@@ -305,8 +317,9 @@ WHERE t.stage = 'ready'
        OR r.assigned_runner_id = :runner_id)      -- 指定（D17b）
 ```
 
-**綁定與 labels 兩條不在這裡**（D18 延後）。V2.3 會把綁定那條加回來，
-**而且要加在最前面**——那時它授權的是機密。
+**tag 比對不在這裡**（本期只存不比對）。**2026-08-12 裁決**：V2.3 加回來的是 **tag 那一條**，
+不是綁定——`required_labels ⊆ runner.labels` ＋ `run_untagged`（`05` SC-02c 有 SQL）。
+它加在 runtime 之後，**而不是最前面**：最前面那個位置原本是留給授權的，而現在沒有那一層。
 
 **重排維持指定**：被指定的 run 變 `lost` 之後仍只給原本那個 runner；
 attempt 用完進 `blocked`，原因寫明「指定的 Agent 連續 3 次未能完成」。
@@ -344,8 +357,9 @@ attempt 用完進 `blocked`，原因寫明「指定的 Agent 連續 3 次未能�
 ### AR-07 — RBAC 與 API
 
 新增動作：`agent.view`、`agent.manage`（註冊、停用、並行度）、`run.dispatch`、`run.cancel`。
-**`agent.manage` 本期不含「綁定 Project」**（那是 V2.3 的事），但歸屬仍是 Admin，
-理由在 V2.3 會兌現：綁定＝授權取用機密。
+**`agent.manage` 不含「綁定 Project」**——原文寫「那是 V2.3 的事」，**2026-08-12 裁決之後那件事不存在了**。
+它歸 Admin 的理由改為：停用一台 runner、調它的並行度，是組織層對運算資源的處置。
+**授權取用機密的那個動作不在這裡，在 `enrollment.manage`**（`01` D18 代償第 4 條）。
 
 ```text
 GET    /api/agents                          agent.view
@@ -390,11 +404,13 @@ DELETE /api/artifacts/{id}                   project.manage 僅配額用盡時�
   - 線上狀態就是 node 的線上狀態（D16），不另做一套指示燈。
   - **容量或磁碟用盡時顯示原因，不是顯示成離線。**
   - 每個 runner 顯示「目前被指定的卡片數」。
-  - **本期沒有「綁定的 Project」欄**（D18 延後）。取而代之要有一行說明：
+  - **沒有「綁定的 Project」欄**（D18；2026-08-12 之後**永遠不會有**）。取而代之要有一行說明：
     **「任何 runner 都可以領取任何專案的卡片。授權邊界是 enrollment。」**
     這句話不寫，使用者會以為有一個他沒找到的綁定設定。
 - **Project Settings 的 Repository 區**：登記 host／path／default branch。
-  **明示本期不管理憑證**：「clone 使用該 node 上既有的 git 認證。V2.3 起改為平台管理。」
+  **明示本期不管理憑證**：「clone 使用該 node 上既有的 git 認證。」
+  （**2026-08-13 裁決刪掉了原文的後半句「V2.3 起改為平台管理」**：
+  V2.3 的預設仍然是這一種，平台管理的 git 憑證是一個預設關閉的能力——`01` D20。）
 - **卡片上的「派給 Agent」**：預設「任一符合資格的 Agent」；可改為指定某一個。
   不符資格的顯示為停用並附原因（不是隱藏）。
 - **看板卡片顯示 run 狀態**：排隊中／執行中（哪個 agent）／等待回覆／失敗。
@@ -413,14 +429,14 @@ DELETE /api/artifacts/{id}                   project.manage 僅配額用盡時�
 - **平台**不做 git push、不做分支命名空間、不做 PR／MR（V2.3／V2.4）。
   **Agent 自己 push 不在「不做」清單上**——那是允許的（§AR-04b 第 3 點）。
 - 不碰機密／環境變數（V2.3）。**clone 用 node 上既有的認證**（AR-04b）。
-- 不做 `project_agents` 綁定、不做 label 比對（V2.3／後續）。
+- 不做 `project_agents` 綁定（**2026-08-12：永久不做**）、不做 label 比對（**改為 V2.3**）。
 - 不做自動指派、排程最佳化、負載平衡（`00` §9）。
 - 不做「把 run 升級成互動 Session」（D26）。
 - **不讓 run 碰使用者的 workspace 綁定**——那一層從此只服務互動式 Session。
 
 ## 出口條件
 
-1. **未指定** agent 的卡片：任一 runner 都領得到（本期沒有綁定，所以「任一」就是字面意思）。
+1. **未指定** agent 的卡片：任一 runner 都領得到（本期不比對 tag，所以「任一」就是字面意思）。
 2. **指定** agent 的卡片：只有那一個 runner 領得到，其他 runner **永遠不會被 offer 它**。
 3. 指定一個**已停用**或**runtime 不符**的 runner → dispatch **回 409 不入佇列**，訊息指名是哪一條。
 4. 指定的 runner **離線** → 正常入佇列，卡片顯示「等待指定的 Agent（目前離線）」；
@@ -482,5 +498,5 @@ DELETE /api/artifacts/{id}                   project.manage 僅配額用盡時�
 | 產物含機密 | 無法保證，誠實寫進 ADR 與 UI |
 | `waiting_for_input` 佔容量 | 24h 逾時 ＋ 不佔 `max_concurrent`（出口條件 15） |
 | run 與 Session 的狀態機混在一起 | `task_runs` 是獨立的表與獨立的狀態機；出口條件 16 |
-| **一個專案的原始碼會被 clone 到任何一台有 runner 的 node 上** | **這不是存取控制的退步**：人本來就看得到所有專案（`backend/app/api/http/projects.py:109` 的 docstring ＋ ADR 0027 Consequences 已記載這個既有揭露），也本來就能在任何 node 的 allowed root 上開 Session 讀程式碼。**真正變的是「程式碼落在哪台機器」**：以前 `project_workspaces` 是 Admin 刻意建立的紀錄，現在 runner 繞過它。處置是**寫下來而不是加機制**：ADR 0029 的 Consequences 記一段，UI 上明說授權邊界是 enrollment（AR-08），V2.3 用 `project_agents` 收斂 |
+| **一個專案的原始碼會被 clone 到任何一台有 runner 的 node 上** | **這不是存取控制的退步**：人本來就看得到所有專案（`backend/app/api/http/projects.py:109` 的 docstring ＋ ADR 0027 Consequences 已記載這個既有揭露），也本來就能在任何 node 的 allowed root 上開 Session 讀程式碼。**真正變的是「程式碼落在哪台機器」**：以前 `project_workspaces` 是 Admin 刻意建立的紀錄，現在 runner 繞過它。處置是**寫下來而不是加機制**：ADR 0029 的 Consequences 記一段，UI 上明說授權邊界是 enrollment（AR-08）。**2026-08-12 更新：原本這一格結尾寫「V2.3 用 `project_agents` 收斂」——那個收斂不會發生了**。取而代之的是 tag 讓「哪台機器領哪類卡」變成一個可設定的事實，而 enrollment 成為永久的授權邊界；代償四條見 `01` D18 |
 | **一張卡的 blast radius 是「它落在哪台機器」** | 兩次裁決的組合（任何 node 可領任何卡 ＋ 憑證不必唯讀）。**部署姿態問題不是平台問題**：ADR 0023 已宣告 node 是可拋棄的隔離 VM。安審第一節要寫下接受這個姿態的前提：**runner node 應該是專用的** |

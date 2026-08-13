@@ -66,14 +66,17 @@
 
 > **2026-08-10 裁決改寫本節。** Agent 自己把專案拉到 daemon 擁有的隱藏目錄；
 > workspace 綁定從此只服務互動式 Session；`project_agents` 綁定與 label 比對延後到 V2.3／後續。
+> **2026-08-12 更新**：綁定**不做了**，label（tag）比對**提前到 V2.3**——本節（V2.2）不受影響，
+> 受影響的是 §2.5（`01` D18）。
 > **完整的 23 條清單見 `04-phase-v22-agent-runner.md` §出口條件**，本節列其中改動最大的十條，
 > 其餘不變。搬動了什麼、為什麼，見 `04` §0。
 
-1. **未指定** agent 的卡片：任一 runner 都領得到（本期沒有綁定，「任一」就是字面意思）。
+1. **未指定** agent 的卡片：任一 runner 都領得到（本期不比對 tag，「任一」就是字面意思）。
 2. **指定** agent 的卡片：只有那一個 runner 領得到。
 3. 指定一個**已停用**或**runtime 不符**的 runner → dispatch **回 409 不入佇列**，訊息指名是哪一條。
    （原本這一條的例子是「沒綁該 Project」。D18 延後之後例子換了，
-   **而「不符資格要在 dispatch 當下擋下」這條規則不變**。）
+   **而「不符資格要在 dispatch 當下擋下」這條規則不變**。
+   2026-08-12 之後 V2.3 會再加一種例子：**缺哪幾個 tag**，見 §2.5 條件 6c。）
 4. 指定的 runner 離線 → 入佇列並顯示「等待指定的 Agent（離線）」，
    **文案與「沒有可用的 Agent」不同**。
 5. 兩個 runner 同時 poll 同一張卡 → **只有一個領到**，`task_runs` 沒有兩列。
@@ -106,10 +109,26 @@
 4. `source: repo` → run 目錄的 `repo/` 在正確 base branch，**分支名 `cliora/<card_ref>-<run_seq>`**
    （目錄與 clone 本身已在 V2.2 交付；本期新增的是**分支命名空間**）。
 5. daemon 嘗試推 `main`／非 `cliora/` 前綴／force push／allowlist 外的 host → **四種全部在 daemon 內被拒**。
-6. **`project_agents` 綁定成為機密的授權邊界**：沒綁該 Project 的 runner 拿不到它的卡片，
-   也拿不到它的機密；指定一個沒綁的 runner → dispatch 回 409（指定不繞過授權）。
-7. **平台管理的憑證取代 node 的 ambient git 憑證**：`clone` 用的是下放的 PAT／SSH key，
-   而且 run 環境裡讀不到機器原本的 git 憑證。
+6. ~~**`project_agents` 綁定成為機密的授權邊界**~~ → **2026-08-12 裁決刪除這一條**（綁定表不做）。
+   取而代之的是下面 6a–6e 五條：四條驗 tag 比對真的成立，一條驗**沒有畫面暗示存在一個更強的邊界**。
+6a. **tag 比對**：卡片要 `docker` → 只有具備 `docker` 的 runner 拿得到；另一台線上、閒置、
+   runtime 相符但缺該 tag 的 runner **永遠不會被 offer 它**。
+6b. **`run_untagged: false` 的 runner 只領有宣告 tag 的卡片**，同時線上的
+   `run_untagged: true` runner 照常領走無 tag 的卡片（兩台一起跑一次）。
+6c. **指定一個 tag 不符的 runner → 409 且訊息指名缺哪幾個 tag**，不入佇列（D17b）。
+6d. **湊不齊 tag 的卡片說得出缺什麼**：畫面顯示「沒有 runner 同時具備 `docker`、`node20`」，
+   不是泛用的「等待可用的 Agent」。
+6e. **授權邊界的誠實性**：Agents 頁與卡片上**沒有任何 UI 暗示 tag 是授權**（無鎖頭、無「授權」字樣），
+   而 **enrollment 畫面直接寫著「這台機器將可以領取任何專案的卡片，並取得那些卡片宣告的機密」**
+   （`01` D18 代償第 4 條）。這一條是畫面斷言，不是文件承諾。
+6f. **舊版 daemon（0.9.0）連上來仍能領無 tag 的卡片**（`run_untagged` 未帶時視為 `true`）。
+7. **（2026-08-13 裁決改寫）平台管理的 git 憑證是一個預設關閉的能力**：
+   `CLIORA_GIT_SECRET_DELIVERY_ENABLED=false`（預設）時——`kind: git_pat`／`git_ssh_key`
+   的機密**建立被拒並指名該變數**、`auth_kind` 只能是 `ambient`、
+   **`HOME`／`GIT_CONFIG_GLOBAL` 不被改寫**，clone 與 push 用 node 上既有的憑證且都成功。
+   `=true` 時——`clone` 用的是下放的 PAT／SSH key，且 run 的 git 環境裡讀不到機器原本的憑證。
+   **兩種組態各跑一次才算通過。**
+   （原文只有後半，而那會讓預設組態下的每一次私有 repo clone 都失敗——見 `05` SC-02 的修訂。）
 8. 刪除機密後下次 run 拿不到；進行中的 run 不受影響。
 9. `source: none` → **沒有** `repo/`，Agent 讀不到程式碼（V2.2 已成立，本期回歸）。
 10. run 結束依保留期清理；第二次 run 用 mirror，**不重新完整 clone**（V2.2 已成立，本期回歸）。
@@ -219,7 +238,7 @@ M1、M8（V2.1 前）、**M11、M12、M-AR-1（V2.2 前）**、M6（V2.4 前）�
 |---|---|---|
 | V2.1 | Session token **＋ `.cliora/` 的新寫入面** | 發行、scope、失效、檔案落地與保留期；投影 verb 的可寫集合與既有 verb 互斥；token 檔的敏感檔分類 |
 | V2.2 | 無人值守執行 ＋ run log ＋ **卡片產物** ＋ **隔離目錄與 git 取得**（2026-08-10 裁決提前） | 認領授權（**本期是 enrollment，不是綁定**）、租約、log 界線（D27）、cancel 可靠性、**產物提供路徑的 stored XSS**（D29 §4）、配額、**run 目錄與 allowed root 互不可達**、**Agent 的 git 自由（含 push）是刻意給的，收斂點是可觀測性**（`04` AR-04b）、**「程式碼落在哪台機器」這個變化**（不是存取控制退步，見 `04` 風險表） |
-| **V2.3** | **機密流 ＋ 新儲存面 ＋ git 寫入** | 加密與金鑰、不可讀回、去識別、**`project_agents` 綁定＝機密授權邊界**、git 五條約束（push 半邊）。（run 目錄隔離與配額已在 V2.2 審過，此處只審機密如何進入那個目錄） |
+| **V2.3** | **機密流 ＋ 新儲存面 ＋ git 寫入** | 加密與金鑰、不可讀回、去識別、git 五條約束（push 半邊）。**授權邊界那一節改寫**（2026-08-12）：原本審的是「`project_agents` 綁定＝機密授權邊界」這個檢查點，**現在沒有那個檢查點了**——改為驗 `01` D18 的**代償四條**真的存在（卡片級 `required_secrets`、node 端 `accept_secrets: false`、可撤銷 ＋ 下放稽核、enrollment 畫面的說明文字），並確認**沒有任何 UI 暗示 tag 是授權**。（run 目錄隔離與配額已在 V2.2 審過，此處只審機密如何進入那個目錄） |
 | V2.4 | 對外副作用（PR） | 交付模式邊界、無自動合併、供應商憑證 |
 | V2.5 | **不必然觸發**（無新憑證、無新儲存面、無新執行能力）；若釐清 run 需要讀敏感文件則補 | — |
 

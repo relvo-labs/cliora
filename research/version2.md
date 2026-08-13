@@ -461,7 +461,8 @@ Updated At
 
 > **已擴充（裁決 3）**：Task 另有四個執行欄位——`source`（`none`／`repo`／`existing_branch`：
 > 這張卡要不要程式碼）與 `delivery`（`none`／`branch`／`pull_request`／`existing_pr`：成果怎麼離開），
-> 以及 `required_secrets` 與 `required_labels`。
+> 以及 `required_secrets` 與 `required_labels`（**卡片 tag**：V2.3 起與 runner 的 tag 比對決定誰領得到，
+> 像 GitLab Runner 那樣；2026-08-12 裁決）。
 > **不是每張卡都要開 PR**：調查、分析、寫規格型的任務 `delivery: none`，完成證據是摘要與驗證報告。
 > 見 `research/02/01-architecture-decisions.md` D21。
 
@@ -1105,8 +1106,11 @@ activity_events
 
 > **已修訂（裁決 2、3）**：`documents`／`document_versions`／`document_patches` **不建表**（文件在 repo）；
 > `task_acceptance_criteria`／`verification_checks` 併入 JSONB；
-> 新增 `agent_runners`／`project_agents`／`task_runs`／`run_logs`／`task_messages`／
+> 新增 `agent_runners`／`task_runs`／`run_logs`／`task_messages`／
 > `project_secrets`／`project_repositories`。
+> **2026-08-12 裁決更正**：原本這一行還有 `project_agents`（Project × Agent 綁定）——
+> **那張表不做**。Agent 不綁 Project，配對用卡片 tag 比對，授權邊界是 enrollment
+> （`research/02/01-architecture-decisions.md` D18）。
 > 另注意：本文件寫的 `sessions` 表，實際名稱是 **`terminal_sessions`**。
 > 見 `research/02/07-data-model-and-contract.md` §2。
 

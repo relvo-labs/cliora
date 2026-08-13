@@ -16,7 +16,8 @@
 - **Version 1 的每一項能力都還在，而且行為未變**（清單見 §5）。互動式 Session 是使用者直接操作的路徑，不被 Agent Run 取代。
 - 關掉 `CLIORA_PROJECTS_ENABLED` 後，畫面、API 與 protocol 與升級前完全一致。
 - 一個 Agent 可以同時服務多個 Project；一個 Project 可以有多個 Agent。
-- 任務卡**可以指定特定 Agent，也可以不指定**（預設不指定，任一符合資格者皆可領）。指定永遠不能繞過綁定授權。
+- 任務卡**可以指定特定 Agent，也可以不指定**（預設不指定，任一符合資格者皆可領）。**指定不創造資格**——tag 或 runtime 不符的 runner，指定了也拿不到。
+- **Agent 不綁 Project**（2026-08-12 裁決）。「哪類卡片給哪類機器」用**卡片 tag** 表達，像 GitLab Runner 的 tags 那樣比對；**授權邊界是 enrollment**（D18）。
 - 使用者在看板上就能與正在執行的 Agent 對話，不必進 Terminal。**同一條管道也用來釐清需求**（D28）。
 - 一句模糊的需求可以被問成規格、拆成任務卡，每一步都有人工關卡。
 - **Agent 的產出只落在人看過才生效的地方**：任務卡產物、獨立分支、PR，或什麼都不交付。永不推共用分支、永不自動合併（§7 紅線 5）。
@@ -70,7 +71,7 @@
 ```text
   平台 DB（單一事實來源）                  Agent 隔離工作目錄（每次執行，用完即毀）
   ────────────────────────                ──────────────────────────────────────
-  projects / project_agents               <state>/runs/<run_id>/
+  projects                                <state>/runs/<run_id>/
   process_definitions                       repo/              git clone + checkout
   epics / user_stories / tasks              .cliora/context.md    情境包
   task_messages   看板上的對話              .cliora/process/      流程與檢核說明
@@ -110,7 +111,7 @@
 | **V2.1** 任務看板 | 內化流程、Epic→US→Task、看板可拖曳、看板上的對話、從卡片開互動 Session | 內化的閘門真的會拒絕；投影不污染 repo | V2.0 |
 | **V2.2** Agent Runner | Agent 註冊、**自行認領**、租約與重排、**自己把專案 clone 到隔離目錄**、run log 回傳、**產物附到任務卡**、看板上看得到執行中 | 認領無雙重領取；runner 死亡能重排；log 有界且去識別；**run 目錄與使用者 workspace 互不可達**；產物有配額且安全提供 | V2.1 |
 | 🆕 **V2.2_1** 前端修復 | V2 的視覺語彙真的存在（stage／run／risk／source 徽章）、**「等待你的回覆」在看板上最醒目**、拖曳三種拒絕訊息各不相同 | 零個未定義 CSS token 且**守門會擋**；V1 畫面逐像素不變；看板 payload 未回退 | V2.2 |
-| **V2.3** 機密、git 送回與綁定授權 | Secret store、安全下放、**取代 node 的 ambient git 憑證**、推 `cliora/` 分支、`project_agents` 綁定 | 機密永不可讀回、永不入日誌；推送五條約束；綁定成為機密的授權邊界 | V2.2（**建議在 V2.2_1 之後**——V2.3 的機密與交付畫面沿用該期定下的徽章與原語） |
+| **V2.3** 機密、git 送回與 **tag 派工** | Secret store、安全下放（`kind: env`）、推 `cliora/` 分支、**卡片 tag × runner tag 比對**；**git 憑證的下放預設關閉**（2026-08-13 裁決：現階段 git 認證以 node 端手動配置為準） | 機密永不可讀回、永不入日誌；推送五條約束；**tag 不符的卡片永遠不會被 offer，且 UI 說得出缺哪一個 tag**；**旗標關閉時 ambient 憑證原樣可用** | V2.2（**建議在 V2.2_1 之後**——V2.3 的機密與交付畫面沿用該期定下的徽章與原語） |
 | **V2.4** 交付與驗證 | **五種 delivery 模式**、PR／MR 建立、驗證閘門、Evidence、專案指標 | **每種出口都落在人看過才生效的地方**；分支命名空間強制 | V2.3 |
 | **V2.5** 需求釐清與拆解 | 從一句模糊需求問成規格、拆成 AI-ready 卡片、PRD patch 提案 | 提案不是正式資料；三個人工關卡都必帶人類；不新增訊息管道 | V2.3（**不依賴 V2.4，可並行**） |
 
@@ -121,6 +122,17 @@
 > 並**移除**原本 V2.2 最大的已知缺口（無人值守執行在使用者的 workspace 上）。
 > label 比對是後續功能：現在每個 agent 都可以拉每個 project，授權邊界是 enrollment。
 > 完整搬動表見 `04-phase-v22-agent-runner.md` §0。
+
+> **2026-08-12 裁決（Agent 配對）：不做 `project_agents` 綁定，改用卡片 tag。**
+> 「agent 綁 project」整條取消——**不是延後，是不做**。要表達「這類卡片給這類機器」，
+> 用的是**卡片 tag × runner tag** 的比對（GitLab Runner／GitHub Actions 的形狀）：
+> `required_labels ⊆ runner.labels`，外加 runner 的 `run_untagged` 開關（預設 `true`）。
+> **tag 比對從「後續功能」提前為 V2.3 的正式工作包**，接手綁定原本的位置。
+>
+> 換來的是零管理成本的多對多；付出的是**授權邊界永久停在 enrollment**——
+> 任何 enroll 過的 node 上的 runner，tag 對得上就能領任何專案的卡片並取得該卡宣告的機密。
+> 這是刻意的取捨，代償四條（卡片級 `required_secrets`、node 端 `accept_secrets: false`、
+> 可撤銷 ＋ 稽核、**改寫 enrollment 的說明文字**）寫在 `01` D18，V2.3 逐條落地。
 
 階段是 release gate，不是團隊分工。每階段內部照 `research/01` 的既有節奏：契約先定稿，四邊並行。
 
@@ -240,6 +252,7 @@ Agent Run 在它自己的隔離目錄裡當然可以隨意讀寫——那是它�
 - **需求 → 規格 → 拆解 → 執行 → 交付的全自動鏈**：每個關卡都要人（D28）。
 - 需求優先權排序、工時估算、Sprint 規劃。
 - 平台自動指派任務給特定 Agent（認領是 Agent 主動的）。
+- **Project × Agent 綁定表**（2026-08-12 裁決）。配對只有 tag（能力與路由）與卡片上的指定（意圖）兩層；授權邊界是 enrollment（`01` D18）。
 - 排程最佳化、負載平衡、工時預測、Sprint 排程。
 - 平台編輯／移動／刪除使用者 workspace 的檔案（ADR 0024／0026 不翻案）。
 - 通用的「在 node 上執行任意命令」路徑（D10 的否決理由）。

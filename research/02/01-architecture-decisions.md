@@ -496,6 +496,16 @@ C 早已否決：一旦本機檔案能被匯入為權威資料，就有兩個真
 > - **D30 的 V2.2 那一列** 從「限用 scratch clone」改為「正式 repo 可以」——
 >   原本的限制成立的理由（run 沒有隔離）被裁決移除了。
 
+> **⚠️ 2026-08-12 裁決（Agent 配對）再次改寫上面第三、四、五點——以本段為準。**
+> - **`project_agents` 綁定表整個不做**，不是延後。D18 從「三層」變成**兩層**：
+>   **tag（能力與路由）** ＋ **`assigned_runner_id`（意圖）**。
+> - **tag 比對從「後續功能」提前為 V2.3 的正式工作包**，接手綁定原本在 V2.3 的位置。
+>   語意採 GitLab Runner 的形狀：`required_labels ⊆ runner.labels`，
+>   外加 runner 的 `run_untagged` 開關（預設 `true`）。
+> - **授權邊界永久是 enrollment**（不再是「V2.2 暫時如此」）。這句話的代價與代償寫在 D18。
+> - **D17b 邊界 1 改寫**：指定不能繞過的是**資格**（tag／runtime／啟用狀態），
+>   不再是綁定授權——因為沒有綁定可繞。測試留在 V2.3，斷言的對象換成 tag。
+
 > 2026-08-08 裁決：平台作為使用者與 Agent 的橋樑；Agent 像 GitHub Runner 一樣自行認領任務卡、在隔離目錄拉 git、依卡片交付模式產出結果；Project × Agent 多對多；原有 Session 保留給使用者。
 >
 > 以下 D16–D27 是這個裁決推導出來的設計問題。**D19、D20、D22、D23、D25、D27 標 ⚠️**，它們改變安全姿態或新增儲存面。
@@ -533,7 +543,8 @@ C 早已否決：一旦本機檔案能被匯入為權威資料，就有兩個真
 **協定形狀**（走既有 WSS 控制通道，D16 之後不需要新連線）：
 
 ```text
-runner.register    { runner_id, runtime, labels, max_concurrent }
+runner.register    { runner_id, runtime, labels, run_untagged, max_concurrent }
+                                            ↑ V2.2 已送但不比對；V2.3 起參與資格判定（D18）
 runner.poll        { runner_id, capacity }          ← runner 說「我還能吃 N 個」
 run.offer          { run_id, task_id, project_id, spec }
 run.accept | run.decline
@@ -552,14 +563,16 @@ run.failed         { run_id, error_code, message }
 
 1. 任務在 `ready`
 2. `dependsOn` 全滿足
-3. **runner 綁了這個 Project**（授權，D18）— **V2.3 起**，V2.2 沒有這一條
-4. runner 的 runtime 符合卡片要求（能力）— **labels 比對是後續功能**，V2.2 只比 runtime
+3. runner 的 runtime 符合卡片要求（能力）
+4. **tag 相符**（能力與路由，D18）— **V2.3 起**：`required_labels ⊆ runner.labels`，
+   且卡片沒有宣告任何 tag 時 runner 必須 `run_untagged = true`
 5. 卡片的 `assigned_runner_id` 為 null，**或**正好是這個 runner（指定，D17b）
 
-> **2026-08-10**：V2.2 的實際判定是 1、2、4（只有 runtime）、5 —— **四條件**。
-> 第 3 條與 labels 在 V2.3 加回來，那時綁定授權的是機密，它才有真正的讀者。
-> **V2.2 的授權邊界是 enrollment**：任何 enroll 過的 node 上的 runner 都可以領任何專案的卡片。
-> 這是一個姿態宣告而不是遺漏，要在 UI 上明說（`04` AR-08）。
+> **2026-08-10**：V2.2 的實際判定是 1、2、3、5 —— **四條件**（已交付）。
+> **2026-08-12**：V2.3 加回來的第四條是 **tag 比對，不是綁定**——`project_agents` 整個不做（D18）。
+> **授權邊界永久是 enrollment**：任何 enroll 過的 node 上的 runner，只要 tag 對得上，
+> 就可以領任何專案的卡片。這是一個姿態宣告而不是遺漏，要在 UI 上明說（`04` AR-08、`09` §4.3b），
+> 而它的代償四條寫在 D18。
 
 第 5 條讓「指定」在拉取模型裡不需要任何新機制——它只是 poll 查詢的一個 `WHERE` 條件：
 
@@ -579,20 +592,26 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 指定：只有那一個 runner 能領。三個必須先定清楚的邊界：
 
-### 1. 指定**不能繞過綁定授權**（安全相關）
+### 1. 指定**不能創造資格**
 
-> **2026-08-10：這一條連同綁定一起移到 V2.3。** V2.2 沒有 `project_agents`，
-> 所以沒有可以被繞過的授權。**規則本身不變，測試在 V2.3**（`10` §2.5 條件 6）。
-> V2.2 保留的是這一條的另一半——**不符資格要在 dispatch 當下就擋下**（邊界 2），
-> 例子從「沒綁 Project」換成「已停用」與「runtime 不符」。
+> **2026-08-12 改寫。** 原文是「指定不能繞過綁定授權」。綁定表既然不做（D18），
+> 就沒有可以被繞過的授權了——**這一條剩下的是能力那一半，而它仍然要成立**。
+> 測試留在 V2.3（`10` §2.5），斷言的對象從「沒綁 Project」換成「tag 不符」。
 
-指定一個沒綁這個 Project 的 runner，**不會讓它取得該專案的任務或機密**。第 3 條資格判定永遠先成立。
+指定一個 tag 不符、runtime 不符或已停用的 runner，**不會讓它變成合格的領取者**。
+資格判定永遠先成立，指定只是在合格集合裡再篩一個。
 
-否則「指定」就變成一條授權旁路：任何持有 `run.dispatch` 的 Developer 都能把任務指給任意 runner，等於繞過 Admin 才有的 `agent.manage` 綁定。**這一條要有測試。**
+理由已經不是授權旁路，而是**正確性**：會指定 agent 的理由通常正是「只有那台機器有需要的東西」，
+而 tag 正是那件事的宣告。允許指定覆蓋 tag，等於允許在一台沒有 `docker` 的機器上跑一張要 `docker` 的卡，
+然後在 run 的第三分鐘才失敗。**這一條要有測試。**
+
+> **同時要誠實記錄不再成立的那一半**：`run.dispatch` 是 Developer 的動作，
+> 而指定之後那台 runner 會拿到該卡宣告的機密。**沒有一層 Admin 授權擋在中間**——
+> 這是 2026-08-12 裁決接受的代價，收斂靠的是 enrollment 本身是 Admin 動作（D18 代償第 4 條）。
 
 ### 2. 資格衝突要在 **dispatch 當下**就拒絕，不是排隊到天荒地老
 
-指定的 runner 不符合資格時（沒綁 Project、runtime 不符、labels 缺、已停用），`POST /dispatch` 直接回 409 並**指名是哪一個條件不滿足**。
+指定的 runner 不符合資格時（tag 不符、runtime 不符、已停用），`POST /dispatch` 直接回 409 並**指名是哪一個條件不滿足**。
 
 這與「指定的 runner 只是暫時離線或忙碌」不同——那是合法的等待，卡片顯示「等待指定的 Agent：dev-vm-01（目前離線）」。**兩種情況的訊息必須不一樣**，否則使用者分不出「我設定錯了」跟「再等一下就好」。
 
@@ -614,32 +633,62 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 
 ---
 
-## D18 — Project × Agent 多對多怎麼綁（**2026-08-10：延後到 V2.3**）
+## D18 — Project × Agent 怎麼配對（**2026-08-12 裁決：不綁定，改用卡片 tag**）
 
-> **裁決：V2.2 不做綁定，也不做 labels 比對。** 現在每個 agent 都可以拉每個 project。
-> 理由：綁定在 V2.2 沒有授權任何東西——它要授權的是**機密**，而機密是 V2.3。
-> 一個「存在但不授權任何東西」的授權表，會讓 V2.3 的安全審查失去一個真正的檢查點。
-> 所以綁定與機密同一份 ADR、同一支 migration、同一次安全審查。
-> **labels 比對是後續功能**（欄位 `agent_runners.labels` 與 `tasks.required_labels` 已在 V2.1／V2.2 建好，只是不比對）。
-> 以下內容是 V2.3 的設計，不是 V2.2 的。
+> **裁決：`project_agents` 綁定表整個不做**——不是延後到 V2.3，是不做。
+> 配對只有兩層：**tag**（能力與路由）與 **`assigned_runner_id`**（意圖）。
+> **tag 比對從「後續功能」提前為 V2.3 的正式工作包**，接手綁定原本在 V2.3 的位置。
+>
+> 這推翻了 2026-08-10 的「綁定與機密同期交付」，理由見下方的 Alternatives rejected。
+> V2.2 已交付的行為**完全不受影響**（那一期本來就沒有綁定）；改變的只有 V2.3 要做什麼。
 
+**兩層，各回答一個不同的問題：**
 
-**建議：明確綁定表 ＋ labels 過濾，兩層。**
+| 層 | 問題 | 誰設定 | 階段 |
+|---|---|---|---|
+| `labels` × `required_labels` | 這個 runner **做不做得了**這張卡 | runner 自報能力、卡片宣告需求 | **V2.3**（欄位已在，V2.3 開始比對） |
+| `assigned_runner_id` | 這張卡**想不想**給特定的它做（D17b） | 建卡或 dispatch 的人 | V2.2（已交付） |
 
-- `project_agents(project_id, runner_id, enabled)`：**授權**層。沒綁就永遠拿不到這個專案的任務，也拿不到它的機密。
-- `tasks.required_labels` vs `agent_runners.labels`：**能力**層。例如卡片要 `docker`、`node20`，runner 沒有就不會被 offer。
+**tag 比對的語意採 GitLab Runner 的形狀**（GitHub Actions 的 `runs-on` 是同一個形狀）：
 
-為什麼不只用 labels：labels 是能力宣告，不是授權。一個 runner 宣稱自己有 `backend` 標籤，不該因此就能拿到別的專案的機密。授權必須是顯式的一列資料。
+- **超集比對**：`required_labels ⊆ runner.labels` 才會被 offer。卡片要 `docker` ＋ `node20`，
+  runner 兩個都有才拿得到；runner 多幾個 tag 不影響。
+- **`run_untagged`（runner 上的一格布林，預設 `true`）**：關掉之後，該 runner
+  **只領有宣告 tag 的卡片**。這是「把一台機器保留給特定工作」的唯一手段——
+  沒有它，一台專機仍會被一堆沒宣告 tag 的普通卡片佔滿。
+- tag 是**自由字串集合**，不做預先註冊的字典。與 GitLab 一致，也與「runner 自報能力」相容。
 
-**三層要分清楚**，它們回答三個不同的問題：
+### 授權邊界永久是 enrollment
 
-| 層 | 問題 | 誰設定 |
-|---|---|---|
-| `project_agents` 綁定 | 這個 runner **可不可以**碰這個專案 | Admin（`agent.manage`） |
-| `labels` × `required_labels` | 這個 runner **做不做得了**這張卡 | runner 自報能力、卡片宣告需求 |
-| `assigned_runner_id` | 這張卡**想不想**給特定的它做（D17b） | 建卡或 dispatch 的人 |
+這是本次裁決最重要的一句，因為它取代了原本要由綁定表擔任的角色：
 
-第三層永遠不能覆蓋第一層。
+> **任何 enroll 過的 node 上的 runner，只要 tag 對得上，就能領任何專案的卡片，
+> 並取得那張卡宣告的機密。**
+
+**tag 不是授權**，而且永遠不會變成授權：它是 runner 自己在 `runner.register` 裡宣告的字串。
+一台被入侵或設定錯誤的 runner 只要多報一個 tag 就能改變自己領到什麼——
+所以任何「用 tag 當授權」的提案都要先回答這一句（見下方 Alternatives rejected 第 2 列）。
+
+**代償四條，V2.3 要逐條落地**（它們不是等價替代品，是把爆炸半徑縮小到可接受）：
+
+1. **機密永遠是「這張卡宣告的那幾個」**：`tasks.required_secrets` ⊆ `projects.allowed_secret_names`，
+   下放時只送那幾個。一張卡片洩漏的上限是它自己宣告的名單，不是整個專案的機密。
+2. **node 可以拒收**：`accept_secrets: false` 的 node，其 runner 只會被 offer `required_secrets` 為空的卡片。
+   這一條由 node 的營運者宣告，比平台上的一格勾選更接近事實。
+3. **可撤銷 ＋ 稽核**：每次下放記一筆（哪個 run、哪個 runner、哪幾個**名稱**，永遠不含值）；
+   機密可即時撤銷，撤銷後下一次 run 就拿不到。
+4. **enrollment 的說明文字要改寫**。這句話從此屬於 enrollment，不屬於 Agents 頁：
+   **「發出一張 enrollment token，等於授權那台機器取用所有專案的機密。」**
+   `enrollment.manage` 本來就是 Admin 動作，本次裁決做的是把這個後果寫在發 token 的地方。
+
+### Alternatives rejected
+
+| 方案 | 為什麼否決（2026-08-12） |
+|---|---|
+| **`project_agents(project_id, runner_id, enabled)` 綁定表**（原建議） | 卡片已經可以指定 agent，tag 已經能表達路由，綁定表是**第三套要人維護的資料**。N×M 授權矩陣在只有數台 runner 的部署裡，買到的安全性低於它的維護成本與失敗模式——最常見的那個是「新專案忘了綁，卡片安靜地沒人領」，而那正是 `09` §5 花力氣要避免的空等狀態。**這是刻意用安全姿態換營運簡單，不是漏掉**，所以它的代價寫在上面而不是藏起來 |
+| **讓 tag 兼任授權**（沒有對應 tag 就拿不到機密） | tag 是 runner 自報的能力宣告。要嘛授權是一列**別人**寫的資料，要嘛授權邊界就是 enrollment；把自報值當授權，得到的是安全感而不是安全 |
+| **runner 層級的 `secrets_enabled` 開關**（Admin 勾選這台機器收不收機密） | 會讓「哪些機器拿得到機密」變成兩個地方都要看（enrollment ＋ 這格）。而且方向錯了：`accept_secrets: false` 已經存在，由 node 端宣告，效果相同且更接近事實 |
+| **tag 比對繼續留在「後續」** | 那會讓 V2.3 只剩機密，而卡片仍然只能靠「指定某一台」來做路由。指定是一對一的，撐不起「這類卡片給這類機器」——那正是本次要的東西 |
 
 ---
 
@@ -724,9 +773,34 @@ WHERE (assigned_runner_id IS NULL OR assigned_runner_id = :runner_id)
 > 完整推導見 `04` AR-04b 與 `plan/18/04b-run-directory-and-git.md` §5.4／§4.5。
 
 
+> **⚠️ 2026-08-13 裁決（git 憑證的下放）再次改寫本條。**
+>
+> > **平台下放 git 憑證涉及較廣。可以實作，但由環境變數控制、預設不開放。**
+> > **現階段 git 認證以 node 端手動配置為準——那部分系統不管，交給 node owner 自行處理。**
+>
+> 四個直接後果：
+>
+> 1. **V2.3 的預設 git 路徑仍然是 ambient**（＝ V2.2 的行為，node owner 自己在機器上設好）。
+>    平台不管理、不稽核、不撤銷它——**這是刻意的範圍宣告，不是缺口**。
+> 2. **下放的機制照做**（PAT 的 `GIT_ASKPASS` helper、SSH 的 `ssh-agent`、不落檔的兩條），
+>    但整條路徑由 Central 的 `CLIORA_GIT_SECRET_DELIVERY_ENABLED` 控制，**預設 `false`**。
+>    關閉時 `kind: git_pat`／`git_ssh_key` 的機密**不能建立**、`repository.auth_kind`
+>    **只能是 `ambient`**——一個存得下來但永遠不會被使用的憑證，比拒絕它更糟。
+> 3. **`isolate_ambient_credentials` 的語意跟著改**：它**只對「這次 run 真的收到了平台憑證」
+>    的情況生效**。沒有平台憑證時 ambient 原樣可用——否則預設組態下每一次 clone 都會失敗。
+>    （原本 2026-08-11 選 A 的理由是「可撤銷的憑證旁邊不該有一份不可撤銷的」，
+>    而那個理由只在真的有平台憑證時成立。）
+> 4. **2026-08-10 ② 給 Agent 的 git 自由在預設組態下完整保留**——
+>    因為機器的憑證還在，而平台沒有蓋掉它。
+>
+> 這條裁決把 V2.3 的安全面從三個新增面縮回**兩個**（機密流 ＋ git 寫入路徑），
+> **git 憑證流變成一個預設關閉的第三個**。下方 D20 原本的「取得／送回／認證」三列表
+> 因此要讀成：**認證那一列預設仍是 V2.2 的 ambient**。
+
 **問題**：怎麼拿到程式碼、怎麼把結果送回去。
 
 **已裁決（2026-08-08）：同時支援 fine-grained PAT 與 SSH key。**
+（**2026-08-13 補充：兩者都做，但預設不啟用**，見上方裁決。）
 
 **取得**：卡片宣告 `source`（D21），daemon 從 node 上的 bare mirror `git worktree add`，再 `git checkout -b cliora/<card_ref>-<run_seq> origin/<base_branch>`。
 
@@ -827,7 +901,7 @@ fetch 以外的任何遠端寫入、merge、rebase 到共用分支、release、t
 | 主金鑰 | **環境變數**，與既有的 `CLIORA_JWT_SECRET`／`CLIORA_TOKEN_PEPPER` 同一種做法 |
 | 讀取 | **寫入後永不可讀回。** 沒有任何 API 回傳值，UI 只顯示名稱、建立者、最後使用時間 |
 | 下放 | 每次 run 隨 `run.offer` 送出**該卡片宣告需要的那幾個**，走既有已認證的 WSS。不是整包、不是常駐 |
-| 落地 | runner 只放在記憶體，以環境變數傳給 CLI 程序，**不寫進任何檔案**（例外見 D20 的 `ssh-agent`） |
+| 落地 | runner 只放在記憶體，以環境變數傳給 CLI 程序，**不寫進任何檔案**（例外見 D20 的 `ssh-agent`）。**2026-08-13 補充：`kind` 決定去哪裡**——`env` 進 CLI 子程序的環境；`git_pat`／`git_ssh_key` **只進 daemon 自己的 git 環境**（而且整條路徑預設關閉，見 D20 的 2026-08-13 裁決）；`provider_token` V2.3 不下放 |
 | 去識別 | runner 在送 `run.log_chunk` 前對已知值比對替換為 `***`。**在 runner 端做**——值不該離開 node |
 | 名稱 allowlist | Project 宣告可用名稱；卡片只能從中挑 |
 | node 可拒絕 | `accept_secrets: false` 的 node 只領 `required_secrets` 為空的卡片 |
@@ -1286,9 +1360,12 @@ ADR 0022 帶著一句硬性範圍宣告：「**這個功能用於預覽開發中
 > | 2 | **D10** | 採納。內文 §「平台代跑驗證命令的否決理由」與本表原本互相矛盾，**定案措辭**：否決的是「讓呼叫端指名命令的 API」，允許的是「daemon 在 run 目錄內執行卡片宣告的驗證命令」 | D10 段尾的註記；ADR 0033 |
 > | 3 | **D13** | 採納，歸屬不變。但要寫明 `task.approve` 與 `task.update` 的**持有者集合刻意相同**——拆開是為了 token scope，不是角色分離 | D13 段內的註記；ADR 0027 |
 >
-> 一次全數採納的理由：這 19 條互相咬合（D16 決定 D17 的協定形狀，D17 決定 D18 的三層，
+> 一次全數採納的理由：這 19 條互相咬合（D16 決定 D17 的協定形狀，D17 決定 D18 的分層，
 > D18 決定 D17b 的邊界）。逐階段點頭會讓 V2.2 開工時發現 V2.1 的某個點頭其實
 > 預設了 V2.2 的某一條，而那時改的代價比現在大。
+>
+> **2026-08-12 的 D18 改寫正是這條咬合的一次實例**：把綁定拿掉，D17 的資格判定
+> 第 4 條與 D17b 的邊界 1 都跟著改寫，三處必須同時改才不會互相矛盾。
 
 | 編號 | 主題 | 建議 | 裁決 |
 |---|---|---|---|
@@ -1307,10 +1384,10 @@ ADR 0022 帶著一句硬性範圍宣告：「**這個功能用於預覽開發中
 | D15 | 流程可設定性 | V2.1 寫死，V2.4 最小可覆寫 | ✅ 採納 |
 | D16 | Agent 實體 | `agentd` 的一個模式，重用既有信任鏈 | ✅ 採納 |
 | D17 ⚠️ | 認領模型 | ✅ **已裁決：拉取式** ＋ 租約 ＋ 重排上限 | —（已裁決） |
-| D17b 🆕 | 指定 Agent | ✅ **已裁決：可指定可不指定**（預設不指定）。指定不繞過綁定授權；資格衝突在 dispatch 當下拒絕；預設不逾時退回 | —（已裁決） |
+| D17b 🆕 | 指定 Agent | ✅ **已裁決：可指定可不指定**（預設不指定）。**指定不創造資格**（2026-08-12 改寫：原本寫「不繞過綁定授權」，綁定不做了，剩下的是 tag／runtime／啟用狀態那一半）；資格衝突在 dispatch 當下拒絕；預設不逾時退回 | —（已裁決） |
 | D28 🆕 | 需求釐清與拆解 | ✅ **已裁決：納入 V2**。釐清用既有看板管道；Agent 產出是提案；三個人工關卡；資料模型 V2.1、Agent 驅動 V2.5 | —（已裁決） |
 | D29 🆕 ⚠️ | 任務卡產物 | ✅ **已裁決：Agent 可交付產物到卡片**，執行中亦可用留言附檔。能力與 `delivery: artifact` 宣告分開；存平台不存 node；**預設下載不渲染**；不可變 | —（已裁決） |
-| D18 | 多對多綁定 | 顯式授權表 ＋ labels 能力過濾 ＋ 可選指定，三層 | ✅ 採納 |
+| D18 | Project × Agent 配對 | ~~顯式授權表 ＋ labels 能力過濾 ＋ 可選指定，三層~~ → **2026-08-12 裁決：不做綁定表**。改為兩層——**tag 比對（GitLab 式超集 ＋ `run_untagged`，V2.3 交付）** ＋ 可選指定。**授權邊界永久是 enrollment**，代償四條見 D18 | ✅ **已裁決（改寫）** |
 | D19 ⚠️ | 隔離工作目錄 | daemon 擁有、不在 allowed root、配額 ＋ 保留期 ＋ repo 快取 | ✅ 採納 |
 | D20 ⚠️ | Git 存取 | ✅ **已裁決：PAT ＋ SSH key 兩者都支援**。五條硬約束寫死在 daemon；PAT 走 `GIT_ASKPASS`、SSH 走 `ssh-agent` stdin，兩者都不落檔；**SSH 開不了 PR，需另一枚 provider_token** | —（已裁決） |
 | D22 ⚠️ | 機密管理 | ✅ **已裁決：主金鑰放環境變數**。信封加密 ＋ `key_version` ＋ 啟動時驗證 ＋ KMS 升級路徑寫進 ADR；寫入後不可讀回、按需下放、runner 端去識別、node 可拒絕 | —（已裁決） |
