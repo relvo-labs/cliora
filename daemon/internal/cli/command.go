@@ -229,8 +229,137 @@ func NewCommand() *cobra.Command {
 
 	task.AddCommand(say, ask, messages, attach)
 
-	root.AddCommand(context, task)
+	// --- V2.4: what happened, what the checks said, and what was observed (DV-06) ---
+	//
+	// **Three writes and no reads.** An agent does not need to read back what it just
+	// wrote, and every read endpoint is another surface to authorize — the same
+	// restraint that keeps `approve` out of this tool.
+	//
+	// **And there is no `--force` here, and there will not be.** Skipping a card's
+	// completion criteria is an administrator's act with a permanent mark on the card;
+	// a subcommand that existed would invite an agent to try it, and what came back
+	// would be a 403 it then had to interpret.
+	plan := &cobra.Command{Use: "plan", Short: "This run's execution plan"}
+	plan.AddCommand(&cobra.Command{
+		Use:   "snapshot <file>",
+		Short: "Record a version of the plan (JSON: {note, steps})",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			payload, readErr := readJSONFile(args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			out, code, postErr := NewClient(ctx).RecordPlan(payload)
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "已記錄執行計畫。改寫時記得附上 note 說明原因。")
+			return nil
+		},
+	})
+
+	verify := &cobra.Command{Use: "verify", Short: "This run's verification report"}
+	verify.AddCommand(&cobra.Command{
+		Use:   "report <file>",
+		Short: "Submit a verification report (JSON)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			payload, readErr := readJSONFile(args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			out, code, postErr := NewClient(ctx).SubmitVerification(payload)
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			// Said plainly, and the second sentence matters more than the first: the
+			// agent can *see* a verification command list on the card, so it has to be
+			// told it cannot change one — otherwise it spends a `task.update` finding
+			// out. Not trying is cheaper than being refused.
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"已提交驗證報告（記為「Agent 自述」）。\n"+
+					"平台自己執行的驗證由專案設定或卡片上的宣告決定，而那兩處你都改不了。")
+			return nil
+		},
+	})
+
+	evidence := &cobra.Command{Use: "evidence", Short: "What this run observed"}
+	evidence.AddCommand(&cobra.Command{
+		Use:   "add <finding|limitation|risk> <file>",
+		Short: "Record an observation (JSON payload)",
+		Args:  cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			kind, ok := evidenceKinds[args[0]]
+			if !ok {
+				// Refused here rather than by the server, because the server's answer
+				// would be a 403 about a kind this tool should never have offered.
+				return exit(cmd, ExitRefused,
+					fmt.Errorf("類型只能是 finding、limitation 或 risk"))
+			}
+			payload, readErr := readJSONFile(args[1])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			out, code, postErr := NewClient(ctx).AddEvidence(kind, payload)
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), "已記錄。")
+			return nil
+		},
+	})
+
+	root.AddCommand(context, task, plan, verify, evidence)
 	return root
+}
+
+// evidenceKinds maps what an agent may say to what the platform stores.
+//
+// The three machine kinds are deliberately absent: the platform refuses them anyway,
+// and a tool that can express something always refused is worse than one that cannot
+// express it.
+var evidenceKinds = map[string]string{
+	"finding":    "agent_finding",
+	"limitation": "agent_limitation",
+	"risk":       "agent_risk",
+}
+
+// readJSONFile reads a JSON document an agent produced.
+//
+// A file rather than an argument, for the reason SEC-002 gives about argv generally:
+// a report is long, structured, and belongs on a stream rather than in a process's
+// command line where it lands in `ps` output.
+func readJSONFile(path string) (map[string]any, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("讀不到 %s：%w", path, err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(raw, &payload); err != nil {
+		return nil, fmt.Errorf("%s 不是合法的 JSON 物件：%w", path, err)
+	}
+	return payload, nil
 }
 
 // exit prints the message and stops with the right code.

@@ -896,6 +896,66 @@
       "accept": false,
       "type": "runner.register",
       "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "valid/run-complete-delivered.json",
+      "accept": true,
+      "type": "run.complete"
+    },
+    {
+      "path": "valid/run-complete-verification-two-origins.json",
+      "accept": true,
+      "type": "run.complete"
+    },
+    {
+      "path": "valid/run-complete-verification-timed-out.json",
+      "accept": true,
+      "type": "run.complete"
+    },
+    {
+      "path": "valid/run-progress-verifying.json",
+      "accept": true,
+      "type": "run.progress"
+    },
+    {
+      "path": "valid/runner-register-features.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "valid/runner-register-no-features.json",
+      "accept": true,
+      "type": "runner.register"
+    },
+    {
+      "path": "invalid/run-offer-spec-verification.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-offer-delivery-pull-request.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-complete-verification-no-origin.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-complete-pushed-branch-outside-namespace.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/run-complete-delivered-branch-only-result.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
+    },
+    {
+      "path": "invalid/runner-register-unknown-feature.json",
+      "accept": false,
+      "code": "INVALID_MESSAGE"
     }
   ],
   "binary": [

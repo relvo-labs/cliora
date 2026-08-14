@@ -15,6 +15,7 @@ import {
 import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
 import TaskAgentPanel from "../components/project/TaskAgentPanel.vue";
+import TaskCompletion from "../components/project/TaskCompletion.vue";
 import TaskDetail from "../components/project/TaskDetail.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { api, useAuthStore } from "../stores/auth";
@@ -115,6 +116,10 @@ onMounted(() => resource.run());
         :task-id="task.id"
         :stage="task.stage"
       />
+      <!-- V2.4. Below the agent panel because it reads what a run produced, and
+           unconditional because the three tables are also written by hand: a project
+           that never runs an agent still records why a card is finished. -->
+      <TaskCompletion v-if="task" :task="task" />
     </main>
   </AppLayout>
 </template>

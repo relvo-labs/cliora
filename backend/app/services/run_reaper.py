@@ -35,6 +35,7 @@ from app.db.engine import get_database
 from app.db.models import RunLog, Task, TaskRun
 from app.logging import get_logger
 from app.services.activity import ACTOR_SYSTEM, RUN_FINISHED, ActivityService
+from app.services.deliveries import DeliveryService
 from app.services.run_logs import get_run_log_buffer
 from app.services.runs import LEASED_STATUSES, MessageService, RunService
 from app.settings import get_settings
@@ -84,6 +85,7 @@ class RunReaper:
     async def sweep(self) -> None:
         await self._reclaim_leases()
         await self._expire_waiting()
+        await self._deliver_pending_pull_requests()
         await self._flush_stale_log_buffers()
         await self._delete_expired_logs()
 
@@ -167,6 +169,51 @@ class RunReaper:
                     },
                 )
             await session.commit()
+
+    async def _deliver_pending_pull_requests(self) -> None:
+        """Job D: open the pull requests `finish()` asked for.
+
+        **Here rather than in `finish()`** because this is where a network call is
+        allowed to take twenty seconds: the receive loop is not (ADR 0033 §3).
+
+        Three bounds, and the third is the one that is easy to leave out:
+
+        * **at most `provider_max_concurrent` per round** — the work is sequential
+          here, so the bound is the batch size, and a burst of finished runs does not
+          become a burst of API calls;
+        * **no retry** — `deliver()` settles every run it takes, into `delivered` or
+          `branch_only`, so nothing stays in `pending_pr` to be picked up again. A
+          retry would be a second pull request, because creation is not idempotent;
+        * **a visible backlog ceiling** — past `provider_pending_limit` the worker
+          stops taking new work and says so. A queue nobody can see becomes fifty pull
+          requests the moment the provider recovers.
+        """
+        settings = get_settings()
+        async with get_database().session() as session:
+            service = DeliveryService(session, settings=settings)
+            pending = await service.pending_count()
+            if pending > settings.provider_pending_limit:
+                _logger.warning(
+                    "pull request backlog above the limit; not taking more this round",
+                    extra={"pending": pending, "limit": settings.provider_pending_limit},
+                )
+                return
+            runs = await service.claim_batch(settings.provider_max_concurrent)
+            for run in runs:
+                outcome = await service.deliver(run)
+                if outcome.state != "delivered":
+                    task = await session.get(Task, run.task_id)
+                    if task is not None:
+                        await MessageService(session).post_event(
+                            task=task,
+                            body=(
+                                "分支已推送，但合併請求未能建立："
+                                f"{outcome.reason or '未知原因'}。可以手動開 PR。"
+                            ),
+                            event_kind="run.delivered_branch_only",
+                        )
+            if runs:
+                await session.commit()
 
     async def _flush_stale_log_buffers(self) -> None:
         """Write out buffers whose run went quiet.

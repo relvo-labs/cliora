@@ -411,19 +411,53 @@ def test_scope_013_central_does_not_proxy_to_a_node_http_service() -> None:
     for pattern in ("{path:path}", "{full_path:path}", "{proxy_path:path}"):
         assert pattern not in blob, f"a catch-all route appeared in Central: {pattern}"
 
-    # No outbound HTTP client library: Central talks to nodes over the authenticated
-    # WebSocket and to nothing else. (`httpx` is a test dependency; the app does not import it.)
-    imported: set[str] = set()
+    # **Central talks to a node over the authenticated WebSocket and over nothing else.**
+    #
+    # Until V2.4 that was enforced as "no HTTP client anywhere", which was a good proxy
+    # for the rule and is no longer the same statement as it. V2.4 gives Central one
+    # outbound call — opening a pull request on a provider's public API — and that is
+    # not proxying and is not aimed at a node (ADR 0033 §3).
+    #
+    # So the guard narrows to what it was always defending, and gets **stricter** in the
+    # process: an HTTP client may be imported by exactly one module, whose only
+    # reachable hosts come from a deployment-level allowlist that no repository row can
+    # influence. Widening the allowlist to a node's address would still be a proxy —
+    # which is why the allowlist's default is a single public host and lives in
+    # settings rather than in data.
+    HTTP_CLIENTS = {"httpx", "requests", "aiohttp", "urllib3"}
+    PROVIDER_MODULE = "services/providers.py"
+    offenders: dict[str, set[str]] = {}
     for path, text in sources.items():
+        imported: set[str] = set()
         tree = ast.parse(text, filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 imported.update(alias.name.split(".")[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
-    assert not imported & {"httpx", "requests", "aiohttp", "urllib3"}, (
-        "Central imports an HTTP client; the port-forwarding path must not route traffic"
+        hit = imported & HTTP_CLIENTS
+        if hit and not str(path).endswith(PROVIDER_MODULE):
+            offenders[str(path.relative_to(app_root))] = hit
+    assert offenders == {}, (
+        "an HTTP client appeared outside the provider adapter: "
+        f"{offenders}. Central reaches a node over the WebSocket and nothing else; the "
+        f"one permitted client lives in {PROVIDER_MODULE} and may only call hosts on "
+        "the deployment's provider allowlist."
     )
+
+    # And that module cannot be pointed at a node: the base URL is a setting, never a
+    # column, so no repository row decides where Central connects.
+    provider_source = next(
+        text for path, text in sources.items() if str(path).endswith(PROVIDER_MODULE)
+    )
+    assert "provider_api_host_list" in provider_source, (
+        "the provider adapter must check the deployment's host allowlist before it makes a request"
+    )
+    for column in ("repository.host", "row.host", "repository.scheme"):
+        assert f"{column}}}" not in provider_source, (
+            f"the provider adapter interpolated {column} into a URL; the address is a "
+            "deployment setting, not repository data"
+        )
 
     # And the tunnel surface carries no field that could name where to connect: the provider
     # host is a daemon-side constant and the target is always the node's own loopback (SEC-002).

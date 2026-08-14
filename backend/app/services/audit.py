@@ -128,6 +128,16 @@ PROJECT_ARCHIVE = "project.archive"
 TASK_CREATE = "task.create"
 TASK_UPDATE = "task.update"
 TASK_GATE_APPROVE = "task.gate_approve"
+# V2.4. `task.force_done` records a skipped Done Gate — the one exit around the
+# completion criteria, and the row the third cross-project metric counts.
+# `process.override` records a change to what "ready" and "done" mean for a project.
+# `pr.create` joins them with the pull-request worker.
+TASK_FORCE_DONE = "task.force_done"
+PROCESS_OVERRIDE = "process.override"
+# The platform leaving a mark on somebody else's repository, under an identity that is
+# not the dispatcher's. Repo, number, head and base — and **never the token, nor its
+# length** (ADR 0033 §3).
+PR_CREATE = "pr.create"
 REQUIREMENT_CREATE = "requirement.create"
 REQUIREMENT_APPROVE = "requirement.approve"
 PROPOSAL_ACCEPT = "requirement.proposal_accept"
@@ -221,6 +231,9 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         TASK_CREATE,
         TASK_UPDATE,
         TASK_GATE_APPROVE,
+        TASK_FORCE_DONE,
+        PROCESS_OVERRIDE,
+        PR_CREATE,
         REQUIREMENT_CREATE,
         REQUIREMENT_APPROVE,
         PROPOSAL_ACCEPT,

@@ -62,6 +62,11 @@
 | FR-AGENT-013 | [FR-AGENT-013.AC-01](../../research/prd.md#fr-agent-013-ac-01) | 卡片宣告不交付或僅交付產物，而執行結束時工作目錄有變更時， | — | — | — |
 | FR-AGENT-013 | [FR-AGENT-013.AC-02](../../research/prd.md#fr-agent-013-ac-02) | 該情況須在執行摘要中明白記載「宣告不交付，但偵測到變更」與變更的檔案數。 | — | — | — |
 | FR-AGENT-013 | [FR-AGENT-013.AC-03](../../research/prd.md#fr-agent-013-ac-03) | 未被追蹤的新檔案只計數不打包，且須在摘要中說明有幾個未附加， | — | — | — |
+| FR-AGENTTOOL-002 | [FR-AGENTTOOL-002.AC-01](../../research/prd.md#fr-agenttool-002-ac-01) | 專案可覆寫的範圍僅限啟用或停用既有項目與調整建議值； | — | — | — |
+| FR-AGENTTOOL-002 | [FR-AGENTTOOL-002.AC-02](../../research/prd.md#fr-agenttool-002-ac-02) | 覆寫指向不存在的項目時拒絕並指名。 | — | — | — |
+| FR-AGENTTOOL-002 | [FR-AGENTTOOL-002.AC-03](../../research/prd.md#fr-agenttool-002-ac-03) | 停用的原因須分得出「本部署未具備該整合」與「本專案關閉了它」。 | — | — | — |
+| FR-AGENTTOOL-002 | [FR-AGENTTOOL-002.AC-04](../../research/prd.md#fr-agenttool-002-ac-04) | 跨專案指標在有覆寫的情況下仍須可聚合。 | — | — | — |
+| FR-AGENTTOOL-002 | [FR-AGENTTOOL-002.AC-05](../../research/prd.md#fr-agenttool-002-ac-05) | 指標只呈現，不進入任何自動阻擋邏輯；每一項指標須附一句說明其用途， | — | — | — |
 | FR-AUTH-001 | [FR-AUTH-001.AC-01](../../research/prd.md#fr-auth-001-ac-01) | 使用者可使用有效帳號登入。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_login_success_returns_tokens_and_user |
 | FR-AUTH-001 | [FR-AUTH-001.AC-02](../../research/prd.md#fr-auth-001-ac-02) | 無效帳號或密碼不可登入。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_login_invalid_password_is_401<br>pytest:backend/tests/db/test_auth_api.py::test_login_unknown_user_is_401_same_code<br>pytest:backend/tests/db/test_auth_api.py::test_disabled_user_cannot_login |
 | FR-AUTH-001 | [FR-AUTH-001.AC-03](../../research/prd.md#fr-auth-001-ac-03) | 登入成功後取得有效 Session 或 JWT。 | plan:plan/02/02-auth-rbac.md<br>source:research/tech.md | code:backend/app/services/auth.py | pytest:backend/tests/db/test_auth_api.py<br>pytest:backend/tests/db/test_auth_api.py::test_me_requires_bearer_and_returns_identity<br>pytest:backend/tests/test_security.py::test_access_token_roundtrip |
@@ -102,6 +107,33 @@
 | FR-CONN-006 | [FR-CONN-006.AC-06](../../research/prd.md#fr-conn-006-ac-06) | Session 接管與列出：15 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names |
 | FR-CONN-006 | [FR-CONN-006.AC-07](../../research/prd.md#fr-conn-006-ac-07) | Session 終止：20 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds |
 | FR-CONN-006 | [FR-CONN-006.AC-08](../../research/prd.md#fr-conn-006-ac-08) | Daemon 更新：180 秒（下載、替換與重啟遠長於其他操作，共用一般預算會在正常情況下逾時）。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-01](../../research/prd.md#fr-delivery-001-ac-01) | 卡片以兩個獨立欄位宣告「要不要程式碼」與「成果怎麼離開」；兩者互不決定對方。 | — | — | — |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-02](../../research/prd.md#fr-delivery-001-ac-02) | 交付模式有五種：不交付、以產物交付、以分支交付、以合併請求交付、以既有合併請求交付。 | — | — | — |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-03](../../research/prd.md#fr-delivery-001-ac-03) | 不交付與以產物交付不得產生任何遠端變更；此性質須以遠端狀態驗證，不得以紀錄驗證。 | — | — | — |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-04](../../research/prd.md#fr-delivery-001-ac-04) | 以既有合併請求交付只適用於平台自己建立的合併請求； | — | — | — |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-05](../../research/prd.md#fr-delivery-001-ac-05) | 儲存庫所在主機不受支援時，於派工當下拒絕並指名該主機。 | — | — | — |
+| FR-DELIVERY-001 | [FR-DELIVERY-001.AC-06](../../research/prd.md#fr-delivery-001-ac-06) | 以合併請求交付但未指定目標分支時，於派工當下拒絕。 | — | — | — |
+| FR-DELIVERY-002 | [FR-DELIVERY-002.AC-01](../../research/prd.md#fr-delivery-002-ac-01) | 宣告不交付程式碼變更（不交付、以產物交付）而工作目錄確有變更時， | — | — | — |
+| FR-DELIVERY-002 | [FR-DELIVERY-002.AC-02](../../research/prd.md#fr-delivery-002-ac-02) | 以合併請求交付但無任何變更時，執行視為成功、結論為「無變更」， | — | — | — |
+| FR-DELIVERY-002 | [FR-DELIVERY-002.AC-03](../../research/prd.md#fr-delivery-002-ac-03) | 宣告以產物交付卻未產生任何產物時，該次執行不算成功，且結果須說明缺少什麼。 | — | — | — |
+| FR-DELIVERY-002 | [FR-DELIVERY-002.AC-04](../../research/prd.md#fr-delivery-002-ac-04) | 未追蹤的新檔案只計數、不打包；理由須可讀。 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-01](../../research/prd.md#fr-delivery-003-ac-01) | 合併請求由平台端建立；供應商憑證永不下放至節點。 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-02](../../research/prd.md#fr-delivery-003-ac-02) | 建立發生在確認分支確實已推送之後，且不得在節點連線的接收迴圈內進行。 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-03](../../research/prd.md#fr-delivery-003-ac-03) | 內文由平台產生，含目標、逐項驗收結果、驗證摘要（含來源與由誰指定）、殘留風險、 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-04](../../research/prd.md#fr-delivery-003-ac-04) | 失敗（權限不足、目標不存在、供應商不可達）時：分支仍在、結果標示為僅交付分支、 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-05](../../research/prd.md#fr-delivery-003-ac-05) | 同一來源分支已有合併請求時視為已交付並指向既有的那一個，不得重複建立。 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-06](../../research/prd.md#fr-delivery-003-ac-06) | 逾時不得重試；建立不是冪等操作，重試會產生第二個合併請求。 | — | — | — |
+| FR-DELIVERY-003 | [FR-DELIVERY-003.AC-07](../../research/prd.md#fr-delivery-003-ac-07) | 對外呼叫須有主機允許清單、連線與總計逾時、同時進行數上限， | — | — | — |
+| FR-DELIVERY-004 | [FR-DELIVERY-004.AC-01](../../research/prd.md#fr-delivery-004-ac-01) | 自動合併的程式碼路徑不存在；以節點 git 子命令表與平台供應商動作表兩處斷言。 | — | — | — |
+| FR-DELIVERY-004 | [FR-DELIVERY-004.AC-02](../../research/prd.md#fr-delivery-004-ac-02) | 核可、關閉、標籤、發行等動作皆不在供應商動作表內。 | — | — | — |
+| FR-DELIVERY-004 | [FR-DELIVERY-004.AC-03](../../research/prd.md#fr-delivery-004-ac-03) | 不存在「對任意節點執行任意命令」的介面。 | — | — | — |
+| FR-DELIVERY-004 | [FR-DELIVERY-004.AC-04](../../research/prd.md#fr-delivery-004-ac-04) | 交付模式為封閉集合；新增一種模式須同時在派工、派工訊息組裝、完成判準與執行詳情四處具備分支。 | — | — | — |
+| FR-EVIDENCE-001 | [FR-EVIDENCE-001.AC-01](../../research/prd.md#fr-evidence-001-ac-01) | git 狀態、變更檔案與差異統計由節點在執行目錄內以固定引數擷取。 | — | — | — |
+| FR-EVIDENCE-001 | [FR-EVIDENCE-001.AC-02](../../research/prd.md#fr-evidence-001-ac-02) | 擷取須有逾時；逾時的項目留空並標記，不得使整個擷取失敗。 | — | — | — |
+| FR-EVIDENCE-001 | [FR-EVIDENCE-001.AC-03](../../research/prd.md#fr-evidence-001-ac-03) | 證據類型決定其來源等級；Agent 不得寫入機器事實類型的證據。 | — | — | — |
+| FR-EVIDENCE-002 | [FR-EVIDENCE-002.AC-01](../../research/prd.md#fr-evidence-002-ac-01) | 三種來源的證據並存於同一份清單，各自標示來源。 | — | — | — |
+| FR-EVIDENCE-002 | [FR-EVIDENCE-002.AC-02](../../research/prd.md#fr-evidence-002-ac-02) | Agent 自述與機器擷取矛盾時兩者皆呈現、皆標來源，平台不判斷孰是孰非。 | — | — | — |
+| FR-EVIDENCE-002 | [FR-EVIDENCE-002.AC-03](../../research/prd.md#fr-evidence-002-ac-03) | 單筆證據有大小上限；超出時拒絕並引導改以產物交付。 | — | — | — |
 | FR-FILE-001 | [FR-FILE-001.AC-01](../../research/prd.md#fr-file-001-ac-01) | 前端需以 Tree 呈現 Workspace。 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | playwright:frontend/tests/e2e/files.spec.ts<br>vitest:frontend/src/composables/useFileTree.test.ts#loads only the root level on bind (lazy)<br>playwright:frontend/tests/e2e/files.spec.ts#lazy tree, excluded dir, search back into the tree |
 | FR-FILE-001 | [FR-FILE-001.AC-02](../../research/prd.md#fr-file-001-ac-02) | 檔案或資料夾名稱 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
 | FR-FILE-001 | [FR-FILE-001.AC-03](../../research/prd.md#fr-file-001-ac-03) | 圖示 | plan:plan/04/03-read-only-file-policy.md<br>source:research/tech.md | code:daemon/internal/files | — |
@@ -243,6 +275,10 @@
 | FR-NODE-005 | [FR-NODE-005.AC-03](../../research/prd.md#fr-node-005-ac-03) | 不可建立新 Session。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/test_node_guard.py::test_disabled_node_is_refused_with_node_disabled<br>pytest:backend/tests/db/test_sessions_service.py::test_create_disabled_node_rejected |
 | FR-NODE-005 | [FR-NODE-005.AC-04](../../research/prd.md#fr-node-005-ac-04) | 既有 Session 是否中止由管理員選擇。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_with_the_flag_actually_terminates_its_sessions<br>pytest:backend/tests/db/test_sessions_service.py::test_disabling_a_node_leaves_running_sessions_alone_by_default |
 | FR-NODE-005 | [FR-NODE-005.AC-05](../../research/prd.md#fr-node-005-ac-05) | 前端顯示 Disabled。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/test_node_guard.py<br>pytest:backend/tests/db/test_favorites_api.py::test_disabling_the_node_makes_a_stored_favourite_unusable |
+| FR-PLAN-001 | [FR-PLAN-001.AC-01](../../research/prd.md#fr-plan-001-ac-01) | 執行計畫以版本列保存，只新增不修改；畫面顯示最新一版，歷史可展開。 | — | — | — |
+| FR-PLAN-001 | [FR-PLAN-001.AC-02](../../research/prd.md#fr-plan-001-ac-02) | 第二版起必須附上變更理由。 | — | — | — |
+| FR-PLAN-001 | [FR-PLAN-001.AC-03](../../research/prd.md#fr-plan-001-ac-03) | 步驟狀態為五值：待辦、進行中、已完成、略過、失敗；略過與失敗不得以相同樣式呈現。 | — | — | — |
+| FR-PLAN-001 | [FR-PLAN-001.AC-04](../../research/prd.md#fr-plan-001-ac-04) | 兩個並行提交撞上同一版本序時自動重試一次，第二次才回報衝突。 | — | — | — |
 | FR-PROJECT-001 | [FR-PROJECT-001.AC-01](../../research/prd.md#fr-project-001-ac-01) | 使用者可建立 Project，指定名稱與可選的描述；建立者為擁有者。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
 | FR-PROJECT-001 | [FR-PROJECT-001.AC-02](../../research/prd.md#fr-project-001-ac-02) | 每個 Project 有一個專案內識別碼（slug），全平台唯一、由名稱產生且可於建立時覆寫， | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
 | FR-PROJECT-001 | [FR-PROJECT-001.AC-03](../../research/prd.md#fr-project-001-ac-03) | Project 狀態有三種：active、paused、archived。沒有刪除。 | plan:plan/16/03-rbac-and-project-api.md<br>source:research/prd.md | code:backend/app/services/projects.py | pytest:backend/tests/db/test_projects_api.py |
@@ -499,6 +535,28 @@
 | FR-TUNNEL-004 | [FR-TUNNEL-004.AC-04](../../research/prd.md#fr-tunnel-004-ac-04) | 環境未具備憑證加密能力時，不得啟用整合，亦不得以明文儲存憑證。 | plan:plan/11/04-central-and-api.md<br>source:research/prd.md | code:backend/app/security/secret_box.py | pytest:backend/tests/test_secret_box.py::test_without_a_key_encryption_refuses_rather_than_storing_plaintext<br>pytest:backend/tests/test_secret_box.py::test_settings_rejects_a_key_of_the_wrong_length<br>vitest:frontend/src/views/IntegrationsView.test.ts#replaces the whole form when the deployment has no encryption key |
 | FR-TUNNEL-004 | [FR-TUNNEL-004.AC-05](../../research/prd.md#fr-tunnel-004-ac-05) | 每個 Node 有獨立的埠轉發設定；平台設定與 Node 本機設定只能取交集，Node 的停用不得被平台覆寫。 | plan:plan/11/04-central-and-api.md<br>source:research/prd.md | code:backend/app/services/tunnels.py | pytest:backend/tests/test_tunnel_policy.py::test_three_port_lists_intersect_instead_of_the_last_one_winning<br>pytest:backend/tests/test_tunnel_policy.py::test_a_refusal_names_the_layer_that_refused<br>pytest:backend/tests/db/test_tunnels_api.py::test_turning_a_node_off_in_its_platform_settings_names_that_layer<br>gotest:daemon/internal/config#TestAConfiguredAllowlistCanOnlyNarrow<br>vitest:frontend/src/views/NodeTunnelsView.test.ts#states that a local veto cannot be overridden by the platform |
 | FR-TUNNEL-004 | [FR-TUNNEL-004.AC-06](../../research/prd.md#fr-tunnel-004-ac-06) | 整合的啟用、停用、憑證設定與 Node 設定變更均須留下稽核紀錄；憑證內容不得出現於紀錄中。 | plan:plan/11/04-central-and-api.md<br>source:research/prd.md | code:backend/app/services/integrations.py | pytest:backend/tests/db/test_tunnels_api.py::test_the_credential_audit_records_the_fingerprint_and_nothing_else<br>pytest:backend/tests/db/test_tunnels_api.py::test_turning_a_node_off_in_its_platform_settings_names_that_layer<br>pytest:backend/tests/test_audit_redaction.py::test_all_actions_is_complete |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-01](../../research/prd.md#fr-verify-001-ac-01) | 報告結果為五值：未開始、進行中、通過、失敗、部分通過；部分通過不得看起來像通過。 | — | — | — |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-02](../../research/prd.md#fr-verify-001-ac-02) | 不合格的報告不得寫入半筆；拒絕須指名欄位。 | — | — | — |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-03](../../research/prd.md#fr-verify-001-ac-03) | 失敗項不得摺疊或省略，且排序在通過項之前。 | — | — | — |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-04](../../research/prd.md#fr-verify-001-ac-04) | 驗證命令由平台在執行目錄內執行，擷取真實結束碼；命令以引數陣列表示，不經命令殼。 | — | — | — |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-05](../../research/prd.md#fr-verify-001-ac-05) | 逾時的命令記為特別的結束碼並繼續執行其餘命令； | — | — | — |
+| FR-VERIFY-001 | [FR-VERIFY-001.AC-06](../../research/prd.md#fr-verify-001-ac-06) | 命令輸出僅保留尾段，且須經去識別後才離開節點。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-01](../../research/prd.md#fr-verify-002-ac-01) | 可信度分三級：Agent 自述、平台紀錄、機器事實；由伺服器端依寫入路徑判定。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-02](../../research/prd.md#fr-verify-002-ac-02) | 請求內容中的來源欄位一律忽略，且忽略時須留下一筆時間軸紀錄。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-03](../../research/prd.md#fr-verify-002-ac-03) | 機器事實只有一個寫入點。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-04](../../research/prd.md#fr-verify-002-ac-04) | 驗證命令有兩個來源：專案設定與卡片宣告，並以獨立欄位記錄是哪一個。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-05](../../research/prd.md#fr-verify-002-ac-05) | 在卡片上宣告驗證命令需要核准權限；執行憑證的權限範圍永不含該權限。 | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-06](../../research/prd.md#fr-verify-002-ac-06) | Agent 自述的項目須以文字標示「未經平台驗證」，不得僅以提示框呈現； | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-07](../../research/prd.md#fr-verify-002-ac-07) | 兩個來源的機器事實以相同樣式呈現，來源差異以文字另行標示； | — | — | — |
+| FR-VERIFY-002 | [FR-VERIFY-002.AC-08](../../research/prd.md#fr-verify-002-ac-08) | 專案可要求「至少通過一條專案層級的檢查」，預設關閉。 | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-01](../../research/prd.md#fr-verify-003-ac-01) | 卡片進入完成的前提有六項：完成摘要、每項驗收標準皆有結果、驗證報告、 | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-02](../../research/prd.md#fr-verify-003-ac-02) | 拒絕須逐項指名缺少什麼，不得只回一句話。 | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-03](../../research/prd.md#fr-verify-003-ac-03) | 驗收標準的結果為封閉四值；既有資料中不符者於升級時一律轉為「未驗證」， | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-04](../../research/prd.md#fr-verify-003-ac-04) | 「未處理」指未被明白接受；列為殘留風險即視為已處理。 | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-05](../../research/prd.md#fr-verify-003-ac-05) | 完成判準只有一個入口；執行完成不得移動卡片。 | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-06](../../research/prd.md#fr-verify-003-ac-06) | 管理者可強制推進，需要獨立的權限與必填理由； | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-07](../../research/prd.md#fr-verify-003-ac-07) | 不交付與以產物交付的卡片不得因缺少合併請求被擋； | — | — | — |
+| FR-VERIFY-003 | [FR-VERIFY-003.AC-08](../../research/prd.md#fr-verify-003-ac-08) | 流程可設定性不得觸及完成判準。 | — | — | — |
 | FR-WORKSPACE-001 | [FR-WORKSPACE-001.AC-01](../../research/prd.md#fr-workspace-001-ac-01) | Daemon 應設定一個或多個允許的 Workspace Root。 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestNoRootsRejectsEverything<br>gotest:daemon/internal/workspace#TestOpenWorkspaceConfinesReads |
 | FR-WORKSPACE-002 | [FR-WORKSPACE-002.AC-01](../../research/prd.md#fr-workspace-002-ac-01) | 使用者可在前端逐層展開 Workspace Root。 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/files#TestListOrderingAndExclusion<br>gotest:daemon/internal/files#TestListPagination |
 | FR-WORKSPACE-002 | [FR-WORKSPACE-002.AC-02](../../research/prd.md#fr-workspace-002-ac-02) | 名稱 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | — |

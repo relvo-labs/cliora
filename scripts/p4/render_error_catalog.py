@@ -160,6 +160,25 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "GATE_UNKNOWN",
             "GATE_DISABLED",
             "GATE_REQUIRES_HUMAN_ACTOR",
+            # V2.4. The Done Gate sits with the task layer rather than with the agent
+            # runner even though its evidence comes from there: a person meets it while
+            # dragging a card, which is a board action (ADR 0033 §5).
+            "TASK_DONE_GATE_UNMET",
+            "TASK_FORCE_REASON_REQUIRED",
+            "PROCESS_OVERRIDE_UNKNOWN_KEY",
+            "TASK_DELIVERY_NEEDS_SOURCE",
+            "TASK_PR_TARGET_MISSING",
+            "TASK_EXISTING_PR_OUT_OF_NAMESPACE",
+            "TASK_PROVIDER_UNSUPPORTED",
+            "VERIFICATION_COMMANDS_INVALID",
+            "PLAN_STEPS_INVALID",
+            "PLAN_NOTE_REQUIRED",
+            "PLAN_SEQ_CONFLICT",
+            "VERIFICATION_REPORT_INVALID",
+            "EVIDENCE_KIND_INVALID",
+            "EVIDENCE_KIND_NOT_WRITABLE",
+            "EVIDENCE_PAYLOAD_TOO_LARGE",
+            "EVIDENCE_RUN_LIMIT",
         ),
     ),
     (

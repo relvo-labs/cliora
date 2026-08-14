@@ -174,19 +174,58 @@ async def test_a_card_declaring_an_allowed_but_uncreated_secret_says_so_differen
     assert body["error"]["details"]["missing"] == ["GITHUB_TOKEN"]
 
 
-async def test_an_unsupported_delivery_names_the_version_it_starts_in(
+async def test_a_pull_request_card_needs_a_target_branch_rather_than_a_later_version(
     api: tuple, projects_enabled: None
 ) -> None:
+    """V2.3 refused this mode outright; V2.4 delivers it.
+
+    What replaced "that arrives in a later version" is a refusal about *this* card: a
+    pull request needs somewhere to point. The refusal moved from the phase to the
+    declaration, which is the shape every dispatch check here has (ADR 0033 §1).
+    """
     client, maker = api
     owner, headers = await _actor(client, maker)
     project = await _project(maker, owner)
-    task = await _card(maker, project, delivery="pull_request")
+    # `source: none` is refused first, and by a different code: a pull request needs
+    # code *and* somewhere to point, and telling somebody about the second while the
+    # first is also wrong sends them round twice.
+    codeless = await _card(maker, project, delivery="pull_request", source="none")
+    refused = await client.post(f"/api/tasks/{codeless}/dispatch", json={}, headers=headers)
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "TASK_DELIVERY_NEEDS_SOURCE"
+
+    task = await _card(maker, project, delivery="pull_request", source="repo")
 
     response = await client.post(f"/api/tasks/{task}/dispatch", json={}, headers=headers)
-    body = response.json()
+
     assert response.status_code == 409
-    assert body["error"]["code"] == "TASK_DELIVERY_UNSUPPORTED"
-    assert body["error"]["details"]["phase"] == "V2.4"
+    assert response.json()["error"]["code"] == "TASK_PR_TARGET_MISSING"
+
+
+async def test_existing_pr_outside_the_namespace_is_refused_at_dispatch(
+    api: tuple, projects_enabled: None
+) -> None:
+    """The platform pushes only inside `cliora/`, so this mode continues **its own**
+    pull requests and nothing else — refused here rather than at the push, where the run
+    has already spent its work (ADR 0031 amendment B2)."""
+    client, maker = api
+    owner, headers = await _actor(client, maker)
+    project = await _project(maker, owner)
+    task = await _card(
+        maker,
+        project,
+        delivery="existing_pr",
+        source="existing_branch",
+        base_branch="feature/login",
+    )
+
+    response = await client.post(f"/api/tasks/{task}/dispatch", json={}, headers=headers)
+
+    assert response.status_code == 409
+    body = response.json()["error"]
+    assert body["code"] == "TASK_EXISTING_PR_OUT_OF_NAMESPACE"
+    # The message says why, because this reads as a bug to somebody who tried it.
+    assert "cliora/" in body["message"]
 
 
 async def test_a_card_needing_code_without_a_repository_points_at_the_settings_page(

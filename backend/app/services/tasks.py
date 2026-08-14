@@ -29,12 +29,14 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
+from app.clock import now_utc
 from app.db.models import Epic, Project, Task, UserStory
 from app.repositories.tasks import BoardCard, TaskRepository
 from app.services import audit as audit_actions
 from app.services.activity import (
     EPIC_CREATED,
     TASK_CREATED,
+    TASK_FORCED_DONE,
     TASK_GATE_APPROVED,
     TASK_STAGE_CHANGED,
     TASK_UPDATED,
@@ -42,7 +44,9 @@ from app.services.activity import (
     ActivityService,
 )
 from app.services.audit import AuditService
+from app.services.done_gate import CRITERION_RESULTS, DoneGateService
 from app.services.process import DEPENDENCY_GATED_STAGES, STAGES, EffectiveProcess, ProcessService
+from app.settings import Settings, get_settings
 
 # Fields a `PATCH` may set. Anything outside this set is refused by name rather than
 # ignored: a silently dropped field is a change the caller believes it made.
@@ -63,8 +67,8 @@ EDITABLE_FIELDS = frozenset(
         "acceptance_criteria",
         "links",
         "required_labels",
-        # Declared in V2.1, inert until V2.3/V2.4 (ADR 0028 sec 9). Editable now
-        # because people state the intent now.
+        # Declared in V2.1 and inert until V2.3; **live from V2.4**, when all five
+        # delivery modes started working (ADR 0033 §1).
         "source",
         "repository_id",
         "base_branch",
@@ -76,10 +80,25 @@ EDITABLE_FIELDS = frozenset(
     }
 )
 
+# `verification_commands` is deliberately **not** editable here (V2.4, ADR 0033 §3b).
+# It has its own endpoint requiring `task.approve`, an action `RUN_TOKEN_SCOPES` never
+# contains. Reachable through this patch it would be writable with `task.update`, which
+# a run credential *does* hold — and the agent being verified would choose what verifies
+# it. Every exit code would stay real and every one would be worthless.
+#
+# The boundary is the existing token scope, not a check on the principal's type: this
+# module's docstring rejects a dependency that inspects who is calling, and it is right
+# to.
+VERIFICATION_COMMANDS_FIELD = "verification_commands"
+
 # `gates` is deliberately absent above: approval has its own endpoint, its own action
 # and its own audit record. A gate reachable through a generic field update would be a
 # gate an agent could set with `task.update`.
 FORBIDDEN_PATCH_FIELDS = frozenset({"gates", "card_ref", "version", "project_id"})
+
+# The one lane the Done Gate guards. A constant rather than a literal because it is
+# named in three places here and a typo would silently disable the gate.
+DONE_STAGE = "done"
 
 RISKS = frozenset({"low", "medium", "high", "critical"})
 PRIORITIES = frozenset({"low", "normal", "high"})
@@ -160,8 +179,20 @@ def _require_choice(value: str, allowed: frozenset[str], code: str, message: str
 
 
 class TaskService:
-    def __init__(self, session: AsyncSession) -> None:
+    """Board rules. **Settings arrive from the caller**, they are not read here.
+
+    The Done Gate is bound to `CLIORA_AGENT_RUNS_ENABLED`, and a service that resolved
+    that itself through ``get_settings()`` would not see a dependency override — so the
+    gate would be silently off in every test that turns the flag on through FastAPI, and
+    the suite would go green while measuring nothing. `plan/20/08` §3 item 5 recorded
+    this exact trap for `secret_envelope`; the fix there was an environment variable
+    because that module is reached outside a request, and the fix here is simpler
+    because this one always is: take it as a parameter.
+    """
+
+    def __init__(self, session: AsyncSession, *, settings: Settings | None = None) -> None:
         self._session = session
+        self._settings = settings or get_settings()
         self._repo = TaskRepository(session)
         self._audit = AuditService(session)
         self._activity = ActivityService(session)
@@ -169,8 +200,8 @@ class TaskService:
 
     # --- reads ------------------------------------------------------------------
 
-    async def process(self) -> EffectiveProcess:
-        return await self._process.effective()
+    async def process(self, project: Project | None = None) -> EffectiveProcess:
+        return await self._process.effective(project=project)
 
     async def board(
         self, project_id: uuid.UUID, *, is_online: Callable[[uuid.UUID], bool]
@@ -391,6 +422,9 @@ class TaskService:
         actor_kind: str,
         expected_version: int,
         changes: dict[str, Any],
+        force: bool = False,
+        force_reason: str | None = None,
+        may_force: bool = False,
     ) -> WriteResult:
         """Apply a patch under the optimistic lock.
 
@@ -419,10 +453,32 @@ class TaskService:
 
         values = self._validated(changes)
         stage_change: str | None = None
+        forced = False
         if "stage" in changes:
             stage = _require_stage(str(changes["stage"]))
             if stage != task.stage:
                 await self._check_dependencies_for(task, stage)
+                if stage == DONE_STAGE:
+                    forced = await self._check_done_gate(
+                        task,
+                        project,
+                        force=force,
+                        force_reason=force_reason,
+                        may_force=may_force,
+                        actor_id=actor_id,
+                    )
+                    if forced:
+                        values["force_done_reason"] = (force_reason or "").strip()[:2000]
+                        values["force_done_by"] = actor_id
+                        values["force_done_at"] = now_utc()
+                elif task.force_done_at is not None:
+                    # Leaving `done` clears the mark, and that is **the only way it is
+                    # cleared**. There is no endpoint that removes these three columns
+                    # on their own: a record that can be erased by itself is not a
+                    # record (ADR 0033 §5).
+                    values["force_done_reason"] = None
+                    values["force_done_by"] = None
+                    values["force_done_at"] = None
                 stage_change = stage
             values["stage"] = stage
         if "epic_id" in changes and changes["epic_id"] is not None:
@@ -458,6 +514,29 @@ class TaskService:
         payload: dict[str, Any] = {"card_ref": task.card_ref, "fields": sorted(changes)}
         if stage_change is not None:
             payload["to"] = stage_change
+        if forced:
+            # A second, separate row. The stage change says the card moved; this says
+            # the completion criteria were skipped and why — and it is the row the
+            # third cross-project metric counts.
+            await self._activity.record(
+                TASK_FORCED_DONE,
+                project_id=task.project_id,
+                task_id=task.id,
+                actor_user_id=actor_id,
+                payload={
+                    "card_ref": task.card_ref,
+                    "reason": (force_reason or "").strip()[:2000],
+                },
+            )
+            await self._audit.record(
+                audit_actions.TASK_FORCE_DONE,
+                user_id=actor_id,
+                metadata={
+                    "task_id": str(task.id),
+                    "card_ref": task.card_ref,
+                    "reason": (force_reason or "").strip()[:2000],
+                },
+            )
         await self._record(
             project_id=task.project_id,
             actor_id=actor_id,
@@ -468,6 +547,53 @@ class TaskService:
             payload=payload,
         )
         return WriteResult(task=task, warnings=await self._readiness_warnings(task))
+
+    async def _check_done_gate(
+        self,
+        task: Task,
+        project: Project,
+        *,
+        force: bool,
+        force_reason: str | None,
+        may_force: bool,
+        actor_id: uuid.UUID | None,
+    ) -> bool:
+        """The board's second hard refusal, and the one exit around it.
+
+        Returns whether the move was forced. The gate is evaluated **even when forcing**
+        — an exit that skips the evaluation cannot record what it skipped, and the whole
+        value of this exit is that every use of it is visible (ADR 0033 §5).
+        """
+        result = await DoneGateService(self._session, settings=self._settings).evaluate(
+            task, project
+        )
+        if result.satisfied:
+            return False
+        if not force:
+            raise ApiError(
+                "TASK_DONE_GATE_UNMET",
+                f"這張卡還缺 {len(result.missing)} 項完成證據",
+                status.HTTP_409_CONFLICT,
+                details={
+                    # Every missing item, not the first. The action a person takes for a
+                    # missing summary and a missing report are different, and one
+                    # sentence would send half the readers to the wrong page.
+                    "missing": [{"key": m.key, "text": m.text} for m in result.missing]
+                },
+            )
+        if not may_force:
+            raise ApiError(
+                "FORBIDDEN",
+                "Forcing a card into done requires the task.force_done action",
+                status.HTTP_403_FORBIDDEN,
+            )
+        if not (force_reason or "").strip():
+            raise ApiError(
+                "TASK_FORCE_REASON_REQUIRED",
+                "強制推進必須填寫理由，而它會永久顯示在這張卡上",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        return True
 
     async def _check_dependencies_for(self, task: Task, stage: str) -> None:
         """The one hard refusal in V2.1 (FR-TASK-002.AC-02).
@@ -610,6 +736,19 @@ class TaskService:
                     "Acceptance criteria must be a list of objects",
                     status.HTTP_422_UNPROCESSABLE_ENTITY,
                 )
+            # Closed to four values by migration 0036. Before that this was a free
+            # string, so the Done Gate's "every criterion has a result" would have been
+            # satisfied by any text at all — the closure and the gate are one change
+            # (ADR 0033 §5).
+            for item in criteria:
+                result = item.get("result")
+                if result is not None and result not in CRITERION_RESULTS:
+                    raise ApiError(
+                        "TASK_ACCEPTANCE_CRITERIA_INVALID",
+                        "Unknown acceptance criterion result: " + str(result),
+                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        details={"allowed": sorted(CRITERION_RESULTS)},
+                    )
             rendered = "".join(
                 f"- [{item.get('result') or '未驗'}] {item.get('text', '')}\n" for item in criteria
             )

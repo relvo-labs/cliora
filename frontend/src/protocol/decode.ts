@@ -1112,6 +1112,9 @@ const RUN_PHASES = new Set([
   "fetching",
   "checked_out",
   "running",
+  // 1.13.0: the platform's own checks run after the agent exits, and "stuck on the
+  // tests" and "stuck on cleanup" are different facts.
+  "verifying",
   "waiting_for_input",
   "finishing",
 ]);
@@ -1130,7 +1133,15 @@ const RUN_DECLINE_REASONS = new Set([
   "shutting_down",
   "internal_error",
 ]);
+// **No `delivered_branch_only` here, and that is deliberate**: Central writes that
+// value after it tries to open a pull request, and the daemon never learns whether one
+// was opened. Adding it would create a branch on the node that can never be taken
+// (ADR 0033 §3).
 const RUN_RESULTS = new Set(["succeeded", "no_changes"]);
+const VERIFICATION_ORIGINS = new Set(["project", "card"]);
+// The `cliora/` namespace, the same shape the push constraint enforces.
+const PUSHED_BRANCH = /^cliora\/[A-Za-z0-9._][A-Za-z0-9._-]*$/;
+const RUNNER_FEATURES = new Set(["verification", "evidence"]);
 const RUN_CANCEL_REASONS = new Set([
   "user_cancelled",
   "lease_lost",
@@ -1188,6 +1199,11 @@ function validateRunnerRegisterPayload(payload: Record<string, unknown>): void {
       // compatibility rule is a property of the payload, not of a release version.
       "run_untagged",
       "accept_secrets",
+      // 1.13.0. **Absent means the empty set** — the opposite default from the two
+      // above, and deliberately so: those are refusal flags, this is a support flag,
+      // and a permissive default would assume a machine performs a feature it has
+      // never heard of (ADR 0029 amendment C).
+      "features",
       "max_concurrent",
       "max_waiting",
       "dedicated",
@@ -1213,6 +1229,20 @@ function validateRunnerRegisterPayload(payload: Record<string, unknown>): void {
   for (const key of ["run_untagged", "accept_secrets"] as const) {
     if (payload[key] !== undefined && typeof payload[key] !== "boolean")
       reject("INVALID_MESSAGE", `Invalid ${key}`);
+  }
+  if (payload.features !== undefined) {
+    if (!Array.isArray(payload.features) || payload.features.length > 16)
+      reject("INVALID_MESSAGE", "Invalid features");
+    const seen = new Set<string>();
+    for (const feature of payload.features as unknown[]) {
+      // An enum rather than free strings: a misspelling has to be a rejected frame
+      // instead of a silent "unsupported", which is the failure class this field
+      // exists to remove.
+      if (typeof feature !== "string" || !RUNNER_FEATURES.has(feature))
+        reject("INVALID_MESSAGE", "Unknown feature");
+      if (seen.has(feature)) reject("INVALID_MESSAGE", "Duplicate feature");
+      seen.add(feature);
+    }
   }
   requireBoundedInt(payload.max_concurrent, "max_concurrent", 0, 64);
   requireBoundedInt(payload.max_waiting, "max_waiting", 0, 64);
@@ -1452,6 +1482,12 @@ function validateRunCompletePayload(payload: Record<string, unknown>): void {
       "git_remotes",
       "unpushed_commits",
       "untracked_files",
+      // 1.13.0, both node→central. `pushed_branch` is a fact rather than an
+      // intention — Central composed the name but only the node knows the push
+      // succeeded — and `verification` carries the real exit codes plus which store
+      // named each command (ADR 0033 §3b).
+      "pushed_branch",
+      "verification",
     ]),
     ["run_id", "result"],
   );
@@ -1465,6 +1501,60 @@ function validateRunCompletePayload(payload: Record<string, unknown>): void {
   if (payload.git_remotes !== undefined) {
     if (!Array.isArray(payload.git_remotes) || payload.git_remotes.length > 16)
       reject("INVALID_MESSAGE", "Invalid git remotes");
+  }
+  if (payload.pushed_branch !== undefined) {
+    if (
+      typeof payload.pushed_branch !== "string" ||
+      payload.pushed_branch.length > 255 ||
+      !PUSHED_BRANCH.test(payload.pushed_branch)
+    )
+      reject("INVALID_MESSAGE", "Invalid pushed branch");
+  }
+  if (payload.verification !== undefined) {
+    if (
+      !Array.isArray(payload.verification) ||
+      payload.verification.length > 16
+    )
+      reject("INVALID_MESSAGE", "Invalid verification");
+    for (const raw of payload.verification as unknown[]) {
+      if (typeof raw !== "object" || raw === null)
+        reject("INVALID_MESSAGE", "Invalid verification entry");
+      const check = raw as Record<string, unknown>;
+      requireKeys(
+        check,
+        new Set(["name", "origin", "exit_code", "duration_ms", "output_tail"]),
+        ["name", "origin", "exit_code"],
+      );
+      if (
+        typeof check.name !== "string" ||
+        check.name.length === 0 ||
+        check.name.length > 128
+      )
+        reject("INVALID_MESSAGE", "Invalid check name");
+      if (
+        typeof check.origin !== "string" ||
+        !VERIFICATION_ORIGINS.has(check.origin)
+      )
+        reject("INVALID_MESSAGE", "Unknown check origin");
+      // -1 is reserved for "timed out and was killed": a command that never finished
+      // has no exit code, and recording it as 1 would make "the test failed" and "the
+      // test did not finish" identical in the report.
+      requireBoundedInt(check.exit_code, "exit_code", -1, 255);
+      if (check.duration_ms !== undefined)
+        requireBoundedInt(
+          check.duration_ms,
+          "duration_ms",
+          0,
+          Number.MAX_SAFE_INTEGER,
+        );
+      if (check.output_tail !== undefined) {
+        if (
+          typeof check.output_tail !== "string" ||
+          check.output_tail.length > 2000
+        )
+          reject("INVALID_MESSAGE", "Invalid output tail");
+      }
+    }
   }
 }
 

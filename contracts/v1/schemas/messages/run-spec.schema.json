@@ -27,7 +27,7 @@
       "maxLength": 32768
     },
     "allowed_verification_commands": {
-      "$comment": "Empty in V2.2 and present so that V2.4's verification step does not need a contract change to be *refused* today: a non-empty list is currently ignored by the daemon rather than executed.",
+      "$comment": "The platform's own checks for this run, encoded as `origin\\tname\\tcmd\\targ…` — one command per element, tab-separated, `origin` being `p` (the project's settings) or `c` (this card's own list). **Both stores are Central's**, so SEC-002's revised invariant holds unchanged: no request payload names a command. Declaring one on a card requires `task.approve`, which a run token never holds, so neither source was chosen by the agent being verified — which is what makes the exit codes worth the `machine_verified` level (ADR 0033 §3b).\n\nIt was added empty in V2.2 for exactly this, and the reason that mattered is compatibility: `spec` may not gain a field, because the receiving decoder rejects unknown fields and answers **nothing at all** — a new key would cost every un-upgraded node its offers, silently. A daemon that predates V2.4 ignores a non-empty list here instead of dropping the frame, which is why this field is the right seat and a new one would not have been.",
       "type": "array",
       "maxItems": 16,
       "items": {

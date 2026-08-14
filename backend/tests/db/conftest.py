@@ -61,9 +61,15 @@ _CLEANUP_TABLES = (
     "requirements",
     "user_stories",
     "epics",
-    # V2.3. Cleared before `projects` for the usual reason, and before the
-    # repository rows that hold `ON DELETE RESTRICT` FKs into it — a leftover
-    # secret makes the delete below fail as an unrelated error several tests later.
+    # V2.3. Cleared before `projects` for the usual reason, and — the part this list
+    # got wrong until V2.4 — **after** the repository rows, which hold `ON DELETE
+    # RESTRICT` FKs into it. The comment here already said so; the table was missing.
+    # It went unnoticed because no test had ever linked a repository to a secret, so
+    # the constraint was never exercised; the first one that did (the pull-request
+    # worker, which needs `provider_token_secret_id` set) failed on cleanup rather than
+    # on its own assertion.
+    "task_runs",
+    "project_repositories",
     "project_secrets",
     "projects",
     "node_metric_samples",

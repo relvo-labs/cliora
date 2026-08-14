@@ -53,7 +53,13 @@ describe("V2 UI static guardrails", () => {
     const offenders = sourceFiles()
       .filter((file) => {
         const name = relative(file);
+        // `api/dto.ts` joins the two in V2.4, and the distinction is worth stating:
+        // it declares the **wire contract** (a union of the values the server may
+        // send), not a presentation rule. What the guard is defending is that no
+        // *component* decides how a level looks by comparing the string itself —
+        // `labels.ts` exports `isMachineVerified` for exactly that.
         return ![
+          "api/dto.ts",
           "components/ui/labels.ts",
           "components/ui/SourceBadge.vue",
         ].includes(name);

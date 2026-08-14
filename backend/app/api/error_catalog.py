@@ -515,8 +515,159 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "TASK_ACCEPTANCE_CRITERIA_INVALID",
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Acceptance criteria must be a list of objects",
-            "The task context renderer requires each criterion to be an object.",
-            "Send each criterion as an object with a text field.",
+            "The task context renderer requires each criterion to be an object, and "
+            "from V2.4 its result must be one of four values. `details.allowed` names "
+            "them.",
+            "Send each criterion as an object with a text field, and a result of "
+            "passed, failed, partial or not_verified.",
+        ),
+        # --- V2.4: the Done Gate and the one exit around it (ADR 0033 sec 5) ---
+        _entry(
+            "TASK_DONE_GATE_UNMET",
+            status.HTTP_409_CONFLICT,
+            "This card is missing some of its completion evidence",
+            "Entering `done` claims the work is finished, and the platform holds the "
+            "facts that support that claim. `details.missing` names **every** unmet "
+            "item, not the first one — the action for a missing summary and a missing "
+            "report are different.",
+            "Supply the named items. An administrator may force the move with a "
+            "reason, which stays visible on the card.",
+        ),
+        _entry(
+            "TASK_FORCE_REASON_REQUIRED",
+            status.HTTP_400_BAD_REQUEST,
+            "Forcing a card into done requires a reason",
+            "The reason is stored on the card and on the timeline, and it is what "
+            "makes the exit visible rather than silent.",
+            "Send force_reason with the patch.",
+        ),
+        _entry(
+            "TASK_DELIVERY_NEEDS_SOURCE",
+            status.HTTP_409_CONFLICT,
+            "A pull request needs code to deliver",
+            "The card asks to deliver as a pull request while declaring that it fetches "
+            "no code. The two are separate fields on purpose, and this combination has "
+            "nothing to open a pull request on.",
+            "Set source to repo, or deliver as none or artifact.",
+        ),
+        _entry(
+            "TASK_PR_TARGET_MISSING",
+            status.HTTP_409_CONFLICT,
+            "A pull request needs a target branch",
+            "Refused at dispatch rather than at delivery, where the run would already "
+            "have spent its work.",
+            "Set the card's target branch.",
+        ),
+        _entry(
+            "TASK_EXISTING_PR_OUT_OF_NAMESPACE",
+            status.HTTP_409_CONFLICT,
+            "That branch is outside the platform's namespace",
+            "The platform pushes only inside `cliora/`, so continuing an existing pull "
+            "request works for the ones it opened itself and no others. **This reads as "
+            "a defect and is a boundary**: the constraint is compiled into the daemon "
+            "and is what makes 'where can the platform push' answerable without looking "
+            "at data.",
+            "Deliver as a branch and merge it yourself, or continue a pull request the "
+            "platform opened.",
+        ),
+        _entry(
+            "TASK_PROVIDER_UNSUPPORTED",
+            status.HTTP_409_CONFLICT,
+            "This deployment has no pull-request integration for that host",
+            "Refused at dispatch rather than after the work: a half-built provider that "
+            "fails at delivery costs a whole run.",
+            "Deliver as a branch, or use a repository on a supported host.",
+        ),
+        _entry(
+            "VERIFICATION_COMMANDS_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A verification command is not in the expected shape",
+            "Commands are argv arrays rather than shell strings, so pipelines and `&&` "
+            "do not apply — split them into separate commands. The encoded length is "
+            "measured **when the command is saved** rather than when a run is offered, "
+            "because a command that stores fine and silently never ships would make "
+            "'this project's verification never ran' a fact nobody goes looking for.",
+            "Shorten the name or the arguments, or split the command in two.",
+        ),
+        _entry(
+            "PLAN_STEPS_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A plan step is not in the expected shape",
+            "Each step is an object whose status is one of five values. "
+            "`details.allowed` names them.",
+            "Send each step as an object with a title and one of the five statuses.",
+        ),
+        _entry(
+            "PLAN_NOTE_REQUIRED",
+            status.HTTP_400_BAD_REQUEST,
+            "Revising a plan requires a note",
+            "Why the plan changed is the reason a version row exists rather than a "
+            "mutable column, so the second version onward must carry one.",
+            "Send a note describing what changed and why.",
+        ),
+        _entry(
+            "PLAN_SEQ_CONFLICT",
+            status.HTTP_409_CONFLICT,
+            "Another writer recorded a plan at the same time",
+            "Two submissions took the same version number. The server retries once by "
+            "itself; a second collision means something is writing faster than this "
+            "table is for.",
+            "Retry the submission.",
+            # The one retryable code in this group, and the affordance is asserted
+            # against the browser's copy: a retry button that appears where retrying
+            # cannot help is worse than none.
+            retryable=True,
+        ),
+        _entry(
+            "VERIFICATION_REPORT_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The verification report is not in the expected shape",
+            "`details.field` names the field. A `source` in the payload is **not** an "
+            "error — it is accepted, discarded, and recorded as discarded, because the "
+            "credibility level is decided by the write path.",
+            "Correct the named field. The result is one of five values.",
+        ),
+        _entry(
+            "EVIDENCE_KIND_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Unknown evidence kind",
+            "The kind decides the credibility level, so it comes from a closed set. "
+            "`details.allowed` names it.",
+            "Use one of the listed kinds.",
+        ),
+        _entry(
+            "EVIDENCE_KIND_NOT_WRITABLE",
+            status.HTTP_403_FORBIDDEN,
+            "That kind of evidence is written by the platform, not by an agent",
+            "The kind decides the source, so an agent writing a machine-fact kind is "
+            "**refused rather than downgraded** — a downgraded row would still assert "
+            "something nobody observed.",
+            "Record it as a finding, a limitation or a risk.",
+        ),
+        _entry(
+            "EVIDENCE_PAYLOAD_TOO_LARGE",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "That piece of evidence is too large",
+            "Evidence is a structured fact somebody scans, not a file store. Artifacts "
+            "already have a quota, a retention period and a download path.",
+            "Attach it to the card as an artifact instead.",
+        ),
+        _entry(
+            "EVIDENCE_RUN_LIMIT",
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            "This run has recorded as much evidence as it may",
+            "A per-run ceiling, so one run cannot fill the card's evidence list.",
+            "Summarise, or attach the detail as an artifact.",
+        ),
+        _entry(
+            "PROCESS_OVERRIDE_UNKNOWN_KEY",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That process item does not exist",
+            "A project may disable existing readiness items and gates, never add one. "
+            "An unrecognised key is refused rather than stored, because a stored one "
+            "is silently ineffective and the person who typed it believes it worked. "
+            "`details.unknown` names them.",
+            "Check the key against the project's process definition.",
         ),
         _entry(
             "TASK_CONTEXT_TOO_LARGE",
@@ -1122,7 +1273,7 @@ CATALOG: dict[str, ErrorEntry] = dict(
         _entry(
             "TASK_DELIVERY_UNSUPPORTED",
             status.HTTP_409_CONFLICT,
-            "That delivery mode takes effect in a later version",
+            "That delivery mode is not available on this deployment",
             "This version delivers by attaching artifacts to the card. Branches and "
             "pull requests arrive with the platform's own git write path.",
             "Set delivery to none or artifact for now; the response names the version "

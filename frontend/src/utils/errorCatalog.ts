@@ -301,8 +301,106 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: false,
   },
   TASK_ACCEPTANCE_CRITERIA_INVALID: {
-    cause: "驗收標準必須是物件陣列，才能在卡片與 Agent 情境中逐項呈現。",
-    nextStep: "把每一項改成至少含有 text 欄位的物件。",
+    cause:
+      "驗收標準必須是物件陣列，才能在卡片與 Agent 情境中逐項呈現；自 V2.4 起它的結果也必須是四個值之一。",
+    nextStep:
+      "把每一項改成至少含有 text 欄位的物件，結果填 passed／failed／partial／not_verified。",
+    retryable: false,
+  },
+  TASK_DONE_GATE_UNMET: {
+    cause:
+      "進入「完成」是在主張這件事做完了，而平台握有支持那個主張的事實。缺的每一項都列在 details.missing 裡——不是只列第一項，因為缺摘要與缺驗證報告要做的事不一樣。",
+    nextStep:
+      "補齊被指名的項目。管理者可以帶著理由強制推進，而那個理由會永久顯示在卡片上。",
+    retryable: false,
+  },
+  TASK_FORCE_REASON_REQUIRED: {
+    cause:
+      "強制推進必須填寫理由。理由同時記在卡片與時間軸上，那正是這個出口「可見」而不是「靜悄悄」的原因。",
+    nextStep: "在請求中帶上 force_reason。",
+    retryable: false,
+  },
+  TASK_DELIVERY_NEEDS_SOURCE: {
+    cause:
+      "這張卡要以合併請求交付，卻同時宣告不取得程式碼。兩個欄位刻意分開，而這個組合沒有東西可以開 PR。",
+    nextStep: "把來源改成 repo，或把交付方式改成不交付／產物。",
+    retryable: false,
+  },
+  TASK_PR_TARGET_MISSING: {
+    cause:
+      "以合併請求交付必須指定目標分支。在派工當下拒絕，而不是等到執行完才發現。",
+    nextStep: "在卡片上填寫目標分支。",
+    retryable: false,
+  },
+  TASK_EXISTING_PR_OUT_OF_NAMESPACE: {
+    cause:
+      "平台只推得到 cliora/ 命名空間之內，所以「接續既有 PR」只對平台自己開的 PR 成立。**這看起來像缺陷，實際上是邊界**：那條約束編譯在節點程式裡，也正是「平台會推到哪裡」不必查資料就答得出來的原因。",
+    nextStep: "改用分支交付並自行合併，或接續一個平台開的 PR。",
+    retryable: false,
+  },
+  TASK_PROVIDER_UNSUPPORTED: {
+    cause:
+      "這個部署沒有該主機的合併請求整合。在派工當下拒絕，而不是等工作做完才失敗。",
+    nextStep: "改用分支交付，或改用支援的主機上的儲存庫。",
+    retryable: false,
+  },
+  VERIFICATION_COMMANDS_INVALID: {
+    cause:
+      "驗證命令是引數陣列而不是命令字串，所以管線與 && 不會生效——請拆成多條。編碼後的長度在**存檔時**就量，而不是等到派工才量：一條存得下來卻從來送不出去的命令，會讓「這個專案的驗證從來沒跑過」變成沒有人會去查的事實。",
+    nextStep: "縮短名稱或引數，或把這條命令拆成兩條。",
+    retryable: false,
+  },
+  PLAN_STEPS_INVALID: {
+    cause:
+      "執行計畫的步驟必須是物件，且狀態必須是五個值之一。details.allowed 列出可用的值。",
+    nextStep: "把每一個步驟改成含標題與合法狀態的物件。",
+    retryable: false,
+  },
+  PLAN_NOTE_REQUIRED: {
+    cause:
+      "改寫執行計畫必須說明為什麼。「為什麼改」正是這張表用版本列而不是可改欄位的理由。",
+    nextStep: "附上一句說明這次改了什麼、為什麼。",
+    retryable: false,
+  },
+  PLAN_SEQ_CONFLICT: {
+    cause:
+      "兩個寫入者同時取到同一個版本序。伺服器已自動重試一次；第二次再撞代表寫入速度超出這張表的用途。",
+    nextStep: "重新送出一次。",
+    retryable: true,
+  },
+  VERIFICATION_REPORT_INVALID: {
+    cause:
+      "驗證報告的欄位不合法，details.field 指名是哪一個。帶了 source 欄位**不是**錯誤——它會被接受、丟棄，並記下曾被丟棄，因為可信度由寫入路徑決定。",
+    nextStep: "修正被指名的欄位；result 是五個值之一。",
+    retryable: false,
+  },
+  EVIDENCE_KIND_INVALID: {
+    cause:
+      "證據類型決定它的可信度等級，所以它是封閉集合。details.allowed 列出可用的值。",
+    nextStep: "改用清單中的類型。",
+    retryable: false,
+  },
+  EVIDENCE_KIND_NOT_WRITABLE: {
+    cause:
+      "類型決定來源，所以 Agent 寫入機器事實類型是**被拒絕而不是被降級**——降級後的那一列仍然在主張一件沒有人觀察過的事。",
+    nextStep: "改記為發現、限制或風險。",
+    retryable: false,
+  },
+  EVIDENCE_PAYLOAD_TOO_LARGE: {
+    cause:
+      "證據是給人掃一眼的結構化事實，不是檔案儲存體。產物已經有配額、保留期與下載路徑。",
+    nextStep: "改附成卡片產物。",
+    retryable: false,
+  },
+  EVIDENCE_RUN_LIMIT: {
+    cause: "單次執行的證據筆數有上限，避免一次執行塞滿整張卡的證據清單。",
+    nextStep: "改用摘要，或把細節附成產物。",
+    retryable: false,
+  },
+  PROCESS_OVERRIDE_UNKNOWN_KEY: {
+    cause:
+      "專案只能停用流程定義裡既有的項目，不能新增。不認得的項目被拒絕而不是被存起來——存起來會靜默無效，而打字的人以為自己關掉了它。",
+    nextStep: "對照該專案的流程定義檢查名稱。details.unknown 列出是哪幾個。",
     retryable: false,
   },
   TASK_CONTEXT_TOO_LARGE: {

@@ -20,7 +20,7 @@ import sqlalchemy as sa
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.db.models import Role, TunnelIntegration, User
+from app.db.models import Role, TunnelIntegration, User, VerificationReport
 from app.security.passwords import hash_password
 
 pytestmark = pytest.mark.asyncio
@@ -260,6 +260,23 @@ async def test_finishing_the_blockers_unblocks_the_card(api: tuple, projects_ena
         json={"depends_on_task_id": blocker["id"]},
         headers=headers,
     )
+    # V2.4: with the runner layer on, `done` is a claim the platform checks, so the
+    # blocker needs its completion evidence before it can be finished. That is the Done
+    # Gate's business (`test_done_gate.py`); what this test still asserts is the V2.1
+    # rule — once the blocker *is* done, the dependent card is free to move.
+    async with sessionmaker() as session:
+        session.add(
+            VerificationReport(
+                id=uuid.uuid4(),
+                task_id=uuid.UUID(blocker["id"]),
+                project_id=uuid.UUID(project["id"]),
+                result="passed",
+                completion_summary="blocker finished",
+                source="platform_observed",
+                reported_by_kind="user",
+            )
+        )
+        await session.commit()
     resp = await client.patch(
         f"/api/tasks/{blocker['id']}",
         json={"version": blocker["version"], "stage": "done"},

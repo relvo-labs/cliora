@@ -1,0 +1,1 @@
+{"version": 1, "type": "runner.register", "request_id": "01K0ABCDEFGHJKMNPQRSTVWX51", "node_id": "00000000-0000-4000-8000-0000000000aa", "timestamp": "2026-08-14T10:00:00Z", "payload": {"name": "runner-a", "runtimes": ["claude"], "labels": [], "features": ["verifcation"], "max_concurrent": 1, "max_waiting": 5, "dedicated": true}}

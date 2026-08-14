@@ -41,6 +41,17 @@ const LABELS: Record<string, string> = {
   "run.finished": "Agent 執行結束",
   "task.message_posted": "卡片留言",
   "artifact.attached": "附加產物",
+  // V2.4. A **second** row beside the stage change, not a variant of it: the stage
+  // change says the card moved, this says the completion criteria were skipped and why.
+  // It is also what the "--force count" metric reads, which is the reason it is its own
+  // kind rather than a field on the move (ADR 0033 §5).
+  "task.forced_done": "強制標記完成",
+  "task.plan_recorded": "提交執行計畫",
+  "task.verification_reported": "提交驗證報告",
+  // Recorded rather than merely ignored: an agent overstating its evidence and an agent
+  // with a typo would otherwise leave identical traces, and those need different
+  // responses (ADR 0033 §3b).
+  "verification.source_ignored": "驗證來源已改寫",
 };
 
 /** The raw kind is the fallback, so a kind added on the server stays readable

@@ -37,24 +37,32 @@ from app.api.http.deps import (
     require_projects_enabled,
 )
 from app.api.http.schemas import (
+    AddEvidenceRequest,
     AgentRunnerDTO,
     CreateRepositoryRequest,
     DeleteArtifactRequest,
     DispatchRequest,
     DispatchResponseDTO,
+    EvidenceItemDTO,
+    ExecutionPlanDTO,
     PostMessageRequest,
     ProjectRepositoryDTO,
+    RecordPlanRequest,
     RunLogLineDTO,
     RunLogPageDTO,
+    SubmitVerificationRequest,
     TaskArtifactDTO,
     TaskMessageDTO,
     TaskRunDTO,
     UpdateAgentRequest,
+    VerificationReportDTO,
 )
 from app.clock import now_utc
 from app.db.engine import get_session
 from app.db.models import (
     AgentRunner,
+    EvidenceItem,
+    ExecutionPlan,
     ProjectRepository,
     RunLog,
     Task,
@@ -62,10 +70,12 @@ from app.db.models import (
     TaskMessage,
     TaskRun,
     User,
+    VerificationReport,
 )
 from app.services.activity import ACTOR_AGENT, ACTOR_USER
 from app.services.agent_auth import KIND_RUN, AgentPrincipal
 from app.services.artifacts import PREVIEWABLE, ArtifactService
+from app.services.evidence import EvidenceService, PlanService, VerificationService
 from app.services.projects import ProjectService
 from app.services.rbac import (
     AGENT_MANAGE,
@@ -830,3 +840,263 @@ async def agent_upload_artifact(
     await session.commit()
     await session.refresh(artifact)
     return _artifact_dto(artifact)
+
+
+# --- execution plans, verification reports and evidence (DV-06) -----------
+#
+# **Read with `project.view`, write with `task.update`, and no update path anywhere.**
+# The three tables are append-only, and in REST that property is expressed by the
+# absence of PUT, PATCH and DELETE rather than by a comment — so this section has
+# exactly two verbs.
+
+
+def _plan_dto(plan: ExecutionPlan) -> ExecutionPlanDTO:
+    return ExecutionPlanDTO(
+        id=plan.id,
+        seq=plan.seq,
+        note=plan.note,
+        steps=plan.steps or [],
+        run_id=plan.run_id,
+        created_by_kind=plan.created_by_kind,
+        created_at=plan.created_at,
+    )
+
+
+def _report_dto(report: VerificationReport) -> VerificationReportDTO:
+    return VerificationReportDTO(
+        id=report.id,
+        result=report.result,
+        checks=report.checks or [],
+        acceptance_criteria=report.acceptance_criteria or [],
+        remaining_risks=report.remaining_risks or [],
+        completion_summary=report.completion_summary,
+        source=report.source,
+        run_id=report.run_id,
+        reported_by_kind=report.reported_by_kind,
+        reported_at=report.reported_at,
+    )
+
+
+def _evidence_dto(item: EvidenceItem) -> EvidenceItemDTO:
+    return EvidenceItemDTO(
+        id=item.id,
+        kind=item.kind,
+        source=item.source,
+        payload=item.payload or {},
+        run_id=item.run_id,
+        written_by_kind=item.written_by_kind,
+        collected_at=item.collected_at,
+    )
+
+
+@router.get("/tasks/{task_id}/plans", response_model=list[ExecutionPlanDTO])
+async def list_task_plans(
+    task_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[ExecutionPlanDTO]:
+    await _require_visible_task(session, settings, task_id)
+    return [_plan_dto(plan) for plan in await PlanService(session).list_for(task_id)]
+
+
+@router.post(
+    "/tasks/{task_id}/plans",
+    response_model=ExecutionPlanDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def record_task_plan(
+    task_id: uuid.UUID,
+    body: RecordPlanRequest,
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ExecutionPlanDTO:
+    task, _project = await _require_visible_task(session, settings, task_id)
+    plan = await PlanService(session).record(
+        task=task,
+        steps=body.steps,
+        note=body.note,
+        run_id=None,
+        actor_kind=ACTOR_USER,
+        user_id=user.id,
+        runner_id=None,
+    )
+    dto = _plan_dto(plan)
+    await session.commit()
+    return dto
+
+
+@router.get("/tasks/{task_id}/verification", response_model=list[VerificationReportDTO])
+async def list_task_verification(
+    task_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[VerificationReportDTO]:
+    await _require_visible_task(session, settings, task_id)
+    return [_report_dto(r) for r in await VerificationService(session).list_for(task_id)]
+
+
+@router.post(
+    "/tasks/{task_id}/verification",
+    response_model=VerificationReportDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def submit_task_verification(
+    task_id: uuid.UUID,
+    body: SubmitVerificationRequest,
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> VerificationReportDTO:
+    """A submitted report is **always** `agent_reported`, even from a person.
+
+    The level answers "who observed this", and a person typing a result into a form is
+    not the platform observing it. `platform_observed` and `machine_verified` have their
+    own writers inside the server (ADR 0033 §3b).
+    """
+    task, _project = await _require_visible_task(session, settings, task_id)
+    report = await VerificationService(session).report_from_agent(
+        task=task,
+        payload=body.model_dump(),
+        run_id=None,
+        user_id=user.id,
+        runner_id=None,
+    )
+    dto = _report_dto(report)
+    await session.commit()
+    return dto
+
+
+@router.get("/tasks/{task_id}/evidence", response_model=list[EvidenceItemDTO])
+async def list_task_evidence(
+    task_id: uuid.UUID,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[EvidenceItemDTO]:
+    """Every source in one list, contradictions included.
+
+    An agent's account of which files changed and `git status` may disagree, and both
+    rows stay with their sources named. There is no reconciliation rule: its verdict
+    would be a judgement with nobody accountable for it (ADR 0033 §Consequences).
+    """
+    await _require_visible_task(session, settings, task_id)
+    return [_evidence_dto(item) for item in await EvidenceService(session).list_for(task_id)]
+
+
+@router.post(
+    "/tasks/{task_id}/evidence",
+    response_model=EvidenceItemDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_task_evidence(
+    task_id: uuid.UUID,
+    body: AddEvidenceRequest,
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> EvidenceItemDTO:
+    task, _project = await _require_visible_task(session, settings, task_id)
+    item = await EvidenceService(session).add(
+        task=task,
+        kind=body.kind,
+        payload=body.payload,
+        run_id=None,
+        actor_kind=ACTOR_USER,
+        user_id=user.id,
+        runner_id=None,
+        agent_written=True,
+    )
+    dto = _evidence_dto(item)
+    await session.commit()
+    return dto
+
+
+# --- the same three, for a run credential (`cliora plan|verify|evidence`) ---
+
+
+@run_router.post("/plan", response_model=ExecutionPlanDTO, status_code=status.HTTP_201_CREATED)
+async def agent_record_plan(
+    body: RecordPlanRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> ExecutionPlanDTO:
+    """`cliora plan snapshot`. Write-only: there is no read counterpart.
+
+    An agent does not need to read back what it just wrote, and every read endpoint is
+    another surface to authorize — the same restraint that left `approve` out of the CLI.
+    """
+    task = await _run_task(session, principal)
+    plan = await PlanService(session).record(
+        task=task,
+        steps=body.steps,
+        note=body.note,
+        run_id=principal.run_id,
+        actor_kind=ACTOR_AGENT,
+        user_id=None,
+        # `AgentPrincipal` deliberately carries no runner id — a run's identity is the
+        # run — and the existing artifact path leaves this null for the same reason.
+        runner_id=None,
+    )
+    dto = _plan_dto(plan)
+    await session.commit()
+    return dto
+
+
+@run_router.post(
+    "/verification", response_model=VerificationReportDTO, status_code=status.HTTP_201_CREATED
+)
+async def agent_submit_verification(
+    body: SubmitVerificationRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> VerificationReportDTO:
+    """`cliora verify report`. Stored as `agent_reported`, whatever the payload says.
+
+    A claimed level is discarded **and recorded**: without the record, an agent
+    overstating its evidence and an agent with a typo are indistinguishable afterwards.
+    """
+    task = await _run_task(session, principal)
+    report = await VerificationService(session).report_from_agent(
+        task=task,
+        payload=body.model_dump(),
+        run_id=principal.run_id,
+        user_id=None,
+        # `AgentPrincipal` deliberately carries no runner id — a run's identity is the
+        # run — and the existing artifact path leaves this null for the same reason.
+        runner_id=None,
+    )
+    dto = _report_dto(report)
+    await session.commit()
+    return dto
+
+
+@run_router.post("/evidence", response_model=EvidenceItemDTO, status_code=status.HTTP_201_CREATED)
+async def agent_add_evidence(
+    body: AddEvidenceRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> EvidenceItemDTO:
+    """`cliora evidence add`. Only the three `agent_*` kinds.
+
+    A machine kind is **refused rather than downgraded**: a downgraded row would still
+    assert something nobody observed.
+    """
+    task = await _run_task(session, principal)
+    item = await EvidenceService(session).add(
+        task=task,
+        kind=body.kind,
+        payload=body.payload,
+        run_id=principal.run_id,
+        actor_kind=ACTOR_AGENT,
+        user_id=None,
+        # `AgentPrincipal` deliberately carries no runner id — a run's identity is the
+        # run — and the existing artifact path leaves this null for the same reason.
+        runner_id=None,
+        agent_written=True,
+    )
+    dto = _evidence_dto(item)
+    await session.commit()
+    return dto

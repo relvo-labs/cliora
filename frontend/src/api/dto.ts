@@ -439,6 +439,88 @@ export interface DashboardUnhealthyNodes {
   limit: number;
 }
 
+/** The delivery loop's six numbers (V2.4, ADR 0033).
+ *
+ *  **Read-only, always.** None of these is an input to anything: there is no "failure
+ *  rate too high, stop dispatching". A metric that can block work becomes a number
+ *  people optimise instead of a number that tells them something.
+ *
+ *  `forced_done` is the one that needs its sentence rendered beside it. It looks like a
+ *  count of who is cheating; it actually asks whether the completion criteria are set
+ *  wrong, and a count with no explanation gets read as a leaderboard.
+ */
+// --- V2.4: what a card did, and why it counts as done (ADR 0033) ---
+//
+// Three read models and no update model, because the three tables are append-only: in
+// REST that property is the absence of PUT, PATCH and DELETE, and in a client it is the
+// absence of an update request type.
+
+export interface ExecutionPlanStep {
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "skipped" | "failed";
+  note?: string | null;
+}
+
+export interface ExecutionPlan {
+  id: string;
+  seq: number;
+  note: string | null;
+  steps: ExecutionPlanStep[];
+  run_id: string | null;
+  created_by_kind: string;
+  created_at: string;
+}
+
+export interface VerificationCheck {
+  name: string;
+  /** Which store named this command. **A second axis, not a third level**: both are
+   *  machine facts, because declaring one on a card takes `task.approve` and a run
+   *  token never holds it (ADR 0033 §3b). */
+  origin?: "project" | "card";
+  exit_code: number | null;
+  duration_ms?: number | null;
+  output_tail?: string | null;
+}
+
+export interface VerificationReport {
+  id: string;
+  result: "not_started" | "running" | "passed" | "failed" | "partial";
+  checks: VerificationCheck[];
+  acceptance_criteria: { criterion?: string; result?: string }[];
+  remaining_risks: { check?: string; text?: string }[];
+  completion_summary: string | null;
+  /** Decided by the server from the write path, never from the payload. */
+  source: "agent_reported" | "platform_observed" | "machine_verified";
+  run_id: string | null;
+  reported_by_kind: string;
+  reported_at: string;
+}
+
+export interface EvidenceItem {
+  id: string;
+  kind: string;
+  source: "agent_reported" | "platform_observed" | "machine_verified";
+  payload: Record<string, unknown>;
+  run_id: string | null;
+  written_by_kind: string;
+  collected_at: string;
+}
+
+export interface DashboardDelivery {
+  window_days: number;
+  tasks_created: number;
+  tasks_with_a_run: number;
+  tasks_done: number;
+  tasks_done_with_a_report: number;
+  forced_done: number;
+  runs_finished: number;
+  run_failures: Record<string, number>;
+  avg_waiting_seconds: number;
+  /** How much of the verification each store contributed (M-DV-1b). A high card share
+   *  is not a fault — it may mean the project's settings are too coarse. */
+  checks_by_origin: { project: number; card: number };
+}
+
 export interface DashboardSummary {
   generated_at: string;
   blocks: {
@@ -448,6 +530,7 @@ export interface DashboardSummary {
     resources: DashboardBlock<DashboardResources>;
     recent_activity: DashboardBlock<DashboardActivity>;
     unhealthy_nodes: DashboardBlock<DashboardUnhealthyNodes>;
+    delivery: DashboardBlock<DashboardDelivery>;
   };
 }
 
@@ -553,6 +636,9 @@ export const AUDIT_ACTIONS = [
   "task.create",
   "task.update",
   "task.gate_approve",
+  "task.force_done",
+  "process.override",
+  "pr.create",
   "requirement.create",
   "requirement.approve",
   "requirement.proposal_accept",
@@ -797,6 +883,21 @@ export const ACTION_RUN_CANCEL = "run.cancel";
 // "which credential fetches it".
 export const ACTION_SECRET_MANAGE = "secret.manage";
 
+// V2.4 delivery, verification and the Done Gate (ADR 0033). Both Admin-only, and
+// neither is a reuse. `process.manage` is not `project.manage`: overriding the process
+// definition changes what "ready" and "done" mean for a whole project, in the
+// vocabulary every cross-project metric is expressed in. `task.force_done` is not
+// `task.approve`: ticking one review gate and skipping the completion criteria
+// wholesale are different authorities, and every use of the second is meant to be
+// visible and countable.
+//
+// **`task.approve` also gains a second job in V2.4** and gains no new holder: it
+// authorises declaring a verification command on a card. That is the point — a run
+// token's scope is `{project.view, task.update}` and never contains `task.approve`, so
+// the agent being verified cannot choose what verifies it (ADR 0033 §3b).
+export const ACTION_PROCESS_MANAGE = "process.manage";
+export const ACTION_TASK_FORCE_DONE = "task.force_done";
+
 // --- V2.0 project layer (ADR 0027) ---
 
 /** Why a binding cannot be used right now. Deliberately the *same* vocabulary as
@@ -967,7 +1068,21 @@ export interface Task {
   /** `{gate: {approved_by, approved_at}}` — never a boolean, because that cell is
    *  where "an agent's output is not an approval" lives. */
   gates: Record<string, { approved_by: string; approved_at: string } | null>;
-  acceptance_criteria: Array<Record<string, unknown>>;
+  /** `text` and `result` are the two fields the platform reads — `result` closed to
+   *  four values in V2.4 so the Done Gate's "every criterion has a result" means
+   *  something. The rest of the object is the card author's, and stays open. */
+  acceptance_criteria: Array<
+    { text?: string; result?: string } & Record<string, unknown>
+  >;
+  /** This card's own verification checks (V2.4). Editing them needs `task.approve`,
+   *  not `task.update` — which is exactly why they are not part of the card patch
+   *  and have their own endpoint (ADR 0033 §3b). */
+  verification_commands: Array<{ name: string; argv: string[] }>;
+  /** Set only while the card sits in `done` after a forced move. **Not clearable on its
+   *  own**: the only way out is to take the card back out of `done` (ADR 0033 §5). */
+  force_done_reason: string | null;
+  force_done_by: string | null;
+  force_done_at: string | null;
   links: Record<string, unknown>;
   required_labels: string[];
   version: number;

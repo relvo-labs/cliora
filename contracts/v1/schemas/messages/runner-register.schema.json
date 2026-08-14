@@ -3,23 +3,47 @@
   "$comment": "A node telling the platform what it can run, contract 1.11.0 (ADR 0029). Every field here is the machine's report about itself, and none of it is settable through the API — the same posture node.register already takes for image_upload and the codex sandbox flag (ADR 0023 D3). Note what is absent: there is no `enabled`. Whether a runner may take work is an administrator's decision, and letting a re-registration carry it would mean a daemon restart silently re-enabling something that was switched off.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["name", "runtimes", "max_concurrent", "max_waiting", "dedicated"],
+  "required": [
+    "name",
+    "runtimes",
+    "max_concurrent",
+    "max_waiting",
+    "dedicated"
+  ],
   "properties": {
-    "runner_id": {"$comment": "Present on re-registration only; the platform keys on node_id regardless, because a node holds exactly one runner row (ADR 0029 sec 1).", "type": "string", "format": "uuid"},
-    "name": {"type": "string", "minLength": 1, "maxLength": 128},
+    "runner_id": {
+      "$comment": "Present on re-registration only; the platform keys on node_id regardless, because a node holds exactly one runner row (ADR 0029 sec 1).",
+      "type": "string",
+      "format": "uuid"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
     "runtimes": {
       "$comment": "Only the runtimes this node found to be *runner capable* — installed AND exposing both a non-interactive flag and a machine-readable event stream. A node whose CLI is too old reports an empty array and registers successfully: a failed registration reads as 'the machine is broken', while an empty set plus a reason on the Agents page reads as what it is (ADR 0029 sec 7).",
       "type": "array",
       "maxItems": 8,
       "uniqueItems": true,
-      "items": {"enum": ["claude", "codex"]}
+      "items": {
+        "enum": [
+          "claude",
+          "codex"
+        ]
+      }
     },
     "labels": {
       "$comment": "Displayed and never compared in V2.2; **matched from V2.3** as a superset — a card is offered to this runner when its `required_labels` are a subset of these (ADR 0029 amendment B3). Extra tags here are irrelevant, which is what makes the scheme usable; equality matching would stop a machine claiming anything the moment it gained one more capability. **A tag is not authorization.** It is a value the runner reports about itself, so a compromised or misconfigured runner changes what it is offered by reporting one more — either authorization is a row somebody else wrote, or the boundary is enrollment, and here it is enrollment (ADR 0032 §0). Read-only on Central for the same reason it is meaningful here: it is what this node's config declares, and a platform-side edit would be overwritten by the next registration.",
       "type": "array",
       "maxItems": 32,
       "uniqueItems": true,
-      "items": {"type": "string", "minLength": 1, "maxLength": 64, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"}
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]*$"
+      }
     },
     "run_untagged": {
       "$comment": "The other half of the GitLab semantics (V2.3). False means this runner only claims cards that declare at least one tag — the only way to reserve a machine for particular work, since a dedicated box otherwise fills up with ordinary untagged cards. **Absent means true**, matching Central's column default, so a 0.9.0 daemon that never sends it behaves exactly as it did. That compatibility statement deliberately names no version: it asserts a property of the payload, which is testable, rather than the behaviour of a release, which is not.",
@@ -29,8 +53,33 @@
       "$comment": "The node operator's veto (V2.3, ADR 0032 §0 compensating control 2). False means this runner is only ever offered cards whose `required_secrets` is empty. It is declared by the node rather than ticked on the platform because the person who knows what else runs on this machine is the one who should decide. **Absent means true**, for the same reason as `run_untagged`: an absent key has to mean the behaviour that existed before the upgrade, and before it there were no secrets to refuse.",
       "type": "boolean"
     },
-    "max_concurrent": {"$comment": "Runs executing at once. Lower bound 0 is legal and means 'registered but taking nothing', which is a useful state during maintenance.", "type": "integer", "minimum": 0, "maximum": 64},
-    "max_waiting": {"$comment": "A second limit, because a run in waiting_for_input holds no process and must not occupy execution capacity (ADR 0029 sec 5). Without it, three runs waiting on a human would take a node offline for work.", "type": "integer", "minimum": 0, "maximum": 64},
-    "dedicated": {"$comment": "**A report, never a setting.** Derived by the daemon from `len(workspace.allowed_roots) == 0`; Central stores it and displays it without checking it — the same requested/actual separation ADR 0023 D3 established for the codex sandbox flag. It matters because the platform has NO technical isolation between a run and the node's allowed roots (ADR 0031 sec 6): on a node with none, 'the run cannot read one' is vacuously true, and this field is what makes mixed use a visible choice instead of an unnoticed fact.", "type": "boolean"}
+    "max_concurrent": {
+      "$comment": "Runs executing at once. Lower bound 0 is legal and means 'registered but taking nothing', which is a useful state during maintenance.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64
+    },
+    "max_waiting": {
+      "$comment": "A second limit, because a run in waiting_for_input holds no process and must not occupy execution capacity (ADR 0029 sec 5). Without it, three runs waiting on a human would take a node offline for work.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 64
+    },
+    "dedicated": {
+      "$comment": "**A report, never a setting.** Derived by the daemon from `len(workspace.allowed_roots) == 0`; Central stores it and displays it without checking it — the same requested/actual separation ADR 0023 D3 established for the codex sandbox flag. It matters because the platform has NO technical isolation between a run and the node's allowed roots (ADR 0031 sec 6): on a node with none, 'the run cannot read one' is vacuously true, and this field is what makes mixed use a visible choice instead of an unnoticed fact.",
+      "type": "boolean"
+    },
+    "features": {
+      "$comment": "What this daemon can do that an older one cannot. **Absent means the empty set** — the opposite default from `run_untagged` and `accept_secrets`, and deliberately so: those two are refusal flags (absent = does not refuse), this is a support flag (absent = does not support). A permissive default here would assume a machine performs a feature it has never heard of. Central puts feature-gated content into an offer only for a node that named the feature, which is the general rule for adding anything to `spec` from now on: central→node compatibility is **not** permissive, because `ValidateControl` decodes with DisallowUnknownFields and a rejected offer produces no reply at all (ADR 0029 amendment C). An enum rather than free strings, so a misspelling is a rejected frame instead of a silent 'unsupported'.",
+      "type": "array",
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "verification",
+          "evidence"
+        ]
+      }
+    }
   }
 }

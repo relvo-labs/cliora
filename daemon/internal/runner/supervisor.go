@@ -255,7 +255,24 @@ type Summary struct {
 	Remotes         []string
 	UnpushedCommits int
 	Diff            string
+	// V2.4: the summary a card and a pull request show, as opposed to the full diff
+	// that becomes an artifact (FR-EVIDENCE-001).
+	DiffStat string
+	// Which parts could not be collected in time. Reported rather than silently empty:
+	// an absent `git status` and a clean tree look identical otherwise, and they are
+	// opposite facts.
+	CollectionTimedOut []string
 }
+
+// EvidenceTimeout bounds each git call the end-of-run collection makes.
+//
+// **Measured, not guessed** (M6). The worst p95 across four repositories up to 31 300
+// tracked files was 279.9 ms — `git diff` on a dirty large repository, four times what
+// `git status --porcelain` costs there. Ten seconds is that p95 with a wide margin, and
+// the margin is not superstition: the measurement was taken on an idle machine, while
+// the collection runs on one that is usually still executing other runs against the
+// same disk (plan/21/10-…md §1.1).
+const EvidenceTimeout = 10 * time.Second
 
 // Inspect gathers the end-of-run facts.
 func (r *Runner) Inspect(ctx context.Context, layout Layout, hasRepo bool) Summary {
@@ -266,6 +283,12 @@ func (r *Runner) Inspect(ctx context.Context, layout Layout, hasRepo bool) Summa
 	if !hasRepo {
 		return summary
 	}
+	// Every git call below is bounded. A hung `git status` would otherwise stop the
+	// run's last step forever **while the lease keeps renewing**, so Central would see
+	// a run wedged in `finishing` — a failure mode with no symptom anybody can act on
+	// (plan/21/10-…md §1.1).
+	ctx, cancel := context.WithTimeout(ctx, EvidenceTimeout)
+	defer cancel()
 	if status, err := r.Fetch.Status(ctx, layout.Repo); err == nil {
 		for _, line := range strings.Split(strings.TrimSpace(status), "\n") {
 			if line == "" {
@@ -286,12 +309,31 @@ func (r *Runner) Inspect(ctx context.Context, layout Layout, hasRepo bool) Summa
 	if summary.Dirty {
 		if diff, err := r.Fetch.Diff(ctx, layout.Repo); err == nil {
 			summary.Diff = diff
+		} else {
+			summary.CollectionTimedOut = append(summary.CollectionTimedOut, "diff")
+		}
+		if stat, err := r.Fetch.DiffStat(ctx, layout.Repo); err == nil {
+			summary.DiffStat = stat
+		} else {
+			summary.CollectionTimedOut = append(summary.CollectionTimedOut, "diff_stat")
 		}
 	}
 	return summary
 }
 
-// ShouldAttachDiff reports whether the honesty rule applies (ADR 0031 §7).
+// DeclaresNoCode reports whether this card said its outcome is not a change to the code.
+//
+// **One predicate, two callers.** The first version wrote the condition twice and the
+// two drifted immediately: `ShouldAttachDiff` covered `none` and `artifact` while the
+// sentence explaining the attachment was produced only for `none` — so an `artifact`
+// card's diff arrived on the board with nothing saying why it was there. That is the
+// exact failure honesty rule 1 exists to prevent, reproduced by the code meant to
+// implement it (ADR 0033 §2).
+func DeclaresNoCode(delivery string) bool {
+	return delivery == "none" || delivery == "artifact"
+}
+
+// ShouldAttachDiff reports whether the honesty rule applies (ADR 0031 §7, ADR 0033 §2).
 //
 // A run that declared no delivery and changed files anyway would otherwise lose that
 // work when the directory is reclaimed — **and nobody would know it had existed**. The
@@ -299,7 +341,7 @@ func (r *Runner) Inspect(ctx context.Context, layout Layout, hasRepo bool) Summa
 // branch has not lost its work, an agent that did not still will, and the platform
 // cannot tell them apart. So the rule is unconditional on `dirty`.
 func ShouldAttachDiff(delivery string, summary Summary) bool {
-	if delivery != "none" && delivery != "artifact" {
+	if !DeclaresNoCode(delivery) {
 		return false
 	}
 	return summary.Dirty && summary.Diff != ""
@@ -307,14 +349,14 @@ func ShouldAttachDiff(delivery string, summary Summary) bool {
 
 // SummaryText is the human sentence that goes on the run.
 //
-// It says the awkward thing out loud when it applies: the card declared no delivery
-// and files changed anyway. It also reports the untracked count without packaging
-// those files — one `node_modules/` would blow the artifact quota, so the person
-// decides.
+// It says the awkward thing out loud when it applies: the card declared no code
+// delivery and files changed anyway. It also reports the untracked count without
+// packaging those files — one `node_modules/` would blow the artifact quota, so the
+// person decides.
 func SummaryText(delivery string, summary Summary) string {
 	var parts []string
-	if summary.Dirty && delivery == "none" {
-		parts = append(parts, "本卡宣告不交付，但工作目錄有變更；diff 已附為產物。")
+	if summary.Dirty && DeclaresNoCode(delivery) {
+		parts = append(parts, "本卡宣告不交付程式碼變更，但工作目錄有變更；diff 已附為產物。")
 	}
 	if summary.UntrackedFiles > 0 {
 		parts = append(parts,

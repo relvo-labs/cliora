@@ -83,6 +83,19 @@ RUN_FINISHED = "run.finished"
 # exist (ADR 0029). System events are **not** posted here — they already are activity.
 TASK_MESSAGE_POSTED = "task.message_posted"
 ARTIFACT_ATTACHED = "artifact.attached"
+# V2.4. `task.forced_done` is a **second** row beside the stage change, not a variant of
+# it: the stage change says the card moved, this says the completion criteria were
+# skipped and why — and it is what the third cross-project metric counts (ADR 0033 §5).
+# `verification.source_ignored` records that a submitted report claimed a credibility
+# level the server discarded; without it, an agent overstating its evidence and an agent
+# with a typo leave identical traces.
+TASK_FORCED_DONE = "task.forced_done"
+# V2.4. `verification.source_ignored` records that a submitted report claimed a
+# credibility level the server discarded; without it, an agent overstating its evidence
+# and an agent with a typo leave identical traces (ADR 0033 §3b).
+VERIFICATION_SOURCE_IGNORED = "verification.source_ignored"
+EXECUTION_PLAN_RECORDED = "task.plan_recorded"
+VERIFICATION_REPORTED = "task.verification_reported"
 
 # The closed vocabulary. V2.1 adds task kinds, V2.2 adds run kinds.
 ALL_KINDS: frozenset[str] = frozenset(
@@ -109,6 +122,10 @@ ALL_KINDS: frozenset[str] = frozenset(
         RUN_FINISHED,
         TASK_MESSAGE_POSTED,
         ARTIFACT_ATTACHED,
+        TASK_FORCED_DONE,
+        VERIFICATION_SOURCE_IGNORED,
+        EXECUTION_PLAN_RECORDED,
+        VERIFICATION_REPORTED,
     }
 )
 

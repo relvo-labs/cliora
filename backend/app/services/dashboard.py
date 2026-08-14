@@ -39,7 +39,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import metrics
 from app.clock import now_utc, process_uptime_seconds
-from app.db.models import AuditLog, Node, NodeRuntime, TerminalSession, User
+from app.db.models import (
+    ActivityEvent,
+    AuditLog,
+    Node,
+    NodeRuntime,
+    Task,
+    TaskRun,
+    TerminalSession,
+    User,
+    VerificationReport,
+)
 from app.repositories.node_metrics import NodeMetricRepository
 from app.repositories.sessions import ACTIVE_STATES
 from app.services import audit as audit_actions
@@ -61,6 +71,11 @@ RUNTIMES = "runtimes"
 RESOURCES = "resources"
 RECENT_ACTIVITY = "recent_activity"
 UNHEALTHY_NODES = "unhealthy_nodes"
+# V2.4. One block, six numbers — rather than six blocks — because they answer one
+# question together ("is the delivery loop working") and a reader who sees five of them
+# has no way to tell which one is missing. The per-block degradation contract still
+# applies: this block fails alone (ADR 0033 §Consequences).
+DELIVERY = "delivery"
 
 BLOCKS: tuple[str, ...] = (
     NODES,
@@ -69,6 +84,7 @@ BLOCKS: tuple[str, ...] = (
     RESOURCES,
     RECENT_ACTIVITY,
     UNHEALTHY_NODES,
+    DELIVERY,
 )
 
 OK = "ok"
@@ -134,6 +150,7 @@ class DashboardService:
             RESOURCES: self._resources_block,
             RECENT_ACTIVITY: self._recent_activity_block,
             UNHEALTHY_NODES: self._unhealthy_nodes_block,
+            DELIVERY: self._delivery_block,
         }
 
     async def summary(self) -> Summary:
@@ -167,6 +184,105 @@ class DashboardService:
             )
 
     # --- Blocks ---------------------------------------------------------- #
+
+    async def _delivery_block(self) -> Block:
+        """The six numbers V2.4 asks for, over the last 30 days.
+
+        **Every one of them is read-only.** They are queries, never inputs to a state
+        machine: there is no "failure rate too high, stop dispatching" anywhere, and
+        `GATE-DV-METRICS-READ-ONLY` asserts no service imports this. A metric that can
+        block work becomes a number people optimise (ADR 0033).
+
+        Each carries a sentence, and the sentences are here rather than in the console
+        because the third one is dangerous without it: a count of forced cards reads as
+        "who is cheating" and actually asks "are our completion criteria wrong".
+        """
+        since = now_utc() - timedelta(days=30)
+
+        created = await self._scalar(
+            select(func.count()).select_from(Task).where(Task.created_at >= since)
+        )
+        with_run = await self._scalar(
+            select(func.count(func.distinct(TaskRun.task_id))).where(TaskRun.queued_at >= since)
+        )
+        done = await self._scalar(
+            select(func.count())
+            .select_from(Task)
+            .where(Task.stage == "done", Task.updated_at >= since)
+        )
+        done_with_report = await self._scalar(
+            select(func.count(func.distinct(VerificationReport.task_id)))
+            .select_from(VerificationReport)
+            .join(Task, Task.id == VerificationReport.task_id)
+            .where(Task.stage == "done", VerificationReport.reported_at >= since)
+        )
+        forced = await self._scalar(
+            select(func.count())
+            .select_from(ActivityEvent)
+            .where(ActivityEvent.kind == "task.forced_done", ActivityEvent.occurred_at >= since)
+        )
+        failures = (
+            await self._session.execute(
+                select(TaskRun.error_code, func.count())
+                .where(TaskRun.status == "failed", TaskRun.finished_at >= since)
+                .group_by(TaskRun.error_code)
+            )
+        ).all()
+        finished = await self._scalar(
+            select(func.count())
+            .select_from(TaskRun)
+            .where(TaskRun.finished_at.is_not(None), TaskRun.finished_at >= since)
+        )
+        waiting_seconds = await self._scalar(
+            select(
+                func.coalesce(
+                    func.avg(func.extract("epoch", TaskRun.last_event_at - TaskRun.waiting_since)),
+                    0,
+                )
+            ).where(TaskRun.waiting_since.is_not(None), TaskRun.waiting_since >= since)
+        )
+        card_checks, project_checks = await self._check_origin_split(since)
+
+        return Block(
+            status=OK,
+            generated_at=now_utc(),
+            data={
+                "window_days": 30,
+                "tasks_created": created,
+                "tasks_with_a_run": with_run,
+                "tasks_done": done,
+                "tasks_done_with_a_report": done_with_report,
+                "forced_done": forced,
+                "runs_finished": finished,
+                "run_failures": {code or "unknown": count for code, count in failures},
+                "avg_waiting_seconds": round(float(waiting_seconds or 0), 1),
+                "checks_by_origin": {"project": project_checks, "card": card_checks},
+            },
+        )
+
+    async def _check_origin_split(self, since: datetime) -> tuple[int, int]:
+        """How much of the verification is the card's own (M-DV-1b).
+
+        **A high share is not a fault.** It may mean the project's settings are too
+        coarse; what to do about it depends on whether the card-declared commands are
+        all the same one — which is a question for a person, not a threshold.
+        """
+        reports = (
+            await self._session.execute(
+                select(VerificationReport.checks).where(VerificationReport.reported_at >= since)
+            )
+        ).scalars()
+        card = project = 0
+        for checks in reports:
+            for check in checks or []:
+                if isinstance(check, dict) and check.get("origin") == "card":
+                    card += 1
+                else:
+                    project += 1
+        return card, project
+
+    async def _scalar(self, statement: Any) -> int:
+        return int((await self._session.execute(statement)).scalar() or 0)
 
     async def _active_nodes(self) -> Sequence[Node]:
         result = await self._session.execute(select(Node).where(Node.deleted_at.is_(None)))

@@ -222,6 +222,20 @@ class Settings(BaseSettings):
     # not apply to that path.
     git_secret_delivery_enabled: bool = False
 
+    # --- V2.4: the platform's first outbound call (ADR 0033 §3) ---
+    #
+    # **The default is one host, and that is the security property.** Where Central may
+    # connect is a deployment decision, never a repository row — otherwise a row somebody
+    # can create decides where the server makes requests, which is the SSRF shape this
+    # avoids by construction rather than by validation.
+    provider_api_base: str = ""
+    provider_api_hosts: list[str] = ["api.github.com"]
+    # How many pull-request creations may be in flight, and how many may wait. The
+    # second is the one that matters: a backlog nobody can see becomes fifty pull
+    # requests the moment the provider recovers, so it is bounded **and surfaced**.
+    provider_max_concurrent: int = 2
+    provider_pending_limit: int = 50
+
     # --- P4 metrics export (ADR 0018) ---
     # Off by default. An always-on metrics endpoint is a permanent read surface on the
     # control plane, and most deployments do not scrape at all — so it is opt-in rather
@@ -287,6 +301,19 @@ class Settings(BaseSettings):
     # How often a node re-tests its egress to the provider. Per heartbeat would mean a TCP
     # connection to a third party every ten seconds per node, which looks like scanning.
     tunnel_node_prereq_interval_seconds: int = 300
+
+    def provider_api_host_list(self) -> set[str]:
+        """Hosts Central may call, lower-cased.
+
+        Unlike `git_allowed_hosts`, an empty list here is **not** "allow nothing" — it
+        falls back to the default, because this list ships with a value and an operator
+        clearing it is far more likely to be an accident than a decision to disable pull
+        requests. The two defaults differ because the two questions do: "which git hosts
+        has this deployment approved" starts at none, while "which provider API does
+        GitHub live at" has one right answer.
+        """
+        hosts = {item.strip().lower() for item in self.provider_api_hosts if item.strip()}
+        return hosts or {"api.github.com"}
 
     @model_validator(mode="after")
     def secret_encryption_key_must_be_32_bytes(self) -> "Settings":

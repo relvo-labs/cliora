@@ -12,20 +12,32 @@ definition *means* — which in V2.1 is two things:
    how a board stops being written to, and an unused board is a source of truth
    nobody updates.
 
-There is one definition for the whole deployment (`key = 'default'`). V2.4 adds a
-minimal per-project override; building configurability before anyone has asked for it
-is the easiest thing in this system to over-build (research/02/01 D15).
+There is one definition for the whole deployment (`key = 'default'`), and since V2.4 a
+project may **disable** items in it — never add one, never change a lane. That
+narrowness is what keeps cross-project metrics comparing like with like, and it is the
+reason the override is a JSONB column on `projects` rather than a table: a table invites
+somebody to put a custom readiness item in it (ADR 0033 §5, D13).
+
+**The override cannot reach the Done Gate.** Its six conditions are constants in
+`services/done_gate.py` and deliberately absent from `process_definitions`. Otherwise
+the first person who finds the gate inconvenient disables it, and that leaves no trace —
+while `--force` leaves three.
 """
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ProcessDefinition
+from app.api.errors import ApiError
+from app.db.models import ProcessDefinition, Project
+from app.services import audit as audit_actions
+from app.services.audit import AuditService
 
 DEFAULT_KEY = "default"
 
@@ -103,7 +115,53 @@ class ProcessService:
             )
         return row
 
-    async def effective(self, key: str = DEFAULT_KEY) -> EffectiveProcess:
+    async def overrides_for(self, project: Project) -> dict[str, Any]:
+        return dict(project.process_overrides or {})
+
+    async def set_overrides(
+        self, project: Project, overrides: dict[str, Any], *, actor_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """Validate every key against the default definition, then store.
+
+        A mistyped key is **silently ineffective** otherwise, and the person who typed
+        it believes they turned something off — until it blocks a card weeks later. So
+        an unknown key is a 422 that names it rather than a value that is ignored.
+        """
+        row = await self.definition()
+        known_readiness = {str(item.get("key")) for item in row.readiness}
+        known_gates = {str(item.get("key")) for item in row.gates}
+        known_lanes = {str(lane.get("stage")) for lane in row.lanes}
+
+        unknown: list[str] = sorted(
+            [k for k in overrides.get("readiness_disabled", []) if k not in known_readiness]
+            + [k for k in overrides.get("gates_disabled", []) if k not in known_gates]
+            + [k for k in overrides.get("wip", {}) if k not in known_lanes]
+        )
+        if unknown:
+            raise ApiError(
+                "PROCESS_OVERRIDE_UNKNOWN_KEY",
+                "這些項目不存在於流程定義中：" + "、".join(unknown),
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                details={"unknown": unknown},
+            )
+
+        stored = {
+            "readiness_disabled": sorted(set(overrides.get("readiness_disabled", []))),
+            "gates_disabled": sorted(set(overrides.get("gates_disabled", []))),
+            "wip": {k: int(v) for k, v in overrides.get("wip", {}).items()},
+        }
+        project.process_overrides = stored
+        await self._session.flush()
+        await AuditService(self._session).record(
+            audit_actions.PROCESS_OVERRIDE,
+            user_id=actor_id,
+            metadata={"project_id": str(project.id), "overrides": stored},
+        )
+        return stored
+
+    async def effective(
+        self, key: str = DEFAULT_KEY, *, project: Project | None = None
+    ) -> EffectiveProcess:
         """The definition with integration-dependent gates resolved.
 
         The `ui` gate needs a way to show a running mockup, and the only one the
@@ -118,6 +176,11 @@ class ProcessService:
         """
         row = await self.definition(key)
         integrations_enabled = await self._integration_states()
+        overrides = dict(project.process_overrides or {}) if project is not None else {}
+        gates_off = set(overrides.get("gates_disabled", []))
+        readiness_off = set(overrides.get("readiness_disabled", []))
+        wip_override = dict(overrides.get("wip", {}))
+
         gates = []
         for raw in sorted(row.gates, key=lambda item: item.get("order", 0)):
             needs = raw.get("depends_on_integration")
@@ -126,6 +189,13 @@ class ProcessService:
             if needs is not None and not integrations_enabled.get(needs, False):
                 enabled = False
                 reason = f"{needs}_integration_disabled"
+            elif raw["key"] in gates_off:
+                # **A distinct reason, not a shared "disabled".** "this deployment has
+                # no tunnel integration" and "this project switched it off" send a
+                # person to two different people, and a single word would send half of
+                # them to the wrong one.
+                enabled = False
+                reason = "disabled_by_project"
             gates.append(
                 Gate(
                     key=raw["key"],
@@ -136,12 +206,23 @@ class ProcessService:
                     disabled_reason=reason,
                 )
             )
+
+        lanes = []
+        for lane in sorted(row.lanes, key=lambda item: item.get("order", 0)):
+            stage = str(lane.get("stage"))
+            lanes.append(
+                {**lane, "wip_suggested": wip_override.get(stage, lane.get("wip_suggested"))}
+            )
+
         return EffectiveProcess(
             key=row.key,
             version=row.version,
             source=row.source,
-            lanes=sorted(row.lanes, key=lambda item: item.get("order", 0)),
-            readiness=list(row.readiness),
+            lanes=lanes,
+            # Disabled readiness items are **removed from the effective list**, not
+            # flagged: `readiness_keys()` feeds the Definition-of-Ready warnings, and an
+            # item that still reports while being "off" is the same as not being off.
+            readiness=[item for item in row.readiness if item.get("key") not in readiness_off],
             gates=gates,
             templates=dict(row.templates),
         )

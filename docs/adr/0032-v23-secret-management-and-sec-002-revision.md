@@ -276,3 +276,65 @@ that path. What contains it is the node's deployment posture and red line 5.
 | **Promoting `run.offer` to the large-frame set** | That socket carries interactive terminal bytes. The reasoning is identical to V2.2's refusal to enlarge `run.log_chunk`, and the answer is the same: bound the payload, do not widen the pipe |
 | **Delivering secrets in a second message after the offer** | One more message type, and a new ordering question ("what if the run starts before the secrets arrive") for a frame that is already a one-shot statement of fact |
 | **An unconditional startup check for the master key** | Would stop every existing deployment that does not use V2 from booting, to protect zero rows. All three precedents in this repository for a required secret are conditional |
+
+---
+
+# Amendment (V2.4, 2026-08-14) — the first code path that uses `provider_token`, and a second store that names commands
+
+## A1 — `provider_token` is used on Central and is still never delivered
+
+V2.3 defined the kind, stored it, and had no code path that sent one. V2.4 is the
+first user, and the place it is used is **Central's memory** — never a node.
+
+`UNDELIVERABLE_KINDS` therefore stays as it is, and this amendment records that it
+is permanent rather than pending: the five hard push constraints bind the daemon's
+git path, and nothing in them reaches an HTTPS request to a provider's API. A
+credential that can write to a repository without going through git is a credential
+none of them can contain.
+
+## A2 — It is decrypted outside the receive loop, and that is a different rule from §Consequences
+
+The base document says a project secret is decrypted **inside** the node WebSocket
+receive loop, at the claim, and explains why that is safe: AES-GCM is CPU-bound and
+awaits nothing.
+
+The provider token is decrypted in the **background worker** that opens pull
+requests, because what follows it is a network call to somebody else's server. The
+same loop that carries interactive terminal bytes cannot wait on that.
+
+Both are true; they are different paths. This is written down because "secrets are
+decrypted at the claim" reads like a description of the whole system, and after this
+phase it describes one of two paths.
+
+## A3 — Delivery auditing is unchanged; PR creation gets its own record
+
+`materialise` still audits names and never values. Opening a pull request writes a
+separate audit row — repository, PR number, head, base — and **no token, no
+fragment of one, and no length**.
+
+## A4 — A second platform-side store may name a command (SEC-002 is not amended again)
+
+The revised invariant from §1 stands **word for word**:
+
+> No request payload may name a command, or carry a secret's value.
+
+V2.4 adds `tasks.verification_commands` beside `projects.verification_commands`.
+Both are columns in Central's database, written by an authorised request and read
+back by Central when it assembles an offer — structurally identical to the argument
+this ADR made for `spec.secrets`, and for the same reason it does not touch the
+invariant.
+
+What keeps the card-level store from re-opening what §1 closed is **which action
+writes it**: `task.approve`, which `RUN_TOKEN_SCOPES` deliberately excludes (this
+module records that it is the half a run credential can never hold). A person may
+declare a check on a card; the agent being verified may not. The full argument is
+ADR 0033 §3b.
+
+## Alternatives rejected (amendment)
+
+| Rejected | Why |
+|---|---|
+| Delivering `provider_token` so the node opens the PR | The agent's sandbox would reach a credential that can write to any repository the token allows, and no push constraint applies to an HTTPS call |
+| Decrypting the provider token at the claim, with the other secrets | It is followed by a network call. The receive loop also carries terminal bytes |
+| Authorising card-level verification commands with `task.update` | The verified party would choose its own verification. Every exit code would remain real and every one would be worthless |
+| Amending SEC-002 a second time to permit "commands from a card" | Nothing needs permitting. A column is not a request payload, and saying otherwise would weaken the invariant to describe a case it already covers |

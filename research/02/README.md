@@ -90,7 +90,8 @@ tmux attach -t cliora-v22        # 需要看的時候才 attach
 > **V2.1 → [`plan/17/`](../../plan/17/README.md)（已實作，`evidence.sh` 10/10；合併提案待人工）**、
 > **V2.2 → [`plan/18/`](../../plan/18/README.md)**、
 > **V2.2_1 → [`plan/19/`](../../plan/19/README.md)（前端修復期）**、
-> **V2.3 → [`plan/20/`](../../plan/20/README.md)**。
+> **V2.3 → [`plan/20/`](../../plan/20/README.md)（已實作，十三張 ticket 全綠；合併提案待人工）**、
+> **V2.4 → [`plan/21/`](../../plan/21/README.md)**。
 > 執行計畫與本目錄不一致時，**以執行計畫為準並回寫這裡**——它讀的是程式碼，本目錄讀的是構想。
 > 2026-08-09 的一次回寫：V2.1 動 contract v1.10.0 ＋ `agentd` 0.8.0，V2.2 起的版本號與
 > ADR 編號各順移一格。

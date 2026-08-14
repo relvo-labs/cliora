@@ -344,3 +344,71 @@ Two consequences that are enforced rather than merely stated:
 | Central overwriting a runner's tags | Two sources of truth: `runner.register` overwrites the edit on reconnect. A tag is the runner's declaration about itself, so changing one means changing that node's config file |
 | A pre-registered tag dictionary | Premature. Let free strings run until one capability is spelled three ways |
 | Filtering on the runner | Trusts self-restraint, and leaves "why has nobody claimed this" unanswerable on the platform |
+
+---
+
+# Amendment (V2.4, 2026-08-14) — a node declares what it can do, and the default is that it cannot
+
+This amendment adds one field to `runner.register` and one rule about how Central
+uses it. Neither changes the runner model; both close a hole that was already open.
+
+## C1 — `features`, a list the node reports about itself
+
+`runner.register` gains `features`, a bounded array of known strings. `agentd`
+0.11.0 reports `["verification", "evidence"]`. **Absent means the empty set.**
+
+Central puts feature-gated content into an offer **only for a node that named the
+feature**. Nothing else consults it — it is not an eligibility condition, not a
+filter on the offer query, and not shown as a capability the operator can grant.
+It answers one question: *may this content be put on the wire to this machine.*
+
+## C2 — Its default is the opposite of `run_untagged` and `accept_secrets`, on purpose
+
+Those two are **refusal** flags: absent means the node does not refuse, so an older
+daemon keeps behaving as it did. `features` is a **support** flag: absent means the
+node does not support.
+
+A permissive default on a support flag would mean assuming that a machine which has
+never heard of a feature performs it. The two polarities look inconsistent in a
+table and are the same rule — **an absent declaration means the older behaviour** —
+and the older behaviour for a capability is not having it.
+
+## C3 — Why this exists: central→node compatibility is not permissive
+
+The two directions of the protocol have opposite failure modes, and V2.3 only tested
+one of them.
+
+**node→central is forgiving.** Central reads the keys it knows and ignores the rest;
+an older node that omits a field gets the documented default. Exit condition 3f of
+V2.3 tested exactly this.
+
+**central→node is not.** `ValidateControl` decodes with `DisallowUnknownFields`, and
+Go applies that recursively — so it also governs `spec`. When it fails,
+`handleRunOffer` **returns without sending anything**: no decline, no error frame.
+The card is claimed, the offer disappears, the lease expires, the card is retried to
+exhaustion and blocked, and no message anywhere mentions compatibility.
+
+**This was already true before V2.4.** `spec.branch` shipped in contract 1.12.0, so
+a node still running `agentd` 0.8.0 drops every `delivery: branch` offer it is sent,
+silently. That is a defect of V2.3 rather than of this amendment, and it is recorded
+here because this is where the general rule is written:
+
+> **New content in `spec` requires the receiving node to have declared support for
+> it first.** A version number is not a substitute: it says what shipped, not what is
+> configured, and V2.3 already ruled that capability is declared rather than
+> inferred.
+
+**One retrospective exception, and it is the only version check in the phase.** A
+node that declares no `features` *and* reports an `agentd` older than 0.9.0 is not
+offered a card whose `delivery` is anything but `none`, and the Agents page says
+why. Deployed 0.8.0 binaries cannot be made to declare anything, so nothing else
+would reach them. New nodes are judged by declaration alone.
+
+## Alternatives rejected (amendment)
+
+| Rejected | Why |
+|---|---|
+| Free-form feature strings | A misspelling becomes "silently unsupported", which is the failure class this amendment exists to remove |
+| Treating an absent `features` as full support | Assumes an un-upgraded machine performs a feature it has never heard of |
+| Gating on `nodes.daemon_version` generally | What shipped is not what is configured. Kept only for the 0.8.0 back-fill, where no declaration can ever arrive |
+| Making the node decline an offer it cannot handle | It cannot: the frame fails to decode before any handler sees it, which is precisely why the check has to be on the sending side |

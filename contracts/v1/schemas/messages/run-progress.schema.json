@@ -20,9 +20,10 @@
         "checked_out",
         "running",
         "waiting_for_input",
+        "verifying",
         "finishing"
       ],
-      "$comment": " `authenticating` joins in 1.12.0, between preparing and fetching: with platform-managed credentials in play, \"stuck on a credential\" and \"stuck on the network\" are different facts and the Run detail page should not have to guess which."
+      "$comment": " `authenticating` joins in 1.12.0, between preparing and fetching: with platform-managed credentials in play, \"stuck on a credential\" and \"stuck on the network\" are different facts and the Run detail page should not have to guess which. `verifying` joins in 1.13.0, between running and finishing: the platform's own checks run after the agent exits, and 'stuck on the tests' and 'stuck on cleanup' are different facts the Run page should not have to guess between."
     },
     "message": {
       "type": "string",

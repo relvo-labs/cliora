@@ -61,6 +61,12 @@ func (m *Manager) runnerRegisterPayload(ctx context.Context) map[string]any {
 		"labels":         m.cfg.Runner.TagList(),
 		"run_untagged":   m.cfg.Runner.RunUntaggedValue(),
 		"accept_secrets": m.cfg.Runner.AcceptSecretsValue(),
+		// What this binary can do, not what this machine wants to do — so a constant
+		// rather than a setting. Central puts feature-gated content into an offer only
+		// for a node that named the feature, and **absent means the empty set**: the
+		// opposite default from the two booleans above, because those are refusals and
+		// this is support (ADR 0029 amendment C).
+		"features":       runner.Features,
 		"max_concurrent": m.cfg.Runner.MaxConcurrent,
 		"max_waiting":    m.cfg.Runner.MaxWaiting,
 		"dedicated":      runner.Dedicated(m.cfg),
@@ -217,7 +223,12 @@ func (m *Manager) executeRun(
 
 	send := func(kind string, payload map[string]any) {
 		payload["run_id"] = runID
-		for _, key := range []string{"summary", "message"} {
+		// Optional strings are **omitted when empty, never sent as ""**: the contract
+		// gives them `minLength: 1`, and a frame that fails validation is dropped by the
+		// receiver *silently*. `pushed_branch` joins the list in 1.13.0 — an empty one
+		// would take the whole `run.complete` with it, and the symptom would be an
+		// expired lease rather than an error (plan/18 D2).
+		for _, key := range []string{"summary", "message", "pushed_branch"} {
 			if value, ok := payload[key].(string); ok && value == "" {
 				delete(payload, key)
 			}
@@ -330,6 +341,7 @@ func (m *Manager) executeRun(
 		cmd.Dir = layout.Root
 	}
 
+	startedAt := time.Now()
 	execution, out, err := runner.Start(cmd, runner.Options{
 		ChunkBytes:  32 * 1024,
 		IdleTimeout: time.Duration(spec.IdleTimeoutSeconds) * time.Second,
@@ -372,6 +384,27 @@ func (m *Manager) executeRun(
 	outcome := execution.Wait()
 	stopRenew()
 
+	// **The platform's own checks, after the agent and before the summary.** The
+	// ordering is a decision: a check that formats or builds leaves its own marks in
+	// `git status`, and hiding a verification step's side effects would make the
+	// evidence disagree with the diff for reasons nobody could see (ADR 0033 §3b).
+	//
+	// The commands were assembled by Central from two platform-side stores; nothing in
+	// a request payload names one, and declaring one on a card takes `task.approve`,
+	// which a run token never holds. That is what the exit codes below are worth.
+	var verification []runner.CheckResult
+	if checks := runner.DecodeChecks(spec.AllowedVerificationCommands); len(checks) > 0 {
+		send("run.progress", map[string]any{"phase": "verifying"})
+		verification = runner.RunChecks(ctx, checks, runner.VerifyOptions{
+			Dir: cmd.Dir,
+			Env: childEnv,
+			// What is left of the run's wall clock. The group does not extend it: a run
+			// that spent nearly six hours agent-side does not get another fifteen
+			// minutes because it also declared checks.
+			Remaining: time.Duration(spec.TimeoutSeconds)*time.Second - time.Since(startedAt),
+		})
+	}
+
 	send("run.progress", map[string]any{"phase": "finishing"})
 	summary := m.runner.Inspect(ctx, layout, source.Kind != "none")
 
@@ -394,6 +427,7 @@ func (m *Manager) executeRun(
 	// The platform does **not** commit on the agent's behalf. With nothing committed
 	// there is nothing to push, and the honesty rule below takes over — deciding what
 	// counts as a commit is not the platform's to make.
+	pushedBranch := ""
 	if spec.Branch != "" && offer.Delivery == "branch" && source.Kind != "none" {
 		hasCommits, checkErr := m.runner.Fetch.HasCommitsToPush(ctx, layout.Repo)
 		switch {
@@ -415,6 +449,11 @@ func (m *Manager) executeRun(
 				summaryText += " ⚠ 分支未能推送：" + pushErr.Error()
 			} else {
 				summaryText += fmt.Sprintf(" 已推送分支 %s。", spec.Branch)
+				// **A fact, not an intention.** Central composed this name and could
+				// recompute it; only this daemon knows the push succeeded, and a pull
+				// request may only be opened on a branch that is really there
+				// (ADR 0031 amendment B4).
+				pushedBranch = spec.Branch
 			}
 		}
 	}
@@ -461,14 +500,26 @@ func (m *Manager) executeRun(
 		result = "no_changes"
 	}
 	_ = runner.MarkFinished(layout, "succeeded", time.Now())
-	send("run.complete", map[string]any{
+	complete := map[string]any{
 		"result":           result,
 		"summary":          summaryText,
 		"disk_bytes":       summary.DiskBytes,
 		"git_remotes":      summary.Remotes,
 		"unpushed_commits": summary.UnpushedCommits,
 		"untracked_files":  summary.UntrackedFiles,
-	})
+		"pushed_branch":    pushedBranch,
+	}
+	if len(verification) > 0 {
+		// Omitted when empty rather than sent as `[]`: an empty array is
+		// indistinguishable from "neither store declared a check", and that is what
+		// absence already means.
+		//
+		// **`CheckPayload` rather than the slice itself**: the redactor recurses through
+		// maps and `[]any` and returns anything else untouched, so a typed slice here
+		// would carry a command's output verbatim past it (`runner.CheckPayload`).
+		complete["verification"] = runner.CheckPayload(verification)
+	}
+	send("run.complete", complete)
 }
 
 func (m *Manager) renewLease(ctx context.Context, runID string, write func(string, string, any) error) {

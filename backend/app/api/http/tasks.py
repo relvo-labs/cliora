@@ -17,12 +17,14 @@ service, because both depend on the *caller* rather than on the resource:
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.api.http.deps import (
+    may_perform,
     require_action,
     require_agent_action,
     require_projects_enabled,
@@ -38,6 +40,9 @@ from app.api.http.schemas import (
     GateDecisionRequest,
     GateDTO,
     ProcessDTO,
+    ProcessOverridesRequest,
+    ProjectVerificationDTO,
+    ProjectVerificationRequest,
     RoadmapDTO,
     RoadmapEpicDTO,
     RoadmapStoryDTO,
@@ -48,13 +53,23 @@ from app.api.http.schemas import (
     UpdateEpicRequest,
     UpdateTaskRequest,
     UpdateUserStoryRequest,
+    VerificationCommandsRequest,
 )
 from app.db.engine import get_session
 from app.db.models import Epic, Task, User, UserStory
 from app.services.agent_auth import AGENT_FORBIDDEN_FIELDS, AgentPrincipal, SessionTokenService
-from app.services.process import EffectiveProcess
+from app.services.evidence import validate_commands
+from app.services.process import EffectiveProcess, ProcessService
 from app.services.projects import ProjectService
-from app.services.rbac import PROJECT_VIEW, TASK_APPROVE, TASK_CREATE, TASK_UPDATE
+from app.services.rbac import (
+    PROCESS_MANAGE,
+    PROJECT_MANAGE,
+    PROJECT_VIEW,
+    TASK_APPROVE,
+    TASK_CREATE,
+    TASK_FORCE_DONE,
+    TASK_UPDATE,
+)
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.services.tasks import TaskService
 from app.settings import Settings, get_settings
@@ -62,8 +77,13 @@ from app.settings import Settings, get_settings
 router = APIRouter(prefix="/api", tags=["tasks"], dependencies=[Depends(require_projects_enabled)])
 
 
-def _tasks(session: AsyncSession) -> TaskService:
-    return TaskService(session)
+def _tasks(session: AsyncSession, settings: Settings | None = None) -> TaskService:
+    """Settings are passed in, never resolved inside the service.
+
+    Only the routes that reach a flag-dependent rule need to supply them; the rest keep
+    the one-argument call. The Done Gate is the first such rule (ADR 0033 §5).
+    """
+    return TaskService(session, settings=settings)
 
 
 def get_registry() -> NodeConnectionRegistry:
@@ -74,8 +94,11 @@ async def _project(session: AsyncSession, settings: Settings, project_id: uuid.U
     return await ProjectService(session, settings=settings).require(project_id)
 
 
-def _process_dto(process: EffectiveProcess) -> ProcessDTO:
+def _process_dto(
+    process: EffectiveProcess, *, overrides: dict[str, Any] | None = None
+) -> ProcessDTO:
     return ProcessDTO(
+        overrides=overrides or {},
         key=process.key,
         version=process.version,
         source=process.source,
@@ -236,8 +259,35 @@ async def read_process(
     question is "what applies to this board", and V2.4's per-project override should
     not change the shape of the request.
     """
-    await _project(session, settings, project_id)
-    return _process_dto(await _tasks(session).process())
+    project = await _project(session, settings, project_id)
+    return _process_dto(
+        await _tasks(session).process(project), overrides=dict(project.process_overrides or {})
+    )
+
+
+@router.put("/projects/{project_id}/process/overrides", response_model=ProcessDTO)
+async def set_process_overrides(
+    project_id: uuid.UUID,
+    body: ProcessOverridesRequest,
+    user: User = Depends(require_action(PROCESS_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ProcessDTO:
+    """Turn existing process items off, or adjust WIP advice. Nothing else.
+
+    `process.manage` rather than `project.manage`: a project's settings describe one
+    project, while the process definition is the vocabulary every board and every
+    cross-project metric is expressed in (ADR 0033 §5).
+
+    Returns the **applied** definition, not the stored switches alone — the screen that
+    made the change is the screen that has to show its effect.
+    """
+    project = await _project(session, settings, project_id)
+    service = ProcessService(session)
+    stored = await service.set_overrides(project, body.model_dump(), actor_id=user.id)
+    dto = _process_dto(await service.effective(project=project), overrides=stored)
+    await session.commit()
+    return dto
 
 
 @router.get("/projects/{project_id}/board", response_model=BoardDTO)
@@ -509,7 +559,9 @@ async def update_task(
     task_id: uuid.UUID,
     body: UpdateTaskRequest,
     user: User = Depends(require_action(TASK_UPDATE)),
+    may_force: bool = Depends(may_perform(TASK_FORCE_DONE)),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> TaskWriteDTO:
     """Move or edit a card, under the version it was read at.
 
@@ -517,10 +569,12 @@ async def update_task(
     optimistically and rolls it back on any refusal, which is why the 409 body carries
     the card's current version (`plan/17/07-…md` §2.2).
     """
-    service = _tasks(session)
+    service = _tasks(session, settings)
     task = await service.require_task(task_id)
     changes = body.model_dump(exclude_unset=True)
     changes.pop("version", None)
+    force = bool(changes.pop("force", False))
+    force_reason = changes.pop("force_reason", None)
     if not changes:
         raise ApiError(
             "INVALID_ARGUMENT",
@@ -533,10 +587,79 @@ async def update_task(
         actor_kind="user",
         expected_version=body.version,
         changes=changes,
+        force=force,
+        force_reason=force_reason,
+        may_force=may_force,
     )
     # Serialise before committing: `expire_on_commit` means every column read after
     # the commit is a fresh SELECT, and the DTO already holds everything it needs.
     dto = TaskWriteDTO(task=await _task_dto(service, result.task), warnings=result.warnings)
+    await session.commit()
+    return dto
+
+
+@router.put("/projects/{project_id}/verification-commands", response_model=ProjectVerificationDTO)
+async def set_project_verification_commands(
+    project_id: uuid.UUID,
+    body: ProjectVerificationRequest,
+    _user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ProjectVerificationDTO:
+    """The project's checks, and the optional requirement that one of them ran.
+
+    `project.manage` rather than `process.manage`: these describe *this* project's
+    definition of verified, while the process definition is the vocabulary shared across
+    projects (ADR 0033 §5).
+
+    `require_project_verification` is **off by default**, and turning it on is what
+    converges the flexibility the card store buys: a card that ran only its own checks
+    then cannot reach `done`. Off by default because a switch that blocks people on day
+    one teaches them to stop using the feature it guards.
+    """
+    project = await _project(session, settings, project_id)
+    project.verification_commands = validate_commands(
+        [command.model_dump() for command in body.commands], origin="project"
+    )
+    project.require_project_verification = body.require_project_verification
+    await session.flush()
+    dto = ProjectVerificationDTO(
+        commands=project.verification_commands,
+        require_project_verification=project.require_project_verification,
+    )
+    await session.commit()
+    return dto
+
+
+@router.put("/tasks/{task_id}/verification-commands", response_model=TaskDTO)
+async def set_task_verification_commands(
+    task_id: uuid.UUID,
+    body: VerificationCommandsRequest,
+    user: User = Depends(require_action(TASK_APPROVE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> TaskDTO:
+    """This card's own checks — **`task.approve`, not `task.update`**.
+
+    That is the entire security argument for letting a card declare verification at all.
+    `RUN_TOKEN_SCOPES` is `{project.view, task.update}` and never contains
+    `task.approve`; `services/agent_auth.py` records that the two actions are held by
+    the same people on purpose and were separated precisely so a credential's scope
+    could exclude one. So a person may declare a check here and **the agent being
+    verified may not** — which is what keeps both origins `machine_verified`
+    (ADR 0033 §3b).
+
+    Its own endpoint rather than a field on `PATCH` for the same reason: reachable
+    through that body it would be writable with `task.update`.
+    """
+    service = _tasks(session, settings)
+    task = await service.require_task(task_id)
+    await _project(session, settings, task.project_id)
+    task.verification_commands = validate_commands(
+        [command.model_dump() for command in body.commands], origin="card"
+    )
+    await session.flush()
+    dto = await _task_dto(service, task)
     await session.commit()
     return dto
 
@@ -666,6 +789,7 @@ async def agent_update_task(
     body: UpdateTaskRequest,
     principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> TaskWriteDTO:
     """`cliora task update`. The only write an agent can make.
 
@@ -674,11 +798,22 @@ async def agent_update_task(
     agent cannot set `gates`, an owner, a runner or a secret list — those are people's
     decisions (ADR 0028 sec 3).
     """
-    service = _tasks(session)
+    service = _tasks(session, settings)
     task = await service.require_task(task_id)
     _same_project(principal, task)
     changes = body.model_dump(exclude_unset=True)
     changes.pop("version", None)
+    # Popped rather than left to default: an agent that sends `force: true` gets the
+    # same 403 as one that sends `gates`, and the reason shows up in the list below
+    # instead of being silently ignored.
+    if changes.pop("force", False) or changes.pop("force_reason", None):
+        raise ApiError(
+            "FORBIDDEN_FIELD",
+            "An agent may not force a card into done",
+            status.HTTP_403_FORBIDDEN,
+        )
+    changes.pop("force", None)
+    changes.pop("force_reason", None)
     forbidden = sorted(AGENT_FORBIDDEN_FIELDS & changes.keys())
     if forbidden:
         raise ApiError(

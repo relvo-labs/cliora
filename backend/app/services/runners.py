@@ -68,6 +68,12 @@ BLOCKED_REASONS = frozenset({"at_capacity", "waiting_limit", "disk_quota", "disk
 EDITABLE_RUNNER_FIELDS = frozenset({"name", "enabled", "max_concurrent", "max_waiting"})
 
 
+# What Central knows how to gate on. Kept beside the register handler rather than
+# imported from the contract package, because this is the *server's* view of which
+# features it will act on — a node may report one this build does not use yet.
+KNOWN_RUNNER_FEATURES = frozenset({"verification", "evidence"})
+
+
 def _tri_state(value: Any) -> bool:
     """A node's boolean declaration, where **absent means true**.
 
@@ -286,6 +292,8 @@ class RunnerService:
             if isinstance(runtimes, list)
             else []
         )
+        features = payload.get("features")
+        features = features if isinstance(features, list) else []
         labels_value = (
             sorted({item for item in labels if isinstance(item, str)})
             if isinstance(labels, list)
@@ -303,6 +311,14 @@ class RunnerService:
             # (ADR 0029 amendment B3).
             "run_untagged": _tri_state(payload.get("run_untagged")),
             "accept_secrets": _tri_state(payload.get("accept_secrets")),
+            # **Not `_tri_state`, and not permissive**: an absent list means the node
+            # supports nothing new, because a support flag's "before the upgrade" value
+            # is "cannot" (ADR 0029 amendment C). Unknown strings are dropped rather
+            # than stored — the wire enum already rejects them, and storing one would
+            # let a typo look like a capability.
+            "features": sorted(
+                {item for item in (features or []) if item in KNOWN_RUNNER_FEATURES}
+            ),
             "max_concurrent": _bounded(payload.get("max_concurrent"), default=1),
             "max_waiting": _bounded(payload.get("max_waiting"), default=5),
             "dedicated": bool(payload.get("dedicated", False)),
