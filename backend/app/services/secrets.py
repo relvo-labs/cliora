@@ -311,7 +311,10 @@ class SecretService:
 
         Silently skips what it cannot deliver rather than failing the claim:
 
-        * a kind this phase never delivers (`provider_token`);
+        * a kind that is **never** delivered to a node (`provider_token`) — V2.4 uses
+          it, but in Central's own memory, because a credential that can write to a
+          repository over HTTPS is not reachable by any of the five push constraints
+          (ADR 0032 amendment A1);
         * a git kind while `CLIORA_GIT_SECRET_DELIVERY_ENABLED` is off.
 
         Both are already refused at creation, so reaching them means the flag was turned
@@ -362,6 +365,44 @@ class SecretService:
             )
         await self._session.flush()
         return delivered
+
+    async def provider_token(self, project_id: uuid.UUID, secret_id: uuid.UUID) -> str | None:
+        """The provider credential, in Central's memory and **never on the wire**.
+
+        The second path back to plaintext, and the reason it is separate from
+        `materialise` rather than a flag on it:
+
+        * `materialise` answers "what does this run receive", and its whole shape —
+          audit row, `last_used_at`, the `UNDELIVERABLE_KINDS` skip — is about handing a
+          value to a machine. This one hands nothing to anybody; it is used inside this
+          process and discarded.
+        * `provider_token` is in `UNDELIVERABLE_KINDS` precisely so `materialise` can
+          never return one, and that stays true. A flag would have made it returnable by
+          the wrong caller passing the wrong argument.
+
+        Decrypted in the pull-request worker rather than at the claim, because a network
+        call follows it and the claim runs on the loop that carries terminal bytes
+        (ADR 0032 amendment A2).
+        """
+        secret = await self._session.get(ProjectSecret, secret_id)
+        if (
+            secret is None
+            or secret.project_id != project_id
+            or secret.deleted_at is not None
+            or secret.kind != "provider_token"
+        ):
+            return None
+        secret.last_used_at = now_utc()
+        await self._session.flush()
+        return secret_envelope.unseal(
+            secret_envelope.SealedSecret(
+                value_encrypted=secret.value_encrypted,
+                value_nonce=secret.value_nonce,
+                dek_wrapped=secret.dek_wrapped,
+                dek_nonce=secret.dek_nonce,
+                key_version=secret.key_version,
+            )
+        )
 
 
 def validate_allowlist(names: Any) -> list[str]:

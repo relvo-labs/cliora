@@ -40,6 +40,7 @@ from app.db.models import (
     Project,
     ProjectRepository,
     Task,
+    TaskArtifact,
     TaskDependency,
     TaskMessage,
     TaskRun,
@@ -57,6 +58,7 @@ from app.services.activity import (
 )
 from app.services.agent_auth import RunTokenService, RunTokenSubject
 from app.services.audit import AuditService
+from app.services.providers import supports_host
 from app.services.runners import RepositoryService, clone_url
 from app.services.secrets import MaterialisedSecret, SecretService
 from app.settings import Settings, get_settings
@@ -91,13 +93,27 @@ RUN_WALL_CLOCK_SECONDS = 6 * 60 * 60
 # killing a working agent re-queues the card, so one wrong kill is usually three.
 RUN_IDLE_TIMEOUT_SECONDS = 300
 
-UNSUPPORTED_DELIVERIES = {
-    # `branch` left this table in V2.3: pushing a `cliora/…` branch is now the phase's
-    # main delivery path (ADR 0031 amendment A2). The two that remain need a provider
-    # API rather than git transport, which is V2.4.
-    "pull_request": "V2.4",
-    "existing_pr": "V2.4",
+# The two modes that need a provider API rather than git transport.
+PR_DELIVERIES = frozenset({"pull_request", "existing_pr"})
+
+# What each card intent looks like on the wire.
+_WIRE_DELIVERY = {
+    "none": "none",
+    "artifact": "artifact",
+    "branch": "branch",
+    "pull_request": "branch",
+    "existing_pr": "branch",
 }
+
+# **This table is empty, and it is kept rather than deleted.**
+#
+# All five delivery modes work from V2.4. What the table is for is the *next* one: a
+# declaration the platform cannot honour has to be refused rather than accepted and
+# silently ignored (plan/18/00-…md D11), and this is where that refusal lives. An empty
+# dict makes the check below a no-op that reads as dead code — which is exactly how it
+# would get deleted, leaving the next unsupported mode nowhere to be turned away.
+# `GATE-DV-DELIVERY-COVERAGE` is what actually keeps the five honest.
+UNSUPPORTED_DELIVERIES: dict[str, str] = {}
 
 
 def tag_match_clause(runner: AgentRunner):  # noqa: ANN201 - a SQLAlchemy clause
@@ -193,6 +209,10 @@ class RunOffer:
     # The branch this run creates, composed by Central because it holds `card_ref` and
     # the sequence. The daemon re-checks the prefix regardless (ADR 0031 amendment A2).
     branch: str = ""
+    # The project's checks then the card's, already encoded (ADR 0033 §3b). Assembled by
+    # the caller rather than here so this dataclass keeps holding only what goes on the
+    # wire.
+    verification_commands: tuple[str, ...] = ()
 
     def spec(self) -> dict[str, Any]:
         source: dict[str, Any] = {"kind": self.run.source_kind or "none"}
@@ -202,7 +222,12 @@ class RunOffer:
         spec: dict[str, Any] = {
             "source": source,
             "context": self.context,
-            "allowed_verification_commands": [],
+            # Both verification stores, encoded into a field contract 1.11.0 already
+            # carries — `spec` gains no new key, so an un-upgraded node still decodes
+            # this offer (ADR 0029 amendment C). An older daemon ignores a non-empty
+            # list rather than rejecting the frame, which is what makes this field the
+            # right seat for the feature.
+            "allowed_verification_commands": self.verification_commands,
             # The wall clock is a backstop, six hours; the idle timer is the primary
             # liveness judgement and the daemon owns the decision (ADR 0029 §4).
             "timeout_seconds": RUN_WALL_CLOCK_SECONDS,
@@ -225,7 +250,12 @@ class RunOffer:
             "card_ref": self.task.card_ref,
             "title": self.task.title,
             "attempt": self.run.attempt,
-            "delivery": self.task.delivery,
+            # **The card's intent has five values; the wire has three.** `pull_request`
+            # and `existing_pr` are Central's business — the daemon has no provider
+            # credential and could not act on knowing — and sending either would be an
+            # unknown value to every deployed node, which drops the whole offer in
+            # silence (ADR 0033 §3).
+            "delivery": _WIRE_DELIVERY.get(self.task.delivery, self.task.delivery),
             "spec": spec,
         }
 
@@ -336,6 +366,40 @@ class RunService:
                         "settings_hint": f"/projects/{project.id}#secrets",
                     },
                 )
+        if task.delivery in PR_DELIVERIES:
+            # **A pull request needs code and somewhere to point.** Both are refusals
+            # about *this card's declarations*, which is why they sit in step ② with
+            # the secrets rather than with the repository resolution below: what is
+            # wrong is the card, and the fix is a card edit.
+            if task.source == "none":
+                raise ApiError(
+                    "TASK_DELIVERY_NEEDS_SOURCE",
+                    f"'{task.delivery}' 要交付程式碼變更，但這張卡宣告不取得程式碼",
+                    status.HTTP_409_CONFLICT,
+                    details={"delivery": task.delivery, "source": task.source},
+                )
+            if task.delivery == "pull_request" and not (task.target_branch or "").strip():
+                raise ApiError(
+                    "TASK_PR_TARGET_MISSING",
+                    "以合併請求交付必須指定目標分支",
+                    status.HTTP_409_CONFLICT,
+                    details={"delivery": task.delivery},
+                )
+            if task.delivery == "existing_pr" and not (task.base_branch or "").startswith(
+                "cliora/"
+            ):
+                # The platform pushes only inside `cliora/`, so this mode continues
+                # **its own** pull requests and nothing else. Refused here rather than
+                # at the push, where the run has already spent its work
+                # (ADR 0031 amendment B2).
+                raise ApiError(
+                    "TASK_EXISTING_PR_OUT_OF_NAMESPACE",
+                    f"'{task.base_branch or '這條分支'}' 不在 cliora/ 命名空間內，"
+                    "而平台只推得到那裡面。`existing_pr` 只能接續平台自己開的 PR；"
+                    "要接續別人的分支，請改用 delivery: branch 並自行合併。",
+                    status.HTTP_409_CONFLICT,
+                    details={"base_branch": task.base_branch},
+                )
         if task.source == "existing_branch" and task.delivery == "branch":
             # The push constraint applies to whatever branch the run ends on, so a card
             # continuing a branch outside the namespace can never deliver. Refused here
@@ -375,6 +439,16 @@ class RunService:
                     "nowhere to fetch the code from",
                     status.HTTP_409_CONFLICT,
                     details={"settings_hint": f"/projects/{project.id}#repositories"},
+                )
+            if task.delivery in PR_DELIVERIES and not supports_host(repository.host):
+                # An unsupported provider is refused **now**, not after the work is
+                # done: a half-built adapter that fails at delivery costs a whole run
+                # (ADR 0033 §Consequences).
+                raise ApiError(
+                    "TASK_PROVIDER_UNSUPPORTED",
+                    f"這個部署沒有 {repository.host} 的合併請求整合",
+                    status.HTTP_409_CONFLICT,
+                    details={"host": repository.host, "delivery": task.delivery},
                 )
             if not repositories.host_allowed(repository.host):
                 raise ApiError(
@@ -666,6 +740,9 @@ class RunService:
                     "attempt": run.attempt,
                 },
             )
+            from app.services.evidence import assemble_verification_commands
+
+            project = await self._session.get(Project, run.project_id)
             return RunOffer(
                 run=run,
                 task=task,
@@ -674,6 +751,16 @@ class RunService:
                 context=render_run_context(task, secret_names=[s.name for s in secrets]),
                 secrets=secrets,
                 branch=run_branch(task, run),
+                # Both stores, project first — and only for a node that declared it can
+                # run them. An older daemon ignores a non-empty list rather than
+                # dropping the offer, so this is belt and braces rather than the thing
+                # that makes it safe; the declaration is what makes the *next* feature
+                # safe (ADR 0029 amendment C).
+                verification_commands=(
+                    tuple(assemble_verification_commands(project, task))
+                    if project is not None and "verification" in (runner.features or [])
+                    else ()
+                ),
             )
         return None
 
@@ -807,6 +894,12 @@ class RunService:
             run.disk_bytes = disk_bytes
         run.finished_at = now_utc()
         run.last_event_at = now_utc()
+        # **The branch the daemon actually pushed**, not the one Central composed. A
+        # pull request may only be opened on a branch that is really there, so intent
+        # and fact are different columns (ADR 0031 amendment B4).
+        pushed = payload.get("pushed_branch")
+        if isinstance(pushed, str) and pushed.startswith("cliora/"):
+            run.pushed_branch = pushed
         # The two retentions of ADR 0030, as one line: a failed run's log is the one
         # somebody will come back to.
         run.logs_expire_at = now_utc() + timedelta(days=3 if succeeded else 14)
@@ -816,6 +909,7 @@ class RunService:
         await self._session.flush()
         task = await self._session.get(Task, run.task_id)
         if task is not None:
+            await self._record_run_outcome(run, task, payload, succeeded=succeeded)
             await self._activity.record(
                 RUN_FINISHED,
                 project_id=run.project_id,
@@ -828,6 +922,101 @@ class RunService:
                     "attempt": run.attempt,
                 },
             )
+
+    async def _record_run_outcome(
+        self, run: TaskRun, task: Task, payload: dict, *, succeeded: bool
+    ) -> None:
+        """What the run produced, as evidence and as a report — and one refusal.
+
+        Three things happen here and each is placed here for a reason.
+
+        **`machine_verified` is written in exactly one place**, and this is it. Reaching
+        it required a valid node credential and a run that belongs to that node
+        (`_run_for_node`), which is the whole of what the level is worth.
+        `GATE-DV-MACHINE-VERIFIED-ONE-WRITER` asserts there is no second writer.
+
+        **The evidence the daemon collected becomes rows**, with `kind` deciding
+        `source` — so nothing here can turn an agent's account into a machine fact.
+
+        **`delivery: artifact` with no artifact is not a success.** The daemon cannot
+        judge this: artifacts arrive over HTTP and it does not know how many there are,
+        so a check written there would always pass (ADR 0033 §2, honesty rule 3).
+        """
+        from app.services.deliveries import PENDING as DELIVERY_PENDING
+        from app.services.deliveries import DeliveryService
+        from app.services.evidence import EvidenceService, VerificationService
+
+        checks = payload.get("verification")
+        if isinstance(checks, list) and checks:
+            await VerificationService(self._session).record_machine_verified(
+                task=task,
+                run_id=run.id,
+                checks=checks,
+                summary=run.summary,
+                runner_id=run.runner_id,
+            )
+
+        evidence = EvidenceService(self._session)
+        git_state = {
+            key: payload.get(key)
+            for key in ("git_remotes", "unpushed_commits", "untracked_files")
+            if payload.get(key) is not None
+        }
+        if git_state:
+            await evidence.add(
+                task=task,
+                kind="git_state",
+                payload=git_state,
+                run_id=run.id,
+                actor_kind=ACTOR_AGENT,
+                user_id=None,
+                runner_id=run.runner_id,
+                agent_written=False,
+            )
+        if run.pushed_branch or run.delivery_ref:
+            await evidence.add(
+                task=task,
+                kind="delivery",
+                payload={
+                    "branch": run.pushed_branch,
+                    "ref": run.delivery_ref,
+                    "delivery": task.delivery,
+                },
+                run_id=run.id,
+                actor_kind=ACTOR_SYSTEM,
+                user_id=None,
+                runner_id=None,
+                agent_written=False,
+            )
+
+        # **The intent, and only the intent.** The pull request itself is opened by the
+        # reaper's worker, because this method runs on the node receive loop — the same
+        # socket that carries interactive terminal bytes, where a 20-second HTTP call
+        # stops somebody's terminal for 20 seconds (ADR 0033 §3, D17).
+        # `GATE-DV-NO-HTTP-IN-LOOP` asserts nothing here reaches a provider.
+        if succeeded and DeliveryService(self._session, settings=self._settings).wants_pull_request(
+            task, run.pushed_branch
+        ):
+            run.delivery_state = DELIVERY_PENDING
+
+        if succeeded and task.delivery == "artifact":
+            attached = (
+                await self._session.execute(
+                    select(func.count())
+                    .select_from(TaskArtifact)
+                    .where(TaskArtifact.run_id == run.id, TaskArtifact.deleted_at.is_(None))
+                )
+            ).scalar() or 0
+            if int(attached) == 0:
+                run.status = "failed"
+                run.result = "delivery_incomplete"
+                run.error_code = "RUN_DELIVERY_INCOMPLETE"
+                await MessageService(self._session).post_event(
+                    task=task,
+                    body="這張卡宣告以產物交付，但這次執行沒有附上任何產物，因此不算完成。",
+                    event_kind="run.delivery_incomplete",
+                )
+        await self._session.flush()
 
     async def _run_for_node(self, node_id: uuid.UUID, payload: dict) -> TaskRun | None:
         """Resolve `payload.run_id` **and check it belongs to this node's runner**.
@@ -1072,11 +1261,18 @@ def run_branch(task: Task, run: TaskRun) -> str:
     already fixed — and dispatch refuses that combination unless it is already inside
     the namespace (ADR 0031 amendment A4).
     """
-    if task.delivery != "branch":
-        return ""
-    if task.source == "existing_branch":
+    if task.delivery in ("branch", "pull_request"):
+        if task.source == "existing_branch":
+            return task.base_branch or ""
+        return f"cliora/{task.card_ref}-{run.seq}"
+    if task.delivery == "existing_pr":
+        # Continues a branch rather than creating one, and dispatch has already refused
+        # this combination unless that branch is inside the namespace (ADR 0031
+        # amendment B2) — refusing there rather than at the push, where the run has
+        # already spent its work.
         return task.base_branch or ""
-    return f"cliora/{task.card_ref}-{run.seq}"
+    # `none` and `artifact` create nothing and push nothing.
+    return ""
 
 
 async def release_claim(session: AsyncSession, run: TaskRun) -> None:

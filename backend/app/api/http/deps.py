@@ -128,6 +128,25 @@ def require_action(action: str) -> Callable[[User], Awaitable[User]]:
     return dependency
 
 
+def may_perform(action: str) -> Callable[[User], Awaitable[bool]]:
+    """Whether the caller holds an action, **without refusing when they do not**.
+
+    `require_action` answers "may this request proceed"; this answers "is this stronger
+    variant of the request available", which the Done Gate's `--force` needs: the patch
+    itself only requires `task.update`, and holding `task.force_done` decides whether an
+    escape hatch inside it is open (ADR 0033 §5).
+
+    It lives here rather than in the route for the reason
+    `test_authorization_logic_is_confined_to_two_modules` exists: an inline check is
+    correct the day it is written and forgotten the day the rule changes.
+    """
+
+    async def dependency(user: User = Depends(get_current_user)) -> bool:
+        return has_action(user, action)
+
+    return dependency
+
+
 async def get_agent_principal(
     authorization: str | None = Header(default=None),
     session: AsyncSession = Depends(get_session),

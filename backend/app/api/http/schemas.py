@@ -1010,6 +1010,14 @@ class GateDTO(BaseModel):
 
 
 class ProcessDTO(BaseModel):
+    """The process **as it applies here**, with the project's overrides already applied.
+
+    `overrides` carries the raw switches beside the resolved definition rather than
+    instead of it: the console renders the applied process, and the settings screen
+    renders the switches, and letting the client apply the overrides itself would mean
+    implementing the same rules twice (ADR 0033 §5).
+    """
+
     key: str
     version: str
     source: str
@@ -1017,6 +1025,7 @@ class ProcessDTO(BaseModel):
     readiness: list[dict[str, Any]]
     gates: list[GateDTO]
     templates: dict[str, Any]
+    overrides: dict[str, Any] = Field(default_factory=dict)
 
 
 class BoardCardDTO(BaseModel):
@@ -1211,6 +1220,143 @@ class UpdateTaskRequest(BaseModel):
     existing_pr_ref: str | None = None
     required_secrets: list[str] | None = None
     assigned_runner_id: uuid.UUID | None = None
+    # The Done Gate's escape hatch (V2.4, ADR 0033 §5). Not a field on the card: the
+    # two travel with the patch that moves the card, because forcing is a property of
+    # *this move* rather than a state somebody sets beforehand.
+    #
+    # `verification_commands` is deliberately **not** here. It has its own endpoint
+    # requiring `task.approve`, an action a run credential never holds — reachable
+    # through this body it would be writable with `task.update`, which a run credential
+    # does hold, and the agent being verified would choose what verifies it.
+    force: bool = False
+    force_reason: str | None = Field(default=None, max_length=2000)
+
+
+class VerificationCommand(BaseModel):
+    """One check, as **argv** rather than a shell string.
+
+    A shell string is an injection path and it would sit on the platform's own storage
+    surface. Both stores — the project's and the card's — use this same model, because
+    two nearly identical validators drift the moment either is fixed (ADR 0033 §3b).
+
+    The bounds exist to keep the assembled `spec.allowed_verification_commands` inside
+    the ceiling contract 1.12.0 already set: 16 items of 256 characters. One encoded
+    command is `origin\tname\targv…`, so 1 + 32 + 16x128 would not fit — hence 16 argv
+    elements of 128, which encodes to ~241 characters in the worst realistic case, and
+    the service measures the encoded length at save time rather than at send time.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    name: str = Field(min_length=1, max_length=32)
+    argv: list[str] = Field(min_length=1, max_length=16)
+
+
+class VerificationCommandsRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    commands: list[VerificationCommand] = Field(default_factory=list, max_length=8)
+
+
+class ProjectVerificationRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    commands: list[VerificationCommand] = Field(default_factory=list, max_length=8)
+    require_project_verification: bool = False
+
+
+class ProjectVerificationDTO(BaseModel):
+    commands: list[dict[str, Any]]
+    require_project_verification: bool
+
+
+class ProcessOverridesRequest(BaseModel):
+    """Enable/disable of existing items only — never new items, never new lanes.
+
+    The narrowness is the point: cross-project metrics have to keep comparing like with
+    like, and a store that accepts arbitrary keys is one somebody puts a custom
+    readiness item into (ADR 0033 §5).
+    """
+
+    model_config = {"extra": "forbid"}
+
+    readiness_disabled: list[str] = Field(default_factory=list, max_length=32)
+    gates_disabled: list[str] = Field(default_factory=list, max_length=32)
+    wip: dict[str, int] = Field(default_factory=dict)
+
+
+class ExecutionPlanDTO(BaseModel):
+    """One version of a plan. There is no update DTO, because there is no update."""
+
+    id: uuid.UUID
+    seq: int
+    note: str | None
+    steps: list[dict[str, Any]]
+    run_id: uuid.UUID | None
+    created_by_kind: str
+    created_at: datetime
+
+
+class RecordPlanRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    steps: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class VerificationReportDTO(BaseModel):
+    """A report **with its provenance**, which is the point of the type.
+
+    `source` is what the server decided from the write path, never what the payload
+    asked for. The console renders the three levels differently and names the weakest
+    one in words, because a qualifier nobody reads is not a qualifier (ADR 0033 §3b).
+    """
+
+    id: uuid.UUID
+    result: str
+    checks: list[dict[str, Any]]
+    acceptance_criteria: list[dict[str, Any]]
+    remaining_risks: list[dict[str, Any]]
+    completion_summary: str | None
+    source: str
+    run_id: uuid.UUID | None
+    reported_by_kind: str
+    reported_at: datetime
+
+
+class SubmitVerificationRequest(BaseModel):
+    """`source` is accepted and **discarded**, which is deliberate.
+
+    Refusing the field would tell a caller it exists and matters; accepting and ignoring
+    it — while recording that it was ignored — makes the attempt visible without making
+    it useful.
+    """
+
+    model_config = {"extra": "forbid"}
+
+    result: str
+    checks: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
+    acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list, max_length=64)
+    remaining_risks: list[dict[str, Any]] = Field(default_factory=list, max_length=32)
+    completion_summary: str | None = Field(default=None, max_length=8000)
+    source: str | None = None
+
+
+class EvidenceItemDTO(BaseModel):
+    id: uuid.UUID
+    kind: str
+    source: str
+    payload: dict[str, Any]
+    run_id: uuid.UUID | None
+    written_by_kind: str
+    collected_at: datetime
+
+
+class AddEvidenceRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    kind: str
+    payload: dict[str, Any] = Field(default_factory=dict)
 
 
 class AddDependencyRequest(BaseModel):
