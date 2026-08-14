@@ -364,6 +364,29 @@ class Project(Base):
     allowed_secret_names: Mapped[list[str]] = mapped_column(
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
+    # The project half of "what verifies a card" (V2.4, ADR 0033 sec 3b). A list of
+    # ``{"name": str, "argv": [str, ...]}``. **argv, never a shell string** — a shell
+    # string is an injection path and it would sit on the platform's own storage
+    # surface. The card half lives on ``Task.verification_commands`` and is written
+    # through a different action; ``origin`` on a check records which store named it.
+    verification_commands: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    # Enable/disable of existing process items only — never new items, never new lanes
+    # (ADR 0033 sec 5). A JSONB column rather than a table on purpose: "which of the
+    # seven readiness items are off" is a set of booleans, and a table would invite
+    # somebody to put a custom item in it, which is what makes cross-project metrics
+    # aggregatable in the first place.
+    process_overrides: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    # The convergence point for card-declared checks, **off by default**. On, the Done
+    # Gate additionally requires that at least one ``origin: project`` check ran. Off by
+    # default because a switch that blocks people on day one teaches them to stop using
+    # the feature it guards.
+    require_project_verification: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
@@ -711,6 +734,25 @@ class Task(Base):
     target_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
     existing_pr_ref: Mapped[str | None] = mapped_column(String(255), nullable=True)
     required_secrets: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # This card's own verification checks (V2.4, ADR 0033 sec 3b), same shape as the
+    # project's. **Deliberately absent from ``EDITABLE_FIELDS``**: it is written through
+    # its own endpoint requiring ``task.approve``, which ``RUN_TOKEN_SCOPES`` never
+    # contains. Reachable through ``PATCH`` it would let the agent being verified choose
+    # what verifies it — every exit code would stay real and every one would be
+    # worthless.
+    verification_commands: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    # The Done Gate's escape hatch, recorded **on the card** and not only on the
+    # timeline (ADR 0033 sec 5). A timeline entry scrolls away; "this card was forced"
+    # has to be visible whenever the card is. Cleared only by taking the card out of
+    # ``done`` and through the gate — there is no endpoint that clears these three
+    # alone, because a record that can be erased on its own is not a record.
+    force_done_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    force_done_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    force_done_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     requirement_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
     )
@@ -849,6 +891,14 @@ class AgentRunner(Base):
     # declare secrets, which is the node operator's veto (ADR 0032 sec 0).
     run_untagged: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
     accept_secrets: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    # V2.4. **The empty list is the default**, and the opposite polarity from the two
+    # above is the same rule underneath: an absent declaration means the behaviour
+    # before the upgrade, and for a capability that is "cannot". Central puts
+    # feature-gated content into an offer only for a node that named the feature
+    # (ADR 0029 amendment C). Read-only from the platform's side, like `labels`.
+    features: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -1011,6 +1061,21 @@ class TaskRun(Base):
     result: Mapped[str | None] = mapped_column(String(32), nullable=True)
     error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # How the result left, in three columns rather than one overloaded string (V2.4).
+    #
+    # ``delivery_state`` is the pull-request worker's queue: ``finish()`` sets
+    # ``pending_pr`` and nothing else, because it runs on the node receive loop and that
+    # loop also carries interactive terminal bytes — a 20-second HTTP call there stops
+    # somebody's terminal for 20 seconds (ADR 0033 sec 3). No CHECK constraint: unlike
+    # ``verification_reports.result`` this is an internal state machine rather than part
+    # of a contract, and ``result`` above already set that precedent.
+    #
+    # ``pushed_branch`` is **the daemon's report, not Central's derivation**. Central
+    # composes the name and could compute it; only the node knows whether the push
+    # succeeded, and a pull request may only be opened on a branch that exists.
+    delivery_state: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    pushed_branch: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    delivery_ref: Mapped[str | None] = mapped_column(Text, nullable=True)
     log_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     log_truncated_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     logs_expire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1355,4 +1420,150 @@ class AuditLog(Base):
     audit_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
+    )
+
+
+class ExecutionPlan(Base):
+    """One version of a card's plan (V2.4, FR-PLAN-001, ADR 0033).
+
+    **Append-only, and nothing in the database enforces it.** There is no
+    ``updated_at``, no update path in the repository layer, and ``GATE-DV-APPEND-ONLY``
+    scans for one. A trigger was considered and rejected: it fires on the statement, so
+    the first legitimate correction becomes a database error nobody can act on, and the
+    trigger gets dropped rather than read.
+
+    ``note`` is required from ``seq`` 2 onward — *why* the plan changed is the whole
+    reason a version row exists rather than a mutable column — and that rule lives in
+    the service layer, because as a CHECK the difference between a first plan and a
+    revision would surface as an unreadable constraint violation.
+
+    ``project_id`` is redundant (``task_id`` determines it) and deliberate: the
+    cross-project metrics aggregate over this table, and without it every one of them
+    joins ``tasks``. ``task_artifacts`` set the precedent.
+    """
+
+    __tablename__ = "execution_plans"
+    __table_args__ = (UniqueConstraint("task_id", "seq", name="uq_execution_plans_task_seq"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    # `SET NULL`, not `CASCADE`: a run row can be reaped after its logs expire, and
+    # losing the plan with it would delete the record of what somebody intended because
+    # a diagnostic aged out.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    seq: Mapped[int] = mapped_column(Integer)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    created_by_kind: Mapped[str] = mapped_column(String(16))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class VerificationReport(Base):
+    """What the checks said, and **who observed it** (V2.4, FR-VERIFY-001/002, ADR 0033).
+
+    ``source`` is decided by the write path, never by the payload, and the enforcement
+    is structural rather than a check: the service function has no ``source`` parameter
+    at all, so the caller — which route, which internal path — determines it. A payload
+    that names one is discarded **and an activity row is written**, because otherwise an
+    agent trying to overstate its evidence and an agent with a typo look identical.
+
+    ``checks[]`` items carry ``origin`` (``project`` | ``card``) beside ``name``,
+    ``argv``, ``exit_code``, ``duration_ms`` and ``output_tail``. ``origin`` is a
+    **second axis, not a third level**: ``source`` answers who observed this,
+    ``origin`` answers who chose to run it. Both origins are ``machine_verified``,
+    because declaring a check on a card takes ``task.approve`` and a run token never
+    holds it — so neither was chosen by the executor (ADR 0033 sec 3b).
+
+    ``acceptance_criteria`` here is **this run's snapshot** and may disagree with the
+    card's current values. That is not a defect: the report says what this run saw and
+    the card says what is true now. Merging them would let an old run's report move the
+    card's state backwards.
+    """
+
+    __tablename__ = "verification_reports"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    result: Mapped[str] = mapped_column(String(16))
+    checks: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    acceptance_criteria: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    remaining_risks: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    completion_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(24))
+    reported_by_kind: Mapped[str] = mapped_column(String(16))
+    reported_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    reported_by_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    reported_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class EvidenceItem(Base):
+    """One observed fact about a card, with its provenance (V2.4, FR-EVIDENCE-001/002).
+
+    **``kind`` decides ``source``, never the other way round.** A single table
+    (``_SOURCE_FOR_KIND``) binds them, so "an agent wrote a ``git_state``" is
+    *unrepresentable* rather than merely refused — it is rejected before it can become a
+    row that looks like a machine fact. That is a level stronger than checking the
+    writer's identity, because a check has a second call site and a mapping does not.
+
+    **Contradictions are stored, not resolved.** When the agent's account of which files
+    changed disagrees with ``git status``, both rows exist and both name their source.
+    Implementing that costs nothing; it is written down because adding a reconciliation
+    rule is the natural instinct, and its verdict would be a judgement with nobody
+    accountable for it.
+
+    ``payload`` is bounded in the service layer (16 KiB a row, 64 rows a run) and the
+    refusal points at artifacts. Artifacts already have a quota, a retention period, a
+    download path and a stored-XSS posture (ADR 0030 Part B); letting evidence grow into
+    a file store would mean doing all four again here.
+    """
+
+    __tablename__ = "evidence_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(32))
+    source: Mapped[str] = mapped_column(String(24))
+    written_by_kind: Mapped[str] = mapped_column(String(16))
+    written_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    written_by_runner_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
+    )
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    collected_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

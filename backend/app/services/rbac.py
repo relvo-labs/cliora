@@ -52,6 +52,9 @@ RUN_DISPATCH = "run.dispatch"
 RUN_CANCEL = "run.cancel"
 # V2.3 secrets and dispatch routing (ADR 0032, seed migration 0034).
 SECRET_MANAGE = "secret.manage"
+# V2.4 delivery, verification and the Done Gate (ADR 0033, seed migration 0037).
+PROCESS_MANAGE = "process.manage"
+TASK_FORCE_DONE = "task.force_done"
 
 ADMIN = "Admin"
 DEVELOPER = "Developer"
@@ -169,6 +172,23 @@ _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
     # registration from V2.3, because a repository row stopped being "where the code
     # is" and became "which credential fetches it" (ADR 0032).
     SECRET_MANAGE,
+    # Overriding the process definition. **Not folded into `project.manage`**: a
+    # project's settings describe one project, while the process definition is the
+    # vocabulary every board and every cross-project metric is expressed in. Turning a
+    # readiness item off changes what "ready" means for a whole project, and the
+    # aggregate stops comparing like with like unless somebody decided that on purpose
+    # (ADR 0033 §5). The override itself is deliberately narrow — enable or disable
+    # existing items, adjust WIP advice, nothing else — and it **cannot reach the Done
+    # Gate**, whose six conditions are service-layer constants rather than rows.
+    PROCESS_MANAGE,
+    # Pushing a card into `done` without its completion evidence. **Not a reuse of
+    # `task.approve`**, even though the same people hold both today: approving one
+    # review gate and skipping the completion criteria wholesale are different
+    # authorities, and folding them together would make the bypass reachable by
+    # anything that can already tick a gate. Every use is recorded on the card itself,
+    # on the timeline, and in a metric — which is the point of giving it its own action
+    # rather than making the gate optional (ADR 0033 §5).
+    TASK_FORCE_DONE,
 }
 
 ROLE_ACTIONS: dict[str, frozenset[str]] = {
