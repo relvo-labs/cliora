@@ -292,6 +292,31 @@ V2.3 是拿兩次相隔數週的量測發現這件事的（相差 27%）；這�
 8. `run-spec.schema.json` 的 `allowed_verification_commands` 已存在且 daemon 不執行它（D6）。
 9. `finish()` 在接收迴圈上（D17）。
 
+## 3b. 合併到 staging 之後才發現的一件事
+
+18. 🔴 **`httpx` 在 dev group，而生產映像用 `--no-dev` 安裝。**
+    容器跑完了四支 migration、啟動 uvicorn、然後死在
+    `ModuleNotFoundError: No module named 'httpx'`。
+
+    **本機每一道檢查都是綠的，而且必然是綠的**：開發環境裝了 dev group，
+    所以 unit、mypy、ruff、build 全部看不到這件事。它第一次出現的地方是生產環境，
+    而且是在 migration 已經跑完之後——那是整條時間軸上最糟的位置。
+
+    ⚠️ **`test_scope_guards.py` 的註解早就寫著答案**：
+    「(`httpx` is a test dependency; the app does not import it.)」
+    我在收窄 SCOPE-013 時讀了那條守衛、改了那條守衛，**卻沒讀那句括號**。
+    收窄本身是對的（`04-…md` §4 的七條斷言都成立），漏掉的是它預設的前提。
+
+    處置有兩層。`httpx` 移進 `[project] dependencies`——這是修 bug。
+    然後補 `test_runtime_imports_are_declared_runtime_dependencies`：掃 `app/`
+    的**模組層** import，逐一比對 runtime 依賴清單。那才是修這一類問題，
+    而它上線的第一件事就是抓到第二個：`api/middleware.py` 直接 import `starlette`
+    卻靠 FastAPI 的傳遞依賴帶進來——**你 import 的東西就是你依賴的東西**，
+    靠別人的傳遞依賴等於讓別人的下一次發版決定你的程序啟不啟動。
+
+    驗收方式是重現生產的安裝：`uv sync --locked --no-dev` 到一個乾淨的環境，
+    然後 import `app.main`。這件事本來就該在 `DV-11` 做一次。
+
 ## 4. 尚待人工完成的事
 
 1. **合併提案。** `v2` → `dev` 一律由人決定。

@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import ast
 import json
+import re
+import sys
 from pathlib import Path
 
 from test_authz import mounted_routes
@@ -465,4 +467,74 @@ def test_scope_013_central_does_not_proxy_to_a_node_http_service() -> None:
     assert schema["additionalProperties"] is False
     assert not {"host", "hostname", "url", "scheme", "ssh_options", "provider_options"} & set(
         schema["properties"]
+    )
+
+
+def test_runtime_imports_are_declared_runtime_dependencies() -> None:
+    """Every third-party module `app/` imports must be a **runtime** dependency.
+
+    This test exists because V2.4 shipped a boot failure to staging and nothing local
+    caught it. `services/providers.py` imports `httpx`, which was in the `dev`
+    dependency group; `deploy/backend.Dockerfile` installs with `--no-dev`. So the
+    container migrated its database, started uvicorn, and died on
+    `ModuleNotFoundError` — while `make check` was green, because a development
+    environment has the dev group installed.
+
+    **The failure mode is the point.** A missing runtime dependency is invisible to
+    every check that runs where the dev group exists: unit tests, mypy, ruff, the build.
+    It appears for the first time in production, after the migrations have already run —
+    which is the worst place on the schedule to discover it.
+
+    The scan is deliberately import-time only (module scope), because a function-level
+    import fails when the function is called rather than when the app loads, and that is
+    a different — much less severe — problem.
+    """
+    import tomllib
+
+    backend_root = Path(__file__).resolve().parents[1]
+    manifest = tomllib.loads((backend_root / "pyproject.toml").read_text(encoding="utf-8"))
+    declared = {
+        re.split(r"[<>=!\[]", spec, maxsplit=1)[0].strip().replace("-", "_").lower()
+        for spec in manifest["project"]["dependencies"]
+    }
+    # Distribution names and import names differ for a handful of packages. Listed
+    # rather than guessed: a heuristic here would hide exactly the mistake being caught.
+    aliases = {
+        "sqlalchemy": {"sqlalchemy"},
+        "pyjwt": {"jwt"},
+        "argon2_cffi": {"argon2"},
+        "python_multipart": {"multipart"},
+        "pydantic_settings": {"pydantic_settings"},
+        "uvicorn": {"uvicorn"},
+    }
+    importable = set(declared)
+    for dist, names in aliases.items():
+        if dist in declared:
+            importable |= names
+
+    stdlib = set(sys.stdlib_module_names)
+    app_root = backend_root / "app"
+    offenders: dict[str, set[str]] = {}
+    for path in app_root.rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        # Module scope only: a nested import is not an import-time dependency.
+        for node in tree.body:
+            names: set[str] = set()
+            if isinstance(node, ast.Import):
+                names = {alias.name.split(".")[0] for alias in node.names}
+            elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+                names = {node.module.split(".")[0]}
+            unknown = {
+                name
+                for name in names
+                if name not in stdlib and name != "app" and name.lower() not in importable
+            }
+            if unknown:
+                offenders.setdefault(str(path.relative_to(app_root)), set()).update(unknown)
+
+    assert offenders == {}, (
+        "these modules import something that is not a runtime dependency, so the "
+        f"container will fail to start with --no-dev: {offenders}. Move the package "
+        "into [project].dependencies, or move the import inside the function that "
+        "needs it."
     )
