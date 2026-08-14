@@ -157,22 +157,75 @@ describe("TaskDetail execution settings", () => {
     );
   });
 
-  it("shows the two V2.4 modes rather than hiding them", async () => {
-    // Removing them would turn "will this platform ever open a PR" into a question
-    // somebody has to ask a person. They are refused at dispatch, naming the version.
+  it("offers all five delivery modes", async () => {
     const wrapper = render({ canEdit: true });
     const values = wrapper.findAll("option").map((o) => o.attributes("value"));
-    expect(values).toContain("pull_request");
-    expect(values).toContain("existing_pr");
+    for (const mode of [
+      "none",
+      "artifact",
+      "branch",
+      "pull_request",
+      "existing_pr",
+    ]) {
+      expect(values).toContain(mode);
+    }
   });
 
-  it("warns on the default, because the default cannot be dispatched", async () => {
+  // The panel says what a mode still needs, **on the panel**, because the fix for
+  // every one of these is a field on this same panel. Meeting it as a 409 after
+  // pressing dispatch is how somebody concludes the mode does not work.
+  it("asks for a target branch on the panel rather than at the 409", async () => {
     const wrapper = render({
       canEdit: true,
-      task: { delivery: "pull_request" },
+      task: { delivery: "pull_request", source: "repo", target_branch: null },
     });
-    expect(wrapper.text()).toContain("從 V2.4 起生效");
-    expect(wrapper.text()).toContain("artifact");
+    expect(wrapper.text()).toContain("target branch");
+    // And the field exists to answer it.
+    const placeholders = wrapper
+      .findAll("input")
+      .map((i) => i.attributes("placeholder"));
+    expect(placeholders).toContain("main");
+  });
+
+  it("names the one combination the two independent fields cannot form", async () => {
+    const wrapper = render({
+      canEdit: true,
+      task: { delivery: "pull_request", source: "none" },
+    });
+    // A pull request needs code. Said before dispatch, not after.
+    expect(wrapper.text()).toContain("要交付程式碼變更");
+  });
+
+  it("explains the cliora/ namespace where the branch is typed", async () => {
+    const wrapper = render({
+      canEdit: true,
+      task: {
+        delivery: "existing_pr",
+        source: "existing_branch",
+        base_branch: "feature/login",
+      },
+    });
+    // This boundary reads as a bug to whoever hits it, so it is explained at the
+    // point of editing rather than only in the dispatch refusal.
+    expect(wrapper.text()).toContain("cliora/");
+    expect(wrapper.text()).toContain("只能接續平台自己開的 PR");
+  });
+
+  it("lets a person edit every execution field the API accepts", async () => {
+    // The defect this pins is the one V2.3 shipped and V2.4 repeated: the backend
+    // accepts the field, the console can only display it, and the mode is unreachable
+    // from the console. A count is the wrong assertion — the placeholders name which.
+    const wrapper = render({
+      canEdit: true,
+      task: { delivery: "pull_request", source: "existing_branch" },
+    });
+    const placeholders = wrapper
+      .findAll("input")
+      .map((i) => i.attributes("placeholder"));
+    expect(placeholders).toContain("main"); // target branch
+    expect(placeholders).toContain("cliora/TASK-1-1"); // base branch
+    expect(placeholders).toContain("docker node20"); // tags
+    expect(placeholders).toContain("NPM_TOKEN"); // secrets
   });
 
   it("shows a badge instead of a select without task.update", async () => {

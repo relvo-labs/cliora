@@ -108,6 +108,48 @@ function isFailed(item: Record<string, unknown>): boolean {
 // unreachable from the console**: a new card defaults to `delivery: pull_request`,
 // which is refused at dispatch until V2.4, and nothing on this page could change it.
 // A field the platform acts on and the console cannot set is worse than one it ignores.
+/** Which extra fields this delivery mode needs, so the panel can show them.
+ *
+ *  Shown conditionally rather than always: a `target branch` box on a card that
+ *  delivers nothing is a question with no right answer, and the panel already carries
+ *  enough rows.
+ */
+const needsTargetBranch = computed(
+  () => props.task.delivery === "pull_request",
+);
+const needsBaseBranch = computed(
+  () =>
+    props.task.source === "existing_branch" ||
+    props.task.delivery === "existing_pr",
+);
+/** A pull request needs code. The two fields are independent by design, and this is
+ *  the one combination they cannot form (ADR 0033 §1). */
+const needsSourceForDelivery = computed(
+  () =>
+    (props.task.delivery === "pull_request" ||
+      props.task.delivery === "existing_pr") &&
+    props.task.source === "none",
+);
+const existingPrOutOfNamespace = computed(
+  () =>
+    props.task.delivery === "existing_pr" &&
+    !!props.task.base_branch &&
+    !props.task.base_branch.startsWith("cliora/"),
+);
+
+/** Space- or comma-separated input into a list, empties dropped.
+ *
+ *  A text box rather than a tag widget: tags are free strings on purpose (no
+ *  dictionary until one capability is spelled three ways), and a widget would imply a
+ *  vocabulary that does not exist.
+ */
+function splitList(value: string): string[] {
+  return value
+    .split(/[\s,、]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 async function setExecution(changes: Record<string, unknown>): Promise<void> {
   error.value = null;
   try {
@@ -333,23 +375,70 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
               <option value="none">none — 不交付</option>
               <option value="artifact">artifact — 附成卡片產物</option>
               <option value="branch">branch — 推一條 cliora/ 分支</option>
-              <!-- Shown rather than removed: hiding them would turn "will this
-                   platform ever open a PR" into a question somebody has to ask. They
-                   are refused at dispatch, and the refusal names the version. -->
-              <option value="pull_request">pull_request — V2.4 起生效</option>
-              <option value="existing_pr">existing_pr — V2.4 起生效</option>
+              <option value="pull_request">pull_request — 推分支並開 PR</option>
+              <option value="existing_pr">
+                existing_pr — 接續平台開過的 PR
+              </option>
             </select>
             <DeliveryBadge v-else :delivery="task.delivery" />
           </dd>
+          <!-- Editable from V2.4, and the reason it was not before is the reason it
+               has to be now: `existing_branch` and `existing_pr` both name the branch
+               here, and a field the console can only display makes those two modes
+               unreachable from the console. That is the same defect V2.3 shipped for
+               `source`/`delivery` and had to fix. -->
           <dt>base branch</dt>
-          <dd>{{ task.base_branch ?? "—" }}</dd>
+          <dd>
+            <input
+              v-if="canEdit && needsBaseBranch"
+              type="text"
+              :value="task.base_branch ?? ''"
+              placeholder="cliora/TASK-1-1"
+              @change="
+                setExecution({
+                  base_branch:
+                    ($event.target as HTMLInputElement).value.trim() || null,
+                })
+              "
+            />
+            <span v-else>{{ task.base_branch ?? "—" }}</span>
+          </dd>
+          <dt v-if="needsTargetBranch">target branch</dt>
+          <dd v-if="needsTargetBranch">
+            <input
+              v-if="canEdit"
+              type="text"
+              :value="task.target_branch ?? ''"
+              placeholder="main"
+              @change="
+                setExecution({
+                  target_branch:
+                    ($event.target as HTMLInputElement).value.trim() || null,
+                })
+              "
+            />
+            <span v-else>{{ task.target_branch ?? "—" }}</span>
+          </dd>
           <!-- Tags decide **which machine** gets this card. They are shown here even
                when empty, because "no tag" is a dispatch-relevant fact rather than an
                absent decoration — and the warning below is the cheapest place to catch
                the commonest failure of the whole mechanism. -->
           <dt>Tag</dt>
           <dd>
-            <span v-if="requiredLabels.length" class="tags">
+            <input
+              v-if="canEdit"
+              type="text"
+              :value="requiredLabels.join(' ')"
+              placeholder="docker node20"
+              @change="
+                setExecution({
+                  required_labels: splitList(
+                    ($event.target as HTMLInputElement).value,
+                  ),
+                })
+              "
+            />
+            <span v-else-if="requiredLabels.length" class="tags">
               <BaseBadge
                 v-for="tag in requiredLabels"
                 :key="tag"
@@ -361,7 +450,20 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           </dd>
           <dt>機密</dt>
           <dd>
-            <span v-if="requiredSecrets.length" class="tags">
+            <input
+              v-if="canEdit"
+              type="text"
+              :value="requiredSecrets.join(' ')"
+              placeholder="NPM_TOKEN"
+              @change="
+                setExecution({
+                  required_secrets: splitList(
+                    ($event.target as HTMLInputElement).value,
+                  ),
+                })
+              "
+            />
+            <span v-else-if="requiredSecrets.length" class="tags">
               <BaseBadge
                 v-for="secretName in requiredSecrets"
                 :key="secretName"
@@ -384,30 +486,37 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
             ><span v-if="i < unmatchedTags.length - 1">、</span></template
           >，這張卡會一直等。
         </p>
-        <!-- Every new card starts here, and every one of them is refused at dispatch.
-             The default was chosen for the end state (a PR is the common case); until
-             V2.4 exists it means the out-of-the-box card cannot be dispatched, so the
-             page says which values do work rather than leaving the reader at a 409. -->
+        <!-- What each mode still needs, said **here** rather than at the 409. Every
+             one of these is a refusal a person would otherwise meet after choosing the
+             mode, and the fix for all of them is a field on this same panel. -->
+        <p v-if="needsSourceForDelivery" class="hint warn">
+          ⚠ 這個交付方式要交付程式碼變更，但來源是 <code>none</code>。
+          把來源改成 <code>repo</code>，或把交付方式改成
+          <code>none</code>／<code>artifact</code>。
+        </p>
         <p
-          v-if="
-            task.delivery === 'pull_request' || task.delivery === 'existing_pr'
-          "
+          v-else-if="task.delivery === 'pull_request' && !task.target_branch"
           class="hint warn"
         >
-          ⚠ 這個交付方式從 V2.4 起生效，現在派工會被拒絕。可用的是
-          <code>none</code>、<code>artifact</code> 與 <code>branch</code>。
+          ⚠ 以合併請求交付必須指定 target branch（PR 要開向哪一條分支）。
+        </p>
+        <p v-else-if="existingPrOutOfNamespace" class="hint warn">
+          ⚠ <code>{{ task.base_branch }}</code> 不在
+          <code>cliora/</code> 命名空間內，而平台只推得到那裡面。
+          <code>existing_pr</code> 只能接續平台自己開的 PR；要接續別人的分支，
+          請改用 <code>branch</code> 並自行合併。
         </p>
         <p v-if="task.delivery === 'branch'" class="hint">
           交付方式是分支：完成時平台會推送
           <code>cliora/{{ task.card_ref }}-&lt;執行次數&gt;</code>。
         </p>
-        <!-- V2.1 寫的是「本階段沒有任何執行者會依它行動」，而那句話在 V2.2 之後
-             不再為真：`source` 的三個值與 `delivery` 的兩個值現在真的會被依循，
-             其餘的在派工當下就被擋下並指名從哪一版開始生效（ADR 0029 §6）。
-             一句過期的「沒有人會照做」比沒有說明更糟。 -->
+        <!-- V2.1 said "nothing acts on these yet", V2.3 said "the PR modes are
+             blocked at dispatch". Both were true when written and neither is now: all
+             five delivery modes work. **A sentence that was true once is the most
+             expensive kind of stale**, because a reader has no way to tell. -->
         <p class="hint">
-          來源與「不交付／附成產物」自 V2.2 起會被 Agent 依循； 分支與 PR
-          的交付方式在派工當下會被擋下，並說明從哪一版開始生效。
+          五種交付方式都會被依循。<code>pull_request</code> 的 PR 由平台建立，
+          而它的作者是憑證的擁有者、不是派工的人；平台永不自動合併。
         </p>
 
         <h4>Session 歷史</h4>
