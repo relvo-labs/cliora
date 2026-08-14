@@ -516,6 +516,16 @@ func reportRunnerPosture(
 		fmt.Fprintln(out,
 			"[warn] runner: accept_secrets=false — this node is never offered a card that declares secrets")
 	}
+	// What this binary can do, so an operator can see why a card is not being offered
+	// something. **Not configurable** — it describes the code, and Central treats an
+	// absent declaration as the empty set (ADR 0029 amendment C).
+	fmt.Fprintf(out, "[info] runner: features=%s\n", strings.Join(runner.Features, ", "))
+	fmt.Fprintf(out, "[info] runner: verification timeout=%s per check, %s per group\n",
+		runner.DefaultCheckTimeout, runner.DefaultGroupTimeout)
+	// Measured rather than guessed (M6): the worst p95 across four repositories up to
+	// 31 300 files was 279.9 ms, and this is that with room for a machine that is also
+	// running other work against the same disk.
+	fmt.Fprintf(out, "[info] runner: evidence collection timeout=%s\n", runner.EvidenceTimeout)
 	if runner.Dedicated(cfg) {
 		fmt.Fprintln(out, "[info] runner: dedicated (this node declares no allowed root)")
 	} else {

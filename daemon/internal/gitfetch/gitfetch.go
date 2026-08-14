@@ -231,6 +231,18 @@ func (f Fetcher) Diff(ctx context.Context, dir string) (string, error) {
 	return f.run(ctx, dir, "diff")
 }
 
+// DiffStat returns `git diff --stat`, the summary the card and the pull request show.
+//
+// Separate from `Diff` rather than derived from it: the full diff is attached as an
+// artifact and can be megabytes, while this is a handful of lines that goes on a page.
+// **M6 measured both** and they are not interchangeable — on a dirty 31 300-file
+// repository `--stat` costs 260 ms and `status --porcelain` costs 47 ms, so the
+// evidence step's timeout has to be sized against this one rather than against
+// `status` alone (plan/21/10-…md §1.1).
+func (f Fetcher) DiffStat(ctx context.Context, dir string) (string, error) {
+	return f.run(ctx, dir, "diff", "--stat")
+}
+
 // Remotes returns `git remote -v` with any userinfo masked.
 //
 // One half of what **replaced blocking the agent from pushing**. Masking is belt and

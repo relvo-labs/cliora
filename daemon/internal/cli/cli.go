@@ -438,6 +438,39 @@ func (c *Client) PostMessage(body, kind string) (Message, int, error) {
 	return out, status, err
 }
 
+// RecordPlan is `cliora plan snapshot`. **Write-only, by design.**
+//
+// There is no read counterpart for any of the three below. An agent does not need to
+// read back what it just wrote, and every read endpoint is another surface to
+// authorize — the same restraint that left `approve` out of this tool entirely
+// (ADR 0033 §Consequences).
+func (c *Client) RecordPlan(payload map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/plan", payload, &out)
+	return out, status, err
+}
+
+// SubmitVerification is `cliora verify report`.
+//
+// Whatever the payload says, the platform stores this as **the agent's own account**.
+// A `source` field is accepted, discarded, and the discarding is recorded — so an
+// agent overstating its evidence and an agent with a typo do not leave identical
+// traces (ADR 0033 §3b).
+func (c *Client) SubmitVerification(payload map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/verification", payload, &out)
+	return out, status, err
+}
+
+// AddEvidence is `cliora evidence add`. Only the three agent kinds are accepted; a
+// machine-fact kind is refused rather than downgraded.
+func (c *Client) AddEvidence(kind string, payload map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/evidence",
+		map[string]any{"kind": kind, "payload": payload}, &out)
+	return out, status, err
+}
+
 // ListMessages is `cliora task messages`. **Pull, never push**: there is no interrupt
 // path into a running agent, so an agent that asked something polls for the answer.
 func (c *Client) ListMessages(since string) ([]Message, int, error) {
