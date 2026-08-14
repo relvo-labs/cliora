@@ -4,6 +4,52 @@ Board-card run projections added in `plan/19` are HTTP/OpenAPI response fields, 
 WebSocket control messages, so this contract package and its protocol version are
 intentionally unchanged (D33).
 
+## 1.13.0 — 2026-08-14 (compatible)
+
+**Added — three fields, and all three travel node→central (ADR 0033).**
+
+The interesting half of this release is what it does **not** contain: `run.offer`'s
+`spec` gains nothing at all, and `delivery` gains no value. Both were avoidable, and
+avoiding them is what makes an un-upgraded node keep working:
+
+- `run.complete` gains **`pushed_branch`** and **`verification`**.
+- `run.progress`'s `phase` gains **`verifying`**.
+- `runner.register` gains **`features`**.
+
+Twelve new fixtures (6 valid, 6 invalid). Every fixture predating this release is
+byte-for-byte identical.
+
+**Three properties are worth reading here rather than in the schemas.**
+
+**Compatibility has two directions and they take opposite defaults.** node→central is
+forgiving: Central reads the keys it knows, and an absent field means the documented
+default — which is why `run_untagged` and `accept_secrets` mean "true" when missing.
+central→node is **not**: the daemon decodes with `DisallowUnknownFields`, Go applies
+that recursively so it governs `spec` as well, and a rejected `run.offer` produces **no
+reply at all** — the card is claimed, the offer vanishes, the lease expires, the card is
+retried to exhaustion and blocked, and nothing anywhere mentions compatibility. So
+`features` is a **support** flag whose absence means the empty set, and Central puts
+feature-gated content into an offer only for a node that named the feature. That rule
+is now the general one: **new content in `spec` requires a declaration first.**
+
+⚠️ This was already true before 1.13.0. `spec.branch` shipped in 1.12.0, so a node
+still on `agentd` 0.8.0 silently drops every `delivery: branch` offer sent to it. That
+is a defect of the previous release; the rule above is what stops the next one.
+
+**`pull_request` is not on the wire, and `delivered_branch_only` is not a `result`.**
+Central opens pull requests, using a credential that is never delivered to a node, so
+the daemon is told `branch` for a `pull_request` card and never learns what happened
+afterwards. Adding either value would create a branch on the node that can never be
+taken. Two invalid fixtures assert both, which is the machine form of that sentence.
+
+**`origin` travels with the check rather than being looked up.** A verification command
+comes from one of two platform-side stores — the project's settings or the card's own
+list — and the daemon echoes back which. Central could look it up and would get a
+different answer if somebody edited either store mid-run; a value that travels with its
+result cannot drift from the command that produced it. Both origins are
+`machine_verified`, because declaring a check on a card requires `task.approve` and a
+run token never holds it: neither source is chosen by the agent being verified.
+
 ## 1.12.0 — 2026-08-13 (compatible)
 
 **Added — secrets, a branch namespace, and two node declarations (ADR 0032, ADR 0031

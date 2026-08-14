@@ -1,16 +1,101 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$comment": "A run that finished on its own terms, contract 1.11.0. `result` distinguishes `no_changes` from `succeeded` because they lead a person to do different things — the second means read the diff, the first means the card may have been a no-op or the agent misread it.",
+  "$comment": "A run that finished on its own terms, contract 1.13.0. `result` distinguishes `no_changes` from `succeeded` because they lead a person to do different things — the second means read the diff, the first means the card may have been a no-op or the agent misread it. **`result` gains no value in 1.13.0 and that is deliberate**: `delivered_branch_only` is written by Central after it tries to open a pull request, and the daemon never learns whether one was opened (ADR 0033 §3). Adding it here would create a branch in the node that can never be taken.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["run_id", "result"],
+  "required": [
+    "run_id",
+    "result"
+  ],
   "properties": {
-    "run_id": {"type": "string", "format": "uuid"},
-    "result": {"enum": ["succeeded", "no_changes"]},
-    "summary": {"type": "string", "minLength": 1, "maxLength": 4096},
-    "disk_bytes": {"$comment": "The run directory's size at the end. Feeds M12 in production, which is what the two quotas get re-tuned from.", "type": "integer", "minimum": 0},
-    "git_remotes": {"$comment": "The output of `git remote -v` with any userinfo masked. This is the **observability** that replaced blocking the agent from pushing (ADR 0031 sec 5, consequence four): the second ruling of 2026-08-10 made that freedom deliberate, and two zero-cost lines make 'did this run touch a remote' a visible fact instead of a guess.", "type": "array", "maxItems": 16, "items": {"type": "string", "maxLength": 512}},
-    "unpushed_commits": {"$comment": "The line count of `git log --oneline --branches --not --remotes`. Not perfect detection — an agent can rewrite refs after pushing — but it costs nothing and assumes nothing.", "type": "integer", "minimum": 0},
-    "untracked_files": {"$comment": "Counted and deliberately **not** packaged: one `node_modules/` would blow the artifact quota, so the summary says how many were left behind and a person decides (ADR 0031 sec 7).", "type": "integer", "minimum": 0}
+    "run_id": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "result": {
+      "enum": [
+        "succeeded",
+        "no_changes"
+      ]
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "disk_bytes": {
+      "$comment": "The run directory's size at the end. Feeds M12 in production, which is what the two quotas get re-tuned from.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "git_remotes": {
+      "$comment": "The output of `git remote -v` with any userinfo masked. This is the **observability** that replaced blocking the agent from pushing (ADR 0031 sec 5, consequence four): the second ruling of 2026-08-10 made that freedom deliberate, and two zero-cost lines make 'did this run touch a remote' a visible fact instead of a guess.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "string",
+        "maxLength": 512
+      }
+    },
+    "unpushed_commits": {
+      "$comment": "The line count of `git log --oneline --branches --not --remotes`. Not perfect detection — an agent can rewrite refs after pushing — but it costs nothing and assumes nothing.",
+      "type": "integer",
+      "minimum": 0
+    },
+    "untracked_files": {
+      "$comment": "Counted and deliberately **not** packaged: one `node_modules/` would blow the artifact quota, so the summary says how many were left behind and a person decides (ADR 0031 sec 7).",
+      "type": "integer",
+      "minimum": 0
+    },
+    "pushed_branch": {
+      "$comment": "The branch this run actually pushed; absent when it pushed nothing. **A fact, not an intention.** Central composed the name and could recompute it, but only the node knows whether the push succeeded — and a pull request may only be opened on a branch that is really there (ADR 0031 amendment B4).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 255,
+      "pattern": "^cliora/[A-Za-z0-9._][A-Za-z0-9._-]*$"
+    },
+    "verification": {
+      "$comment": "What the daemon ran and what came back. The exit codes are real, and that is the entire substance of the `machine_verified` level. Commands come from one of **two** platform-side stores and never from a request payload — the project's settings or the card's own list — and `origin` says which; declaring one on a card takes `task.approve`, which a run token never holds, so neither source was chosen by the agent being verified (ADR 0033 §3b). Absent when neither store declared anything, which is the default.",
+      "type": "array",
+      "maxItems": 16,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "origin",
+          "exit_code"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "origin": {
+            "$comment": "Which store named this command. **Echoed by the daemon rather than recomputed by Central**: Central can look it up and would get a different answer if somebody edits either store mid-run, and a value travelling with its result cannot drift from the command that produced it.",
+            "enum": [
+              "project",
+              "card"
+            ]
+          },
+          "exit_code": {
+            "$comment": "The real one. **`-1` is reserved for 'timed out and was killed'** — a command that never finished has no exit code, and recording it as 1 would make 'the test failed' and 'the test did not finish' identical in the report, which are two different things to do next.",
+            "type": "integer",
+            "minimum": -1,
+            "maximum": 255
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "output_tail": {
+            "$comment": "The tail, not the head: what is useful about a failed command is at the end. It passes through the redactor with every other outbound field, because the redactor wraps `send` rather than the log sink (ADR 0032).",
+            "type": "string",
+            "maxLength": 2000
+          }
+        }
+      }
+    }
   }
 }

@@ -723,9 +723,14 @@ type runnerRegisterFields struct {
 	// a property of the payload rather than of a release version (contract v1.12.0).
 	RunUntagged   *bool `json:"run_untagged"`
 	AcceptSecrets *bool `json:"accept_secrets"`
-	MaxConcurrent *int  `json:"max_concurrent"`
-	MaxWaiting    *int  `json:"max_waiting"`
-	Dedicated     *bool `json:"dedicated"`
+	// 1.13.0. **Absent means the empty set** — the opposite default from the two
+	// above, and deliberately so: those are refusal flags (absent = does not refuse),
+	// this is a support flag (absent = does not support). A permissive default would
+	// assume a machine performs a feature it has never heard of (ADR 0029 amendment C).
+	Features      []string `json:"features"`
+	MaxConcurrent *int     `json:"max_concurrent"`
+	MaxWaiting    *int     `json:"max_waiting"`
+	Dedicated     *bool    `json:"dedicated"`
 }
 
 type runnerRegisteredFields struct {
@@ -821,6 +826,25 @@ type runCompleteFields struct {
 	GitRemotes      []string  `json:"git_remotes"`
 	UnpushedCommits *int      `json:"unpushed_commits"`
 	UntrackedFiles  *int      `json:"untracked_files"`
+	// 1.13.0, both node→central. `PushedBranch` is a **fact**: Central composed the
+	// name and could recompute it, but only this daemon knows whether the push
+	// succeeded, and a pull request may only be opened on a branch that is there.
+	PushedBranch string              `json:"pushed_branch"`
+	Verification []verificationCheck `json:"verification"`
+}
+
+// verificationCheck is one platform check and what came back from it.
+//
+// `ExitCode` is a pointer because **0 is the interesting value** and an absent field
+// has to be distinguishable from a success. `-1` is reserved for "timed out and was
+// killed": a command that never finished has no exit code, and recording it as 1 would
+// make "the test failed" and "the test did not finish" identical in the report.
+type verificationCheck struct {
+	Name       string `json:"name"`
+	Origin     string `json:"origin"`
+	ExitCode   *int   `json:"exit_code"`
+	DurationMS *int64 `json:"duration_ms"`
+	OutputTail string `json:"output_tail"`
 }
 
 type runFailedFields struct {
@@ -841,13 +865,25 @@ var (
 	runSourceKindSet = map[string]bool{"none": true, "repo": true, "existing_branch": true}
 	runPhaseSet      = map[string]bool{
 		"preparing": true, "authenticating": true, "fetching": true, "checked_out": true,
-		"running": true, "waiting_for_input": true, "finishing": true,
+		// `verifying` joins in 1.13.0: the platform's own checks run after the agent
+		// exits, and "stuck on the tests" and "stuck on cleanup" are different facts.
+		"running": true, "verifying": true, "waiting_for_input": true, "finishing": true,
 	}
 	runDeclineReasonSet = map[string]bool{
 		"at_capacity": true, "runtime_unavailable": true, "disk_quota": true,
 		"shutting_down": true, "internal_error": true,
 	}
-	runResultSet      = map[string]bool{"succeeded": true, "no_changes": true}
+	// **No `delivered_branch_only`, and that is deliberate**: Central writes that value
+	// after it tries to open a pull request, and this daemon never learns whether one
+	// was opened. Adding it would create a branch here that can never be taken
+	// (ADR 0033 §3).
+	runResultSet = map[string]bool{"succeeded": true, "no_changes": true}
+	// Which store named a verification command. Echoed back with the result rather than
+	// recomputed by Central, so it cannot drift from the command that actually ran.
+	verificationOriginSet = map[string]bool{"project": true, "card": true}
+	// What this daemon can do that an older one cannot. An enum on the wire, so a
+	// misspelling is a rejected frame instead of a silent "unsupported".
+	runnerFeatureSet  = map[string]bool{"verification": true, "evidence": true}
 	runCancelReasons  = map[string]bool{"user_cancelled": true, "lease_lost": true, "shutting_down": true}
 	runFailureCodeSet = map[string]bool{
 		"RUN_SOURCE_UNAVAILABLE": true, "RUN_DISK_QUOTA": true, "RUN_IDLE_TIMEOUT": true,
@@ -1104,6 +1140,16 @@ func ValidateControl(raw []byte) error {
 				return errors.New("INVALID_MESSAGE")
 			}
 		}
+		if len(p.Features) > 16 {
+			return errors.New("INVALID_MESSAGE")
+		}
+		seen := map[string]bool{}
+		for _, feature := range p.Features {
+			if !runnerFeatureSet[feature] || seen[feature] {
+				return errors.New("INVALID_MESSAGE")
+			}
+			seen[feature] = true
+		}
 	case "runner.registered":
 		var p runnerRegisteredFields
 		if strictUnmarshal(env.Payload, &p) != nil || p.Accepted == nil {
@@ -1159,8 +1205,22 @@ func ValidateControl(raw []byte) error {
 	case "run.complete":
 		var p runCompleteFields
 		if strictUnmarshal(env.Payload, &p) != nil || p.RunID == uuid.Nil ||
-			!runResultSet[p.Result] || len(p.Summary) > 4096 || len(p.GitRemotes) > 16 {
+			!runResultSet[p.Result] || len(p.Summary) > 4096 || len(p.GitRemotes) > 16 ||
+			len(p.Verification) > 16 {
 			return errors.New("INVALID_MESSAGE")
+		}
+		// The same namespace the push constraint enforces. Checked here too because a
+		// frame is validated on both sides of the wire and neither trusts the other.
+		if p.PushedBranch != "" && !validRunBranch(p.PushedBranch) {
+			return errors.New("INVALID_MESSAGE")
+		}
+		for _, check := range p.Verification {
+			if check.Name == "" || len(check.Name) > 128 ||
+				!verificationOriginSet[check.Origin] ||
+				check.ExitCode == nil || *check.ExitCode < -1 || *check.ExitCode > 255 ||
+				len(check.OutputTail) > 2000 {
+				return errors.New("INVALID_MESSAGE")
+			}
 		}
 	case "run.failed":
 		var p runFailedFields
