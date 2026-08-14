@@ -110,6 +110,20 @@ export function summaryFixture(options: FixtureOptions = {}): DashboardSummary {
         total: options.unhealthyTotal ?? options.unhealthy?.length ?? 0,
         limit: 10,
       }),
+      // V2.4. Non-zero values rather than a zeroed shape: a fixture of zeros passes
+      // every rendering test while telling nobody whether the numbers reach the page.
+      delivery: wrap("delivery", {
+        window_days: 30,
+        tasks_created: 12,
+        tasks_with_a_run: 9,
+        tasks_done: 7,
+        tasks_done_with_a_report: 6,
+        forced_done: 1,
+        runs_finished: 14,
+        run_failures: { RUN_IDLE_TIMEOUT: 2, RUN_SOURCE_UNAVAILABLE: 1 },
+        avg_waiting_seconds: 412.5,
+        checks_by_origin: { project: 18, card: 4 },
+      }),
     },
   };
 }

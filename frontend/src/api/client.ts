@@ -4,42 +4,53 @@
 // by default (same-origin / vite proxy) and overridable via VITE_API_BASE_URL.
 
 import type {
-  ActivityPage,
   AcceptProposalResult,
-  Board,
-  FeatureSpec,
-  ProcessDefinition,
-  Requirement,
-  RequirementDetail,
-  Roadmap,
-  Task,
-  TaskProposal,
-  TaskWrite,
+  ActivityPage,
+  AgentRunner,
   AttachTicket,
   AuditPage,
   AuditQuery,
+  Board,
   CreateSessionInput,
+  CreateTunnelInput,
   DashboardSummary,
+  DispatchResult,
   EnrollmentToken,
   EnrollmentTokenCreated,
+  EvidenceItem,
+  ExecutionPlan,
+  FeatureSpec,
   FileContent,
-  FileStoreResult,
-  FileUploadResult,
   FileSearchResult,
+  FileStoreResult,
   FileTreePage,
+  FileUploadResult,
   LoginResponse,
-  CreateTunnelInput,
   NodeDetail,
   NodeSummary,
   NodeTunnelPolicy,
+  ProcessDefinition,
   ProjectDetail,
+  ProjectRepository,
+  ProjectSecret,
   ProjectStatus,
   ProjectSummary,
   ProjectWorkspace,
   RecentWorkspace,
   ReleaseManifest,
+  Requirement,
+  RequirementDetail,
+  Roadmap,
+  RunLogPage,
+  SecretKind,
   SessionDetail,
   SessionSummary,
+  Task,
+  TaskArtifact,
+  TaskMessage,
+  TaskProposal,
+  TaskRun,
+  TaskWrite,
   TokenPair,
   TunnelDetail,
   TunnelIntegration,
@@ -48,16 +59,8 @@ import type {
   UpdateNodeTunnelSettingsInput,
   UpdateTunnelIntegrationInput,
   User,
+  VerificationReport,
   WorkspaceFavorite,
-  AgentRunner,
-  ProjectSecret,
-  SecretKind,
-  ProjectRepository,
-  DispatchResult,
-  TaskRun,
-  RunLogPage,
-  TaskMessage,
-  TaskArtifact,
 } from "./dto";
 
 export class ApiError extends Error {
@@ -1083,6 +1086,29 @@ export class ApiClient {
       "POST",
       `/api/tasks/${encodeURIComponent(taskId)}/messages`,
       input,
+    );
+  }
+
+  // V2.4's three append-only reads. **There is no update counterpart for any of them**,
+  // in this client or on the server (ADR 0033 §5).
+  listTaskPlans(taskId: string): Promise<ExecutionPlan[]> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/plans`,
+    );
+  }
+
+  listTaskVerification(taskId: string): Promise<VerificationReport[]> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/verification`,
+    );
+  }
+
+  listTaskEvidence(taskId: string): Promise<EvidenceItem[]> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/evidence`,
     );
   }
 
