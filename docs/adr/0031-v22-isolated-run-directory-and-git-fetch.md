@@ -477,3 +477,64 @@ diagnose than a "not pushed".
 | Making the trailers a guarantee rather than best effort | The hook lives in a directory the agent can write to. Stating a two-tier guarantee as one tier hides which half is soft |
 | Applying ambient isolation whenever the setting is on | With git-credential delivery off by default, that hides the machine's credentials and supplies no replacement — every private-repository clone fails, and it looks like a credential problem |
 | Committing on the agent's behalf before pushing | The platform would be deciding what constitutes a commit. The honesty rule already covers the uncommitted case without inventing an author |
+
+---
+
+# Amendment (V2.4, 2026-08-14) — the branch a run ends on, when the card is a pull request
+
+**The five hard constraints are unchanged.** Not relaxed, not parameterised, not
+made conditional on the delivery mode. This amendment says what follows from leaving
+them alone.
+
+## B1 — Two more delivery modes reach the push path, and it does not notice
+
+`delivery: pull_request` produces the same branch as `delivery: branch`:
+`cliora/<card_ref>-<run_seq>`, pushed by the same call under the same five
+constraints. Opening the pull request happens on Central afterwards (ADR 0033 §3),
+so on the wire the daemon is told `branch` in both cases and the push path has no
+new branch.
+
+## B2 — `existing_pr` may only continue a branch already inside the namespace
+
+The first constraint admits only `cliora/…`. A pull request opened by hand has a
+head branch that is not, so **`existing_pr` continues the platform's own pull
+requests and nothing else**.
+
+The refusal is at **dispatch**, not at the push:
+
+- at dispatch the card has cost nothing;
+- at the push the run has already fetched, executed and produced work, and the
+  failure arrives as "cannot deliver" after the expensive part.
+
+`services/runs.py` already refuses `source: existing_branch` + `delivery: branch`
+for the same reason and with the same shape; this is that check extended, not a new
+kind of check.
+
+## B3 — What `run_branch()` returns, for all five modes
+
+| `delivery` | branch |
+|---|---|
+| `branch`, `pull_request` | `cliora/<card_ref>-<run_seq>`, or `base_branch` when `source: existing_branch` (dispatch has verified the namespace) |
+| `existing_pr` | `base_branch` — verified at dispatch |
+| `none`, `artifact` | empty; nothing is created and nothing is pushed |
+
+Omitting a mode here is not a missing feature but a silent one: with no branch in
+the offer the daemon creates none, the agent commits onto the base branch, the push
+step finds nothing to push, and the run reports "no commits to push" — which reads
+as though the agent did nothing.
+
+## B4 — The push result is a fact the daemon reports, not one Central derives
+
+`run.complete` gains `pushed_branch`, present only when a push actually succeeded.
+Central composed the name and could infer it, but only the daemon knows whether the
+push happened — and a pull request may only be opened on a branch that is really
+there. Intent and fact are stored in different columns for the same reason.
+
+## Alternatives rejected (amendment)
+
+| Rejected | Why |
+|---|---|
+| Letting `existing_pr` name any head branch | Turns the first hard constraint from a compiled-in constant into a database column, weeks after a security review approved the constant. If it is ever wanted it needs its own review |
+| Refusing an out-of-namespace `existing_pr` at the push | The run has already done the work by then |
+| Deriving `pushed_branch` on Central from `run_branch()` | That is the intent. A PR opened on an intended branch that was never pushed is a 422 from the provider at best |
+| A `delivery`-specific push path | The constraints are the push path. A second one is a second place for them to not hold |
