@@ -149,9 +149,19 @@ else
   pass "GATE-DV-DELIVERY-COVERAGE"
 fi
 
-# A promise pointing at this phase or later, left in code somebody will read as a plan.
+# A promise pointing at this phase or later, left where somebody reads it as a plan.
+#
+# ⚠️ The first version of this pattern missed two sentences **on the card editor**, which
+# is the most expensive place to be wrong: it told the user "這個交付方式從 V2.4 起生效，
+# 現在派工會被拒絕" next to a control that now works. It matched `V2.4 會|將` and not
+# `V2.4 起生效` — the promises written in one voice and not the ones written in another.
+#
+# Widening it to a bare `V2.4 起` then caught a sentence that is **not** stale:
+# "自 V2.4 起它的結果必須是四個值之一" states when a rule began and stays true forever.
+# So the verb is the signal after all, and the list simply has to be complete: a promise
+# says 起生效／會／將／之後才, a history says 自…起. Both shapes are here on purpose.
 absent "GATE-DV-NO-STALE-PROMISE" "an expired promise about V2.4" \
-  -nE 'V2\.4 (會|將|adds|will)|takes effect in a later version' \
+  -nE 'V2\.4 (會|將|起生效|之後才|adds|will)|takes effect in a later version|從 V2\.4 (起|開始)' \
   --include='*.py' --include='*.go' --include='*.ts' --include='*.vue' --include='*.json' \
   backend/app daemon/internal contracts frontend/src
 

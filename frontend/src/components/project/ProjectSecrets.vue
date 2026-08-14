@@ -51,7 +51,7 @@ const KIND_LABELS: Record<SecretKind, string> = {
   env: "env — 一般環境變數，會進 Agent 的執行環境",
   git_pat: "git_pat — Git 的 personal access token",
   git_ssh_key: "git_ssh_key — Git 的 SSH 私鑰",
-  provider_token: "provider_token — 開 PR 用（V2.4 起生效）",
+  provider_token: "provider_token — 平台建立合併請求時使用（不下放到節點）",
 };
 
 async function load(): Promise<void> {
