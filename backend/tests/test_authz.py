@@ -251,6 +251,25 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # a session credential's scope exclude approval, and an action that does not exist
     # cannot be excluded from a scope (research/02/01 D13).
     ("GET", "/api/projects/{project_id}/process"): rbac.PROJECT_VIEW,
+    # V2.4. `process.manage` rather than `project.manage`: a project's settings describe
+    # one project, while the process definition is the vocabulary every board and every
+    # cross-project metric is expressed in (ADR 0033 §5).
+    ("PUT", "/api/projects/{project_id}/process/overrides"): rbac.PROCESS_MANAGE,
+    # V2.4's three append-only tables: read with `project.view`, write with
+    # `task.update`, and **no third verb** — "append-only" in REST is the absence of
+    # PUT, PATCH and DELETE (ADR 0033 §5).
+    # V2.4's two verification stores, and the whole security argument is the difference
+    # between these two lines: the project's needs `project.manage`, and the **card's
+    # needs `task.approve`** — an action `RUN_TOKEN_SCOPES` never contains, so the agent
+    # being verified cannot choose what verifies it (ADR 0033 §3b).
+    ("PUT", "/api/projects/{project_id}/verification-commands"): rbac.PROJECT_MANAGE,
+    ("PUT", "/api/tasks/{task_id}/verification-commands"): rbac.TASK_APPROVE,
+    ("GET", "/api/tasks/{task_id}/plans"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/plans"): rbac.TASK_UPDATE,
+    ("GET", "/api/tasks/{task_id}/verification"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/verification"): rbac.TASK_UPDATE,
+    ("GET", "/api/tasks/{task_id}/evidence"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/evidence"): rbac.TASK_UPDATE,
     ("GET", "/api/projects/{project_id}/board"): rbac.PROJECT_VIEW,
     ("GET", "/api/projects/{project_id}/roadmap"): rbac.PROJECT_VIEW,
     ("GET", "/api/projects/{project_id}/tasks"): rbac.PROJECT_VIEW,
@@ -337,6 +356,12 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/cli/runs/messages"): None,
     ("POST", "/api/cli/runs/messages"): None,
     ("POST", "/api/cli/runs/artifacts"): None,
+    # V2.4's three writes, and **all three are write-only**: an agent does not need to
+    # read back what it just wrote, and every read endpoint is another surface to
+    # authorize (ADR 0033 §Consequences; the same restraint left `approve` out of the CLI).
+    ("POST", "/api/cli/runs/plan"): None,
+    ("POST", "/api/cli/runs/verification"): None,
+    ("POST", "/api/cli/runs/evidence"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

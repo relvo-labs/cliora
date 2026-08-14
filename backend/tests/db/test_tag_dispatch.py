@@ -407,21 +407,36 @@ async def test_the_missing_set_is_the_smallest_one_not_the_intersection(api) -> 
 
 
 @pytest.mark.usefixtures("projects_enabled")
-async def test_branch_delivery_is_supported_and_pull_request_still_names_its_version(
+async def test_every_delivery_mode_dispatches_and_the_table_of_refusals_is_empty(
     api,
 ) -> None:
+    """V2.3 refused two modes by phase; V2.4 delivers all five.
+
+    The check that used to reject them is deliberately still there and deliberately
+    empty — it is where the *next* unhandled mode gets turned away, and a declaration
+    the platform silently ignores is worse than one it refuses (plan/18/00-…md D11).
+    """
+    from app.services.runs import UNSUPPORTED_DELIVERIES
+
+    assert UNSUPPORTED_DELIVERIES == {}
+
     client, maker = api
     owner, headers = await _actor(client, maker)
     project = await _project(maker, owner)
 
-    branch_card = await _card(maker, project, delivery="branch", source="none")
-    accepted = await client.post(f"/api/tasks/{branch_card}/dispatch", json={}, headers=headers)
-    assert accepted.status_code == 202, accepted.text
+    for delivery in ("none", "artifact", "branch"):
+        card = await _card(maker, project, delivery=delivery, source="none")
+        accepted = await client.post(f"/api/tasks/{card}/dispatch", json={}, headers=headers)
+        assert accepted.status_code == 202, f"{delivery}: {accepted.text}"
 
+    # The two pull-request modes are refused only on **their own declarations** now —
+    # a missing target, or a branch outside the namespace — never on a version number.
     pr_card = await _card(maker, project, delivery="pull_request", source="none")
     refused = await client.post(f"/api/tasks/{pr_card}/dispatch", json={}, headers=headers)
     assert refused.status_code == 409
-    assert "V2.4" in refused.json()["error"]["message"]
+    assert refused.json()["error"]["code"] == "TASK_DELIVERY_NEEDS_SOURCE"
+    # The refusal is about this card, not about a release.
+    assert "V2.4" not in refused.json()["error"]["message"]
 
 
 @pytest.mark.usefixtures("projects_enabled")
