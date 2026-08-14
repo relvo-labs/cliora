@@ -4,6 +4,12 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi==0.116.1",
+  # Imported directly by `api/middleware.py`, so it is declared directly. It arrives
+  # with FastAPI either way — but a package you import is a package you depend on, and
+  # relying on somebody else's transitive dependency means their next release decides
+  # whether your process starts. Unpinned so FastAPI's own constraint stays the
+  # authority on which version is compatible.
+  "starlette",
   "jsonschema==4.25.0",
   "referencing==0.37.0",
   "pydantic==2.11.7",
@@ -20,11 +26,21 @@ dependencies = [
   # rather than a hand-rolled one: multipart is a format with a long history of parser
   # bugs, and writing a fourth is not a saving.
   "python-multipart==0.0.20",
+  # Outbound HTTP, for opening a pull request and nothing else (V2.4, ADR 0033 §3).
+  # **It moved here from the dev group in this phase, and that move is the whole
+  # deployment story**: `deploy/backend.Dockerfile` installs with `--no-dev`, so a
+  # module importing a dev dependency at import time starts fine in development and
+  # cannot start at all in production. `test_runtime_imports_are_declared_dependencies`
+  # is what turns that into a failed build rather than a failed boot.
+  #
+  # Reachable from exactly one module (`services/providers.py`) — the narrowed SCOPE-013
+  # asserts that, and it is why a client library being a runtime dependency does not
+  # make Central a proxy.
+  "httpx==0.28.1",
 ]
 
 [dependency-groups]
 dev = [
-  "httpx==0.28.1",
   "mypy==1.17.1",
   "pytest==8.4.1",
   "pytest-asyncio==1.1.0",

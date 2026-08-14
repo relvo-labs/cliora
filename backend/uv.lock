@@ -150,6 +150,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "cryptography" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jsonschema" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -157,12 +158,12 @@ dependencies = [
     { name = "python-multipart" },
     { name = "referencing" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "starlette" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "mypy" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -176,6 +177,7 @@ requires-dist = [
     { name = "asyncpg", specifier = "==0.30.0" },
     { name = "cryptography", specifier = ">=45,<46" },
     { name = "fastapi", specifier = "==0.116.1" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "jsonschema", specifier = "==4.25.0" },
     { name = "pydantic", specifier = "==2.11.7" },
     { name = "pydantic-settings", specifier = "==2.10.1" },
@@ -183,12 +185,12 @@ requires-dist = [
     { name = "python-multipart", specifier = "==0.0.20" },
     { name = "referencing", specifier = "==0.37.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = "==2.0.36" },
+    { name = "starlette" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.35.0" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = "==0.28.1" },
     { name = "mypy", specifier = "==1.17.1" },
     { name = "pytest", specifier = "==8.4.1" },
     { name = "pytest-asyncio", specifier = "==1.1.0" },
