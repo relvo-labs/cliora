@@ -293,7 +293,17 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("POST", "/api/requirements/{requirement_id}/approve"): rbac.TASK_APPROVE,
     ("POST", "/api/requirements/{requirement_id}/proposals"): rbac.TASK_CREATE,
     ("POST", "/api/proposals/{proposal_id}/accept"): rbac.TASK_APPROVE,
+    # V2.5 replaces the `DELETE` with a `POST` that carries the required reason; the old
+    # route stays, deprecated, and now demands the same reason. A `DELETE` body is legal
+    # HTTP and is stripped by enough clients that the reason would arrive sometimes.
+    ("POST", "/api/proposals/{proposal_id}/reject"): rbac.TASK_APPROVE,
     ("DELETE", "/api/proposals/{proposal_id}"): rbac.TASK_APPROVE,
+    # V2.5 document patch proposals (ADR 0034 §6). Deciding is `task.approve` — the same
+    # authority as approving a specification — while *reading* the queue is
+    # `project.view`, because a pending proposal is part of the shape of the project.
+    ("GET", "/api/projects/{project_id}/patch-proposals"): rbac.PROJECT_VIEW,
+    ("POST", "/api/patch-proposals/{proposal_id}/accept"): rbac.TASK_APPROVE,
+    ("POST", "/api/patch-proposals/{proposal_id}/reject"): rbac.TASK_APPROVE,
     # The agent surface (ADR 0028 sec 3). `None`, like `/api/auth/login`, because these
     # are not authorized by a *user* action at all: the caller is a session credential
     # whose scope was fixed when it was issued, and it can never resolve into a user.
@@ -362,6 +372,14 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("POST", "/api/cli/runs/plan"): None,
     ("POST", "/api/cli/runs/verification"): None,
     ("POST", "/api/cli/runs/evidence"): None,
+    # V2.5's three writes and one read (ADR 0034 §2). The read is the exception to V2.4's
+    # write-only restraint and it earns it: the context pack is a snapshot from dispatch,
+    # so a run forty minutes in cannot otherwise see the specification versions it has
+    # already submitted — and it is invoked statelessly.
+    ("GET", "/api/cli/runs/requirement"): None,
+    ("POST", "/api/cli/runs/spec"): None,
+    ("POST", "/api/cli/runs/proposal"): None,
+    ("POST", "/api/cli/runs/patch-proposal"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

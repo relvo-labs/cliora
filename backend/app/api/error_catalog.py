@@ -1493,6 +1493,205 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "runtime required — often because that CLI is installed but too old.",
             "Pick another agent, or update the CLI on that node and let it re-register.",
         ),
+        # --- V2.5: clarification, decomposition and document patch proposals ---
+        #
+        # Twenty-three codes and no new HTTP shape: every refusal here is either "this
+        # kind of card cannot do that" or "an agent may not decide that". The phase adds
+        # no outward surface, so every entry below is about a boundary rather than a
+        # failure (ADR 0034).
+        _entry(
+            "TASK_KIND_FORBIDS_SECRETS",
+            status.HTTP_409_CONFLICT,
+            "A clarification or decomposition card carries no secrets",
+            "Neither kind needs a credential to read code and ask questions, so the "
+            "declaration is refused at dispatch rather than honoured. Refused *before* "
+            "the allowlist check on purpose: the fix is to clear the field, not to widen "
+            "the project's allowlist.",
+            "Clear the card's required secrets.",
+        ),
+        _entry(
+            "TASK_KIND_DELIVERY_NOT_ALLOWED",
+            status.HTTP_409_CONFLICT,
+            "This kind of card can only deliver nothing or an artifact",
+            "Clarification, decomposition and mockup cards produce no code change, so "
+            "a branch or pull request would fail at delivery having spent a whole run.",
+            "Set the card's delivery to `none` or `artifact`.",
+        ),
+        _entry(
+            "TASK_KIND_NEEDS_REQUIREMENT",
+            status.HTTP_409_CONFLICT,
+            "This card is not linked to a requirement",
+            "A clarification or decomposition run works *on* a requirement; without one "
+            "there is nothing for it to read or to write back to.",
+            "Dispatch it from the requirement's page, or set the card's requirement.",
+        ),
+        _entry(
+            "TASK_MOCKUP_INTEGRATION_DISABLED",
+            status.HTTP_409_CONFLICT,
+            "This deployment has no tunnel integration, so it does not do mockups",
+            "The mockup gate does not exist without a way to show a running preview "
+            "(ADR 0022, D31). **Ordinary UI cards are unaffected** and so is attaching a "
+            "screenshot as an artifact — what is missing is the governance gate.",
+            "Enable the tunnel integration, or make this an ordinary implementation card.",
+        ),
+        _entry(
+            "TASK_KIND_LOCKED",
+            status.HTTP_409_CONFLICT,
+            "This card has been run, so its kind is fixed",
+            "Its specification versions, question thread and run log are explained by "
+            "the kind it had; changing the kind afterwards would leave an implementation "
+            "card that inexplicably produced a specification.",
+            "Create a new card of the kind you want.",
+        ),
+        _entry(
+            "TASK_KIND_MISMATCH",
+            status.HTTP_409_CONFLICT,
+            "This route serves a different kind of card",
+            "`/spec` serves clarification cards and `/proposal` serves decomposition "
+            "cards. The card's kind decides which writes it may make.",
+            "Use the route matching this card's kind.",
+        ),
+        _entry(
+            "QUESTION_ALREADY_PENDING",
+            status.HTTP_409_CONFLICT,
+            "The previous question has not been answered yet",
+            "One question at a time. Five at once returns three answers and two the "
+            "agent cannot tell were skipped. `details.pending_question` is the one "
+            "waiting. Two *related* sub-questions in one message are allowed.",
+            "Combine them into one message, or wait for a reply.",
+        ),
+        _entry(
+            "SPEC_SECTION_UNKNOWN",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That specification section does not exist",
+            "The nine section keys are closed so that two writers cannot invent two "
+            "spellings of one idea. `details.allowed` lists them.",
+            "Use one of the listed section keys.",
+        ),
+        _entry(
+            "SPEC_VERSION_LIMIT",
+            status.HTTP_409_CONFLICT,
+            "This requirement has too many specification versions",
+            "A backstop against a loop, not a design constraint: a real clarification "
+            "converges in a handful of rounds.",
+            "Approve the current version, or raise a new requirement.",
+        ),
+        _entry(
+            "SPEC_QUESTION_AMBIGUOUS",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A question has both an answer and a known-unknown marking",
+            "Either resolves it for the approval gate, so filling both lights the button "
+            "while hiding which state it is in — and 'this is the answer' and 'we decided "
+            "not to resolve this' are what a reviewer needs to tell apart.",
+            "Keep the answer, or keep the known-unknown marking.",
+        ),
+        _entry(
+            "PROPOSAL_EMPTY",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The proposal contains no tasks",
+            "A decomposition with no cards is not a decomposition.",
+            "Submit a tree with at least one task.",
+        ),
+        _entry(
+            "PROPOSAL_TOO_LARGE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That is too many cards for one decomposition",
+            "Not a granularity judgement — the server cannot make one — but a runaway "
+            "backstop. Hitting it usually means the requirement should be split first.",
+            "Split the requirement, or decompose one epic at a time.",
+        ),
+        _entry(
+            "PROPOSAL_TREE_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The proposal tree does not hold together",
+            "A duplicate id, or a parent or dependency pointing at a node that is not in "
+            "the tree. Checked at submission rather than at acceptance, because a "
+            "reference among unselected items would otherwise surface much later.",
+            "Fix the named node and resubmit.",
+        ),
+        _entry(
+            "PROPOSAL_TREE_CYCLE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The proposal's dependencies form a cycle",
+            "`details.cycle` names the path. Naming it matters: 'there is a cycle' in a "
+            "forty-node tree is not actionable.",
+            "Break the cycle and resubmit.",
+        ),
+        _entry(
+            "PROPOSAL_FIELD_FORBIDDEN",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "A decomposition may not declare that field",
+            "`required_secrets` is a person's decision on a card, not a proposal's. "
+            "Refused rather than stripped, because stripping leaves the agent believing "
+            "it declared something.",
+            "Remove the field; a person adds secrets to the card afterwards.",
+        ),
+        _entry(
+            "PROPOSAL_RISK_UNDERSTATED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "This card mentions a high-risk area but is not marked high risk",
+            "Secrets, authentication, payments, migrations and infrastructure are stop "
+            "condition 4. The term match is coarse on purpose and errs toward noise: an "
+            "unnecessary badge costs one untick, a missed one puts a payments card in "
+            "`ready` as low risk.",
+            "Set the card's risk to high, or reword it if the match is wrong.",
+        ),
+        _entry(
+            "PROPOSAL_REJECT_NEEDS_NOTE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Rejecting a proposal needs a reason",
+            "The reason is the only signal that accumulates on this path: the next "
+            "decomposition of the same requirement receives it as a negative example.",
+            "Write why it was turned down.",
+        ),
+        _entry(
+            "PROPOSAL_OVERRIDE_NOT_ACCEPTED",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "That field cannot be edited while accepting",
+            "Either the item is not in this acceptance — an edit would then be applied "
+            "silently at some later one — or the field is `readiness`, which would turn "
+            "'a card missing readiness lands in backlog' into a rule that disappears.",
+            "Select the item first, or edit the card after it is created.",
+        ),
+        _entry(
+            "PATCH_PROPOSAL_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "Patch proposal not found",
+            "The document patch proposal does not exist.",
+            "Reload the project's proposals.",
+        ),
+        _entry(
+            "PATCH_PROPOSAL_TARGET_INVALID",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The patch proposal's target or sections are malformed",
+            "The path must be repository-relative. The platform never opens it — the "
+            "check is so that a person's review screen does not render something shaped "
+            "like an attack.",
+            "Use a repository-relative path and one of the four section keys.",
+        ),
+        _entry(
+            "PATCH_PROPOSAL_TOO_LARGE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "The patch is too large",
+            "Refused at submission rather than truncated at render: a truncated diff "
+            "looks complete, and a person decides on it.",
+            "Split it into separate proposals per document.",
+        ),
+        _entry(
+            "PATCH_PROPOSAL_ALREADY_DECIDED",
+            status.HTTP_409_CONFLICT,
+            "This patch proposal was already decided",
+            "Accept and reject are one-shot; the row keeps who decided and when.",
+            "Submit a new proposal if the document changed again.",
+        ),
+        _entry(
+            "PATCH_PROPOSAL_REJECT_NEEDS_NOTE",
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Rejecting a patch proposal needs a reason",
+            "Same rule as a decomposition proposal: a rejection with no reason is "
+            "indistinguishable from no row three months later.",
+            "Write why it was turned down.",
+        ),
     ]
 )
 

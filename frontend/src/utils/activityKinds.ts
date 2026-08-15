@@ -34,6 +34,8 @@ const LABELS: Record<string, string> = {
   "requirement.spec_added": "新增規格版本",
   "requirement.approved": "核准規格",
   "requirement.proposal_accepted": "接受任務提案",
+  "requirement.proposal_rejected": "拒絕任務提案",
+  "document.patch_decided": "決定文件修訂提案",
   // V2.2, the agent runner. `run.dispatched` is a person's action; the claim and the
   // finish are the runner's and the system's, and they arrive with the queue service.
   "run.dispatched": "派給 Agent",

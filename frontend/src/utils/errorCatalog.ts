@@ -469,6 +469,141 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "計畫有變的話，另建一個提案。",
     retryable: false,
   },
+  // --- V2.5 釐清、拆解與文件修訂提案（ADR 0034）---
+  TASK_KIND_FORBIDS_SECRETS: {
+    cause:
+      "釐清與拆解不需要憑證就能讀程式碼與提問，所以宣告了機密的卡片在派工當下被拒。刻意排在允許清單檢查之前——要修的是清空欄位，不是放寬專案設定。",
+    nextStep: "清空卡片的機密欄位。",
+    retryable: false,
+  },
+  TASK_KIND_DELIVERY_NOT_ALLOWED: {
+    cause:
+      "釐清、拆解與 mockup 卡片不產生程式碼變更；宣告分支或合併請求會在交付那一步失敗，而那時整個 run 已經跑完了。",
+    nextStep: "把交付方式改成「無交付」或「卡片產物」。",
+    retryable: false,
+  },
+  TASK_KIND_NEEDS_REQUIREMENT: {
+    cause:
+      "釐清或拆解是對著一個需求做的；沒有需求就沒有東西可讀，也沒有地方可以寫回去。",
+    nextStep: "從需求頁面派工，或先把卡片連到需求。",
+    retryable: false,
+  },
+  TASK_MOCKUP_INTEGRATION_DISABLED: {
+    cause:
+      "沒有啟用 tunnel 整合就沒有辦法展示可互動的預覽，所以這個關卡整個不存在。一般的 UI 實作卡不受影響，Agent 附截圖為產物也不受影響。",
+    nextStep: "啟用 tunnel 整合，或把這張卡改成一般的實作卡。",
+    retryable: false,
+  },
+  TASK_KIND_LOCKED: {
+    cause:
+      "這張卡的規格版本、提問串與執行紀錄都由它當時的種類解釋；事後改種類會留下一張莫名產出規格的實作卡。",
+    nextStep: "建立一張新的卡片。",
+    retryable: false,
+  },
+  TASK_KIND_MISMATCH: {
+    cause:
+      "卡片的種類決定它可以做哪些寫入：`/spec` 服務釐清卡，`/proposal` 服務拆解卡。",
+    nextStep: "用對應這張卡種類的路徑。",
+    retryable: false,
+  },
+  QUESTION_ALREADY_PENDING: {
+    cause:
+      "一次一個問題。一口氣問五個，實務上會得到三個答案，而提問者分辨不出哪兩個被忽略了。兩個相關的子問題寫成同一則訊息是可以的。",
+    nextStep: "把問題合併成一則，或等上一題有回覆。",
+    retryable: false,
+  },
+  SPEC_SECTION_UNKNOWN: {
+    cause: "規格書的九個章節是封閉的，否則兩個撰寫者會用兩種拼法寫同一件事。",
+    nextStep: "改用清單上的章節名稱。",
+    retryable: false,
+  },
+  SPEC_VERSION_LIMIT: {
+    cause:
+      "版本數上限是防止迴圈的後盾，不是設計限制——一次真正的釐清幾輪就會收斂。",
+    nextStep: "核准目前這一版，或另提一個需求。",
+    retryable: false,
+  },
+  SPEC_QUESTION_AMBIGUOUS: {
+    cause:
+      "答案與「已知未知」任一個都算解決，兩個都填會讓核准按鈕亮起來卻看不出是哪一種狀態——而「這是答案」與「我們決定不解決」正是審閱者要分辨的。",
+    nextStep: "留下答案，或留下「已知未知」的標記，擇一。",
+    retryable: false,
+  },
+  PROPOSAL_EMPTY: {
+    cause: "沒有任何 Task 的拆解不是拆解。",
+    nextStep: "至少提出一張 Task。",
+    retryable: false,
+  },
+  PROPOSAL_TOO_LARGE: {
+    cause:
+      "上限不是顆粒度的判斷（伺服器判斷不了），是防止失控的後盾。撞到它通常表示這個需求該先拆成幾個 Epic。",
+    nextStep: "先拆分需求，或一次只拆一個 Epic。",
+    retryable: false,
+  },
+  PROPOSAL_TREE_INVALID: {
+    cause:
+      "有重複的 id，或父節點／相依指向樹裡不存在的節點。在提交時檢查而不是接受時——否則沒被勾選的節點之間的錯誤會很晚才浮現。",
+    nextStep: "修正被指名的節點後重新提交。",
+    retryable: false,
+  },
+  PROPOSAL_TREE_CYCLE: {
+    cause:
+      "相依形成循環。錯誤訊息會列出循環路徑——在一棵四十個節點的樹裡，只說「有循環」是無法行動的。",
+    nextStep: "打斷循環後重新提交。",
+    retryable: false,
+  },
+  PROPOSAL_FIELD_FORBIDDEN: {
+    cause:
+      "機密是人在卡片上的決定，不是提案的。這裡拒絕而不是靜默移除，因為移除會讓提交者以為自己宣告成功了。",
+    nextStep: "移除該欄位；卡片建立後由人補上機密。",
+    retryable: false,
+  },
+  PROPOSAL_RISK_UNDERSTATED: {
+    cause:
+      "密鑰、認證、金流、遷移與基礎設施是停止條件第四條。這個比對刻意寬鬆、也刻意寧可誤報：多一個徽章的代價是取消勾選一次，漏掉的代價是一張碰金流的卡以低風險進入就緒。",
+    nextStep: "把風險改成高，或在比對誤判時調整措辭。",
+    retryable: false,
+  },
+  PROPOSAL_REJECT_NEEDS_NOTE: {
+    cause:
+      "理由是這條路徑上唯一會累積的訊號：下一次拆解同一個需求時，它會作為負面情境提供。",
+    nextStep: "寫下為什麼不採用。",
+    retryable: false,
+  },
+  PROPOSAL_OVERRIDE_NOT_ACCEPTED: {
+    cause:
+      "不是這次勾選的節點——那樣的修改會在日後某次部分接受時被靜默套用；或者修改的是就緒條件，那會讓「缺就緒條件的卡落在待辦」變成一條可以繞過的規則。",
+    nextStep: "先勾選該節點，或在卡片建立之後再修改。",
+    retryable: false,
+  },
+  PATCH_PROPOSAL_NOT_FOUND: {
+    cause: "該文件修訂提案不存在。",
+    nextStep: "重新整理專案的提案清單。",
+    retryable: false,
+  },
+  PATCH_PROPOSAL_TARGET_INVALID: {
+    cause:
+      "路徑必須是 repo 內的相對路徑。平台從不開啟這個檔案——這個檢查是為了不讓審閱畫面上出現一個看起來像攻擊的字串。",
+    nextStep: "改用 repo 相對路徑，章節名稱用那四個之一。",
+    retryable: false,
+  },
+  PATCH_PROPOSAL_TOO_LARGE: {
+    cause:
+      "在提交時拒絕而不是在渲染時截斷：一份被截斷的 diff 看起來是完整的，而人會據此做決定。",
+    nextStep: "依文件拆成數份提案。",
+    retryable: false,
+  },
+  PATCH_PROPOSAL_ALREADY_DECIDED: {
+    cause: "接受與拒絕都只做一次；該列保留了決定者與時間。",
+    nextStep: "文件又變了的話，提交一份新的提案。",
+    retryable: false,
+  },
+  PATCH_PROPOSAL_REJECT_NEEDS_NOTE: {
+    cause:
+      "與拆解提案同一條規則：沒有理由的拒絕，三個月後與沒有這一列無法分辨。",
+    nextStep: "寫下為什麼不採用。",
+    retryable: false,
+  },
   SESSION_PROJECT_MISMATCH: {
     cause:
       "Session 指定專案時，其 Workspace 必須是該專案的綁定之一。比對是完全相等的，所以已綁定路徑的子目錄本身並未綁定。",

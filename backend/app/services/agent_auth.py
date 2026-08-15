@@ -72,8 +72,14 @@ RUN_TOKEN_SCOPES: frozenset[str] = frozenset({PROJECT_VIEW, TASK_UPDATE})
 # Fields an agent may not set even through an endpoint it is allowed to call. `gates`
 # is the load-bearing one — the gate endpoint is already out of reach, and this closes
 # the open-shaped `PATCH` body behind it.
+#
+# `card_kind` joined the set in V2.5 and is the sharpest entry: a clarification run that
+# could rewrite its own card to `implementation` would have lifted the "this kind of
+# card carries no secret" refusal for the card's *next* dispatch. The field is otherwise
+# editable — a person may correct a miscategorised card until it has been run — so
+# excluding it here is the whole of the boundary (ADR 0034 §5).
 AGENT_FORBIDDEN_FIELDS = frozenset(
-    {"gates", "owner_user_id", "assigned_runner_id", "required_secrets"}
+    {"gates", "owner_user_id", "assigned_runner_id", "required_secrets", "card_kind"}
 )
 
 

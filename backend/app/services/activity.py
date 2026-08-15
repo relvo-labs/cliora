@@ -67,6 +67,11 @@ REQUIREMENT_CREATED = "requirement.created"
 REQUIREMENT_SPEC_ADDED = "requirement.spec_added"
 REQUIREMENT_APPROVED = "requirement.approved"
 PROPOSAL_ACCEPTED = "requirement.proposal_accepted"
+# V2.5. Recorded because the *reason* is the only signal that accumulates on this path:
+# the next decomposition of the same requirement receives it as a negative example
+# (ADR 0034 §6).
+PROPOSAL_REJECTED = "requirement.proposal_rejected"
+PATCH_PROPOSAL_DECIDED = "document.patch_decided"
 
 # --- V2.2: the agent runner (ADR 0029) ---
 # Only kinds with a write site in this phase. `test_every_activity_kind_has_a_write_site`
@@ -117,6 +122,8 @@ ALL_KINDS: frozenset[str] = frozenset(
         REQUIREMENT_SPEC_ADDED,
         REQUIREMENT_APPROVED,
         PROPOSAL_ACCEPTED,
+        PROPOSAL_REJECTED,
+        PATCH_PROPOSAL_DECIDED,
         RUN_DISPATCHED,
         RUN_CLAIMED,
         RUN_FINISHED,

@@ -191,6 +191,37 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "REQUIREMENT_NOT_APPROVED",
             "PROPOSAL_NOT_FOUND",
             "PROPOSAL_ALREADY_DECIDED",
+            # V2.5 (ADR 0034). Grouped here rather than under the agent runner because
+            # every one of them is about *this* flow's gates, and a reader debugging a
+            # clarification run looks for the requirement section first.
+            "TASK_KIND_FORBIDS_SECRETS",
+            "TASK_KIND_DELIVERY_NOT_ALLOWED",
+            "TASK_KIND_NEEDS_REQUIREMENT",
+            "TASK_MOCKUP_INTEGRATION_DISABLED",
+            "TASK_KIND_LOCKED",
+            "TASK_KIND_MISMATCH",
+            "QUESTION_ALREADY_PENDING",
+            "SPEC_SECTION_UNKNOWN",
+            "SPEC_VERSION_LIMIT",
+            "SPEC_QUESTION_AMBIGUOUS",
+            "PROPOSAL_EMPTY",
+            "PROPOSAL_TOO_LARGE",
+            "PROPOSAL_TREE_INVALID",
+            "PROPOSAL_TREE_CYCLE",
+            "PROPOSAL_FIELD_FORBIDDEN",
+            "PROPOSAL_RISK_UNDERSTATED",
+            "PROPOSAL_REJECT_NEEDS_NOTE",
+            "PROPOSAL_OVERRIDE_NOT_ACCEPTED",
+        ),
+    ),
+    (
+        "Document patch proposals",
+        (
+            "PATCH_PROPOSAL_NOT_FOUND",
+            "PATCH_PROPOSAL_TARGET_INVALID",
+            "PATCH_PROPOSAL_TOO_LARGE",
+            "PATCH_PROPOSAL_ALREADY_DECIDED",
+            "PATCH_PROPOSAL_REJECT_NEEDS_NOTE",
         ),
     ),
     (

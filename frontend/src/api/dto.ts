@@ -642,6 +642,8 @@ export const AUDIT_ACTIONS = [
   "requirement.create",
   "requirement.approve",
   "requirement.proposal_accept",
+  "requirement.proposal_reject",
+  "document.patch_decide",
   "session_token.issue",
   "session_token.revoke",
   "session.context_project",
@@ -1097,6 +1099,7 @@ export interface Task {
   required_secrets: string[];
   assigned_runner_id: string | null;
   requirement_id: string | null;
+  card_kind: string;
   proposal_id: string | null;
   depends_on: TaskDependency[];
   /** The cards still blocking this one, by reference — the same list the refusal
@@ -1170,10 +1173,31 @@ export interface FeatureSpec {
   non_goals: string | null;
   acceptance_criteria: Array<Record<string, unknown>>;
   open_questions: Array<Record<string, unknown>>;
+  /**
+   * The nine sections Monstrare's specification template has and V2.1's five columns
+   * did not (ADR 0034 §7). Keys are closed server-side; contents are free text, so this
+   * is deliberately loose here.
+   */
+  sections: Record<string, unknown>;
   authored_by_kind: string;
   authored_by: string | null;
+  /** Which run wrote this version, when one did. */
+  run_id: string | null;
   created_at: string;
 }
+
+/** The nine section keys, in the order the review screen renders them. */
+export const SPEC_SECTIONS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "problem", label: "問題" },
+  { key: "users", label: "使用者" },
+  { key: "user_stories", label: "使用者故事" },
+  { key: "journeys", label: "使用者旅程" },
+  { key: "functional_requirements", label: "功能需求" },
+  { key: "screens", label: "畫面" },
+  { key: "data_and_api", label: "資料與 API" },
+  { key: "security_privacy", label: "安全性與隱私" },
+  { key: "verification_plan", label: "驗證計畫" },
+];
 
 export interface TaskProposal {
   id: string;
@@ -1184,7 +1208,16 @@ export interface TaskProposal {
   decided_by: string | null;
   decided_at: string | null;
   decision_note: string | null;
+  run_id: string | null;
   created_at: string;
+  /** Tree items that already became cards. */
+  accepted_item_ids: string[];
+  /**
+   * Tree items still available. **Not the same as rejected** — partial acceptance leaves
+   * the rest selectable, and a screen that cannot tell the two apart makes people think
+   * the decision was already made.
+   */
+  remaining_item_ids: string[];
 }
 
 export interface RequirementDetail extends Requirement {
@@ -1194,9 +1227,68 @@ export interface RequirementDetail extends Requirement {
   blocking_questions: string[];
 }
 
+/** One proposed task, as the acceptance tree renders it. */
+export interface ProposalTaskItem {
+  id: string;
+  title?: string;
+  epic_id?: string | null;
+  user_story_id?: string | null;
+  risk?: string;
+  delivery?: string;
+  source?: string;
+  readiness?: Record<string, boolean>;
+  depends_on?: string[];
+  [key: string]: unknown;
+}
+
+export interface ProposalGroupItem {
+  id: string;
+  title?: string;
+  epic_id?: string | null;
+  [key: string]: unknown;
+}
+
+/** Fields a person may change while accepting. `readiness` is deliberately absent. */
+export const PROPOSAL_OVERRIDE_FIELDS = [
+  "delivery",
+  "risk",
+  "target_branch",
+  "stage",
+] as const;
+
+export interface DocumentPatchProposal {
+  id: string;
+  project_id: string;
+  requirement_id: string | null;
+  run_id: string | null;
+  seq: number;
+  target_path: string;
+  /**
+   * A unified diff, as **text**. Agent-produced content in a single-origin deployment
+   * (ADR 0020), so nothing may parse it as markup — and there is deliberately no
+   * download, because a `.patch` file relocates applying to a terminal where none of
+   * this phase's gates exist.
+   */
+  diff: string;
+  sections: Record<string, unknown>;
+  reason: string | null;
+  related_task_ids: string[];
+  open_questions: Array<Record<string, unknown>>;
+  status: string;
+  decided_by: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  created_at: string;
+}
+
 export interface AcceptProposalResult {
   created: Task[];
   incomplete: Record<string, string[]>;
+  /**
+   * card_ref -> tree items it depended on that were not accepted, so no dependency row
+   * exists and the card landed in the backlog.
+   */
+  unresolved_dependencies: Record<string, string[]>;
 }
 
 // --- V2.2 agent runner (ADR 0029/0030/0031) --------------------------------

@@ -25,12 +25,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import status
-from sqlalchemy import update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.clock import now_utc
-from app.db.models import Epic, Project, Task, UserStory
+from app.db.models import Epic, Project, Task, TaskRun, UserStory
 from app.repositories.tasks import BoardCard, TaskRepository
 from app.services import audit as audit_actions
 from app.services.activity import (
@@ -77,6 +77,16 @@ EDITABLE_FIELDS = frozenset(
         "existing_pr_ref",
         "required_secrets",
         "assigned_runner_id",
+        # V2.5 (ADR 0034 §5). Editable so a card filed under the wrong kind can be
+        # corrected, but **only until it has been run**: `_require_kind_unlocked` below
+        # refuses once any `task_runs` row exists, because a clarification card that
+        # became an implementation card after the fact would carry a specification and a
+        # question thread that its kind no longer explains.
+        #
+        # It is in `AGENT_FORBIDDEN_FIELDS` for a sharper reason: a clarification run
+        # able to rewrite its own card's kind would have cleared the secret refusal for
+        # the next dispatch.
+        "card_kind",
     }
 )
 
@@ -104,6 +114,30 @@ RISKS = frozenset({"low", "medium", "high", "critical"})
 PRIORITIES = frozenset({"low", "normal", "high"})
 SOURCES = frozenset({"none", "repo", "existing_branch"})
 DELIVERIES = frozenset({"none", "artifact", "branch", "pull_request", "existing_pr"})
+
+# What a card *is* (ADR 0034 §5). Kept next to `SOURCES` and `DELIVERIES` because it is
+# the third field of the same kind — a small closed vocabulary the dispatch path reads —
+# and deliberately apart from `required_labels`, which decides *which machine* claims
+# the card and is free text.
+CARD_KIND_IMPLEMENTATION = "implementation"
+CARD_KIND_CLARIFICATION = "clarification"
+CARD_KIND_DECOMPOSITION = "decomposition"
+CARD_KIND_MOCKUP = "mockup"
+CARD_KINDS = frozenset(
+    {
+        CARD_KIND_IMPLEMENTATION,
+        CARD_KIND_CLARIFICATION,
+        CARD_KIND_DECOMPOSITION,
+        CARD_KIND_MOCKUP,
+    }
+)
+# The two that drive a requirement rather than a repository. Both need a requirement to
+# work on, carry no secret, and may only deliver inertly.
+REQUIREMENT_KINDS = frozenset({CARD_KIND_CLARIFICATION, CARD_KIND_DECOMPOSITION})
+# Deliveries a non-implementation card may declare. `branch`, `pull_request` and
+# `existing_pr` are absent because none of these kinds produces a code change; a card
+# that declared one would fail at delivery having already spent a whole run.
+INERT_DELIVERIES = frozenset({"none", "artifact"})
 
 # Leaves room in the 4096-byte context pack for its mandatory title, three CLI
 # instructions, headings and the explicit omission notice. Count the rendered UTF-8
@@ -452,6 +486,8 @@ class TaskService:
             )
 
         values = self._validated(changes)
+        if "card_kind" in values and values["card_kind"] != task.card_kind:
+            await self._require_kind_unlocked(task)
         stage_change: str | None = None
         forced = False
         if "stage" in changes:
@@ -775,8 +811,32 @@ class TaskService:
             _require_choice(
                 str(values["delivery"]), DELIVERIES, "TASK_STAGE_INVALID", "Unknown delivery"
             )
+        if "card_kind" in values:
+            _require_choice(
+                str(values["card_kind"]), CARD_KINDS, "TASK_STAGE_INVALID", "Unknown card kind"
+            )
         values.pop("stage", None)
         return values
+
+    async def _require_kind_unlocked(self, task: Task) -> None:
+        """A card's kind is fixed once it has ever been run (ADR 0034 §5).
+
+        **"Ever", not "currently".** A clarification card that finished and then became
+        an implementation card would still carry its specification versions, its
+        question thread and its run log — and an auditor reading it later would see an
+        implementation card that inexplicably produced a specification. History cannot
+        be edited, so the field that explains it cannot be either.
+        """
+        existing = await self._session.scalar(
+            select(func.count()).select_from(TaskRun).where(TaskRun.task_id == task.id)
+        )
+        if existing:
+            raise ApiError(
+                "TASK_KIND_LOCKED",
+                "這張卡已經執行過，卡片種類不能再改；要換種類請建立新卡",
+                status.HTTP_409_CONFLICT,
+                details={"card_kind": task.card_kind, "runs": int(existing)},
+            )
 
     async def _readiness_warnings(self, task: Task) -> list[dict[str, Any]]:
         """What the Definition of Ready would say, without refusing anything.

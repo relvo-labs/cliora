@@ -141,6 +141,10 @@ PR_CREATE = "pr.create"
 REQUIREMENT_CREATE = "requirement.create"
 REQUIREMENT_APPROVE = "requirement.approve"
 PROPOSAL_ACCEPT = "requirement.proposal_accept"
+# V2.5. A separate action from accept, not a flag on it: "we turned this down and why"
+# is the row somebody looks for, and it is not findable by filtering on acceptance.
+PROPOSAL_REJECT = "requirement.proposal_reject"
+PATCH_PROPOSAL_DECIDE = "document.patch_decide"
 # Issue and revoke each get a row, and both record only the token id — never the value.
 SESSION_TOKEN_ISSUE = "session_token.issue"
 SESSION_TOKEN_REVOKE = "session_token.revoke"
@@ -237,6 +241,8 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         REQUIREMENT_CREATE,
         REQUIREMENT_APPROVE,
         PROPOSAL_ACCEPT,
+        PROPOSAL_REJECT,
+        PATCH_PROPOSAL_DECIDE,
         SESSION_TOKEN_ISSUE,
         SESSION_TOKEN_REVOKE,
         SESSION_CONTEXT_PROJECTION,
