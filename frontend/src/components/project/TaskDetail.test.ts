@@ -27,6 +27,7 @@ function task(): Task {
     scope: null,
     non_goals: null,
     stage: "verify",
+    card_kind: "implementation",
     risk: "high",
     priority: "normal",
     owner_user_id: null,

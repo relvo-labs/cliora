@@ -19,6 +19,8 @@ const { calls } = vi.hoisted(() => ({
   calls: {
     updates: [] as unknown[],
     bindings: [] as unknown[],
+    cards: [] as Record<string, unknown>[],
+    dispatches: [] as string[],
   },
 }));
 
@@ -27,12 +29,36 @@ const state: {
   detail: ProjectDetail | null;
   activity: unknown[];
   actorsHidden: boolean;
-} = { permissions: [], detail: null, activity: [], actorsHidden: false };
+  requirements: unknown[];
+  dispatchError: unknown;
+} = {
+  permissions: [],
+  detail: null,
+  activity: [],
+  actorsHidden: false,
+  requirements: [],
+  dispatchError: null,
+};
 
 vi.mock("../stores/auth", () => ({
   useAuthStore: () => ({
     hasPermission: (action: string) => state.permissions.includes(action),
     hasFeature: () => true,
+  }),
+  api: () => ({
+    listRequirements: async () => state.requirements,
+    createRequirement: async () => ({ id: "r-1" }),
+    listPatchProposals: async () => [],
+    decidePatchProposal: async () => undefined,
+    createTask: async (_project: string, input: Record<string, unknown>) => {
+      calls.cards.push(input);
+      return { task: { id: "t-1", card_ref: "TASK-9" }, warnings: [] };
+    },
+    dispatchTask: async (taskId: string) => {
+      calls.dispatches.push(taskId);
+      if (state.dispatchError) throw state.dispatchError;
+      return { run_id: "run-1", status: "queued" };
+    },
   }),
 }));
 
@@ -119,6 +145,16 @@ function testRouter(): Router {
       { path: "/dashboard", name: "dashboard", component: blank },
       { path: "/nodes", name: "nodes", component: blank },
       { path: "/login", name: "login", component: blank },
+      {
+        path: "/projects/:id/requirements/:requirementId",
+        name: "requirement-detail",
+        component: blank,
+      },
+      {
+        path: "/projects/:id/tasks/:taskId",
+        name: "task-detail",
+        component: blank,
+      },
     ],
   });
 }
@@ -143,8 +179,12 @@ describe("ProjectDetailView bindings", () => {
     state.activity = [];
     state.actorsHidden = false;
     state.detail = null;
+    state.requirements = [];
+    state.dispatchError = null;
     calls.updates = [];
     calls.bindings = [];
+    calls.cards = [];
+    calls.dispatches = [];
   });
 
   it("distinguishes all four usability states in words, not only by colour", async () => {
@@ -313,5 +353,122 @@ describe("ProjectDetailView activity", () => {
     const wrapper = await render();
     expect(wrapper.text()).toContain("綁定 Workspace");
     expect(wrapper.text()).not.toContain("workspace.bound");
+  });
+});
+
+// --- V2.5: sending a requirement to an agent (RQ-10 §1.2, FR-SPEC-002) ------
+//
+// Two requests behind one button, and **the second one fails often** — every dispatch
+// refusal this phase added lands there. So most of what these defend is the failure
+// path, which is where a convenience button becomes a trap.
+
+function requirement(status: string, ref = "REQ-1") {
+  return {
+    id: "r-1",
+    project_id: "p-1",
+    card_ref: ref,
+    raw_text: "報表匯出很慢",
+    status,
+    created_by: null,
+    approved_by: null,
+    approved_at: null,
+    spec_count: 0,
+    created_at: "2026-08-14T00:00:00Z",
+    updated_at: "2026-08-14T00:00:00Z",
+  };
+}
+
+async function requirementsTab(status: string) {
+  state.detail = project();
+  state.requirements = [requirement(status)];
+  const wrapper = await render();
+  await wrapper.get("[data-tab='requirements']").trigger("click");
+  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  await wrapper.vm.$nextTick();
+  return wrapper;
+}
+
+describe("ProjectDetailView requirement dispatch", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    state.permissions = ["project.view", "task.create", "run.dispatch"];
+    state.activity = [];
+    state.actorsHidden = false;
+    state.detail = null;
+    state.requirements = [];
+    state.dispatchError = null;
+    calls.cards = [];
+    calls.dispatches = [];
+  });
+
+  it("creates a clarification card with the settings the server will accept", async () => {
+    // `delivery: artifact` and no secrets, because dispatch refuses anything else for
+    // this kind — a button that builds a card the server then rejects is worse than no
+    // button.
+    const wrapper = await requirementsTab("intake");
+    await wrapper.get("[data-clarify='REQ-1']").trigger("click");
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+
+    expect(calls.cards).toHaveLength(1);
+    expect(calls.cards[0]).toMatchObject({
+      card_kind: "clarification",
+      requirement_id: "r-1",
+      delivery: "artifact",
+      stage: "ready",
+    });
+    expect(calls.cards[0].required_secrets).toBeUndefined();
+    expect(calls.dispatches).toEqual(["t-1"]);
+  });
+
+  it("will not offer decomposition until the specification is approved", async () => {
+    // The same sentence the API answers with. A control that is greyed out with no
+    // reason is one people look for a way round.
+    const wrapper = await requirementsTab("intake");
+    const decompose = wrapper.get("[data-decompose='REQ-1']");
+    expect(decompose.attributes("disabled")).toBeDefined();
+    expect(decompose.attributes("title")).toContain("先核准規格");
+  });
+
+  it("offers decomposition and not clarification once approved", async () => {
+    const wrapper = await requirementsTab("approved");
+    expect(
+      wrapper.get("[data-decompose='REQ-1']").attributes("disabled"),
+    ).toBeUndefined();
+    expect(
+      wrapper.get("[data-clarify='REQ-1']").attributes("disabled"),
+    ).toBeDefined();
+  });
+
+  it("keeps the card when dispatch is refused, and says which card it kept", async () => {
+    // The most important one. Dispatch fails for reasons that are *waits* — no runner is
+    // online yet — as well as for mistakes, and a button that deleted the card on failure
+    // would destroy a perfectly good card while somebody starts a machine.
+    const { ApiError: Api } = await import("../api/client");
+    state.dispatchError = new Api(
+      "PROJECT_NO_REPOSITORY",
+      "這個專案還沒有登記儲存庫",
+      409,
+    );
+    const wrapper = await requirementsTab("intake");
+    await wrapper.get("[data-clarify='REQ-1']").trigger("click");
+    for (let i = 0; i < 6; i += 1) await Promise.resolve();
+    await wrapper.vm.$nextTick();
+
+    expect(calls.cards).toHaveLength(1);
+    const text = wrapper.text();
+    expect(text).toContain("TASK-9");
+    expect(text).toContain("已建立");
+    expect(text).toContain("這個專案還沒有登記儲存庫");
+    // And the card is reachable, so a second click does not make a second card.
+    expect(wrapper.find("[data-dispatched='REQ-1']").exists()).toBe(true);
+  });
+
+  it("hides both buttons from somebody who may create but not dispatch", async () => {
+    // Queueing work spends compute; `run.dispatch` is deliberately not covered by
+    // `task.create` (ADR 0029), and the console must not imply otherwise.
+    state.permissions = ["project.view", "task.create"];
+    const wrapper = await requirementsTab("intake");
+    expect(wrapper.find("[data-clarify='REQ-1']").exists()).toBe(false);
+    expect(wrapper.find("[data-decompose='REQ-1']").exists()).toBe(false);
   });
 });
