@@ -6,6 +6,8 @@ import { ApiError } from "../api/client";
 import {
   ACTION_PROJECT_MANAGE,
   ACTION_SECRET_MANAGE,
+  ACTION_RUN_DISPATCH,
+  ACTION_TASK_APPROVE,
   ACTION_TASK_CREATE,
   ACTION_TASK_UPDATE,
   FEATURE_AGENT_RUNS,
@@ -23,6 +25,7 @@ import type {
 } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import ProjectRepositories from "../components/project/ProjectRepositories.vue";
+import PatchProposals from "../components/project/PatchProposals.vue";
 import ProjectSecrets from "../components/project/ProjectSecrets.vue";
 import TaskBoard from "../components/project/TaskBoard.vue";
 import TaskRoadmap from "../components/project/TaskRoadmap.vue";
@@ -57,6 +60,17 @@ const canManageSecrets = computed(
 );
 const canWriteTasks = computed(() => auth.hasPermission(ACTION_TASK_UPDATE));
 const canCreateTasks = computed(() => auth.hasPermission(ACTION_TASK_CREATE));
+// Both, because sending a requirement to an agent is two acts: creating a card and
+// spending compute. `run.dispatch` is deliberately not covered by `task.update` for
+// exactly that reason (ADR 0029).
+// Deciding a patch proposal is the same authority as approving a specification: both
+// are a person saying "this is now the platform's position" (ADR 0034 §6).
+const canApprove = computed(() => auth.hasPermission(ACTION_TASK_APPROVE));
+const canDispatch = computed(
+  () =>
+    auth.hasPermission(ACTION_TASK_CREATE) &&
+    auth.hasPermission(ACTION_RUN_DISPATCH),
+);
 // In the query string, so a reload lands where the user was rather than back on
 // Overview — a board is a place people leave open.
 const tab = ref<
@@ -137,6 +151,58 @@ async function submitIntake(): Promise<void> {
     requirements.value = await api().listRequirements(props.id);
   } catch (error) {
     taskError.value = error instanceof ApiError ? error.message : "建立失敗。";
+  }
+}
+
+/**
+ * Send a requirement to an agent (RQ-10 §1.2, FR-SPEC-002).
+ *
+ * **Two requests, and the second one fails often** — every dispatch refusal in this
+ * phase lands there (no repository registered, no eligible runner, the four card-kind
+ * rules). So the failure path matters more than the success one:
+ *
+ * * the card **stays**. Deleting it on failure would delete a perfectly good card when
+ *   the reason was "no runner is online yet", which is a wait rather than a mistake;
+ * * the message names the card and links to it, because by then the card exists and the
+ *   person needs to be able to find it;
+ * * the requirement row remembers it, so a second click does not make a second card.
+ */
+const dispatchingId = ref<string | null>(null);
+const dispatchedCards = ref<Record<string, { ref: string; id: string }>>({});
+
+async function sendToAgent(
+  requirementId: string,
+  kind: "clarification" | "decomposition",
+  cardRef: string,
+): Promise<void> {
+  taskError.value = "";
+  dispatchingId.value = requirementId;
+  let created: { id: string; card_ref: string } | null = null;
+  try {
+    const result = await api().createTask(props.id, {
+      title: kind === "clarification" ? `釐清 ${cardRef}` : `拆解 ${cardRef}`,
+      card_kind: kind,
+      requirement_id: requirementId,
+      // A run that reads code asks better questions; delivery is inert either way, and
+      // the server refuses anything else for these kinds.
+      source: "repo",
+      delivery: "artifact",
+      stage: "ready",
+    });
+    created = { id: result.task.id, card_ref: result.task.card_ref };
+    dispatchedCards.value = {
+      ...dispatchedCards.value,
+      [requirementId]: { ref: result.task.card_ref, id: result.task.id },
+    };
+    await api().dispatchTask(result.task.id);
+    requirements.value = await api().listRequirements(props.id);
+  } catch (error) {
+    const detail = error instanceof ApiError ? error.message : "派工失敗。";
+    taskError.value = created
+      ? `卡片 ${created.card_ref} 已建立，但派工被拒：${detail}`
+      : detail;
+  } finally {
+    dispatchingId.value = null;
   }
 }
 
@@ -533,6 +599,17 @@ function recordActionError(error: unknown, fallback: string): void {
             </UiButton>
           </div>
         </div>
+        <!-- Every dispatch refusal this phase added lands here, and until V2.5 this
+             panel had nowhere to show one. A refusal a person cannot see is the same as
+             a button that silently does nothing. -->
+        <p
+          v-if="taskError"
+          class="notice error"
+          role="alert"
+          data-requirement-error
+        >
+          {{ taskError }}
+        </p>
         <UiCard v-if="requirements.length" flush>
           <ul class="requirements">
             <li
@@ -550,6 +627,57 @@ function recordActionError(error: unknown, fallback: string): void {
                 {{ item.raw_text }}
               </RouterLink>
               <span class="status">{{ item.status }}</span>
+              <!-- Disabled is not enough: a rule people cannot see the reason for is a
+                   rule they look for a way round. The API refuses the same thing. -->
+              <span
+                v-if="canDispatch && !isArchived"
+                class="requirement-actions"
+              >
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  :disabled="
+                    dispatchingId === item.id ||
+                    !['intake', 'clarifying'].includes(item.status)
+                  "
+                  :title="
+                    ['intake', 'clarifying'].includes(item.status)
+                      ? '建立一張釐清卡並派給 Agent'
+                      : '這個需求已經有規格了'
+                  "
+                  :data-clarify="item.card_ref"
+                  @click="sendToAgent(item.id, 'clarification', item.card_ref)"
+                >
+                  派給 Agent 釐清
+                </UiButton>
+                <UiButton
+                  size="sm"
+                  variant="ghost"
+                  :disabled="
+                    dispatchingId === item.id || item.status !== 'approved'
+                  "
+                  :title="
+                    item.status === 'approved'
+                      ? '建立一張拆解卡並派給 Agent'
+                      : '先核准規格。未核准的規格不能被拆解——這是 API 層的規則，不是介面的限制。'
+                  "
+                  :data-decompose="item.card_ref"
+                  @click="sendToAgent(item.id, 'decomposition', item.card_ref)"
+                >
+                  派給 Agent 拆解
+                </UiButton>
+              </span>
+              <RouterLink
+                v-if="dispatchedCards[item.id]"
+                class="dispatched-card"
+                :data-dispatched="item.card_ref"
+                :to="{
+                  name: 'task-detail',
+                  params: { id: props.id, taskId: dispatchedCards[item.id].id },
+                }"
+              >
+                已建立 {{ dispatchedCards[item.id].ref }}
+              </RouterLink>
             </li>
           </ul>
         </UiCard>
@@ -645,6 +773,14 @@ function recordActionError(error: unknown, fallback: string): void {
         <UiCard v-if="canManageSecrets" class="overview-card">
           <ProjectSecrets :project-id="id" />
         </UiCard>
+
+        <!-- Here rather than in a tab of its own: a project may see zero of these in a
+             month, and a sixth tab that is usually empty costs every visit. -->
+        <PatchProposals
+          :client="api()"
+          :project-id="id"
+          :can-decide="canApprove"
+        />
 
         <UiCard flush class="overview-card">
           <template #header>
@@ -1282,6 +1418,14 @@ h2 {
   font-family: var(--font-mono);
   font-size: var(--font-xs);
   font-weight: 400;
+}
+.requirement-actions {
+  display: inline-flex;
+  gap: var(--space-2);
+}
+.dispatched-card {
+  font-size: var(--font-xs);
+  color: var(--text-muted);
 }
 .requirements .status {
   padding: 2px 8px;

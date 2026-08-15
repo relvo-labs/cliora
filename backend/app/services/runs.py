@@ -32,17 +32,21 @@ from fastapi import status
 from sqlalchemy import and_, cast, func, or_, select, text, update
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from app.api.errors import ApiError
 from app.clock import now_utc
 from app.db.models import (
     AgentRunner,
+    FeatureSpec,
     Project,
     ProjectRepository,
+    Requirement,
     Task,
     TaskArtifact,
     TaskDependency,
     TaskMessage,
+    TaskProposal,
     TaskRun,
 )
 from app.services import audit as audit_actions
@@ -58,9 +62,18 @@ from app.services.activity import (
 )
 from app.services.agent_auth import RunTokenService, RunTokenSubject
 from app.services.audit import AuditService
+from app.services.integrations import IntegrationService
+from app.services.process import ProcessService
 from app.services.providers import supports_host
 from app.services.runners import RepositoryService, clone_url
 from app.services.secrets import MaterialisedSecret, SecretService
+from app.services.tasks import (
+    CARD_KIND_CLARIFICATION,
+    CARD_KIND_IMPLEMENTATION,
+    CARD_KIND_MOCKUP,
+    INERT_DELIVERIES,
+    REQUIREMENT_KINDS,
+)
 from app.settings import Settings, get_settings
 
 # Terminal for the purposes of "does this card already have a run in flight".
@@ -331,6 +344,61 @@ class RunService:
                 "RUN_ALREADY_ACTIVE",
                 "This card already has a run in progress",
                 status.HTTP_409_CONFLICT,
+            )
+
+        # ②a what kind of card this is, and what that kind forbids (V2.5, ADR 0034 §3)
+        #
+        # **Before the secret allowlist below, not after.** A clarification card that
+        # declares a secret has one thing wrong with it, and "this kind of run carries no
+        # secret" is that thing. Reporting the allowlist first would send the reader to
+        # Project Settings to add a name that must not be used at all, and they would be
+        # refused a second time on the next attempt.
+        if task.card_kind in REQUIREMENT_KINDS:
+            if task.required_secrets:
+                raise ApiError(
+                    "TASK_KIND_FORBIDS_SECRETS",
+                    "釐清與拆解不需要機密，而這張卡宣告了："
+                    + "、".join(sorted(task.required_secrets))
+                    + "。請清空卡片的機密欄位——不是把名稱加進專案的允許清單。",
+                    status.HTTP_409_CONFLICT,
+                    details={
+                        "card_kind": task.card_kind,
+                        "required_secrets": sorted(task.required_secrets),
+                    },
+                )
+            if task.requirement_id is None:
+                raise ApiError(
+                    "TASK_KIND_NEEDS_REQUIREMENT",
+                    "這張卡沒有連到任何需求，Agent 不會知道要釐清或拆解什麼",
+                    status.HTTP_409_CONFLICT,
+                    details={
+                        "card_kind": task.card_kind,
+                        "settings_hint": f"/projects/{project.id}?tab=requirements",
+                    },
+                )
+        if task.card_kind != CARD_KIND_IMPLEMENTATION and task.delivery not in INERT_DELIVERIES:
+            raise ApiError(
+                "TASK_KIND_DELIVERY_NOT_ALLOWED",
+                f"'{task.card_kind}' 這種卡不產生程式碼變更，交付方式只能是 "
+                + "、".join(f"`{value}`" for value in sorted(INERT_DELIVERIES)),
+                status.HTTP_409_CONFLICT,
+                details={"card_kind": task.card_kind, "delivery": task.delivery},
+            )
+        if (
+            task.card_kind == CARD_KIND_MOCKUP
+            and not await IntegrationService(self._session).is_enabled()
+        ):
+            # D31's two-card rule, and the message carries the half that is easy to
+            # misread: an ordinary UI card is unaffected. A refusal that only says "no"
+            # reads as "UI work is blocked on this deployment", which is the opposite of
+            # what the design decided.
+            raise ApiError(
+                "TASK_MOCKUP_INTEGRATION_DISABLED",
+                "這張卡的交付物是 mockup 變體，而這個部署沒有啟用 tunnel 整合，"
+                "平台無法提供互動式預覽。一般的 UI 實作卡不受影響，照常派工；"
+                "Agent 附截圖為卡片產物也不受影響。",
+                status.HTTP_409_CONFLICT,
+                details={"card_kind": task.card_kind, "settings_hint": "/settings/integrations"},
             )
 
         # ② the card's declarations have to be satisfiable
@@ -748,7 +816,7 @@ class RunService:
                 task=task,
                 repository=repository,
                 credential=issued.value,
-                context=render_run_context(task, secret_names=[s.name for s in secrets]),
+                context=await self._context_for(task, secrets),
                 secrets=secrets,
                 branch=run_branch(task, run),
                 # Both stores, project first — and only for a node that declared it can
@@ -763,6 +831,61 @@ class RunService:
                 ),
             )
         return None
+
+    async def _context_for(self, task: Task, secrets: tuple[MaterialisedSecret, ...]) -> str:
+        """Which context pack this card gets. **The only place that decides** (ADR 0034 §3).
+
+        `GATE-RQ-CONTEXT-DISPATCH` asserts there is exactly one such branch in
+        `backend/app/`. A second one would eventually miss a kind, and the failure is
+        silent in the worst direction: a clarification card handed the implementation
+        pack is told which environment variables it has — a sentence that is false,
+        because its kind is refused any.
+
+        Two renderers rather than one with a flag, for the same reason: the flag's first
+        forgotten branch is that same false sentence.
+        """
+        if task.card_kind in REQUIREMENT_KINDS and task.requirement_id is not None:
+            requirement = await self._session.get(Requirement, task.requirement_id)
+            if requirement is not None:
+                latest = (
+                    await self._session.execute(
+                        select(FeatureSpec)
+                        .where(FeatureSpec.requirement_id == requirement.id)
+                        .order_by(FeatureSpec.seq.desc())
+                        .limit(1)
+                    )
+                ).scalar_one_or_none()
+                process = await ProcessService(self._session).effective(
+                    project=await self._session.get(Project, task.project_id)
+                )
+                if task.card_kind == CARD_KIND_CLARIFICATION:
+                    return render_clarification_context(task, requirement, latest)
+                rejected = await self._rejected_notes(requirement.id)
+                return render_decomposition_context(
+                    task, requirement, latest, process.readiness_keys(), rejected
+                )
+        return render_run_context(task, secret_names=[item.name for item in secrets])
+
+    async def _rejected_notes(self, requirement_id: uuid.UUID) -> list[tuple[int, str]]:
+        """Why previous decompositions of this requirement were turned down.
+
+        The only signal that accumulates on this path (ADR 0034 §6). Three at most and
+        the note only — the trees themselves would consume the whole budget, and the
+        reason is the part that changes what the next attempt does.
+        """
+        rows = (
+            await self._session.execute(
+                select(TaskProposal.seq, TaskProposal.decision_note)
+                .where(
+                    TaskProposal.requirement_id == requirement_id,
+                    TaskProposal.status == "rejected",
+                    TaskProposal.decision_note.is_not(None),
+                )
+                .order_by(TaskProposal.seq.desc())
+                .limit(3)
+            )
+        ).all()
+        return [(int(seq), str(note)) for seq, note in rows]
 
     async def _eligible(self, *, runner: AgentRunner, limit: int) -> list[TaskRun]:
         """The five conditions, as one query (ADR 0029 sec 3 and amendment B2).
@@ -1177,6 +1300,8 @@ class MessageService:
             raise ApiError("INVALID_ARGUMENT", "Unknown message kind", status.HTTP_400_BAD_REQUEST)
         if not body.strip():
             raise ApiError("INVALID_ARGUMENT", "Message body is empty", status.HTTP_400_BAD_REQUEST)
+        if kind == "question" and author_kind == ACTOR_AGENT and run_id is not None:
+            await self._require_no_pending_question(task, run_id)
         message = TaskMessage(
             id=uuid.uuid4(),
             task_id=task.id,
@@ -1202,6 +1327,61 @@ class MessageService:
                 payload={"card_ref": task.card_ref, "kind": kind},
             )
         return message
+
+    async def pending_question(self, task_id: uuid.UUID, run_id: uuid.UUID) -> TaskMessage | None:
+        """This run's question that nobody has answered yet, if there is one.
+
+        Three judgements, each deliberate (ADR 0034 §4):
+
+        * **the answer is looked for on the card, not on the run.** A person replying
+          does not know which run is current and should not have to;
+        * **any message from a user counts**, not only ``kind='answer'``. People reply by
+          typing, not by pressing a labelled button, and requiring the label would leave
+          the agent waiting for something that never comes;
+        * **a system message does not count** — otherwise the 24-hour timeout notice
+          would itself unblock questioning, which is precisely backwards.
+
+        Also exposed so the CLI can apply the same rule locally: two rules that disagree
+        produce "sometimes I can ask and sometimes I cannot", which reads as flakiness
+        rather than as a bug.
+        """
+        asked = aliased(TaskMessage)
+        answered = (
+            select(TaskMessage.id)
+            .where(
+                TaskMessage.task_id == asked.task_id,
+                TaskMessage.author_kind == ACTOR_USER,
+                TaskMessage.created_at > asked.created_at,
+            )
+            .exists()
+        )
+        return (
+            await self._session.execute(
+                select(asked)
+                .where(asked.run_id == run_id, asked.kind == "question", ~answered)
+                .order_by(asked.created_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+
+    async def _require_no_pending_question(self, task: Task, run_id: uuid.UUID) -> None:
+        pending = await self.pending_question(task.id, run_id)
+        if pending is None:
+            return
+        # The refusal offers a way out, because there is a real one: two *related*
+        # sub-questions in one message are allowed. What this rule prevents is five
+        # independent questions at once, which in practice returns three answers and two
+        # the agent cannot tell were skipped.
+        raise ApiError(
+            "QUESTION_ALREADY_PENDING",
+            "上一個問題還沒有人回覆，所以這一題被擋下來了。"
+            "把兩個問題合併成一則，或先等這一題有回覆。",
+            status.HTTP_409_CONFLICT,
+            details={
+                "pending_question": pending.body,
+                "asked_at": pending.created_at.isoformat(),
+            },
+        )
 
     async def post_event(self, *, task: Task, body: str, event_kind: str) -> TaskMessage:
         return await self.post(
@@ -1356,6 +1536,269 @@ def render_run_context(task: Task, *, secret_names: list[str] | None = None) -> 
         "- 你的工作目錄是一份**專屬於這次執行的 clone**，不是任何人的工作區。",
         "- 交付方式是把產物附到卡片上；本階段平台不會替你開分支或 PR。",
         "- 執行目錄有保留期，所以**沒附到卡片上的東西會消失**。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+# --- V2.5: the two packs for a run that produces no code (ADR 0034 §3) ------------
+#
+# The five stop conditions, internalised verbatim from
+# `../Monstrare/ai/process/context-protocol.md` (MIT). Kept as a constant rather than
+# inlined into the renderer so that "did we change Monstrare's wording" is one diff.
+STOP_CONDITIONS = (
+    "搜尋發現多種可能的實作方式、各有不同取捨。",
+    "需求跟既有架構衝突。",
+    "缺少必要檔案。",
+    "任務涉及密鑰、身分驗證、金流、遷移或基礎設施。",
+    "預估範圍超出已核准的任務卡。",
+)
+
+# The nine sections a specification is expected to fill, from
+# `../Monstrare/ai/templates/feature-spec.md` (MIT). **Names and one line each, never
+# the template itself**: the template is ~2.5 KB and would take a third of the budget
+# below on its own. `cliora spec template` prints the full skeleton locally instead.
+SPEC_SECTION_HINTS: tuple[tuple[str, str], ...] = (
+    ("problem", "要解決什麼問題（不是要做什麼）"),
+    ("users", "受影響的是誰"),
+    ("user_stories", "獨立有價值、可測試的故事；**拆解會直接讀這一節**"),
+    ("journeys", "使用者旅程"),
+    ("functional_requirements", "可測試的語言：WHEN … THE SYSTEM SHALL …"),
+    ("screens", "涉及的畫面與其狀態"),
+    ("data_and_api", "輸入／輸出／驗證／錯誤"),
+    ("security_privacy", "身分驗證／權限／敏感資料／濫用情境"),
+    ("verification_plan", "單元／整合／E2E／視覺／手動"),
+)
+
+# The layered budget (plan/22/03-…md §2.3). The wire allows 32 KiB, and that is not a
+# licence: `run.offer` is a 64 KiB control frame shared with the secrets block, and an
+# implementation pack measures 1–2 KB. These are the bytes of the rendered UTF-8 form.
+CONTEXT_BUDGET_BYTES = 6 * 1024
+_REQUIREMENT_TEXT_BUDGET = 1536
+_SPEC_BUDGET = 2560
+_NON_GOALS_BUDGET = 512
+
+
+def _clip(text_value: str, budget: int) -> str:
+    """Truncate on a character boundary and say so.
+
+    Says so because the alternative — a paragraph that stops mid-sentence — reads to an
+    agent as the end of the input rather than as a truncation, and it will answer the
+    half it was given.
+    """
+    encoded = text_value.encode()
+    if len(encoded) <= budget:
+        return text_value
+    kept = encoded[:budget].decode(errors="ignore")
+    return kept + "\n\n（已截斷；完整內容在卡片上）"
+
+
+def _render_spec_digest(spec: FeatureSpec | None, budget: int) -> list[str]:
+    """The current draft, as much of it as fits.
+
+    Only the latest version, never the history: version N-1 is what the *review screen*
+    is for, and an agent given three versions spends its context re-reading its own
+    output.
+    """
+    if spec is None:
+        return []
+    lines = [f"## 目前的規格草稿（第 {spec.seq} 版）", ""]
+    for label, value in (
+        ("目標", spec.objective),
+        ("範圍", spec.scope),
+        ("非目標", spec.non_goals),
+    ):
+        if value:
+            lines += [f"### {label}", value.strip(), ""]
+    sections = spec.sections or {}
+    for key, _hint in SPEC_SECTION_HINTS:
+        value = sections.get(key)
+        if value:
+            lines += [f"### {key}", str(value).strip(), ""]
+    unresolved = [
+        item
+        for item in (spec.open_questions or [])
+        if not item.get("answer") and not item.get("resolved_as")
+    ]
+    if unresolved:
+        lines += ["### 尚未解決的問題", ""]
+        lines += [f"- {item.get('question', item.get('id', '?'))}" for item in unresolved]
+        lines.append("")
+    body = "\n".join(lines)
+    if len(body.encode()) <= budget:
+        return lines
+    # Over budget: the questions are the part that decides what to ask next, so they
+    # survive and the prose becomes an inventory. Losing the prose costs a re-read of
+    # the card; losing the questions costs a repeated question.
+    reduced = [
+        f"## 目前的規格草稿（第 {spec.seq} 版，僅列節名——完整內容用 `cliora requirement show`）",
+        "",
+    ]
+    reduced += [
+        f"- `{key}`：{len(str(sections.get(key) or '').encode())} bytes"
+        for key, _hint in SPEC_SECTION_HINTS
+        if sections.get(key)
+    ]
+    reduced.append("")
+    if unresolved:
+        reduced += ["### 尚未解決的問題", ""]
+        reduced += [f"- {item.get('question', item.get('id', '?'))}" for item in unresolved]
+        reduced.append("")
+    return reduced
+
+
+def render_clarification_context(
+    task: Task, requirement: Requirement, spec: FeatureSpec | None
+) -> str:
+    """What a clarification run is started with.
+
+    **The first section is the two things it must do**, and the second of those is the
+    one this phase would otherwise lose: submit a draft after every answered question.
+    `render_run_context` puts "how to report" first because the likeliest failure there
+    is an agent that never says anything; here the likeliest failure is an agent that
+    asks five rounds of good questions and submits nothing, and then times out with the
+    thread as the only record (ADR 0034, D4).
+
+    There is no "environment variables available to this run" section, and there cannot
+    be: this kind of card is refused secrets at dispatch.
+    """
+    lines = [
+        f"# {requirement.card_ref} 釐清：{task.title}",
+        "",
+        "你要把一句模糊的需求問成一份規格。沒有人在終端前面，**卡片是唯一的溝通管道**。",
+        "",
+        "## 你必須做的兩件事",
+        "",
+        "```",
+        'cliora task ask "報表匯出是指 CSV 還是 PDF？"   # 一次一個問題，問完就等',
+        "cliora spec submit spec.json                   # 每得到一個答案就送一版",
+        "```",
+        "",
+        "**第二件事沒做的話，24 小時無人回覆時這次釐清會什麼都不剩。**",
+        "未解決的問題留在 `open_questions` 裡——那正是它存在的理由。",
+        "規格由人核准，你核准不了，所以不要為了讓它看起來完整而自己填答案。",
+        "",
+        "## 原始需求（原文照錄）",
+        "",
+        _clip(requirement.raw_text.strip(), _REQUIREMENT_TEXT_BUDGET),
+        "",
+    ]
+    lines += _render_spec_digest(spec, _SPEC_BUDGET)
+    if task.non_goals:
+        lines += [
+            "## 這個專案已知的非目標",
+            "",
+            _clip(task.non_goals.strip(), _NON_GOALS_BUDGET),
+            "",
+        ]
+    lines += ["## 規格書要有哪幾節", ""]
+    lines += [f"- `{key}`：{hint}" for key, hint in SPEC_SECTION_HINTS]
+    lines += [
+        "",
+        "完整範本用 `cliora spec template` 取得（離線可用，不佔這份情境）。",
+        "",
+        "## 不知道就不要填：五條停止條件",
+        "",
+    ]
+    lines += [f"- {item}" for item in STOP_CONDITIONS]
+    lines += [
+        "",
+        "遇到任一條，把它寫進 `open_questions`，**不要自己選一個然後在規格裡寫得像已經決定了**。",
+        "",
+        "## 提問的規約",
+        "",
+        "**一次一個問題。** 上一個問題還沒有人回覆之前，平台會拒絕你的下一個問題。",
+        "兩個相關的子問題可以寫成同一則訊息；五個各自獨立的問題不行——"
+        "實務上那會得到三個答案，而你分辨不出哪兩個被忽略了。",
+        "",
+        "## 這次執行的邊界",
+        "",
+        "- 工作目錄是**專屬於這次執行的 clone**；你可以讀程式碼，但這張卡不交付程式碼變更。",
+        "- **這次執行沒有任何機密**，而且平台不會給——釐清不需要。",
+        "- 不推分支、不開 PR。工作目錄若有變更，平台會誠實顯示出來。",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def render_decomposition_context(
+    task: Task,
+    requirement: Requirement,
+    spec: FeatureSpec | None,
+    readiness_keys: list[str],
+    rejected: list[tuple[int, str]],
+) -> str:
+    """What a decomposition run is started with.
+
+    `readiness_keys` comes from `ProcessService.effective()` and is **not** a constant
+    here. A project may disable readiness items (ADR 0033 §5), and a pack that named
+    seven fixed keys would have the agent fill one this project switched off — the value
+    is then ignored by `accept()`, which looks like the agent inventing fields.
+    """
+    lines = [
+        f"# {requirement.card_ref} 拆解：{task.title}",
+        "",
+        "你要把一份**已核准的規格**拆成一棵 Epic → User Story → Task 的樹。",
+        "",
+        "## 這棵樹不會直接變成卡片",
+        "",
+        "它是一份提案。人會逐張勾選，缺就緒條件的卡片接受後會落在「待辦」而不是「就緒」。",
+        "所以每一張 Task 都要自己完整——不要留給人去補。",
+        "",
+        "```",
+        "cliora proposal submit tree.json",
+        "```",
+        "",
+        "## 原始需求",
+        "",
+        _clip(requirement.raw_text.strip(), _REQUIREMENT_TEXT_BUDGET),
+        "",
+    ]
+    lines += _render_spec_digest(spec, _SPEC_BUDGET)
+    lines += ["## 每張 Task 必須帶的就緒條件", ""]
+    lines += [f"- `{key}`" for key in readiness_keys]
+    lines += [
+        "",
+        "外加執行設定：`source`、`delivery`、`target_branch`、`required_labels`、`depends_on`。",
+        "**`required_secrets` 不要填**——那是人的決定，提案裡出現它會被拒絕。",
+        "",
+        "`delivery` 是你最有價值的判斷之一：哪幾張要出 PR、哪幾張只交一份報告（`artifact`）、",
+        "哪幾張純執行不留東西（`none`）。拆解時分清楚，比事後補救便宜得多。",
+        "",
+        "## 拆分規則",
+        "",
+        "- **全端三分法**：一個 User Story 同時碰前後端時，預設拆成前端／後端／串接三張卡，"
+        "不是一張大卡。純前端或純後端的工作不必硬套。",
+        "- **Epic 架構優先**：同一個 Epic 底下多個 Story 共用畫面框架、路由保護或資料模型時，"
+        "先拆一張「架構基礎」卡，其餘卡在 `depends_on` 列上它。",
+        "- **完全窮盡**：所有卡合起來要覆蓋規格的完整驗收標準；規格提到卻沒有卡負責的是缺口。",
+        "- **相互排斥**：兩張卡不得都要改同一支 API 或同一個元件的核心邏輯。",
+        "",
+        "## 一張卡多大",
+        "",
+        "一個畫面狀態／一個 API endpoint／一個元件行為／一個 bug 的重現與修復／一個測試缺口。",
+        "**不要求一次產生完整的 Roadmap。**",
+        "",
+        "## 不知道就不要決定：五條停止條件",
+        "",
+    ]
+    lines += [f"- {item}" for item in STOP_CONDITIONS]
+    lines += [
+        "",
+        "命中第四條（密鑰／認證／金流／遷移／基礎設施）的卡片，`risk` 要標 `high`，"
+        "而還沒決定的部分留在規格的 `open_questions` 裡。",
+        "",
+    ]
+    if rejected:
+        lines += ["## 上一次拆解被拒絕的理由（不要再提一次）", ""]
+        lines += [f"- 提案 #{seq}：{note.strip()}" for seq, note in rejected]
+        lines.append("")
+    lines += [
+        "## 這次執行的邊界",
+        "",
+        "- 工作目錄是**專屬於這次執行的 clone**；你可以讀程式碼，但這張卡不交付程式碼變更。",
+        "- **這次執行沒有任何機密。**",
+        "- 不推分支、不開 PR。",
         "",
     ]
     return "\n".join(lines)

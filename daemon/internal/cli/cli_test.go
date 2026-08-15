@@ -256,3 +256,173 @@ func TestContextNotFoundMentionsBothKindsOfSubject(t *testing.T) {
 		t.Fatalf("the message still speaks only of Sessions: %v", err)
 	}
 }
+
+// --- V2.5: the three writes and the local question check (ADR 0034) ---------
+
+func TestSpecTemplateNeedsNoNetworkAndParses(t *testing.T) {
+	// The reason this subcommand exists is a budget: the template is ~2.5 KB and the
+	// clarification context pack has 6 KB to spend on the requirement, the current
+	// draft and the rules. Fetching it locally is what keeps it out of the frame.
+	root := NewCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"spec", "template"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("spec template: %v", err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal(out.Bytes(), &parsed); err != nil {
+		t.Fatalf("template is not valid JSON: %v", err)
+	}
+	sections, ok := parsed["sections"].(map[string]any)
+	if !ok {
+		t.Fatal("the template has no sections block")
+	}
+	// The three that carry weight: a decomposition reads `user_stories`, the `ui` gate
+	// reads `screens`, and acceptance criteria come from `verification_plan`.
+	for _, key := range []string{"user_stories", "screens", "verification_plan"} {
+		if _, present := sections[key]; !present {
+			t.Fatalf("the template is missing %q", key)
+		}
+	}
+}
+
+func TestSubmittingASpecSaysTheAgentCannotApproveIt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"seq": 3})
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	writeContext(t, dir, "s1", server.URL)
+	if err := os.WriteFile(filepath.Join(dir, "spec.json"), []byte(`{"objective":"x"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := NewCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"spec", "submit", filepath.Join(dir, "spec.json")})
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(cwd) }()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("spec submit: %v", err)
+	}
+	// Told up front rather than discovered through a 401: not trying is cheaper than
+	// being refused, the same reason `verify report` says what it says.
+	if !strings.Contains(out.String(), "你核准不了") {
+		t.Fatalf("output does not say approval is out of reach: %q", out.String())
+	}
+}
+
+func TestSubmittingAProposalPrintsItsSizeBeforeAnybodyOpensTheScreen(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"seq": 1})
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	writeContext(t, dir, "s1", server.URL)
+	tree := `{"epics":[{"id":"e1"}],"user_stories":[{"id":"u1"},{"id":"u2"}],` +
+		`"tasks":[{"id":"t1"},{"id":"t2"},{"id":"t3"}]}`
+	if err := os.WriteFile(filepath.Join(dir, "tree.json"), []byte(tree), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := NewCommand()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"proposal", "submit", filepath.Join(dir, "tree.json")})
+	cwd, _ := os.Getwd()
+	_ = os.Chdir(dir)
+	defer func() { _ = os.Chdir(cwd) }()
+	if err := root.Execute(); err != nil {
+		t.Fatalf("proposal submit: %v", err)
+	}
+	// The run log is the earliest place a forty-card decomposition is visible.
+	if !strings.Contains(out.String(), "1 個 Epic、2 個 User Story、3 張 Task") {
+		t.Fatalf("counts missing: %q", out.String())
+	}
+}
+
+func TestTheLocalQuestionCheckUsesTheSameRuleAsTheServer(t *testing.T) {
+	// Two rules that disagree produce "sometimes I can ask and sometimes I cannot",
+	// which reads as flakiness rather than as a bug. Same fixture, both directions.
+	cases := []struct {
+		name     string
+		messages []Message
+		waiting  bool
+	}{
+		{"no messages at all", nil, false},
+		{
+			"an unanswered question",
+			[]Message{{Kind: "question", Author: "agent", Body: "CSV or PDF?"}},
+			true,
+		},
+		{
+			"a plain reply from a person counts as an answer",
+			[]Message{
+				{Kind: "question", Author: "agent", Body: "CSV or PDF?"},
+				{Kind: "message", Author: "user", Body: "CSV"},
+			},
+			false,
+		},
+		{
+			"a system notice does not count",
+			[]Message{
+				{Kind: "question", Author: "agent", Body: "CSV or PDF?"},
+				{Kind: "event", Author: "system", Body: "lease renewed"},
+			},
+			true,
+		},
+		{
+			"an answered question followed by a new one",
+			[]Message{
+				{Kind: "question", Author: "agent", Body: "first"},
+				{Kind: "message", Author: "user", Body: "yes"},
+				{Kind: "question", Author: "agent", Body: "second"},
+			},
+			true,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				_ = json.NewEncoder(w).Encode(tc.messages)
+			}))
+			defer server.Close()
+			dir := t.TempDir()
+			writeContext(t, dir, "s1", server.URL)
+			ctx, _ := FindContext(dir, "")
+			_, waiting := NewClient(ctx).PendingQuestion()
+			if waiting != tc.waiting {
+				t.Fatalf("waiting = %v, want %v", waiting, tc.waiting)
+			}
+		})
+	}
+}
+
+func TestAFailedWriteSaysThePayloadSurvived(t *testing.T) {
+	// Asserted against the constant rather than by running the command: `exit` calls
+	// `os.Exit`, so the failure path is not reachable from a test binary. The offline
+	// message is asserted the same way, for the same reason.
+	if !strings.Contains(PayloadSurvivedMessage, "沒有遺失") {
+		t.Fatalf("the message does not say the file survived: %q", PayloadSurvivedMessage)
+	}
+	if !strings.Contains(PayloadSurvivedMessage, "同一個檔案") {
+		t.Fatalf("the message does not say to reuse the same file: %q", PayloadSurvivedMessage)
+	}
+}
+
+func TestTheCommandTreeHasNoAcceptOrApplySubcommand(t *testing.T) {
+	// V2.5's version of the `approve` restraint. Accepting a proposal and applying a
+	// document patch are both a person's decisions; a subcommand that exists invites an
+	// attempt whose answer is a 401 to interpret.
+	root := NewCommand()
+	for _, group := range root.Commands() {
+		for _, sub := range group.Commands() {
+			for _, banned := range []string{"accept", "apply", "reject"} {
+				if strings.Contains(sub.Name(), banned) {
+					t.Fatalf("unexpected subcommand: %s %s", group.Name(), sub.Name())
+				}
+			}
+		}
+	}
+}

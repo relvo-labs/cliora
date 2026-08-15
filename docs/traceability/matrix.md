@@ -433,6 +433,36 @@
 | FR-SHELL-001 | [FR-SHELL-001.AC-07](../../research/prd.md#fr-shell-001-ac-07) | 系統終端機計入 Node 與使用者的 Session 上限。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/sessions.py | pytest:backend/tests/db/test_sessions_api.py::test_a_user_is_capped_across_the_whole_fleet |
 | FR-SHELL-001 | [FR-SHELL-001.AC-08](../../research/prd.md#fr-shell-001-ac-08) | 關閉終端機或離開 Session 工作區時，系統終端機即終止。 | plan:plan/08/03-system-terminal-implementation.md<br>source:research/prd.md | code:backend/app/services/shell_reaper.py<br>code:frontend/src/views/SessionWorkspaceView.vue | pytest:backend/tests/test_shell_reaper.py::test_an_unattended_shell_is_terminated<br>playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away<br>vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path<br>pytest:backend/tests/db/test_sessions_api.py::test_a_terminal_nobody_is_watching_is_replaced_rather_than_refused |
 | FR-SHELL-001 | [FR-SHELL-001.AC-09](../../research/prd.md#fr-shell-001-ac-09) | 系統終端機可經 sudo 取得 root 時，介面須明示該 Node 的提權姿態。 | plan:plan/12/00-execution-plan.md<br>adr:docs/adr/0023-privileged-node-posture.md | code:frontend/src/views/SessionWorkspaceView.vue | vitest:frontend/src/views/NodeDetailPosture.test.ts |
+| FR-SPEC-002 | [FR-SPEC-002.AC-01](../../research/prd.md#fr-spec-002-ac-01) | 釐清 run 的提問走既有的卡片訊息串；平台不得為此新增第二條溝通管道。 | — | — | — |
+| FR-SPEC-002 | [FR-SPEC-002.AC-02](../../research/prd.md#fr-spec-002-ac-02) | 在上一個問題尚未獲得人類回覆之前，平台拒絕同一個 run 提出第二個問題； | — | — | — |
+| FR-SPEC-002 | [FR-SPEC-002.AC-03](../../research/prd.md#fr-spec-002-ac-03) | 釐清與拆解 run 不得攜帶任何機密；違反者在派工當下被拒， | — | — | — |
+| FR-SPEC-002 | [FR-SPEC-002.AC-04](../../research/prd.md#fr-spec-002-ac-04) | 釐清與拆解 run 的交付方式僅限「無交付」或「卡片產物」； | — | — | — |
+| FR-SPEC-002 | [FR-SPEC-002.AC-05](../../research/prd.md#fr-spec-002-ac-05) | 情境包須包含五條停止條件；命中任一條時，Agent 須將問題留在未決問題中， | — | — | — |
+| FR-SPEC-002 | [FR-SPEC-002.AC-06](../../research/prd.md#fr-spec-002-ac-06) | 長時間未獲回覆而逾時的釐清 run，已送出的規格草稿與訊息串須完整保留， | — | — | — |
+| FR-SPEC-003 | [FR-SPEC-003.AC-01](../../research/prd.md#fr-spec-003-ac-01) | 規格存在未解決的開放問題時不得核准；拒絕由 API 產生並指名是哪幾個問題， | — | — | — |
+| FR-SPEC-003 | [FR-SPEC-003.AC-02](../../research/prd.md#fr-spec-003-ac-02) | 一則開放問題不得同時帶有答案與「已知未知」的標記； | — | — | — |
+| FR-SPEC-003 | [FR-SPEC-003.AC-03](../../research/prd.md#fr-spec-003-ac-03) | 未解決的問題只存在於規格的開放問題欄位；其他章節不得成為第二個問題來源。 | — | — | — |
+| FR-SPEC-004 | [FR-SPEC-004.AC-01](../../research/prd.md#fr-spec-004-ac-01) | 拆解的產出是提案，不是卡片；提交提案的路徑上不得建立任何任務卡。 | — | — | — |
+| FR-SPEC-004 | [FR-SPEC-004.AC-02](../../research/prd.md#fr-spec-004-ac-02) | 提案樹的每一張任務須自帶流程定義所要求的就緒條件， | — | — | — |
+| FR-SPEC-004 | [FR-SPEC-004.AC-03](../../research/prd.md#fr-spec-004-ac-03) | 提案樹的節點編號、父子參照與前置關係須在提交當下驗證； | — | — | — |
+| FR-SPEC-004 | [FR-SPEC-004.AC-04](../../research/prd.md#fr-spec-004-ac-04) | 提案內容命中高風險領域（密鑰、認證、金流、遷移、基礎設施）而未標記高風險時， | — | — | — |
+| FR-SPEC-004 | [FR-SPEC-004.AC-05](../../research/prd.md#fr-spec-004-ac-05) | 拆解 run 只能對自己所屬卡片連結的需求提交提案； | — | — | — |
+| FR-SPEC-005 | [FR-SPEC-005.AC-01](../../research/prd.md#fr-spec-005-ac-01) | 提案可全部接受、部分接受、編輯後接受或拒絕； | — | — | — |
+| FR-SPEC-005 | [FR-SPEC-005.AC-02](../../research/prd.md#fr-spec-005-ac-02) | 接受時的欄位覆寫僅適用於本次勾選的節點，且不得覆寫就緒條件。 | — | — | — |
+| FR-SPEC-005 | [FR-SPEC-005.AC-03](../../research/prd.md#fr-spec-005-ac-03) | 接受所建立的卡片，其就緒條件若不齊備，須落在待辦而非就緒，並說明缺項。 | — | — | — |
+| FR-SPEC-005 | [FR-SPEC-005.AC-04](../../research/prd.md#fr-spec-005-ac-04) | 提案中的前置關係在接受時翻譯為卡片相依； | — | — | — |
+| FR-SPEC-005 | [FR-SPEC-005.AC-05](../../research/prd.md#fr-spec-005-ac-05) | 拒絕提案須附理由；理由須保留，並於下一次拆解時作為負面情境提供。 | — | — | — |
+| FR-SPEC-006 | [FR-SPEC-006.AC-01](../../research/prd.md#fr-spec-006-ac-01) | 由提案建立的卡片，其詳情須顯示來源需求與提案編號。 | — | — | — |
+| FR-SPEC-006 | [FR-SPEC-006.AC-02](../../research/prd.md#fr-spec-006-ac-02) | 需求詳情須可反查其產生的卡片與各卡目前所在車道。 | — | — | — |
+| FR-SPEC-006 | [FR-SPEC-006.AC-03](../../research/prd.md#fr-spec-006-ac-03) | 規格的每一版須顯示撰寫者身分類別（人或執行器）； | — | — | — |
+| FR-SPEC-007 | [FR-SPEC-007.AC-01](../../research/prd.md#fr-spec-007-ac-01) | 平台只渲染修訂內容與理由，並記錄人的決定；平台不套用任何修訂。 | — | — | — |
+| FR-SPEC-007 | [FR-SPEC-007.AC-02](../../research/prd.md#fr-spec-007-ac-02) | 修訂內容一律以純文字呈現，不得在應用來源內解析為標記語言， | — | — | — |
+| FR-SPEC-007 | [FR-SPEC-007.AC-03](../../research/prd.md#fr-spec-007-ac-03) | 接受一份修訂提案不自動建立任何卡片； | — | — | — |
+| FR-SPEC-007 | [FR-SPEC-007.AC-04](../../research/prd.md#fr-spec-007-ac-04) | 拒絕修訂提案須附理由；提案本身只新增不修改。 | — | — | — |
+| FR-SPEC-008 | [FR-SPEC-008.AC-01](../../research/prd.md#fr-spec-008-ac-01) | 未啟用第三方隧道整合時，介面審查關卡自動停用， | — | — | — |
+| FR-SPEC-008 | [FR-SPEC-008.AC-02](../../research/prd.md#fr-spec-008-ac-02) | 未啟用時，以產出草模變體為交付物的卡片在派工當下被拒， | — | — | — |
+| FR-SPEC-008 | [FR-SPEC-008.AC-03](../../research/prd.md#fr-spec-008-ac-03) | 未啟用時，一般介面實作卡照常執行並可完成； | — | — | — |
+| FR-SPEC-008 | [FR-SPEC-008.AC-04](../../research/prd.md#fr-spec-008-ac-04) | 已啟用時，草模變體可預覽、保護策略由人選定、平台負責開啟； | — | — | — |
 | FR-TASK-001 | [FR-TASK-001.AC-01](../../research/prd.md#fr-task-001-ac-01) | 一個 Project 內可建立 Epic、User Story 與 Task 三層；Task 可指定所屬 User Story， | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
 | FR-TASK-001 | [FR-TASK-001.AC-02](../../research/prd.md#fr-task-001-ac-02) | 每個 Epic、User Story 與 Task 有一個專案內唯一、人類可讀的編號（如 TASK-12）， | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |
 | FR-TASK-001 | [FR-TASK-001.AC-03](../../research/prd.md#fr-task-001-ac-03) | 指定了 Epic 但未指定 User Story 的 Task，須在藍圖中呈現於該 Epic 的未分類群組； | plan:plan/17/02-data-layer.md<br>source:research/prd.md | code:backend/app/services/tasks.py | pytest:backend/tests/db/test_task_data_layer.py |

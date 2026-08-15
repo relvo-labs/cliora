@@ -36,23 +36,32 @@ from app.api.http.deps import (
     require_agent_runs_enabled,
     require_projects_enabled,
 )
+from app.api.http.requirements import _proposal_dto, _spec_dto, requirement_detail
 from app.api.http.schemas import (
     AddEvidenceRequest,
     AgentRunnerDTO,
+    CreatePatchProposalRequest,
+    CreateProposalRequest,
     CreateRepositoryRequest,
+    CreateSpecRequest,
+    DecidePatchProposalRequest,
     DeleteArtifactRequest,
     DispatchRequest,
     DispatchResponseDTO,
+    DocumentPatchProposalDTO,
     EvidenceItemDTO,
     ExecutionPlanDTO,
+    FeatureSpecDTO,
     PostMessageRequest,
     ProjectRepositoryDTO,
     RecordPlanRequest,
+    RequirementDetailDTO,
     RunLogLineDTO,
     RunLogPageDTO,
     SubmitVerificationRequest,
     TaskArtifactDTO,
     TaskMessageDTO,
+    TaskProposalDTO,
     TaskRunDTO,
     UpdateAgentRequest,
     VerificationReportDTO,
@@ -61,9 +70,11 @@ from app.clock import now_utc
 from app.db.engine import get_session
 from app.db.models import (
     AgentRunner,
+    DocumentPatchProposal,
     EvidenceItem,
     ExecutionPlan,
     ProjectRepository,
+    Requirement,
     RunLog,
     Task,
     TaskArtifact,
@@ -76,6 +87,7 @@ from app.services.activity import ACTOR_AGENT, ACTOR_USER
 from app.services.agent_auth import KIND_RUN, AgentPrincipal
 from app.services.artifacts import PREVIEWABLE, ArtifactService
 from app.services.evidence import EvidenceService, PlanService, VerificationService
+from app.services.patches import PatchProposalService
 from app.services.projects import ProjectService
 from app.services.rbac import (
     AGENT_MANAGE,
@@ -84,12 +96,14 @@ from app.services.rbac import (
     PROJECT_VIEW,
     RUN_CANCEL,
     RUN_DISPATCH,
+    TASK_APPROVE,
     TASK_UPDATE,
 )
 from app.services.registry import NodeConnectionRegistry, get_node_registry
+from app.services.requirements import RequirementService
 from app.services.runners import RepositoryService, RunnerService, RunnerView, clone_url
 from app.services.runs import MessageService, RunService
-from app.services.tasks import TaskService
+from app.services.tasks import CARD_KIND_CLARIFICATION, CARD_KIND_DECOMPOSITION, TaskService
 from app.settings import Settings, get_settings
 
 router = APIRouter(
@@ -1098,5 +1112,217 @@ async def agent_add_evidence(
         agent_written=True,
     )
     dto = _evidence_dto(item)
+    await session.commit()
+    return dto
+
+
+# --- V2.5: the three writes a requirement-driven run makes (ADR 0034 §2) ----------
+#
+# Three more routes on the run credential's prefix, and the boundary is the same as the
+# six above: `principal.task_id` names the card, the card names the requirement, and
+# nothing in the URL can widen that. **This is why the existing human routes were not
+# relaxed instead** — `POST /api/requirements/{id}/proposals` takes its requirement from
+# the path with nothing binding it to the caller, so lowering it to `task.update` would
+# let any run credential in the project write to any requirement, including a
+# prompt-injected implementation run (ADR 0034, Alternatives rejected).
+
+
+async def _run_requirement(
+    session: AsyncSession, principal: AgentPrincipal, expected_kind: str
+) -> tuple[Task, Requirement]:
+    """This run's card and the requirement it is working on.
+
+    `404` rather than `403` for a card that is not this run's, matching `_own_task`: a
+    credential must not be usable to discover which cards exist elsewhere. The kind
+    mismatch is a `409`, because that one is about the caller's own card and telling it
+    the truth costs nothing.
+    """
+    task = await _run_task(session, principal)
+    if task.card_kind != expected_kind:
+        raise ApiError(
+            "TASK_KIND_MISMATCH",
+            f"這條路徑只服務 `{expected_kind}` 卡片，而這張卡是 `{task.card_kind}`",
+            status.HTTP_409_CONFLICT,
+            details={"card_kind": task.card_kind, "expected": expected_kind},
+        )
+    if task.requirement_id is None:
+        raise ApiError(
+            "TASK_KIND_NEEDS_REQUIREMENT",
+            "這張卡沒有連到任何需求",
+            status.HTTP_409_CONFLICT,
+        )
+    service = RequirementService(session)
+    return task, await service.require(task.requirement_id)
+
+
+@run_router.get("/requirement", response_model=RequirementDetailDTO)
+async def agent_read_requirement(
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> RequirementDetailDTO:
+    """`cliora requirement show`.
+
+    The context pack is a snapshot taken at dispatch. A clarification run that has been
+    going for forty minutes has submitted two specification versions that are **not** in
+    it, and the agent is invoked statelessly — without this route it would have to
+    remember what it wrote.
+    """
+    task = await _run_task(session, principal)
+    if task.requirement_id is None:
+        raise ApiError(
+            "TASK_KIND_NEEDS_REQUIREMENT",
+            "這張卡沒有連到任何需求",
+            status.HTTP_409_CONFLICT,
+        )
+    return await requirement_detail(session, task.requirement_id)
+
+
+@run_router.post("/spec", response_model=FeatureSpecDTO, status_code=status.HTTP_201_CREATED)
+async def agent_submit_spec(
+    body: CreateSpecRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> FeatureSpecDTO:
+    """`cliora spec submit`. A version, never an edit.
+
+    `authored_by` stays NULL and `authored_by_kind` becomes `runner`. The column exists
+    so that a NULL author does not have to mean two things, and this is the writer it
+    was added for: `AgentPrincipal` carries no `user_id`, deliberately, because a
+    principal with one begins impersonating whoever dispatched the run.
+    """
+    _task, requirement = await _run_requirement(session, principal, CARD_KIND_CLARIFICATION)
+    spec = await RequirementService(session).add_spec(
+        requirement=requirement,
+        actor_id=None,
+        fields=body.model_dump(),
+        authored_by_kind="runner",
+        run_id=principal.run_id,
+    )
+    await session.refresh(spec)
+    dto = _spec_dto(spec)
+    await session.commit()
+    return dto
+
+
+@run_router.post("/proposal", response_model=TaskProposalDTO, status_code=status.HTTP_201_CREATED)
+async def agent_submit_proposal(
+    body: CreateProposalRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> TaskProposalDTO:
+    """`cliora proposal submit`. A proposal, and **never a card**.
+
+    The requirement must already be approved. That is checked twice on purpose: once at
+    dispatch, which saves a whole run, and once here, which covers a requirement sent
+    back to unapproved after the run started.
+    """
+    _task, requirement = await _run_requirement(session, principal, CARD_KIND_DECOMPOSITION)
+    proposal = await RequirementService(session).propose(
+        requirement=requirement,
+        actor_id=None,
+        tree=body.tree,
+        run_id=principal.run_id,
+    )
+    await session.refresh(proposal)
+    dto = _proposal_dto(proposal, set())
+    await session.commit()
+    return dto
+
+
+@run_router.post(
+    "/patch-proposal",
+    response_model=DocumentPatchProposalDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def agent_submit_patch_proposal(
+    body: CreatePatchProposalRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentPatchProposalDTO:
+    """`cliora patch propose`. The platform renders it and records a decision.
+
+    **No `card_kind` restriction**, unlike the two routes above. A document is most often
+    discovered to be wrong by the implementation card that ran into it, and refusing
+    that would leave the agent able only to mention it in a comment.
+    """
+    task = await _run_task(session, principal)
+    proposal = await PatchProposalService(session).submit(
+        task=task, run_id=principal.run_id, payload=body.model_dump()
+    )
+    await session.refresh(proposal)
+    dto = _patch_dto(proposal)
+    await session.commit()
+    return dto
+
+
+# --- V2.5: the person's side of a patch proposal ---------------------------------
+
+
+def _patch_dto(proposal: DocumentPatchProposal) -> DocumentPatchProposalDTO:
+    return DocumentPatchProposalDTO(
+        id=proposal.id,
+        project_id=proposal.project_id,
+        requirement_id=proposal.requirement_id,
+        run_id=proposal.run_id,
+        seq=proposal.seq,
+        target_path=proposal.target_path,
+        diff=proposal.diff,
+        sections=proposal.sections or {},
+        reason=proposal.reason,
+        related_task_ids=list(proposal.related_task_ids or []),
+        open_questions=list(proposal.open_questions or []),
+        status=proposal.status,
+        decided_by=proposal.decided_by,
+        decided_at=proposal.decided_at,
+        decision_note=proposal.decision_note,
+        created_at=proposal.created_at,
+    )
+
+
+@router.get("/projects/{project_id}/patch-proposals", response_model=list[DocumentPatchProposalDTO])
+async def list_patch_proposals(
+    project_id: uuid.UUID,
+    pending_only: bool = True,
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[DocumentPatchProposalDTO]:
+    await ProjectService(session, settings=settings).require(project_id)
+    rows = await PatchProposalService(session).listing(project_id, pending_only=pending_only)
+    return [_patch_dto(row) for row in rows]
+
+
+@router.post("/patch-proposals/{proposal_id}/accept", response_model=DocumentPatchProposalDTO)
+async def accept_patch_proposal(
+    proposal_id: uuid.UUID,
+    body: DecidePatchProposalRequest,
+    user: User = Depends(require_action(TASK_APPROVE)),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentPatchProposalDTO:
+    """Accepting records a decision and **creates nothing**.
+
+    Not even a card. Accepting a proposal and scheduling the work are two decisions: the
+    second needs a target branch, tags and a priority, and one proposal may map to zero
+    cards (someone edits the document themselves) or to three.
+    """
+    service = PatchProposalService(session)
+    proposal = await service.require(proposal_id)
+    await service.decide(proposal=proposal, actor_id=user.id, accept=True, note=body.note)
+    dto = _patch_dto(proposal)
+    await session.commit()
+    return dto
+
+
+@router.post("/patch-proposals/{proposal_id}/reject", response_model=DocumentPatchProposalDTO)
+async def reject_patch_proposal(
+    proposal_id: uuid.UUID,
+    body: DecidePatchProposalRequest,
+    user: User = Depends(require_action(TASK_APPROVE)),
+    session: AsyncSession = Depends(get_session),
+) -> DocumentPatchProposalDTO:
+    service = PatchProposalService(session)
+    proposal = await service.require(proposal_id)
+    await service.decide(proposal=proposal, actor_id=user.id, accept=False, note=body.note)
+    dto = _patch_dto(proposal)
     await session.commit()
     return dto

@@ -25,6 +25,7 @@ from app.api.http.schemas import (
     CreateRequirementRequest,
     CreateSpecRequest,
     FeatureSpecDTO,
+    RejectProposalRequest,
     RequirementDetailDTO,
     RequirementSummaryDTO,
     TaskProposalDTO,
@@ -56,13 +57,19 @@ def _spec_dto(spec: FeatureSpec) -> FeatureSpecDTO:
         non_goals=spec.non_goals,
         acceptance_criteria=spec.acceptance_criteria or [],
         open_questions=spec.open_questions or [],
+        sections=spec.sections or {},
         authored_by_kind=spec.authored_by_kind,
         authored_by=spec.authored_by,
+        run_id=spec.run_id,
         created_at=spec.created_at,
     )
 
 
-def _proposal_dto(proposal: TaskProposal) -> TaskProposalDTO:
+def _proposal_dto(proposal: TaskProposal, accepted: set[str] | None = None) -> TaskProposalDTO:
+    """`accepted` is passed in rather than looked up here, so the caller decides how
+    many queries a list of proposals costs."""
+    produced = accepted or set()
+    all_ids = [str(item.get("id", "")) for item in (proposal.tree or {}).get("tasks", [])]
     return TaskProposalDTO(
         id=proposal.id,
         seq=proposal.seq,
@@ -72,7 +79,10 @@ def _proposal_dto(proposal: TaskProposal) -> TaskProposalDTO:
         decided_by=proposal.decided_by,
         decided_at=proposal.decided_at,
         decision_note=proposal.decision_note,
+        run_id=proposal.run_id,
         created_at=proposal.created_at,
+        accepted_item_ids=sorted(item for item in all_ids if item in produced),
+        remaining_item_ids=[item for item in all_ids if item not in produced],
     )
 
 
@@ -136,12 +146,15 @@ async def list_requirements(
     return [_summary_dto(row, len(await service.specs(row.id))) for row in rows]
 
 
-@router.get("/requirements/{requirement_id}", response_model=RequirementDetailDTO)
-async def read_requirement(
-    requirement_id: uuid.UUID,
-    _: User = Depends(require_action(PROJECT_VIEW)),
-    session: AsyncSession = Depends(get_session),
+async def requirement_detail(
+    session: AsyncSession, requirement_id: uuid.UUID
 ) -> RequirementDetailDTO:
+    """The requirement with every version and proposal.
+
+    A plain function rather than only a route, because V2.5's run credential reads the
+    same view through `/api/cli/runs/requirement` — and two assemblies of one payload
+    drift the first time either gains a field.
+    """
     service = _service(session)
     requirement = await service.require(requirement_id)
     specs = await service.specs(requirement_id)
@@ -149,7 +162,10 @@ async def read_requirement(
     return RequirementDetailDTO(
         **_summary_dto(requirement, len(specs)).model_dump(),
         specs=[_spec_dto(spec) for spec in specs],
-        proposals=[_proposal_dto(item) for item in await service.proposals(requirement_id)],
+        proposals=[
+            _proposal_dto(item, await service.produced_item_ids(item.id))
+            for item in await service.proposals(requirement_id)
+        ],
         # Sent with the requirement so the console can disable the approve button and
         # name the reason in the same response.
         blocking_questions=[
@@ -157,6 +173,15 @@ async def read_requirement(
             for question in (_open_questions(latest) if latest else [])
         ],
     )
+
+
+@router.get("/requirements/{requirement_id}", response_model=RequirementDetailDTO)
+async def read_requirement(
+    requirement_id: uuid.UUID,
+    _: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> RequirementDetailDTO:
+    return await requirement_detail(session, requirement_id)
 
 
 @router.post("/requirements/{requirement_id}/specs", response_model=FeatureSpecDTO, status_code=201)
@@ -231,34 +256,53 @@ async def accept_proposal(
         actor_id=user.id,
         accept_ids=body.accept_ids,
         note=body.note,
+        overrides=body.overrides,
     )
     tasks = TaskService(session)
     dto = AcceptProposalResultDTO(
         created=[await _task_dto(tasks, task) for task in result.created],
         incomplete=result.incomplete,
+        unresolved_dependencies=result.unresolved_dependencies,
     )
     await session.commit()
     return dto
 
 
-@router.delete("/proposals/{proposal_id}", status_code=204)
+@router.post("/proposals/{proposal_id}/reject", response_model=TaskProposalDTO)
 async def reject_proposal(
     proposal_id: uuid.UUID,
+    body: RejectProposalRequest,
     user: User = Depends(require_action(TASK_APPROVE)),
     session: AsyncSession = Depends(get_session),
-) -> Response:
-    """Rejection keeps the proposal and its reason.
+) -> TaskProposalDTO:
+    """Rejection keeps the proposal **and its reason**.
 
-    "We decided not to do that" is a fact worth keeping — deleting the row would make
-    the same proposal arrive again in three months with nothing recording why it was
-    turned down the first time.
+    A `POST` with a body rather than V2.1's `DELETE`: a `DELETE` body is legal HTTP and
+    is stripped by enough clients that the reason would sometimes arrive and sometimes
+    not — and a silently lost reason is the exact defect this route exists to fix.
     """
     service = _service(session)
     proposal = await service.require_proposal(proposal_id)
-    proposal.status = "rejected"
-    proposal.decided_by = user.id
-    from app.clock import now_utc
+    await service.reject(proposal=proposal, actor_id=user.id, note=body.note)
+    dto = _proposal_dto(proposal, await service.produced_item_ids(proposal.id))
+    await session.commit()
+    return dto
 
-    proposal.decided_at = now_utc()
+
+@router.delete("/proposals/{proposal_id}", status_code=204, deprecated=True)
+async def delete_proposal(
+    proposal_id: uuid.UUID,
+    body: RejectProposalRequest,
+    user: User = Depends(require_action(TASK_APPROVE)),
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    """Deprecated in V2.5; use `POST /proposals/{id}/reject`.
+
+    Kept so an existing client is not broken, but it now requires the same reason: a
+    route that accepts a rejection without one produces rows nobody can act on later.
+    """
+    service = _service(session)
+    proposal = await service.require_proposal(proposal_id)
+    await service.reject(proposal=proposal, actor_id=user.id, note=body.note)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

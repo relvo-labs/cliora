@@ -1213,6 +1213,10 @@ class UpdateTaskRequest(BaseModel):
     acceptance_criteria: list[dict[str, Any]] | None = None
     links: dict[str, Any] | None = None
     required_labels: list[str] | None = None
+    # V2.5. Correctable until the card has been run, and never by an agent — it is in
+    # `AGENT_FORBIDDEN_FIELDS`, because a clarification run able to rewrite its own kind
+    # would have lifted the "this kind carries no secret" refusal for the next dispatch.
+    card_kind: str | None = None
     source: str | None = None
     delivery: str | None = None
     base_branch: str | None = None
@@ -1418,8 +1422,14 @@ class FeatureSpecDTO(BaseModel):
     # explicit `resolved_as` blocks approval — a known unknown is recorded, not
     # pretended away.
     open_questions: list[dict[str, Any]]
+    # The nine sections Monstrare's specification template has and V2.1's five columns
+    # did not (ADR 0034 §7). `user_stories` is the one a decomposition reads.
+    sections: dict[str, Any]
     authored_by_kind: str
     authored_by: uuid.UUID | None
+    # Which run wrote this version, when one did. Lets the review screen say "the second
+    # clarification run wrote this" and link to its log, rather than "some machine".
+    run_id: uuid.UUID | None
     created_at: datetime
 
 
@@ -1446,7 +1456,14 @@ class TaskProposalDTO(BaseModel):
     decided_by: uuid.UUID | None
     decided_at: datetime | None
     decision_note: str | None
+    run_id: uuid.UUID | None
     created_at: datetime
+    # Which tree items already became cards, and which are still available. **Two
+    # fields, not one plus arithmetic in the browser**: partial acceptance leaves the
+    # rest *available* rather than declined, and a screen that cannot tell those apart
+    # makes people think the decision was already made (ADR 0034 §6).
+    accepted_item_ids: list[str] = Field(default_factory=list)
+    remaining_item_ids: list[str] = Field(default_factory=list)
 
 
 class RequirementDetailDTO(RequirementSummaryDTO):
@@ -1474,6 +1491,10 @@ class CreateSpecRequest(BaseModel):
     non_goals: str | None = Field(default=None, max_length=8000)
     acceptance_criteria: list[dict[str, Any]] = Field(default_factory=list)
     open_questions: list[dict[str, Any]] = Field(default_factory=list)
+    # Keys are checked in the service against a closed set, not here: the refusal has to
+    # name the unknown section, and one shared implementation serves both the human and
+    # the agent route.
+    sections: dict[str, Any] = Field(default_factory=dict)
 
 
 class CreateProposalRequest(BaseModel):
@@ -1487,6 +1508,20 @@ class AcceptProposalRequest(BaseModel):
     # selects rather than confirms.
     accept_ids: list[str] | None = None
     note: str | None = Field(default=None, max_length=2000)
+    # "Edit then create", the fourth decision `version2.md` §7.7 names and V2.1 did not
+    # implement. Keyed by tree item id; the service refuses a key that is not being
+    # accepted, and refuses `readiness` outright.
+    overrides: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+class RejectProposalRequest(BaseModel):
+    """A reason, required.
+
+    A rejection with no reason produces a row indistinguishable from no row, and this is
+    the only signal that accumulates on this path — the next decomposition receives it.
+    """
+
+    note: str = Field(min_length=1, max_length=2000)
 
 
 class AcceptProposalResultDTO(BaseModel):
@@ -1494,6 +1529,53 @@ class AcceptProposalResultDTO(BaseModel):
     # card_ref -> the readiness items it lacked. A card that landed in `backlog`
     # instead of `ready` has to say why, on the same screen (FR-TASK-005.AC-06).
     incomplete: dict[str, list[str]]
+    # card_ref -> tree item ids it depended on that were not accepted, so no dependency
+    # row exists. Reported rather than dropped: a card claiming `dependencies_known`
+    # while the database holds none is the failure this prevents (FR-SPEC-005.AC-04).
+    unresolved_dependencies: dict[str, list[str]] = Field(default_factory=dict)
+
+
+# --- V2.5 document patch proposals (FR-SPEC-007) ----------------------------
+
+
+class DocumentPatchProposalDTO(BaseModel):
+    """A proposed document edit, as the console renders it.
+
+    `diff` travels as text and the console renders it as text. It is agent-produced
+    content arriving in a single-origin deployment (ADR 0020), so nothing on this path
+    may parse it as markup — and there is deliberately no download route, because a
+    downloadable `.patch` relocates the applying step to a terminal where none of this
+    phase's gates exist.
+    """
+
+    id: uuid.UUID
+    project_id: uuid.UUID
+    requirement_id: uuid.UUID | None
+    run_id: uuid.UUID | None
+    seq: int
+    target_path: str
+    diff: str
+    sections: dict[str, Any]
+    reason: str | None
+    related_task_ids: list[str]
+    open_questions: list[dict[str, Any]]
+    status: str
+    decided_by: uuid.UUID | None
+    decided_at: datetime | None
+    decision_note: str | None
+    created_at: datetime
+
+
+class CreatePatchProposalRequest(BaseModel):
+    target_path: str = Field(min_length=1, max_length=512)
+    diff: str = Field(min_length=1)
+    sections: dict[str, Any] = Field(default_factory=dict)
+    reason: str | None = Field(default=None, max_length=8000)
+    open_questions: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DecidePatchProposalRequest(BaseModel):
+    note: str | None = Field(default=None, max_length=2000)
 
 
 # --- V2.2 agent runner (ADR 0029/0030/0031) ---------------------------------

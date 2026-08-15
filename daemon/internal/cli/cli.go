@@ -471,6 +471,91 @@ func (c *Client) AddEvidence(kind string, payload map[string]any) (map[string]an
 	return out, status, err
 }
 
+// SubmitSpec is `cliora spec submit` (V2.5, ADR 0034 §2).
+//
+// A specification **version**, never an edit: the review screen compares N with N-1,
+// and a draft that was quietly rewritten is the thing most worth being able to see
+// later. The platform records it as written by a runner, and the agent cannot approve
+// it — which is why the success message says so rather than letting it find out.
+func (c *Client) SubmitSpec(payload map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/spec", payload, &out)
+	return out, status, err
+}
+
+// SubmitProposal is `cliora proposal submit` (V2.5).
+//
+// The tree becomes a proposal, **never cards**. A person selects from it, and a card
+// missing its readiness items lands in the backlog rather than in ready.
+func (c *Client) SubmitProposal(tree map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/proposal",
+		map[string]any{"tree": tree}, &out)
+	return out, status, err
+}
+
+// ProposePatch is `cliora patch propose` (V2.5).
+//
+// The platform renders the diff and records a decision; it never applies one. There is
+// deliberately no read counterpart and no download: applying belongs to an ordinary
+// pull-request card, where the change gets a reviewer.
+func (c *Client) ProposePatch(payload map[string]any) (map[string]any, int, error) {
+	var out map[string]any
+	status, err := c.do("POST", "/api/cli/runs/patch-proposal", payload, &out)
+	return out, status, err
+}
+
+// Requirement is what this run is working on, as `cliora requirement show` prints it.
+//
+// **The one read the V2.4 restraint does not cover, and it earns the exception**: the
+// context pack is a snapshot taken at dispatch, so a run forty minutes and two
+// specification versions in cannot otherwise see what it already wrote — and it is
+// invoked statelessly, so it does not remember either.
+type Requirement struct {
+	ID       string           `json:"id"`
+	CardRef  string           `json:"card_ref"`
+	RawText  string           `json:"raw_text"`
+	Status   string           `json:"status"`
+	Specs    []map[string]any `json:"specs"`
+	Blocking []string         `json:"blocking_questions"`
+}
+
+// ShowRequirement is `cliora requirement show`.
+func (c *Client) ShowRequirement() (Requirement, int, error) {
+	var out Requirement
+	status, err := c.do("GET", "/api/cli/runs/requirement", nil, &out)
+	return out, status, err
+}
+
+// PendingQuestion is the local half of "one question at a time".
+//
+// **The gate is on the server** — an agent has a shell, `curl`, and a readable token
+// file, so a client-side rule constrains carelessness and not haste. This exists to
+// save a round trip and to print a better message than a 409 can carry: the actual
+// text of the question still waiting.
+//
+// It applies the *same* rule as the server (the last question with no later message
+// from a user), because two rules that disagree produce "sometimes I can ask and
+// sometimes I cannot", which reads as flakiness rather than as a bug.
+func (c *Client) PendingQuestion() (string, bool) {
+	messages, status, err := c.ListMessages("")
+	if err != nil || status != 0 {
+		// Offline, or the platform refused: not this function's business. The server
+		// will decide, and `PostMessage` will report whatever it says.
+		return "", false
+	}
+	pending := ""
+	for _, message := range messages {
+		switch {
+		case message.Kind == "question" && message.Author == "agent":
+			pending = message.Body
+		case message.Author == "user":
+			pending = ""
+		}
+	}
+	return pending, pending != ""
+}
+
 // ListMessages is `cliora task messages`. **Pull, never push**: there is no interrupt
 // path into a running agent, so an agent that asked something polls for the answer.
 func (c *Client) ListMessages(since string) ([]Message, int, error) {

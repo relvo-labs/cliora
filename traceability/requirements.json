@@ -7956,6 +7956,305 @@
           "risk": "medium"
         }
       ]
+    },
+    {
+      "id": "FR-SPEC-002",
+      "kind": "functional",
+      "title": "釐清 run",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-002"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SPEC-002.AC-01",
+          "source_anchor": "fr-spec-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-002.AC-02",
+          "source_anchor": "fr-spec-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-002.AC-03",
+          "source_anchor": "fr-spec-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SPEC-002.AC-04",
+          "source_anchor": "fr-spec-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-002.AC-05",
+          "source_anchor": "fr-spec-002-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-002.AC-06",
+          "source_anchor": "fr-spec-002-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-003",
+      "kind": "functional",
+      "title": "開放問題閘門",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SPEC-003.AC-01",
+          "source_anchor": "fr-spec-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SPEC-003.AC-02",
+          "source_anchor": "fr-spec-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-003.AC-03",
+          "source_anchor": "fr-spec-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-004",
+      "kind": "functional",
+      "title": "拆解 run 與任務提案",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SPEC-004.AC-01",
+          "source_anchor": "fr-spec-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SPEC-004.AC-02",
+          "source_anchor": "fr-spec-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-004.AC-03",
+          "source_anchor": "fr-spec-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-004.AC-04",
+          "source_anchor": "fr-spec-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-004.AC-05",
+          "source_anchor": "fr-spec-004-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-005",
+      "kind": "functional",
+      "title": "提案接受",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-005"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SPEC-005.AC-01",
+          "source_anchor": "fr-spec-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-005.AC-02",
+          "source_anchor": "fr-spec-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-005.AC-03",
+          "source_anchor": "fr-spec-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-005.AC-04",
+          "source_anchor": "fr-spec-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-005.AC-05",
+          "source_anchor": "fr-spec-005-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-006",
+      "kind": "functional",
+      "title": "來源可追溯",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-006"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "should",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-SPEC-006.AC-01",
+          "source_anchor": "fr-spec-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-006.AC-02",
+          "source_anchor": "fr-spec-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-006.AC-03",
+          "source_anchor": "fr-spec-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-007",
+      "kind": "functional",
+      "title": "文件修訂提案",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-007"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-SPEC-007.AC-01",
+          "source_anchor": "fr-spec-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-007.AC-02",
+          "source_anchor": "fr-spec-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SPEC-007.AC-03",
+          "source_anchor": "fr-spec-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-007.AC-04",
+          "source_anchor": "fr-spec-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-SPEC-008",
+      "kind": "functional",
+      "title": "介面草模關卡（條件性）",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-spec-008"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "FR-SPEC-008.AC-01",
+          "source_anchor": "fr-spec-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-008.AC-02",
+          "source_anchor": "fr-spec-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-SPEC-008.AC-03",
+          "source_anchor": "fr-spec-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-SPEC-008.AC-04",
+          "source_anchor": "fr-spec-008-ac-04",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        }
+      ]
     }
   ]
 }

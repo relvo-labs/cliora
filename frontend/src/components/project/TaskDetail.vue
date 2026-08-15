@@ -18,6 +18,7 @@
  *    against what online runners report costs one request and saves an investigation.
  */
 import { computed, ref } from "vue";
+import { RouterLink } from "vue-router";
 
 import { ApiError, type ApiClient } from "../../api/client";
 import type {
@@ -57,6 +58,15 @@ const emit = defineEmits<{
 }>();
 
 const error = ref<string | null>(null);
+
+const CARD_KIND_LABELS: Record<string, string> = {
+  clarification: "釐清",
+  decomposition: "拆解",
+  mockup: "Mockup",
+};
+const cardKindLabel = computed(
+  () => CARD_KIND_LABELS[props.task.card_kind] ?? props.task.card_kind,
+);
 
 const requiredLabels = computed(() => props.task.required_labels ?? []);
 const requiredSecrets = computed(() => props.task.required_secrets ?? []);
@@ -193,7 +203,27 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
       <h2>{{ task.title }}</h2>
       <StageBadge :stage="task.stage" />
       <RiskBadge :risk="task.risk" />
+      <!-- Only when it is not the default: a board where every card carries a kind
+           badge is a board where the badge says nothing. -->
+      <span
+        v-if="task.card_kind && task.card_kind !== 'implementation'"
+        class="kind-badge"
+        data-card-kind
+        >{{ cardKindLabel }}</span
+      >
     </header>
+
+    <!-- FR-SPEC-006. The columns existed from V2.1; this is the render (RQ-10 §5). -->
+    <p v-if="task.requirement_id" class="provenance" data-provenance>
+      來自需求的提案
+      <RouterLink
+        :to="{
+          name: 'requirement-detail',
+          params: { id: task.project_id, requirementId: task.requirement_id },
+        }"
+        >查看來源需求</RouterLink
+      >
+    </p>
 
     <p v-if="error" class="notice error" role="alert">{{ error }}</p>
 
@@ -586,6 +616,18 @@ header {
 h2 {
   margin: 0;
   font-size: var(--font-lg);
+}
+.kind-badge {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-1);
+  font-size: var(--font-xs);
+  color: var(--text-muted);
+}
+.provenance {
+  margin: 0 0 var(--space-2);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
 }
 .ref {
   font-family: var(--font-mono);

@@ -5,6 +5,7 @@
 
 import type {
   AcceptProposalResult,
+  DocumentPatchProposal,
   ActivityPage,
   AgentRunner,
   AttachTicket,
@@ -466,7 +467,13 @@ export class ApiClient {
 
   acceptProposal(
     proposalId: string,
-    input: { accept_ids?: string[] | null; note?: string | null } = {},
+    input: {
+      accept_ids?: string[] | null;
+      note?: string | null;
+      /** Per item id. The server refuses an item that is not being accepted, and
+       * refuses `readiness` outright. */
+      overrides?: Record<string, Record<string, unknown>>;
+    } = {},
   ): Promise<AcceptProposalResult> {
     return this.request(
       "POST",
@@ -475,10 +482,40 @@ export class ApiClient {
     );
   }
 
-  deleteProposal(proposalId: string): Promise<void> {
+  /**
+   * Rejection carries a reason, and a `POST` carries it reliably.
+   *
+   * The V2.1 `DELETE` is still mounted and now demands the same note, but a `DELETE`
+   * body is stripped by enough clients that a silently lost reason was the defect this
+   * replaced.
+   */
+  rejectProposal(proposalId: string, note: string): Promise<TaskProposal> {
     return this.request(
-      "DELETE",
-      `/api/proposals/${encodeURIComponent(proposalId)}`,
+      "POST",
+      `/api/proposals/${encodeURIComponent(proposalId)}/reject`,
+      { note },
+    );
+  }
+
+  listPatchProposals(
+    projectId: string,
+    pendingOnly = true,
+  ): Promise<DocumentPatchProposal[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/patch-proposals?pending_only=${pendingOnly}`,
+    );
+  }
+
+  decidePatchProposal(
+    proposalId: string,
+    accept: boolean,
+    note?: string,
+  ): Promise<DocumentPatchProposal> {
+    return this.request(
+      "POST",
+      `/api/patch-proposals/${encodeURIComponent(proposalId)}/${accept ? "accept" : "reject"}`,
+      { note: note ?? null },
     );
   }
 

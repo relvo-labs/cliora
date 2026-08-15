@@ -1,12 +1,38 @@
 package cli
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 )
+
+// The specification skeleton `cliora spec template` prints, adapted from Monstrare's
+// `ai/templates/feature-spec.md` (MIT; see ADR 0034 §7 and the attribution there).
+//
+// **Embedded rather than sent in the context pack.** The template is ~2.5 KB and the
+// clarification pack has a 6 KB budget shared with the requirement text and the current
+// draft; a third of it spent on a form the agent can fetch locally is a third the draft
+// does not get. Embedded rather than read from disk because a run directory contains no
+// copy of Monstrare.
+//
+//go:embed spec_template.json
+var specTemplate []byte
+
+// PayloadSurvivedMessage is appended when one of V2.5's three file-carrying writes
+// fails.
+//
+// The three payloads below took the agent real work to produce, unlike a one-line
+// message where retyping costs nothing. **Without this sentence the agent regenerates a
+// different draft on the retry** — and two drafts of one specification, one of them
+// never seen, is worse than the failure was.
+//
+// A constant rather than three literals so that a test can assert the promise without
+// executing a command: `exit` calls `os.Exit`, so the failure path is not reachable from
+// a test binary (`RunOfflineMessage` is asserted the same way).
+const PayloadSurvivedMessage = "內容還在 %s 裡，沒有遺失。恢復連線後用同一個檔案再執行一次。"
 
 // NewCommand builds the `cliora` command tree.
 //
@@ -161,7 +187,18 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return exit(cmd, ExitRefused, err)
 			}
-			message, code, postErr := NewClient(ctx).PostMessage(args[0], "question")
+			client := NewClient(ctx)
+			// The local half of "one question at a time" (V2.5, ADR 0034 §4). **A
+			// hint, not the gate** — the gate is the server's 409, because an agent
+			// has a shell and a readable token file. This saves a round trip and
+			// prints the question still waiting, which a 409 body cannot do as well.
+			if pending, waiting := client.PendingQuestion(); waiting {
+				return exit(cmd, ExitRefused, fmt.Errorf(
+					"上一個問題還沒有答案：「%s」\n"+
+						"要問新的：把兩個問題合併成一則，或先 `cliora task messages` 看看有沒有回覆。",
+					pending))
+			}
+			message, code, postErr := client.PostMessage(args[0], "question")
 			if postErr != nil {
 				return exit(cmd, code, postErr)
 			}
@@ -330,8 +367,159 @@ func NewCommand() *cobra.Command {
 		},
 	})
 
-	root.AddCommand(context, task, plan, verify, evidence)
+	// --- V2.5: what a requirement-driven run writes (ADR 0034 §2) ---
+	//
+	// Three writes and one read. The read is the exception to the write-only restraint
+	// above, and it earns it: the context pack is a dispatch-time snapshot, so a run
+	// that has already submitted two versions cannot otherwise see them — and it is
+	// invoked statelessly, so it does not remember.
+	//
+	// **Still no `approve` and no `accept`.** Same reason as `--force`: a subcommand
+	// that exists invites an attempt, and the answer would be a 401 to interpret.
+	spec := &cobra.Command{Use: "spec", Short: "This requirement's specification"}
+	spec.AddCommand(&cobra.Command{
+		Use:   "template",
+		Short: "Print an empty specification (no network)",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			// No client, no dial: it is a constant. Usable while Central is down and
+			// before a run has done anything.
+			_, err := cmd.OutOrStdout().Write(specTemplate)
+			return err
+		},
+	})
+	spec.AddCommand(&cobra.Command{
+		Use:   "submit <file>",
+		Short: "Submit a version of this requirement's specification (JSON)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			payload, readErr := readJSONFile(args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			out, code, postErr := NewClient(ctx).SubmitSpec(payload)
+			if postErr != nil {
+				// The payload took the agent real work to produce, unlike a one-line
+				// message. Saying the file survived is what stops it regenerating a
+				// different draft on the retry.
+				return exit(cmd, code, fmt.Errorf("%w\n"+PayloadSurvivedMessage, postErr, args[0]))
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"已送出一版規格草稿。\n"+
+					"規格由人核准，你核准不了——不知道的就留在 open_questions 裡，那正是它存在的理由。")
+			return nil
+		},
+	})
+
+	proposal := &cobra.Command{Use: "proposal", Short: "This requirement's decomposition"}
+	proposal.AddCommand(&cobra.Command{
+		Use:   "submit <file>",
+		Short: "Submit a decomposition proposal (JSON: {epics, user_stories, tasks})",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			payload, readErr := readJSONFile(args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			tree, ok := payload["tree"].(map[string]any)
+			if !ok {
+				// Accept both shapes: the file may be the tree itself or `{tree: …}`.
+				// Guessing wrong here costs a round trip and an error about a field the
+				// agent believes it sent.
+				tree = payload
+			}
+			out, code, postErr := NewClient(ctx).SubmitProposal(tree)
+			if postErr != nil {
+				return exit(cmd, code, fmt.Errorf("%w\n"+PayloadSurvivedMessage, postErr, args[0]))
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			// The three counts land in the run log **before** anybody opens the accept
+			// screen, which is the earliest place the scale of a decomposition is
+			// visible.
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"已送出提案：%d 個 Epic、%d 個 User Story、%d 張 Task。\n"+
+					"人會逐張勾選；缺就緒條件的會落在「待辦」而不是「就緒」。\n",
+				countIn(tree, "epics"), countIn(tree, "user_stories"), countIn(tree, "tasks"))
+			return nil
+		},
+	})
+
+	patch := &cobra.Command{Use: "patch", Short: "Propose an edit to a document"}
+	patch.AddCommand(&cobra.Command{
+		Use:   "propose <file>",
+		Short: "Propose a document edit (JSON: {target_path, diff, sections, reason})",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			payload, readErr := readJSONFile(args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			out, code, postErr := NewClient(ctx).ProposePatch(payload)
+			if postErr != nil {
+				return exit(cmd, code, fmt.Errorf("%w\n"+PayloadSurvivedMessage, postErr, args[0]))
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"已送出文件修訂提案。**平台只渲染與記錄決定，不會套用**——"+
+					"人接受之後，套用是一張走 pull_request 的正常卡片。")
+			return nil
+		},
+	})
+
+	requirement := &cobra.Command{Use: "requirement", Short: "What this run is working on"}
+	requirement.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Print this card's requirement, its latest spec and its open questions",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			out, code, getErr := NewClient(ctx).ShowRequirement()
+			if getErr != nil {
+				return exit(cmd, code, getErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, out)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s [%s]\n%s\n", out.CardRef, out.Status, out.RawText)
+			fmt.Fprintf(cmd.OutOrStdout(), "規格版本：%d\n", len(out.Specs))
+			for _, question := range out.Blocking {
+				fmt.Fprintf(cmd.OutOrStdout(), "  未解決：%s\n", question)
+			}
+			return nil
+		},
+	})
+
+	root.AddCommand(context, task, plan, verify, evidence, spec, proposal, patch, requirement)
 	return root
+}
+
+// countIn is how many nodes a proposal tree holds at one level.
+func countIn(tree map[string]any, key string) int {
+	items, ok := tree[key].([]any)
+	if !ok {
+		return 0
+	}
+	return len(items)
 }
 
 // evidenceKinds maps what an agent may say to what the platform stores.

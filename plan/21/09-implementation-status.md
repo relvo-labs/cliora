@@ -126,7 +126,7 @@ V2.3 是拿兩次相隔數週的量測發現這件事的（相差 27%）；這�
 |---|---|---|---|
 | 1 | 五種 delivery 各跑通一次 | ⬜ | |
 | 2 | `none`／`artifact` 遠端零副作用 | ⬜ | |
-| 3 | **Traqora 上的第一個真實 PR** | ⬜ 人工 | |
+| 3 | **Traqora 上的第一個真實 PR** | ⬜ 人工 | ⚠️ [Traqora#25](https://github.com/Lei-k/Traqora/pull/25) **不算**——那個 PR 是 Agent 自己開的，不是 `DeliveryWorker` 開的（§6.1）。CI 綠燈另外卡在 Traqora 的 runner 分配（§6.4） |
 | 4 | 有變更時明示 ＋ diff 附為產物（**兩種 delivery**） | ⬜ | |
 | 5 | `artifact` 缺產物 → run 不算成功 | ⬜ | |
 | 6 | `pull_request` 無變更 → provider 呼叫次數 0 | ⬜ | |
@@ -343,6 +343,24 @@ V2.3 是拿兩次相隔數週的量測發現這件事的（相差 27%）；這�
 2. **Traqora 上的第一個真實 PR**（出口條件 3），以及 `existing_pr` 接在它上面的第二次 run。
    ⚠️ **本期是第一次需要 Traqora 的 PR 建立權限**——前五期最多只到 push。
    開出來的 PR 由人審閱後處置，**平台永不合併**。
+   **2026-08-14 的進度（staging）**：daemon 那一半跑通了（`TASK-4` → `cliora/TASK-4-1`
+   → 2 個 commit 出現在 Traqora#25），但**開 PR 的是 Agent 不是平台**——走的是 §6.1 的路徑 B，
+   所以這一條仍然空著。還缺三件事：
+   ① 先在 staging 的 DB 上查 §6.1 那三格，確認 A 為什麼沒被叫到（**最可能是
+   `provider_token_secret_id` 是 `NULL`，也就是下面第 6 條還沒做**）；
+   ② 讓一張 `delivery: pull_request` 的卡走 `DeliveryService` 真的開出 PR；
+   ③ Traqora 的 Actions 要能取得 runner（§6.5，需要 billing 權限的人）。
+2b. **決定 Traqora#25 的處置**：合併（留下那份 runbook）或關閉（純測試）。
+   目前是 draft，不會被誤 merge。**這是人的決定，不是條件 3 的一部分。**
+2d. **裁決：Agent 自己開 PR（路徑 B）算不算一條支援的路。**（§6.3）
+   ⚠️ **這一條要先於 2c 的實作**——它決定 `04-…md` §3「PR 內容由平台產生」
+   是被否證了還是有例外，也決定 ADR 0033 的「平台永不合併」要不要改寫範圍。
+   **不裁決的代價不是延遲，是兩條路都只做一半。**
+2c. **證據入口的三件事**（§6.2）：讓 `delivery_ref` 能認領既存 PR、
+   run 結束無驗證報告時在卡片上留一句話、把「報告提交到哪裡」寫進派工指示。
+   ⚠️ **這是目前最會咬人的一項**，而它不是一次意外而是路徑 B 的結構：
+   **走 B 的卡片沒有一張進得了 `done`**（第 ⑥ 項對 B 恆缺）。
+   `TASK-4` 把工作做完了卻缺兩項完成證據，而症狀要等到有人嘗試移動卡片才出現。
 3. **`agentd` 0.11.0 的發布時機。** 出口全綠不代表要推給所有 node。
 4. **翻 traceability 的 `lifecycle`。** 與第 2 條同時做。
 5. **前期遺留的三項量測**：M-SC-2（去識別成本，V2.3）、M-AR-2（log 速率）、
@@ -369,9 +387,182 @@ V2.3 是拿兩次相隔數週的量測發現這件事的（相差 27%）；這�
 | 🆕 **一枚有 PR 建立權限的 fine-grained PAT** | 出口條件 3。權限只要 `pull request: write`；**它的擁有者會顯示在 PR 上** |
 | 🆕 **`cmd/fakeprovider`** | 出口條件 8／9 的四種失敗與請求計數。真實驗收不可用它取代 |
 | 🆕 **`CLIORA_PROVIDER_API_HOSTS`** | 預設只有 `api.github.com`。**預設值必須是安全的**（D16） |
+| 🆕 **Traqora 的 Actions 自 2026-08-10 04:41 起取不到 runner** | `startup_failure`、`runner_name` 空、3–4 秒結束、`gh run rerun` 回 `workflow file may be broken`。**與 repo 內容無關**，最可能是用量／spending limit。擋住出口條件 3 的 CI 綠燈（§6.5） |
+| 🆕 **手上的 `gh` 憑證都讀不到 CI 狀態** | 缺 `actions: read` 與 billing：`check-runs`、`actions/permissions`、`settings/billing/actions` 全部 403。所以「CI 為什麼紅」只能從 job 層級 timing 推，**而推論不是證據**（§6.5） |
+| 🆕 **runner 的 commit 身分** | `cliora-run <cliora-run@w6>`。**PR 的作者欄不是它**——那是 provider 憑證的擁有者，兩條路徑（平台開／Agent 開）在作者欄上分不開（§6.1） |
+| 🆕 **Agent 的 workspace 裡有一枚可寫的 `gh`** | 所以 **Agent 可以自己接單開 PR**（§6.1 的路徑 B）。同一枚憑證也能 merge／approve／close，**而 `GATE-DV-PROVIDER-VERBS` 管不到它**（§6.3 待裁決） |
+| 🆕 **第一次真實派工的環境是 staging** | `TASK-4`（2026-08-14 07:08–07:20 UTC）。⚠️ **`04-…md` §5 三格待查的狀態都在 staging 的 DB 上**，本機沒有存取（§6.1） |
 | 本期開始時的基線 | contract **v1.12.0**、`agentd` **0.10.0**、migration **0034**、RBAC **25**、ADR **0032**、**37 張表** |
 | 本期結束時的基線（目標） | contract **v1.13.0**、`agentd` **0.11.0**、migration **0037**、RBAC **27**、ADR **0033**、**40 張表** |
 
 ## 6. 實作中發現的其餘事項
 
-（開工後填。）
+### 6.1 PR 建立有**兩條路**，而計畫只設計了一條（2026-08-14，staging）
+
+Traqora 的 `TASK-4`（「新增一個檔案並測試 PR」）在 **staging** 上從開票到 PR 出現在
+別人的 repo 上一次跑通，**而開 PR 的不是平台**——是 Agent 自己。
+
+**「Agent 可以自己接單開 PR」是一個成立的能力，不是這次的意外。**
+所以這一格記的不是一個缺陷，是一件更麻煩的事：**系統現在有兩條交付路徑，
+而 `04-…md` 從頭到尾只設計了其中一條。**
+
+| | **A：計畫設計的那條**（`DV-05`） | **B：這次實際走的那條** |
+|---|---|---|
+| 誰呼叫 provider | `DeliveryService`（`run_reaper.py:193`，由 `main.py:69` 啟動） | Agent，用 workspace 裡的 `gh` |
+| PR 內文 | 平台產生的驗證報告模板（`deliveries.py:239`） | Agent 自己寫的 |
+| 標題 | `[{card_ref}] {task.title}`（`deliveries.py:231`） | Agent 自己寫的 |
+| 動作範圍 | 封閉成三個，`GATE-DV-PROVIDER-VERBS` 掃著 | **無約束**（§6.3） |
+| `delivery_ref` | 成功時寫入 | **永遠是空的**（§6.2） |
+| 狀態機 | `pending_pr → delivered`／`branch_only` | **不經過** |
+
+⚠️ **兩條路在 PR 上分不出來的地方，與分得出來的地方**：作者欄分不出來
+（平台那枚 PAT 與 workspace 的 `gh` 是同一個帳號）；**分得出來的是標題與內文的形狀**，
+以及 `draft`——平台那條路徑不會設它。這次是 B：標題
+`docs: add PR pipeline smoke test runbook (TASK-4)`、內文是 What／Why／Expected checks
+＋「🤖 Generated with Claude Code」、draft。
+
+**出口條件 3 仍然空著，而理由要說準**：它問的是 A 能不能在真的 provider 上走完，
+而這次驗到的是 B。**不是 PR 25 失敗了，是它驗的是另一條路。**
+
+**A 為什麼沒有同時發生**——三個可查的狀態，都在 staging 的 DB 上，按可能性排序：
+
+1. `project_repositories.provider_token_secret_id` 是 `NULL` → `_provider_token()`
+   回 `None`（`deliveries.py:220`）。**這是最可能的一格**：§5 說「一枚有 PR 建立權限的
+   fine-grained PAT」是本期新增的環境需求，而 §4.6「provider token 的產生與保管」還沒做。
+2. `tasks.delivery` 不是 `pull_request`／`existing_pr` → `wants_pull_request()` 為假
+   （`deliveries.py:90`），從來沒有進 `pending_pr`。
+3. 進了 `pending_pr` 但 `deliver()` 走了失敗分支 → `delivery_state='branch_only'`、
+   `run.result='delivered_branch_only'`，而**卡片上應該有一則說明的事件**（`04-…md` §5）。
+
+**先查第 3 格**：它會直接告訴你 A 有沒有被叫到，而那是這三格裡唯一會留下痕跡的。
+
+以下事實已查證（不需要 DB）：
+
+| 事實 | 值 | 憑什麼這麼說 |
+|---|---|---|
+| 卡片 | Traqora `TASK-4`，run seq 1 | 分支名 `cliora/TASK-4-1` 正是 `runs.py:1267` `run_branch()` 的輸出 |
+| commit | 2 個，作者 `cliora-run <cliora-run@w6>` | runner 的身分，所以造檔與 push 確實走了 daemon |
+| PR | [Traqora#25](https://github.com/Lei-k/Traqora/pull/25)，**draft**，2 檔 +46 行 | |
+| 環境 | **staging** | |
+
+**值得記的第二件事**：前五期最多只到 push，**這是第一次有東西出現在別人的 PR 列表裡**。
+B 這條路能走通本身是進度，不是問題——問題是它缺了半套（§6.2）。
+
+### 6.2 主要問題：**B 這條路沒有證據入口**
+
+卡片沒有移動，而它**缺兩項完成證據**。而這**不是 `TASK-4` 的一次意外——
+是 B 這條路的結構**：只要 Agent 自己開 PR，`delivery_ref` 就永遠是空的，
+於是 Done Gate 第 ⑥ 項**每一次都會缺**。走 B 的卡片沒有一張進得了 `done`。
+
+先說**卡片沒有移動是對的**，不要有人去修它：`runs.py` 不碰 `task.stage`
+（§1 的 `GATE-DV-SINGLE-DONE-PATH`、出口條件 23）。run 成功不推進卡片是設計。
+真正的問題在後面那半句——有人想推進它的時候被 Done Gate 擋下來，而**擋得有道理**。
+
+這次 run 產出的東西非常完整：一份帶結論、證據表、五條佐證、最可能原因、
+下一步、以及一句「**這張卡我沒有標記為完成的部分**」的報告。
+**它被寫成一則 PR 留言。** 平台沒有任何讀 PR 留言的路徑，
+所以就 `verification_reports` 而言那份報告不存在。
+
+| 缺的那一項 | Done Gate 讀哪一欄 | 為什麼這次是空的 |
+|---|---|---|
+| **③ 驗證報告** | `verification_reports` 至少一列且 `result` 不在 `_REPORT_INCOMPLETE`（`done_gate.py:138`） | Agent 沒有走提交報告那條路，報告去了 PR 留言 |
+| **⑥ 交付證據** | `delivery: pull_request` → `task_runs.delivery_ref`（`done_gate.py:178`、`06-…md` §2.2） | PR 是 Agent 開的，所以**平台沒有那個 URL 可以寫**。世界上有一個 PR，證明它存在的那一欄是空的。⚠️ **這一格對 B 恆真** |
+
+（確切是哪兩項請看拒絕訊息本身——它會**逐項指名每一個缺項**，不只第一個
+（`done_gate.py:20`）。① 完成摘要有兩個來源，`task_runs.summary` 也算，所以它可能是過的。）
+
+⚠️ **值得記的是這個失敗的方向。** `06-…md` 開頭擔心的是
+「卡片憑一句『完成』進了 `done`，而沒有人發現」。第一次真的遇到的是**反過來的那一面**：
+一張**確實把工作做完、而且把話說得比要求更清楚**的卡片，證明不了自己。
+兩者都是 Done Gate 在做它該做的事，但**這一面的代價不是安全而是可用性**——
+而使用者對可用性問題的反應是 `--force`，那正是 `--force` 不該被用的方式（`06-…md` §2.1 第 4 項的同一段理由）。
+
+所以這一格的結論不是「把 Done Gate 放寬」，是**B 這條路要有它自己的證據入口**。
+三件事，由便宜到貴：
+
+1. **`delivery_ref` 要能認領一個已經存在的 PR。** §6.4 的機制已經在那裡了
+   （`find_pull_request` 查得到它），缺的是讓那條路徑在 B 之後也跑一次。
+   ⚠️ **這一條是 B 能不能算一條完整路徑的關鍵**，而它同時修掉出口條件 3 的一半。
+2. **run 結束時若 `verification_reports` 是空的，卡片上要留一句話**，
+   說「這次 run 沒有提交驗證報告，所以這張卡進不了 done」。
+   現在這件事要等到有人**嘗試移動卡片**才會被發現，而那可能是幾天以後——
+   `TASK-4` 就是這樣：run 在 07:20 結束，缺證據是**之後**才發現的。
+3. **把「報告要提交到哪裡」寫進派工給 Agent 的指示。** 這次 Agent 做的是一件合理的事
+   ——在人會看到的地方留下報告。**它不知道平台只讀某一張表。**
+
+⚠️ **不要把這三件事讀成「等 A 做好就沒事了」。** 只要 B 是一條允許的路，
+**它就要能自己走到 done**——否則實際會發生的是：走 B 的卡片一律靠 `--force` 進 `done`，
+而那讓 `--force` 從「判準訂錯的訊號」變成「B 的例行手續」，
+`10-…md` §2.3 讀它的那一列就跟著失效。
+
+### 6.3 Agent 手上的 `gh` 憑證讓 `GATE-DV-PROVIDER-VERBS` 買到的東西縮水
+
+`04-…md` §2.1 把 provider 動作表**封閉成三個**，`GATE-DV-PROVIDER-VERBS` 掃 adapter
+不得出現 `merge`／`approve`／`review`／`close`／`delete`，而 `01-…md` §3.6 與本頁 §4.2
+據此承諾「**平台永不合併**」。
+
+這次的 run 顯示：**同一個 repo 上還有第二枚憑證，而它不受那條 gate 管。**
+Agent 在 workspace 裡有一枚可寫的 `gh`，並用它做了兩件事——開 PR、在 PR 上留言。
+能做這兩件事的憑證，也能 merge、approve、close、刪分支。
+
+⚠️ **值得記的不是「Agent 亂來了」——它沒有。** 值得記的是**那句保證的作用範圍**：
+封閉的動作表約束的是 Central 的出口，而「平台永不合併」在 runner 那一側**沒有對應的機制**。
+一個讀 ADR 0033 的人會以為那是整個系統的性質。
+
+**而「B 是一條允許的路」把這件事從註解升級成一個要裁決的問題。**
+如果 B 只是一次意外，寫清楚範圍就夠了；如果 Agent 本來就可以自己接單開 PR，
+那 `04-…md` §3「PR 內容由平台產生，不由 Agent 產生」**就被一條支援的路徑否證了**,
+而那一節整段理由（「repo 上其他人讀到的東西必須是平台能負責的」）需要一個新答案，
+不是一個例外。兩條收法，**選哪一條是裁決不是實作**：
+
+1. **不給**：交付型 run 的 workspace 不注入 provider 憑證，PR 一律由 `DeliveryService` 開
+   ——那正是 `04-…md` §3 原本假設的世界，**代價是放棄 B**。
+2. **給但收窄，並承認代價**：注入的憑證權限只到 `pull request: write`
+   （§5 已經為平台那枚寫了這一條），並明說 branch protection 是唯一擋 merge 的東西
+   ——**那是別人的設定，不是我們的保證**。選這條的話 ADR 0033 要改寫成
+   「**平台**永不合併」而且明說 runner 側不受此約束，
+   以及 §3 要改成「**平台開的 PR** 內文由平台產生」。
+
+不論選哪一條，**便宜的第一步都一樣**：把那句話的範圍寫進 ADR，
+不要讓「平台永不合併」去涵蓋一枚它管不到的憑證。
+
+### 6.4 `04-…md` §5 第三格多了一個觸發者，而它會讓 `delivered` 說謊
+
+四種失敗的第三格——「同一 head 已有 PR → **`delivered`**，`delivery_ref` 指向既有那個」——
+寫的時候想的是 `existing_pr` 的第二次 run，而 §5 的原文明說那是正常路徑。
+
+§6.1 加了第二個觸發者：**Agent 自己先開了 PR。** 那時 `find_pull_request` 會查到它，
+於是 `delivery_state='delivered'`、`delivery_ref` 指向**一份平台沒有產生、也沒有審過的 PR 內文**。
+`04-…md` §3 的整段理由（「repo 上其他人讀到的東西必須是平台能負責的」）在這一格靜靜地失效，
+**而資料庫上看不出差別**——`delivered` 就是 `delivered`。
+
+不必馬上改行為（§6.2 第 1 條正要靠這條路徑），但**這一格要能分辨**。
+最小的做法：`evidence(kind=delivery)` 那一列記下「PR 是**查到的**還是**開出來的**」
+——`04-…md` §1 的成功路徑已經在寫 evidence，這是多一個欄位而不是多一條路徑。
+
+同一件事也改變 `10-…md` §2.2 對 M-DV-2 的讀法，已回填到那一頁。
+
+### 6.5 Traqora 的 CI 自 2026-08-10 起壞在 runner 分配那一層（**與本次變更無關**）
+
+出口條件 3 的 CI 綠燈卡在這裡，而**它不是我們弄壞的**。
+
+| 項目 | 本次 PR（08-14） | 最後一次 green main（08-09，`ed13f23`） |
+|---|---|---|
+| `security` / `secrets` | failure | success |
+| `openapi-drift` / `contract` | failure | success |
+| runner 分配 | `runner_name: ""` | `GitHub Actions 1000009259` |
+| job 耗時 | 3–4 秒 | 19–38 秒 |
+| 可否 rerun | 不行：`workflow file may be broken` | — |
+
+`startup_failure` 的四條佐證：① 本 PR 只動兩個 `docs/` 檔，
+`git diff origin/main..HEAD -- .github/` 是空的；② 全 repo 自 2026-08-10 04:41 起
+沒有任何成功的 workflow run；③ 8 個 workflow 的 `state` 都是 `active`，不是被停用；
+④ 第二次 push（`synchronize`，`2b3c089`）完整重現，**所以不是一次性抖動**。
+最可能原因是 Actions 用量／spending limit 用完——時間點與 repo 內容無關。
+
+⚠️ **這一格的限制要跟結論一起記**：`actions: read` 與 billing 權限**兩枚憑證都沒有**
+——staging 上那次 run 用的，以及事後覆核用的（同一個 GitHub 帳號，不同的 token）。
+`repos/…/check-runs`、`actions/permissions`、`settings/billing/actions` 全部 403，
+覆核時重跑 `check-runs` 仍是 403。所以上表是**從 job 層級的 timing 訊號推出來的，
+不是讀到的狀態**。**要一個有 billing 權限的人去確認**，而在那之前
+「CI 為什麼紅」這件事我們拿不到證據等級的答案。
