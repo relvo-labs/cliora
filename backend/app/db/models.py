@@ -632,9 +632,41 @@ class FeatureSpec(Base):
     non_goals: Mapped[str | None] = mapped_column(Text, nullable=True)
     acceptance_criteria: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     open_questions: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    # The nine sections Monstrare's specification template has and the five columns
+    # above do not (ADR 0034 §7, MIT). One JSONB rather than nine columns by ADR 0027's
+    # rule — read and written with the row, no independent query — and the same rule
+    # that decided ``TaskProposal.tree``.
+    #
+    # Three of the nine are load-bearing rather than decorative: ``user_stories`` is
+    # what a decomposition run reads to produce the Epic→Story→Task middle layer,
+    # ``screens`` is the upstream of the ``ui`` gate, and ``verification_plan`` is where
+    # a card's acceptance criteria come from. The **keys** are validated
+    # (``services/requirements.py::SPEC_SECTION_KEYS``); the contents are not, because a
+    # specification with empty sections is legal and the approval gate is what stops it.
+    sections: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
     authored_by_kind: Mapped[str] = mapped_column(String(16), default="user")
     authored_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    # ``SET NULL`` rather than ``CASCADE``, the same choice ``TaskMessage.run_id`` made:
+    # a run's record is reclaimed on a retention schedule and a specification is not.
+    #
+    # ``use_alter`` because this key **closes a loop** in the foreign-key graph
+    # (``feature_specs`` → ``task_runs`` → ``tasks`` → ``task_proposals`` →
+    # ``feature_specs``). Without it SQLAlchemy cannot order the four for ``create_all``
+    # and warns that it may become an error; with it, the loop-closing edge is named and
+    # emitted separately. Naming it is also the documentation: this is the edge that made
+    # the graph cyclic.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_runs.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_feature_specs_run_id",
+        ),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -661,6 +693,17 @@ class TaskProposal(Base):
     seq: Mapped[int] = mapped_column(Integer)
     tree: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(24), default="pending")
+    # The other loop-closing edge: ``task_proposals`` → ``task_runs`` → ``tasks`` →
+    # ``task_proposals``. Same reasoning as ``FeatureSpec.run_id``.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_runs.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_task_proposals_run_id",
+        ),
+        nullable=True,
+    )
     decided_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -712,6 +755,21 @@ class Task(Base):
     objective: Mapped[str | None] = mapped_column(Text, nullable=True)
     scope: Mapped[str | None] = mapped_column(Text, nullable=True)
     non_goals: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # What this card *is*, as against what it is tagged with (ADR 0034 §5). Four values
+    # and a default, so every card written before V2.5 has an explicit kind.
+    #
+    # **It takes no part in dispatch matching** — that is what `required_labels` is for
+    # — and it is deliberately not derived from one. A tag is free text that decides
+    # which machine claims the card; overloading it with "what kind of card is this"
+    # means a typo silently turns a clarification card into an ordinary one, and the
+    # secret refusal that reads this column exists precisely to catch that case.
+    #
+    # It is in ``AGENT_FORBIDDEN_FIELDS`` and locked once any run has existed: a
+    # clarification run that could rewrite its own card to ``implementation`` would have
+    # cleared the way for the next dispatch to carry secrets.
+    card_kind: Mapped[str] = mapped_column(
+        String(16), default="implementation", server_default=text("'implementation'")
+    )
     stage: Mapped[str] = mapped_column(String(16), default="backlog")
     risk: Mapped[str] = mapped_column(String(16), default="medium")
     priority: Mapped[str] = mapped_column(String(16), default="normal")
@@ -1567,3 +1625,71 @@ class EvidenceItem(Base):
     collected_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+
+class DocumentPatchProposal(Base):
+    """A proposed edit to a repository document, before a person decides (FR-SPEC-007).
+
+    **The platform renders it and records the decision. The platform never applies it**
+    (ADR 0034 §6). Three reasons, and the third is the one that decides: applying a
+    markdown patch is general file editing, which `plan/14` designed and had withdrawn;
+    Central holds no clone, so "apply" has nowhere to happen; and routing the edit
+    through an ordinary ``delivery: pull_request`` card gives the document the same
+    review a code change gets — which is better than the platform applying it, not
+    merely safer.
+
+    ``diff`` is ``Text`` and is never parsed. Parsing is half the distance to applying,
+    and the service bounds its size instead.
+
+    Deliberately **not** a ``TaskArtifact``. An artifact is inert — nothing about it is
+    decided, it has no status, and it is listed per card. This has a decision attached,
+    is listed per project as "still pending", and would give that table a state machine
+    it was designed without (ADR 0030).
+
+    Insert-only apart from the four decision columns, which one endpoint writes once.
+    """
+
+    __tablename__ = "document_patch_proposals"
+    __table_args__ = (
+        UniqueConstraint("project_id", "seq", name="uq_document_patch_proposals_project_seq"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    # Nullable: an implementation run that noticed a document was wrong has no
+    # requirement behind it, and that is a legitimate origin for a proposal.
+    requirement_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("requirements.id", ondelete="SET NULL"), nullable=True
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    # Numbered per project rather than per requirement, because the row above may have
+    # none and a proposal still needs a name a person can say out loud.
+    seq: Mapped[int] = mapped_column(Integer)
+    target_path: Mapped[str] = mapped_column(String(512))
+    diff: Mapped[str] = mapped_column(Text)
+    sections: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    related_task_ids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    # A first-class column here for the same reason it is one on ``FeatureSpec``: an
+    # unresolved question inside a proposal has to be visible. Unlike a specification's,
+    # it does **not** block acceptance — accepting a patch proposal produces nothing,
+    # while approving a specification unlocks decomposition. Asymmetric gates need
+    # asymmetric reasons, and that is this one's.
+    open_questions: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    status: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default=text("'pending'")
+    )
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
