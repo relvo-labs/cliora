@@ -1,0 +1,52 @@
+{
+  "objective": "",
+  "scope": "",
+  "non_goals": "",
+  "acceptance_criteria": [
+    { "text": "" }
+  ],
+  "open_questions": [
+    { "id": "q1", "question": "", "answer": "", "resolved_as": "" }
+  ],
+  "sections": {
+    "problem": "我們要解決什麼問題？（不是要做什麼）",
+    "users": "受影響的是誰？",
+    "user_stories": [
+      {
+        "title": "",
+        "narrative": "身為 … 我想要 … 以便 …",
+        "acceptance": ""
+      }
+    ],
+    "journeys": "",
+    "functional_requirements": [
+      "WHEN … THE SYSTEM SHALL …"
+    ],
+    "screens": [
+      {
+        "name": "",
+        "states": ["預設", "載入中", "空狀態", "錯誤", "行動裝置版"],
+        "note": ""
+      }
+    ],
+    "data_and_api": {
+      "inputs": "",
+      "outputs": "",
+      "validation": "",
+      "errors": ""
+    },
+    "security_privacy": {
+      "authn": "",
+      "authz": "",
+      "sensitive_data": "",
+      "abuse": ""
+    },
+    "verification_plan": {
+      "unit": "",
+      "integration": "",
+      "e2e": "",
+      "visual": "",
+      "manual": ""
+    }
+  }
+}
