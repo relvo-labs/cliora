@@ -238,6 +238,9 @@ async def _task_dto(service: TaskService, task: Task) -> TaskDTO:
             for item in dependencies
         ],
         blocking_refs=await service.blocking_refs(task.id),
+        conversation_seq=task.conversation_seq,
+        open_question_count=task.open_question_count,
+        waiting_for_actor=task.waiting_for_actor,
         created_at=task.created_at,
         updated_at=task.updated_at,
     )

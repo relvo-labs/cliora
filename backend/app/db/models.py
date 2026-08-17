@@ -16,6 +16,7 @@ from sqlalchemy import (
     CHAR,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -817,6 +818,28 @@ class Task(Base):
     proposal_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("task_proposals.id", ondelete="SET NULL"), nullable=True
     )
+    # --- conversation (V2-C1, ADR 0035) -------------------------------------
+    # The card's message counter. Every message takes its number from here in the same
+    # transaction that inserts it, which locks *this* row — a row the write was going to
+    # touch anyway, because ``updated_at`` has ``onupdate``. A sequence would be holed
+    # per card and ``max(seq)+1`` would duplicate under concurrency (ADR 0035 §2).
+    #
+    # It is also what lets the board projection answer "how far has this conversation
+    # got" without joining ``task_messages`` — a join that costs real time at 200 cards.
+    conversation_seq: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    # Two projections of ``task_questions``, maintained in exactly one function
+    # (``ConversationService._reproject``) and asserted by
+    # ``GATE-CV-PROJECTION-ONE-WRITER``. A second writer's first missed branch shows a
+    # card that says "waiting for your reply" after the reply arrived, and **nothing
+    # errors** — which is why the guard is a gate rather than a test.
+    open_question_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default=text("0")
+    )
+    # ``human`` | ``agent`` | NULL. Derived from question state, so it gives the same
+    # answer whether the asking run is still polling or has already ended (ADR 0035 §8).
+    waiting_for_actor: Mapped[str | None] = mapped_column(String(16), nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1137,6 +1160,45 @@ class TaskRun(Base):
     log_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     log_truncated_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     logs_expire_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # --- continuation turns (V2-C1, ADR 0035 §4) ----------------------------
+    # A continuation is a *child run*, not a row in a second table. ``task_runs``
+    # already owns the state machine, the lease, the retry counter, the log, the
+    # cancellation path and the audit trail; a parallel table would mean keeping two
+    # lifecycles in step for something the interface collapses into one thread anyway.
+    parent_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_runs.id", ondelete="SET NULL", name="fk_task_runs_parent_run_id", use_alter=True
+        ),
+        nullable=True,
+    )
+    # Stored rather than walked. ``run_branch()`` needs the first run's ``seq`` so that
+    # turn two pushes to the branch turn one created — otherwise a pull-request card
+    # that asks a question splits its work across two branches and the PR points at
+    # half of it, with no test going red (ADR 0035 §5).
+    root_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_runs.id", ondelete="SET NULL", name="fk_task_runs_root_run_id", use_alter=True
+        ),
+        nullable=True,
+    )
+    # Which answer woke this run. Half of ``uq_task_runs_continuation``, which makes
+    # "one question, two continuations" impossible in the database rather than
+    # improbable in the service (ADR 0036 §5).
+    resumed_question_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_questions.id",
+            ondelete="SET NULL",
+            name="fk_task_runs_resumed_question_id",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    # **Not ``attempt``.** ``turn_seq`` counts rounds of conversation; ``attempt``
+    # counts retries of one round. A continuation that is requeued three times has
+    # ``turn_seq=2`` throughout. Conflating them would make neither answerable.
+    turn_seq: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    input_from_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    input_to_seq: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1208,9 +1270,125 @@ class TaskMessage(Base):
         ForeignKey("agent_runners.id", ondelete="SET NULL"), nullable=True
     )
     body: Mapped[str] = mapped_column(Text)
+    # Six values from V2-C1 (``comment``/``question``/``answer``/``proposal``/
+    # ``decision``/``system``) plus the two V2.5 spellings still on disk: ``message``
+    # reads as ``comment`` and ``event`` as ``system``. **No migration rewrites them**
+    # (ADR 0035 §8) — a whole-table UPDATE on a table audit references, to change a
+    # display string, is a worse trade than two lines of mapping where the DTO is built.
     kind: Mapped[str] = mapped_column(String(24), default="message")
     event_kind: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # --- conversation (V2-C1, ADR 0035 / 0036) ------------------------------
+    # Monotonic, gapless and unique within the card. Backfilled by `0040` in
+    # ``(created_at, id)`` order — the second key is not decoration: it is exactly the
+    # tie that made timestamp pagination unreliable.
+    conversation_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    reply_to_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_messages.id", ondelete="SET NULL"), nullable=True
+    )
+    # Set on an ``answer``. The FK closes a loop (``task_messages`` →
+    # ``task_questions`` → ``task_messages``), so it is named and ``use_alter``, the
+    # same treatment `0039` gave the specification loop.
+    question_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_questions.id",
+            ondelete="SET NULL",
+            name="fk_task_messages_question_id",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    idempotency_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # **Not the same thing as ``run_id``.** ``run_id`` is "which run wrote this"; this
+    # is "which turn read this as input". A human's answer has the second and not the
+    # first. Catch-up needs the second; audit needs the first.
+    turn_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class TaskQuestion(Base):
+    """One question's whole life (ADR 0035 §3).
+
+    V2.5 answered "has this been answered?" by scanning messages: any user message
+    written after the question counted. That rule is right for a person reading a
+    thread and useless to a database — it cannot say *which* question a reply closed,
+    and two replies to two questions are indistinguishable from two replies to one.
+
+    A row makes the answer a single-statement compare-and-set::
+
+        UPDATE task_questions SET state='answered' WHERE id=? AND state='open'
+
+    Zero rows is the conflict, one row is the go-ahead. That statement is the whole of
+    the concurrency argument, exactly as it is for ``claim()``.
+
+    ``asked_message_id`` cascades and ``answered_message_id`` does not, and the
+    asymmetry is deliberate: a question row without its own text means nothing, while
+    "answered, and the answer is gone" is a state that still says something. Neither
+    happens today — ``task_messages`` has no delete path — but a constraint should be
+    able to explain itself.
+    """
+
+    __tablename__ = "task_questions"
+    __table_args__ = (
+        CheckConstraint("state IN ('open','answered','cancelled','expired')", name="state"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("task_runs.id", ondelete="SET NULL"), nullable=True
+    )
+    asked_message_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey(
+            "task_messages.id",
+            ondelete="CASCADE",
+            name="fk_task_questions_asked_message_id",
+            use_alter=True,
+        )
+    )
+    state: Mapped[str] = mapped_column(String(16), default="open")
+    answered_message_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey(
+            "task_messages.id",
+            ondelete="SET NULL",
+            name="fk_task_questions_answered_message_id",
+            use_alter=True,
+        ),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expired_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class ConversationConsumer(Base):
+    """How far one reader has got through one card's conversation (ADR 0036 §2).
+
+    **``consumer_id`` has no foreign key**, the same precedent ``tasks.assigned_runner_id``
+    set: a cursor may name a run the retention sweep has already removed, and it stays
+    meaningful — it says where that reader stopped. A cursor deleted because its run
+    aged out would make a reconnecting consumer start again from zero.
+
+    ``last_acked_seq`` controls nothing. It exists so the interface can say
+    ``agent_seen``, and a flow that waited on it would stall whenever an agent died
+    between reading and acknowledging — precisely the case this design exists to
+    survive.
+    """
+
+    __tablename__ = "conversation_consumers"
+    __table_args__ = (CheckConstraint("last_acked_seq <= last_delivered_seq", name="order"),)
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    consumer_type: Mapped[str] = mapped_column(String(16), primary_key=True)
+    consumer_id: Mapped[uuid.UUID] = mapped_column(primary_key=True)
+    last_delivered_seq: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    last_acked_seq: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
 
 
 class TaskArtifact(Base):

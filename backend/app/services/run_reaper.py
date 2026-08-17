@@ -32,12 +32,13 @@ from sqlalchemy import delete, select
 
 from app.clock import now_utc
 from app.db.engine import get_database
-from app.db.models import RunLog, Task, TaskRun
+from app.db.models import RunLog, Task, TaskQuestion, TaskRun
 from app.logging import get_logger
 from app.services.activity import ACTOR_SYSTEM, RUN_FINISHED, ActivityService
+from app.services.conversation import ConversationService
 from app.services.deliveries import DeliveryService
 from app.services.run_logs import get_run_log_buffer
-from app.services.runs import LEASED_STATUSES, MessageService, RunService
+from app.services.runs import LEASED_STATUSES, RunService
 from app.settings import get_settings
 
 _logger = get_logger("cliora.run_reaper")
@@ -85,6 +86,7 @@ class RunReaper:
     async def sweep(self) -> None:
         await self._reclaim_leases()
         await self._expire_waiting()
+        await self._expire_parked_runs()
         await self._deliver_pending_pull_requests()
         await self._flush_stale_log_buffers()
         await self._delete_expired_logs()
@@ -118,6 +120,97 @@ class RunReaper:
             )
 
     async def _expire_waiting(self) -> None:
+        """Job B, and V2-C1 moved what it sweeps (ADR 0035, `plan/23/04-…md` §4).
+
+        It used to scan runs for ``status='waiting_for_input'``. That misses the shape
+        this phase introduced: a run that asked a question and **exited**, whose card
+        is still waiting while the run itself is terminal. Sweeping questions catches
+        both, because a question is the thing that is actually waiting.
+
+        The run half is kept for the live case: an agent that never exited still holds
+        a lease and a capacity slot, and those have to be released by failing the run
+        exactly as before. Everything a person sees — twenty-four hours, the card going
+        back to `blocked`, the sentence on the card — is unchanged.
+
+        **The question is expired, not deleted** (`FR-CONV-003.AC-03`). Somebody reading
+        the card tomorrow should find the question that went unanswered, not a gap.
+        """
+        settings = get_settings()
+        cutoff = now_utc() - timedelta(hours=settings.run_waiting_timeout_hours)
+        async with get_database().session() as session:
+            questions = list(
+                (
+                    await session.execute(
+                        select(TaskQuestion)
+                        .where(
+                            TaskQuestion.state == "open",
+                            TaskQuestion.created_at < cutoff,
+                        )
+                        .order_by(TaskQuestion.created_at)
+                        .limit(BATCH)
+                    )
+                ).scalars()
+            )
+            if not questions:
+                return
+            conversation = ConversationService(session)
+            activity = ActivityService(session)
+            for question in questions:
+                await conversation.expire_question(question)
+                task = await session.get(Task, question.task_id)
+                if task is None:  # pragma: no cover - the FK makes this unreachable
+                    continue
+                run = (
+                    await session.get(TaskRun, question.run_id)
+                    if question.run_id is not None
+                    else None
+                )
+                if run is not None and run.status == "waiting_for_input":
+                    # The live case: a process is still up, holding a lease it will
+                    # never use. Ending the run is what releases both.
+                    run.status = "failed"
+                    run.result = "failed"
+                    run.error_code = "RUN_WAITING_TIMEOUT"
+                    run.finished_at = now_utc()
+                    run.logs_expire_at = now_utc() + timedelta(days=14)
+                task.stage = "blocked"
+                await conversation.post_event(
+                    task=task,
+                    body=(
+                        f"Agent 的提問超過 {settings.run_waiting_timeout_hours} 小時未獲回覆，"
+                        "這張卡已退回「阻塞」。回覆之後可以重新派工。"
+                    ),
+                    event_kind="run.waiting_timeout",
+                )
+                await conversation.reproject(task)
+                await activity.record(
+                    RUN_FINISHED,
+                    project_id=task.project_id,
+                    task_id=task.id,
+                    actor_kind=ACTOR_SYSTEM,
+                    payload={
+                        "run_id": str(run.id) if run is not None else None,
+                        "card_ref": task.card_ref,
+                        "result": "failed",
+                        "error_code": "RUN_WAITING_TIMEOUT",
+                        "question_id": str(question.id),
+                    },
+                )
+            await session.commit()
+
+    async def _expire_parked_runs(self) -> None:
+        """Job B′: a run parked on `waiting_for_input` with no question row behind it.
+
+        Two ways in. A daemon may set the state through `run.progress`'s
+        `waiting_for_input` flag without any question having been asked, and a card
+        upgraded mid-flight can be parked from before `0040` existed. Neither has a row
+        for the question sweep to find, and neither should hold a lease for ever.
+
+        Kept as a second pass rather than folded into the first, because the two are
+        answering different questions — "nobody answered this question" and "this run is
+        parked on nothing" — and a single query that did both would obscure which case
+        fired.
+        """
         settings = get_settings()
         cutoff = now_utc() - timedelta(hours=settings.run_waiting_timeout_hours)
         async with get_database().session() as session:
@@ -129,6 +222,9 @@ class RunReaper:
                             TaskRun.status == "waiting_for_input",
                             TaskRun.waiting_since.is_not(None),
                             TaskRun.waiting_since < cutoff,
+                            ~select(TaskQuestion.id)
+                            .where(TaskQuestion.run_id == TaskRun.id)
+                            .exists(),
                         )
                         .limit(BATCH)
                     )
@@ -136,7 +232,7 @@ class RunReaper:
             )
             if not runs:
                 return
-            messages = MessageService(session)
+            conversation = ConversationService(session)
             activity = ActivityService(session)
             for run in runs:
                 run.status = "failed"
@@ -148,7 +244,7 @@ class RunReaper:
                 if task is None:  # pragma: no cover - the FK makes this unreachable
                     continue
                 task.stage = "blocked"
-                await messages.post_event(
+                await conversation.post_event(
                     task=task,
                     body=(
                         f"Agent 的提問超過 {settings.run_waiting_timeout_hours} 小時未獲回覆，"
@@ -156,6 +252,7 @@ class RunReaper:
                     ),
                     event_kind="run.waiting_timeout",
                 )
+                await conversation.reproject(task)
                 await activity.record(
                     RUN_FINISHED,
                     project_id=run.project_id,
@@ -204,7 +301,7 @@ class RunReaper:
                 if outcome.state != "delivered":
                     task = await session.get(Task, run.task_id)
                     if task is not None:
-                        await MessageService(session).post_event(
+                        await ConversationService(session).post_event(
                             task=task,
                             body=(
                                 "分支已推送，但合併請求未能建立："

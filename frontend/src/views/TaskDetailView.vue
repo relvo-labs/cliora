@@ -15,6 +15,7 @@ import {
 import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
 import TaskAgentPanel from "../components/project/TaskAgentPanel.vue";
+import ConversationPanel from "../components/project/conversation/ConversationPanel.vue";
 import TaskCompletion from "../components/project/TaskCompletion.vue";
 import TaskDetail from "../components/project/TaskDetail.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
@@ -110,6 +111,12 @@ onMounted(() => resource.run());
       <!-- Its own panel rather than a section inside TaskDetail: it is the only part
            of this page that talks to a different half of the system, and it disappears
            entirely when the deployment has agent runs switched off. -->
+      <!-- **Above the agent panel, not inside it.** The conversation is the main work
+           surface in V2-C1: a person opens a card to answer a question far more often
+           than to read a run's history. `beta.1` moves this component unchanged into
+           the Task Drawer's main column. -->
+      <ConversationPanel v-if="task" :task-id="task.id" />
+
       <TaskAgentPanel
         v-if="task"
         :project-id="id"

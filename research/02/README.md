@@ -1,5 +1,20 @@
 # Cliora Version 2 分階段升級規劃
 
+> **版本定位（2026-08-16 裁決）：本目錄的規劃與其七期實作，整體構成產品版本
+> `v2.0.0-alpha.1`（里程碑代號 `V2-A1 — Control Plane Baseline`）。**
+>
+> 本目錄記載的 `V2.0`–`V2.5` 從此**只是歷史 implementation phases，不是產品 release number**。
+> 新文件引用時請寫成「Legacy phase V2.5（RQ）」，不得再造 `V2.6`。
+> 三層版本名稱的分工、`alpha.1` 的 freeze checklist、以及 `alpha.2` 之後的 release train，
+> 全在 [`research/03/00-roadmap-and-versioning.md`](../03/00-roadmap-and-versioning.md)。
+>
+> **這裡沒有建立 tag。** `alpha.1` 的 tag 只有在 freeze checklist 全綠之後，
+> 由人在 `f91d9c45b7cd89d7861ee54af60999f70bb67d57` 這個 exact commit 上建立 annotated tag；
+> commit 一變就改成 `alpha.2`，不移動 `alpha.1`。
+>
+> **本目錄的規劃工作到此為止。** 後續的產品體驗重設、Ticket 對話與 Project 知識層，
+> 規劃在 [`research/03/`](../03/README.md)。
+
 本目錄把 [`research/version2.md`](../version2.md) 的升級構想，與 [`../../Monstrare`](../../Monstrare)
 的治理流程層，合併成一份可逐階段執行與驗收的計畫。
 

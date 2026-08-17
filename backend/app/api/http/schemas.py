@@ -1117,6 +1117,16 @@ class TaskDTO(BaseModel):
     proposal_id: uuid.UUID | None
     depends_on: list[TaskDependencyDTO]
     blocking_refs: list[str]
+    # --- conversation projections (V2-C1, `CV-13`) --------------------------
+    # Written this phase, read by the detail view now and by `beta.1`'s work-items
+    # read model later. **Deliberately not on `BoardCardDTO`**: that shape has a pinned
+    # size budget which replaced pagination, and the board's own badge is `beta.1`'s
+    # work (`research/03` D48).
+    conversation_seq: int = 0
+    open_question_count: int = 0
+    #: `human` | `agent` | null. Derived from question state, so a card gives the same
+    #: answer whether the asking run is still polling or has already ended.
+    waiting_for_actor: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1795,22 +1805,110 @@ class TaskMessageDTO(BaseModel):
     id: uuid.UUID
     task_id: uuid.UUID
     run_id: uuid.UUID | None
+    # Monotonic and gapless within the card. The client's cursor, and the key it merges
+    # new messages on — which is why it is not derivable from the list's position.
+    conversation_seq: int
     author_kind: str
     author_user_id: uuid.UUID | None
     author_name: str | None
     author_runner_id: uuid.UUID | None
+    # The runner's name, so a reader sees `runner-03` rather than a uuid. A run token
+    # never produces a message attributed to a person (ADR 0037 §1).
+    author_runner_name: str | None = None
     body: str
+    # Six values, with the two V2.5 spellings mapped on read (ADR 0035 §8).
     kind: str
     event_kind: str | None
+    reply_to_message_id: uuid.UUID | None = None
+    question_id: uuid.UUID | None = None
+    # Denormalised so the thread can render a question card without a second request.
+    question_state: str | None = None
     created_at: datetime
 
 
+class MessagePageDTO(BaseModel):
+    """A page of the thread.
+
+    Replaces the bare array this route used to return. That is the one breaking API
+    change in V2-C1, taken rather than adding a permanent `?paged=` flag because both
+    consumers are in this repository and both change in the same phase
+    (`GATE-CV-NO-THIRD-CONSUMER` asserts that premise rather than assuming it).
+    """
+
+    items: list[TaskMessageDTO]
+    next_after_seq: int | None
+    # Present from the first release for the same reason `BoardDTO.has_more` was: a
+    # field added later forces every existing client to handle its absence.
+    has_more: bool
+
+
+class TaskQuestionDTO(BaseModel):
+    id: uuid.UUID
+    task_id: uuid.UUID
+    run_id: uuid.UUID | None
+    asked_message_id: uuid.UUID
+    state: str
+    answered_message_id: uuid.UUID | None
+    created_at: datetime
+    answered_at: datetime | None
+    expired_at: datetime | None
+
+
 class PostMessageRequest(BaseModel):
-    body: str = Field(min_length=1, max_length=20000)
-    # `question` puts the run into `waiting_for_input` and makes the card say "waiting
-    # for your reply" — readable from the thread alone, without consulting run state
-    # for every card on a board.
-    kind: Literal["message", "question", "answer"] = "message"
+    # 24000 rather than 20000: the service refuses at 20000 with `MESSAGE_TOO_LARGE`,
+    # and a Pydantic bound at the same number would return a 422 with no machine code
+    # instead — which a client cannot tell from any other validation failure
+    # (ADR 0041 §3). The looser bound still stops an unbounded body reaching the
+    # service.
+    body: str = Field(min_length=1, max_length=24000)
+    # `question` parks the run and makes the card say "waiting for your reply".
+    # `message` and `event` are the V2.5 spellings, still accepted on write and
+    # normalised to `comment` and `system`.
+    kind: Literal["comment", "question", "answer", "proposal", "decision", "message"] = "comment"
+    reply_to_message_id: uuid.UUID | None = None
+    #: Same key + same content replays the original message with 200; same key +
+    #: different content is a 409 (ADR 0036 §3).
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class AnswerQuestionRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=24000)
+    #: False writes the answer and closes the question without waking an agent — the
+    #: difference between "留言" and "回覆並繼續" (ADR 0035 §8).
+    resume: bool = True
+    idempotency_key: str | None = Field(default=None, max_length=128)
+
+
+class AnswerResultDTO(BaseModel):
+    message: TaskMessageDTO
+    question: TaskQuestionDTO
+    #: `new_turn` | `live_run` | `no_run` | `none`. The interface needs to distinguish
+    #: "a new round is queued" from "the running agent will read this on its next poll".
+    mode: str
+    continuation_run_id: uuid.UUID | None
+    #: Present when `mode` is `refused`: the machine code that stopped the continuation.
+    #: The answer was still written — that is why this is a field rather than an error.
+    refusal_code: str | None = None
+
+
+class ConversationInputDTO(BaseModel):
+    """What one turn is being asked to read (ADR 0036 §2)."""
+
+    messages: list[TaskMessageDTO]
+    open_questions: list[TaskQuestionDTO]
+    from_seq: int
+    to_seq: int
+    has_more: bool
+
+
+class ConversationAckRequest(BaseModel):
+    seq: int = Field(ge=0)
+
+
+class ConversationCursorDTO(BaseModel):
+    task_id: uuid.UUID
+    last_delivered_seq: int
+    last_acked_seq: int
 
 
 class TaskArtifactDTO(BaseModel):

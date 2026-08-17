@@ -35,6 +35,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -48,7 +49,24 @@ const (
 	ExitOK          = 0
 	ExitRefused     = 1
 	ExitUnreachable = 2
+	// A third, and it is not a failure: `task wait` reaching its ceiling means "nothing
+	// yet", which an agent should react to differently from "the platform refused" and
+	// differently again from "the platform is down".
+	ExitTimeout = 4
 )
+
+// How often `task wait` asks. Two seconds against a cursor read on an indexed column;
+// the cost of the whole command at its ceiling is sixty of those.
+const waitPollInterval = 2 * time.Second
+
+// WaitTimeoutMax is a ceiling with a reason rather than a limit with a number.
+//
+// Waiting longer is not a bigger version of waiting: past a couple of minutes the right
+// move is to **end the process**, because the platform will start a new turn when the
+// answer arrives and the conversation lives in the database rather than in this
+// process (ADR 0035). The refusal below says that, because a bare "too large" would
+// teach the opposite lesson.
+const WaitTimeoutMax = 120 * time.Second
 
 // OfflineMessage is the exact text D14 asks for, and the second line is the whole
 // point of it: the platform being down does not stop the agent working. It is produced
@@ -419,11 +437,24 @@ func (c *Client) UpdateTask(ref, stage, note string) (TaskSummary, []map[string]
 
 // Message is one entry in a card's conversation.
 type Message struct {
-	ID        string `json:"id"`
-	Kind      string `json:"kind"`
-	Author    string `json:"author_kind"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+	ID   string `json:"id"`
+	Kind string `json:"kind"`
+	// Monotonic and gapless within the card. This is the cursor: `--after <seq>`
+	// replaces `--since <timestamp>`, which lost or repeated a message whenever two
+	// shared a timestamp (ADR 0036 §7).
+	Seq        int    `json:"conversation_seq"`
+	Author     string `json:"author_kind"`
+	RunnerName string `json:"author_runner_name"`
+	Body       string `json:"body"`
+	CreatedAt  string `json:"created_at"`
+}
+
+// MessagePage is what the thread route returns since V2-C1. A bare array had nowhere
+// to put a cursor.
+type MessagePage struct {
+	Items        []Message `json:"items"`
+	NextAfterSeq *int      `json:"next_after_seq"`
+	HasMore      bool      `json:"has_more"`
 }
 
 // PostMessage is `cliora task say` and `cliora task ask`.
@@ -431,11 +462,33 @@ type Message struct {
 // The two differ by one field, and that field is what parks the run: a question moves
 // it to `waiting_for_input`, where it renews its lease, accrues no execution timeout,
 // and occupies the waiting limit rather than the execution one.
-func (c *Client) PostMessage(body, kind string) (Message, int, error) {
+func (c *Client) PostMessage(body, kind, replyTo string) (Message, int, error) {
 	var out Message
-	status, err := c.do("POST", "/api/cli/runs/messages",
-		map[string]any{"body": body, "kind": kind}, &out)
+	payload := map[string]any{
+		"body": body,
+		"kind": kind,
+		// **A content hash, not a UUID** (ADR 0036 §4). An agent's retry is usually the
+		// whole command run again rather than the same HTTP request resent, so a fresh
+		// identifier per invocation would make every retry a new message — an
+		// idempotency key that is never the same twice is not one.
+		"idempotency_key": idempotencyKey(c.Token, kind, body),
+	}
+	if replyTo != "" {
+		payload["reply_to_message_id"] = replyTo
+	}
+	status, err := c.do("POST", "/api/cli/runs/messages", payload, &out)
 	return out, status, err
+}
+
+// idempotencyKey is `sha256(scope + kind + body)`, truncated. Deterministic on purpose.
+//
+// The scope is the run's own credential, which is unique per run and never leaves the
+// node — so the same sentence sent by two different runs gets two keys, while the same
+// command re-run inside one run gets one. The hash means the credential itself is not
+// what travels.
+func idempotencyKey(scope, kind, body string) string {
+	sum := sha256.Sum256([]byte(scope + "\x00" + kind + "\x00" + body))
+	return hex.EncodeToString(sum[:])[:32]
 }
 
 // RecordPlan is `cliora plan snapshot`. **Write-only, by design.**
@@ -538,14 +591,14 @@ func (c *Client) ShowRequirement() (Requirement, int, error) {
 // from a user), because two rules that disagree produce "sometimes I can ask and
 // sometimes I cannot", which reads as flakiness rather than as a bug.
 func (c *Client) PendingQuestion() (string, bool) {
-	messages, status, err := c.ListMessages("")
+	page, status, err := c.ListMessages(-1, "", 0)
 	if err != nil || status != 0 {
 		// Offline, or the platform refused: not this function's business. The server
 		// will decide, and `PostMessage` will report whatever it says.
 		return "", false
 	}
 	pending := ""
-	for _, message := range messages {
+	for _, message := range page.Items {
 		switch {
 		case message.Kind == "question" && message.Author == "agent":
 			pending = message.Body
@@ -557,15 +610,61 @@ func (c *Client) PendingQuestion() (string, bool) {
 }
 
 // ListMessages is `cliora task messages`. **Pull, never push**: there is no interrupt
-// path into a running agent, so an agent that asked something polls for the answer.
-func (c *Client) ListMessages(since string) ([]Message, int, error) {
-	path := "/api/cli/runs/messages"
-	if since != "" {
-		path += "?since=" + url.QueryEscape(since)
+// path into a running agent, and V2-C1 did not add one — a continuation is an ordinary
+// queued run, so the poll that already existed is what starts the next turn.
+//
+// `after` below zero means "from the beginning"; zero is a legitimate cursor.
+func (c *Client) ListMessages(after int, since string, limit int) (MessagePage, int, error) {
+	query := url.Values{}
+	if after >= 0 {
+		query.Set("after_seq", strconv.Itoa(after))
 	}
-	var out []Message
+	if since != "" {
+		query.Set("since", since)
+	}
+	if limit > 0 {
+		query.Set("limit", strconv.Itoa(limit))
+	}
+	path := "/api/cli/runs/messages"
+	if encoded := query.Encode(); encoded != "" {
+		path += "?" + encoded
+	}
+	var out MessagePage
 	status, err := c.do("GET", path, nil, &out)
 	return out, status, err
+}
+
+// WaitMessages polls for anything after `after`, giving up at `timeout`.
+//
+// **Client-side polling, not a server-held connection.** Central has no long-poll
+// machinery, and a two-minute HTTP request would occupy a worker for two minutes;
+// sixty indexed cursor reads are cheaper than that. The ceiling is the point of the
+// command, not an implementation detail — see `task wait` for why.
+func (c *Client) WaitMessages(after int, timeout time.Duration) (MessagePage, int, error) {
+	deadline := time.Now().Add(timeout)
+	for {
+		page, status, err := c.ListMessages(after, "", 0)
+		if err != nil || status != 0 {
+			return page, status, err
+		}
+		if len(page.Items) > 0 {
+			return page, 0, nil
+		}
+		if !time.Now().Add(waitPollInterval).Before(deadline) {
+			return MessagePage{}, ExitTimeout, nil
+		}
+		time.Sleep(waitPollInterval)
+	}
+}
+
+// ProposeSpec is `cliora task propose-spec`: a proposal message on **this card**.
+//
+// Deliberately not the same thing as `cliora spec submit`, which writes a structured,
+// nine-section specification against a *requirement* and is accepted through the
+// requirement's own approval path. Merging them would make one a degenerate form of
+// the other.
+func (c *Client) ProposeSpec(body string) (Message, int, error) {
+	return c.PostMessage(body, "proposal", "")
 }
 
 // Artifact is one attached deliverable.
