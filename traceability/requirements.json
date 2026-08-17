@@ -8255,6 +8255,440 @@
           "risk": "medium"
         }
       ]
+    },
+    {
+      "id": "FR-CONV-001",
+      "kind": "functional",
+      "title": "持久對話與單調序號",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-001"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-001.AC-01",
+          "source_anchor": "fr-conv-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-001.AC-02",
+          "source_anchor": "fr-conv-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-001.AC-03",
+          "source_anchor": "fr-conv-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-001.AC-04",
+          "source_anchor": "fr-conv-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-002",
+      "kind": "functional",
+      "title": "訊息型別與續跑語意",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-002"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-002.AC-01",
+          "source_anchor": "fr-conv-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-002.AC-02",
+          "source_anchor": "fr-conv-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-002.AC-03",
+          "source_anchor": "fr-conv-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-002.AC-04",
+          "source_anchor": "fr-conv-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-003",
+      "kind": "functional",
+      "title": "Question 生命週期",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-003.AC-01",
+          "source_anchor": "fr-conv-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-003.AC-02",
+          "source_anchor": "fr-conv-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-003.AC-03",
+          "source_anchor": "fr-conv-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-003.AC-04",
+          "source_anchor": "fr-conv-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-004",
+      "kind": "functional",
+      "title": "回答與續跑的原子性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-004.AC-01",
+          "source_anchor": "fr-conv-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-004.AC-02",
+          "source_anchor": "fr-conv-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-004.AC-03",
+          "source_anchor": "fr-conv-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-004.AC-04",
+          "source_anchor": "fr-conv-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-005",
+      "kind": "functional",
+      "title": "冪等傳遞",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-005"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-005.AC-01",
+          "source_anchor": "fr-conv-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-005.AC-02",
+          "source_anchor": "fr-conv-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-005.AC-03",
+          "source_anchor": "fr-conv-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "low"
+        },
+        {
+          "id": "FR-CONV-005.AC-04",
+          "source_anchor": "fr-conv-005-ac-04",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-006",
+      "kind": "functional",
+      "title": "續跑回合",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-006"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-006.AC-01",
+          "source_anchor": "fr-conv-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-006.AC-02",
+          "source_anchor": "fr-conv-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-006.AC-03",
+          "source_anchor": "fr-conv-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-006.AC-04",
+          "source_anchor": "fr-conv-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-006.AC-05",
+          "source_anchor": "fr-conv-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-006.AC-06",
+          "source_anchor": "fr-conv-006-ac-06",
+          "verification_profile": "automated",
+          "risk": "low"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-007",
+      "kind": "functional",
+      "title": "對話的 actor 邊界",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-007"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-CONV-007.AC-01",
+          "source_anchor": "fr-conv-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-007.AC-02",
+          "source_anchor": "fr-conv-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-007.AC-03",
+          "source_anchor": "fr-conv-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-007.AC-04",
+          "source_anchor": "fr-conv-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-007.AC-05",
+          "source_anchor": "fr-conv-007-ac-05",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-008",
+      "kind": "functional",
+      "title": "規格提案與人工接受",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-008"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-CONV-008.AC-01",
+          "source_anchor": "fr-conv-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-008.AC-02",
+          "source_anchor": "fr-conv-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-008.AC-03",
+          "source_anchor": "fr-conv-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-008.AC-04",
+          "source_anchor": "fr-conv-008-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-009",
+      "kind": "functional",
+      "title": "命令列對話橋接",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-009"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "daemon",
+      "criteria": [
+        {
+          "id": "FR-CONV-009.AC-01",
+          "source_anchor": "fr-conv-009-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-009.AC-02",
+          "source_anchor": "fr-conv-009-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-009.AC-03",
+          "source_anchor": "fr-conv-009-ac-03",
+          "verification_profile": "automated",
+          "risk": "low"
+        },
+        {
+          "id": "FR-CONV-009.AC-04",
+          "source_anchor": "fr-conv-009-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-CONV-010",
+      "kind": "functional",
+      "title": "對話的保留與去識別",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-conv-010"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-CONV-010.AC-01",
+          "source_anchor": "fr-conv-010-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-010.AC-02",
+          "source_anchor": "fr-conv-010-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-CONV-010.AC-03",
+          "source_anchor": "fr-conv-010-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-010.AC-04",
+          "source_anchor": "fr-conv-010-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-CONV-010.AC-05",
+          "source_anchor": "fr-conv-010-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
     }
   ]
 }

@@ -198,8 +198,10 @@ async def test_a_run_credential_reaches_only_its_own_card(
     # There is no path that names another card: the credential carries its own, and the
     # route takes no id. The other card is reachable only through the human API.
     listed = await client.get("/api/cli/runs/messages", headers=headers)
-    assert [row["task_id"] for row in listed.json()] == [str(task)]
-    assert str(other) not in [row["task_id"] for row in listed.json()]
+    # A page object rather than a bare array since V2-C1 (ADR 0036 §7): the thread
+    # needs a cursor, and both of this route's consumers changed in the same phase.
+    assert [row["task_id"] for row in listed.json()["items"]] == [str(task)]
+    assert str(other) not in [row["task_id"] for row in listed.json()["items"]]
 
 
 async def test_a_question_parks_the_run(api: tuple, projects_enabled: None) -> None:

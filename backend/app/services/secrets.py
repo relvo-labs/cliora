@@ -404,6 +404,62 @@ class SecretService:
             )
         )
 
+    async def redact(self, project_id: uuid.UUID, names: list[str], text: str) -> str:
+        """Replace this card's declared secret values with their names (ADR 0037 §3).
+
+        **Why this exists.** The redactor that already ships wraps the *daemon's*
+        protocol `send`, so it covers `run.failed`'s stderr and `run.complete`'s
+        summary. `cliora task say` is an HTTPS request to Central and never passes
+        through it — so the one channel an agent uses to write prose is the one channel
+        the redaction did not cover.
+
+        **Why it is in this module.** `GATE-SC-SINGLE-DECRYPT` asserts that exactly one
+        module turns a stored secret back into plaintext, and the reason it gives is
+        that every additional caller is another path a review has to trace. A helper
+        here keeps that number at one; a helper anywhere else would raise it to two for
+        a convenience.
+
+        **Why it does not audit and does not stamp `last_used_at`.** Neither is true.
+        Nothing was delivered and nothing was used: this reads the values in order to
+        *avoid* storing them. `materialise` remains the record of a delivery, and this
+        must not add rows that look like one.
+
+        Applied **before** the insert. Afterwards is too late — storing it is the thing
+        being prevented.
+        """
+        if not names or not text:
+            return text
+        rows = await self._session.execute(
+            select(ProjectSecret).where(
+                ProjectSecret.project_id == project_id,
+                ProjectSecret.name.in_(names),
+                ProjectSecret.deleted_at.is_(None),
+            )
+        )
+        redacted = text
+        for secret in rows.scalars():
+            value = secret_envelope.unseal(
+                secret_envelope.SealedSecret(
+                    value_encrypted=secret.value_encrypted,
+                    value_nonce=secret.value_nonce,
+                    dek_wrapped=secret.dek_wrapped,
+                    dek_nonce=secret.dek_nonce,
+                    key_version=secret.key_version,
+                )
+            )
+            if len(value) < _MIN_REDACTABLE or value not in redacted:
+                continue
+            redacted = redacted.replace(value, REDACTION_PLACEHOLDER.format(name=secret.name))
+        return redacted
+
+
+REDACTION_PLACEHOLDER = "[redacted:{name}]"
+
+#: Below this length a "secret" is more likely to collide with ordinary prose than to
+#: be the secret. Redacting the string `ok` out of every message would make the thread
+#: unreadable while protecting nothing.
+_MIN_REDACTABLE = 8
+
 
 def validate_allowlist(names: Any) -> list[str]:
     """A project's allowlist, as a list of well-formed names.

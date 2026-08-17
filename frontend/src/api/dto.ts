@@ -1451,18 +1451,70 @@ export interface RunLogPage {
   truncated_bytes: number;
 }
 
+// The six V2-C1 kinds. `message` and `event` are the V2.5 spellings and are mapped to
+// `comment` and `system` by the server before they reach here; they stay in the union
+// only so a stored value nobody has re-read cannot break the type (ADR 0035 §8).
+export type MessageKind =
+  | "comment"
+  | "question"
+  | "answer"
+  | "proposal"
+  | "decision"
+  | "system"
+  | "message"
+  | "event";
+
+export type QuestionState = "open" | "answered" | "cancelled" | "expired";
+
 export interface TaskMessage {
   id: string;
   task_id: string;
   run_id: string | null;
+  // Monotonic and gapless within the card. The merge key for new messages, and the
+  // cursor for the next page — not derivable from a list position.
+  conversation_seq: number;
   author_kind: "user" | "agent" | "system";
   author_user_id: string | null;
   author_name: string | null;
   author_runner_id: string | null;
+  author_runner_name: string | null;
   body: string;
-  kind: "message" | "question" | "answer" | "event";
+  kind: MessageKind;
   event_kind: string | null;
+  reply_to_message_id: string | null;
+  question_id: string | null;
+  question_state: QuestionState | null;
   created_at: string;
+}
+
+export interface MessagePage {
+  items: TaskMessage[];
+  next_after_seq: number | null;
+  has_more: boolean;
+}
+
+export interface TaskQuestion {
+  id: string;
+  task_id: string;
+  run_id: string | null;
+  asked_message_id: string;
+  state: QuestionState;
+  answered_message_id: string | null;
+  created_at: string;
+  answered_at: string | null;
+  expired_at: string | null;
+}
+
+export interface AnswerResult {
+  message: TaskMessage;
+  question: TaskQuestion;
+  // `new_turn` a round is queued · `live_run` the running agent will read this on its
+  // next poll · `no_run` there was no run behind the question · `refused` the card
+  // cannot be dispatched right now and the reason is on the card · `none` no resume was
+  // asked for. The answer is written in **every** case, including `refused`.
+  mode: "new_turn" | "live_run" | "no_run" | "refused" | "none";
+  continuation_run_id: string | null;
+  refusal_code: string | null;
 }
 
 export interface TaskArtifact {

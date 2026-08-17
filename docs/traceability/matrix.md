@@ -107,6 +107,50 @@
 | FR-CONN-006 | [FR-CONN-006.AC-06](../../research/prd.md#fr-conn-006-ac-06) | Session 接管與列出：15 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_a_published_relay_budget_is_the_number_the_prd_names |
 | FR-CONN-006 | [FR-CONN-006.AC-07](../../research/prd.md#fr-conn-006-ac-07) | Session 終止：20 秒。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds |
 | FR-CONN-006 | [FR-CONN-006.AC-08](../../research/prd.md#fr-conn-006-ac-08) | Daemon 更新：180 秒（下載、替換與重啟遠長於其他操作，共用一般預算會在正常情況下逾時）。 | plan:plan/02/04-daemon-connection.md<br>source:research/tech.md | code:daemon/internal/connection | pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others |
+| FR-CONV-001 | [FR-CONV-001.AC-01](../../research/prd.md#fr-conv-001-ac-01) | 每張卡的訊息具有單調遞增、無洞、卡片內唯一的序號；序號由平台指派， | — | — | — |
+| FR-CONV-001 | [FR-CONV-001.AC-02](../../research/prd.md#fr-conv-001-ac-02) | 對話查詢以序號為游標分頁；同一個範圍重複讀取回傳相同結果， | — | — | — |
+| FR-CONV-001 | [FR-CONV-001.AC-03](../../research/prd.md#fr-conv-001-ac-03) | 游標超前卡片目前序號時明確拒絕並回報目前序號，不得回傳空白頁。 | — | — | — |
+| FR-CONV-001 | [FR-CONV-001.AC-04](../../research/prd.md#fr-conv-001-ac-04) | 清除一張卡的全部 run log 之後，該卡的對話、未決問題與規格提案仍完整可用。 | — | — | — |
+| FR-CONV-002 | [FR-CONV-002.AC-01](../../research/prd.md#fr-conv-002-ac-01) | 訊息具有型別，且型別決定兩件事：會不會觸發續跑、構不構成核准。 | — | — | — |
+| FR-CONV-002 | [FR-CONV-002.AC-02](../../research/prd.md#fr-conv-002-ac-02) | 送出一般留言不得改變任何 run 的狀態，也不得建立新的 Agent 回合。 | — | — | — |
+| FR-CONV-002 | [FR-CONV-002.AC-03](../../research/prd.md#fr-conv-002-ac-03) | 介面上「留言」與「回覆並繼續」是兩個明確不同的動作； | — | — | — |
+| FR-CONV-002 | [FR-CONV-002.AC-04](../../research/prd.md#fr-conv-002-ac-04) | 既有訊息的型別值在升級後仍可讀，且不因升級而被改寫。 | — | — | — |
+| FR-CONV-003 | [FR-CONV-003.AC-01](../../research/prd.md#fr-conv-003-ac-01) | 問題是一筆可查詢的紀錄，具有未決／已答／已取消／已逾時四種狀態， | — | — | — |
+| FR-CONV-003 | [FR-CONV-003.AC-02](../../research/prd.md#fr-conv-003-ac-02) | 同一個 run 在上一個問題獲答之前不得提出第二個問題（延續 FR-SPEC-002.AC-02）； | — | — | — |
+| FR-CONV-003 | [FR-CONV-003.AC-03](../../research/prd.md#fr-conv-003-ac-03) | 逾時未獲回覆的問題標記為已逾時並使卡片退回阻塞， | — | — | — |
+| FR-CONV-003 | [FR-CONV-003.AC-04](../../research/prd.md#fr-conv-003-ac-04) | 升級時，既有訊息串中的歷史問題依升級前的判定規則建立對應紀錄； | — | — | — |
+| FR-CONV-004 | [FR-CONV-004.AC-01](../../research/prd.md#fr-conv-004-ac-01) | 回答一個問題、關閉該問題、建立續跑回合三件事在同一個交易內完成； | — | — | — |
+| FR-CONV-004 | [FR-CONV-004.AC-02](../../research/prd.md#fr-conv-004-ac-02) | 重複回答同一個問題被拒絕，且拒絕訊息須足以讓使用者得知 | — | — | — |
+| FR-CONV-004 | [FR-CONV-004.AC-03](../../research/prd.md#fr-conv-004-ac-03) | 兩個使用者同時回答同一個問題時，恰有一個成功，另一個取得可恢復的衝突； | — | — | — |
+| FR-CONV-004 | [FR-CONV-004.AC-04](../../research/prd.md#fr-conv-004-ac-04) | 卡片在等待期間被改成不可派工的狀態時，回答仍然寫入， | — | — | — |
+| FR-CONV-005 | [FR-CONV-005.AC-01](../../research/prd.md#fr-conv-005-ac-01) | 訊息寫入接受冪等鍵；相同鍵與相同內容重送回傳原訊息， | — | — | — |
+| FR-CONV-005 | [FR-CONV-005.AC-02](../../research/prd.md#fr-conv-005-ac-02) | 傳遞語意為至少一次；消費者以序號去重，重複讀取同一範圍是安全的。 | — | — | — |
+| FR-CONV-005 | [FR-CONV-005.AC-03](../../research/prd.md#fr-conv-005-ac-03) | 消費者的已送達／已確認位置是可查詢的紀錄； | — | — | — |
+| FR-CONV-005 | [FR-CONV-005.AC-04](../../research/prd.md#fr-conv-005-ac-04) | 「Agent 已讀取」的呈現須明白說明它不代表模型同意或已照做。 | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-01](../../research/prd.md#fr-conv-006-ac-01) | 續跑是同一張卡的一次新執行，記錄其上一輪、對話輪次與這一輪讀取的對話範圍。 | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-02](../../research/prd.md#fr-conv-006-ac-02) | 續跑走既有的認領路徑，不需要新的協定訊息； | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-03](../../research/prd.md#fr-conv-006-ac-03) | Agent 的行程結束或 daemon 重啟之後，對話可從資料庫恢復； | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-04](../../research/prd.md#fr-conv-006-ac-04) | 續跑重跑卡片層的派工拒絕條件（卡片種類與機密）； | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-05](../../research/prd.md#fr-conv-006-ac-05) | 對交付分支的卡片，續跑沿用第一輪的分支名， | — | — | — |
+| FR-CONV-006 | [FR-CONV-006.AC-06](../../research/prd.md#fr-conv-006-ac-06) | 續跑的對話輪次與重試次數是兩個不同的計數。 | — | — | — |
+| FR-CONV-007 | [FR-CONV-007.AC-01](../../research/prd.md#fr-conv-007-ac-01) | run 憑證只能讀寫其所屬卡片的對話；跨卡片存取被拒。 | — | — | — |
+| FR-CONV-007 | [FR-CONV-007.AC-02](../../research/prd.md#fr-conv-007-ac-02) | run 憑證以 runner 身分發言，不得指定發言者； | — | — | — |
+| FR-CONV-007 | [FR-CONV-007.AC-03](../../research/prd.md#fr-conv-007-ac-03) | run 憑證不得寫入決策型訊息；違反者被拒並記錄稽核。 | — | — | — |
+| FR-CONV-007 | [FR-CONV-007.AC-04](../../research/prd.md#fr-conv-007-ac-04) | Viewer 可讀對話，不可發言。 | — | — | — |
+| FR-CONV-007 | [FR-CONV-007.AC-05](../../research/prd.md#fr-conv-007-ac-05) | 人類的留言與回答不構成任何核准；核准仍走既有的人工端點。 | — | — | — |
+| FR-CONV-008 | [FR-CONV-008.AC-01](../../research/prd.md#fr-conv-008-ac-01) | Agent 只能提出規格提案；提案不改變就緒狀態、不動任何關卡。 | — | — | — |
+| FR-CONV-008 | [FR-CONV-008.AC-02](../../research/prd.md#fr-conv-008-ac-02) | 接受或要求修改是人類動作，需要核准權限， | — | — | — |
+| FR-CONV-008 | [FR-CONV-008.AC-03](../../research/prd.md#fr-conv-008-ac-03) | 沒有核准權限時不呈現接受與要求修改的操作。 | — | — | — |
+| FR-CONV-008 | [FR-CONV-008.AC-04](../../research/prd.md#fr-conv-008-ac-04) | 同一張卡有多份提案時，只有最新一份可被接受； | — | — | — |
+| FR-CONV-009 | [FR-CONV-009.AC-01](../../research/prd.md#fr-conv-009-ac-01) | 命令列可依序號讀取對話、可回覆指定訊息、可提出規格提案。 | — | — | — |
+| FR-CONV-009 | [FR-CONV-009.AC-02](../../research/prd.md#fr-conv-009-ac-02) | 命令列提供短暫等待新訊息的能力，並有明確上限； | — | — | — |
+| FR-CONV-009 | [FR-CONV-009.AC-03](../../research/prd.md#fr-conv-009-ac-03) | 以時間戳分頁的舊參數保留一個版本並標示淘汰； | — | — | — |
+| FR-CONV-009 | [FR-CONV-009.AC-04](../../research/prd.md#fr-conv-009-ac-04) | 平台連不上時的行為不變：直接失敗、不佇列、訊息說明工作可繼續、 | — | — | — |
+| FR-CONV-010 | [FR-CONV-010.AC-01](../../research/prd.md#fr-conv-010-ac-01) | 訊息不設到期，不被任何清理排程刪除； | — | — | — |
+| FR-CONV-010 | [FR-CONV-010.AC-02](../../research/prd.md#fr-conv-010-ac-02) | 訊息長度有上限，超過時以可辨識的錯誤碼拒絕，並回報上限與實際長度。 | — | — | — |
+| FR-CONV-010 | [FR-CONV-010.AC-03](../../research/prd.md#fr-conv-010-ac-03) | 機密值不得出現在訊息內容中；由 run 憑證寫入的訊息在寫入前去識別。 | — | — | — |
+| FR-CONV-010 | [FR-CONV-010.AC-04](../../research/prd.md#fr-conv-010-ac-04) | 稽核紀錄只記錄事件與身分，不複製訊息內容。 | — | — | — |
+| FR-CONV-010 | [FR-CONV-010.AC-05](../../research/prd.md#fr-conv-010-ac-05) | 訊息建立後不可就地改寫；Agent 的訊息永不可編輯，更正以追加訊息表示。 | — | — | — |
 | FR-DELIVERY-001 | [FR-DELIVERY-001.AC-01](../../research/prd.md#fr-delivery-001-ac-01) | 卡片以兩個獨立欄位宣告「要不要程式碼」與「成果怎麼離開」；兩者互不決定對方。 | — | — | — |
 | FR-DELIVERY-001 | [FR-DELIVERY-001.AC-02](../../research/prd.md#fr-delivery-001-ac-02) | 交付模式有五種：不交付、以產物交付、以分支交付、以合併請求交付、以既有合併請求交付。 | — | — | — |
 | FR-DELIVERY-001 | [FR-DELIVERY-001.AC-03](../../research/prd.md#fr-delivery-001-ac-03) | 不交付與以產物交付不得產生任何遠端變更；此性質須以遠端狀態驗證，不得以紀錄驗證。 | — | — | — |

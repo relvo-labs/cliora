@@ -512,6 +512,59 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "把問題合併成一則，或等上一題有回覆。",
     retryable: false,
   },
+  // --- V2-C1 conversation (ADR 0035/0036/0037) ------------------------------
+  QUESTION_NOT_FOUND: {
+    cause:
+      "這個問題不在這張卡上。屬於別張卡的問題會回報成「不存在」，因為那句話是真的，而且不會透露別處有什麼。",
+    nextStep: "重新載入卡片，回覆卡片上列出的問題。",
+    retryable: false,
+  },
+  QUESTION_ALREADY_ANSWERED: {
+    cause:
+      "已經有人回答過這一題了。團隊裡兩個人同時回答同一題是常態，不是錯誤狀態。",
+    nextStep: "看一下既有的回覆；還有想補充的就留言。",
+    retryable: false,
+  },
+  QUESTION_NOT_OPEN: {
+    cause:
+      "這個問題已經逾時或被取消。逾時的問題會保留下來供閱讀，但回答它不會再喚起 Agent。",
+    nextStep: "重新派工，或提出新的問題。",
+    retryable: false,
+  },
+  RUN_NOT_WAITING_FOR_INPUT: {
+    cause: "這個執行不在等待回覆的狀態，沒有東西可以續跑。",
+    nextStep: "重新載入卡片；若持續發生，附上 request id 回報。",
+    retryable: false,
+  },
+  CONVERSATION_CURSOR_AHEAD: {
+    cause:
+      "你這一端記住的對話位置超前了這張卡。回傳空白頁會讓它永遠停在那裡而沒有任何提示，所以直接拒絕。",
+    nextStep: "重新載入對話。",
+    retryable: true,
+  },
+  MESSAGE_IDEMPOTENCY_CONFLICT: {
+    cause:
+      "同一個冪等鍵先前用在內容不同的訊息上。一個鍵對應一則訊息，重複使用會讓重送和新訊息分不出來。",
+    nextStep: "重新輸入後再送出一次。",
+    retryable: false,
+  },
+  TURN_ALREADY_QUEUED: {
+    cause:
+      "這個回答已經建立過一輪 Agent 執行。一個回答最多喚起一輪，由資料庫保證。",
+    nextStep: "等既有的那一輪；不需要第二輪。",
+    retryable: false,
+  },
+  MESSAGE_TOO_LARGE: {
+    cause: "訊息超過單則長度上限。你打的字沒有遺失。",
+    nextStep: "縮短訊息，或把長篇內容以產物附上。",
+    retryable: false,
+  },
+  AGENT_CANNOT_DECIDE: {
+    cause:
+      "接受或退回提案是人的動作，需要核准權限，而 Agent 的執行憑證永遠不具備它。",
+    nextStep: "把內容以提案送出，交由人決定。",
+    retryable: false,
+  },
   SPEC_SECTION_UNKNOWN: {
     cause: "規格書的九個章節是封閉的，否則兩個撰寫者會用兩種拼法寫同一件事。",
     nextStep: "改用清單上的章節名稱。",

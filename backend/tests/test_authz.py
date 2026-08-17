@@ -340,6 +340,13 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # so the agent's route in AR-08 requires the same action rather than a weaker one.
     ("GET", "/api/tasks/{task_id}/messages"): rbac.PROJECT_VIEW,
     ("POST", "/api/tasks/{task_id}/messages"): rbac.TASK_UPDATE,
+    # V2-C1. Questions read with the thread; answering is a write to it, so it takes
+    # the same action the write does. **`decision` needs `task.approve` on top**, and
+    # that is checked inside `POST /messages` from `may_perform` rather than by a
+    # second entry here — the matrix maps a route to its floor, and the body decides
+    # whether a higher one applies (the shape `task.force_done` already uses).
+    ("GET", "/api/tasks/{task_id}/questions"): rbac.PROJECT_VIEW,
+    ("POST", "/api/tasks/{task_id}/questions/{question_id}/answer"): rbac.TASK_UPDATE,
     # Artifacts follow the same read/write split, for the same reason: attaching a file
     # to a card is a write, and `project.view` is held by every role.
     ("GET", "/api/tasks/{task_id}/artifacts"): rbac.PROJECT_VIEW,
@@ -365,6 +372,8 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/projects/{project_id}/secret-names"): rbac.TASK_UPDATE,
     ("GET", "/api/cli/runs/messages"): None,
     ("POST", "/api/cli/runs/messages"): None,
+    ("GET", "/api/cli/runs/conversation/input"): None,
+    ("POST", "/api/cli/runs/conversation/ack"): None,
     ("POST", "/api/cli/runs/artifacts"): None,
     # V2.4's three writes, and **all three are write-only**: an agent does not need to
     # read back what it just wrote, and every read endpoint is another surface to
