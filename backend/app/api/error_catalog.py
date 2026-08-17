@@ -1560,6 +1560,93 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "waiting. Two *related* sub-questions in one message are allowed.",
             "Combine them into one message, or wait for a reply.",
         ),
+        # --- V2-C1 conversation (ADR 0035/0036/0037) ------------------------
+        #
+        # Two of these should never be returned in a healthy deployment
+        # (`CONVERSATION_CURSOR_AHEAD`, `TURN_ALREADY_QUEUED`). They are worth more as
+        # alarms than as statistics, and their alert threshold is *greater than zero*.
+        _entry(
+            "QUESTION_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "That question is not on this card",
+            "A question belonging to another card is reported as absent rather than as "
+            "forbidden: 'not here' is true and says nothing about what exists elsewhere.",
+            "Reload the card and answer a question listed on it.",
+        ),
+        _entry(
+            "QUESTION_ALREADY_ANSWERED",
+            status.HTTP_409_CONFLICT,
+            "Somebody has already answered this question",
+            "Two people replying to one question is a normal event in a team, not an "
+            "error state. `details` carries who answered and when, so the client can "
+            "show the answer rather than only the failure.",
+            "Read the existing answer; add a comment if you have more to say.",
+        ),
+        _entry(
+            "QUESTION_NOT_OPEN",
+            status.HTTP_409_CONFLICT,
+            "That question is no longer open",
+            "A question that timed out is kept rather than deleted, so it can still be "
+            "read — but answering it no longer starts a turn. `details.state` says "
+            "which state it is in.",
+            "Dispatch the card again, or ask a new question.",
+        ),
+        _entry(
+            "RUN_NOT_WAITING_FOR_INPUT",
+            status.HTTP_409_CONFLICT,
+            "That run is not waiting for an answer",
+            "A run that is queued, claimed or running has nothing to resume. Reaching "
+            "this with an open question means Central failed to park the run when the "
+            "question was asked, which is a defect rather than a user error — so it is "
+            "reported instead of being papered over.",
+            "Reload the card; if it persists, report it with the request id.",
+        ),
+        _entry(
+            "CONVERSATION_CURSOR_AHEAD",
+            status.HTTP_409_CONFLICT,
+            "That conversation cursor is ahead of the card",
+            "The caller's stored position is beyond anything this card has. Answering "
+            "with an empty page would leave it stuck there permanently with no signal, "
+            "so it is refused and `details.conversation_seq` says where the card is.",
+            "Reset the cursor to the value in `details` and read again.",
+            retryable=True,
+        ),
+        _entry(
+            "MESSAGE_IDEMPOTENCY_CONFLICT",
+            status.HTTP_409_CONFLICT,
+            "That idempotency key was used for a different message",
+            "A key identifies one message. Reusing it with different content would make "
+            "the retry indistinguishable from a new message, which is the ambiguity the "
+            "key exists to remove.",
+            "Use a new key, or resend the original content.",
+        ),
+        _entry(
+            "TURN_ALREADY_QUEUED",
+            status.HTTP_409_CONFLICT,
+            "A continuation for that answer already exists",
+            "One answer creates at most one agent turn. This is enforced by a unique "
+            "index rather than by a check, because the failure it prevents — the agent "
+            "replying twice — has no other symptom.",
+            "Wait for the existing turn; no second one is needed.",
+        ),
+        _entry(
+            "MESSAGE_TOO_LARGE",
+            status.HTTP_400_BAD_REQUEST,
+            "That message is longer than a card message may be",
+            "`details` carries the limit and the actual length. This is a distinct code "
+            "rather than a generic validation failure because the right response to it "
+            "is specific: the text is safe, it needs shortening.",
+            "Shorten the message, or attach the long form as an artifact.",
+        ),
+        _entry(
+            "AGENT_CANNOT_DECIDE",
+            status.HTTP_403_FORBIDDEN,
+            "Deciding is a person's action",
+            "An agent may propose; accepting or rejecting a proposal requires "
+            "`task.approve`, which a run credential never holds. The refusal is explicit "
+            "so that it is legible and audited, rather than a generic denial.",
+            "Post the content as a proposal and let a person decide.",
+        ),
         _entry(
             "SPEC_SECTION_UNKNOWN",
             status.HTTP_422_UNPROCESSABLE_ENTITY,

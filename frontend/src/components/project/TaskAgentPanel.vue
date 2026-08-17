@@ -7,9 +7,11 @@
 //    "no agent is eligible" lead a person to do different things — restart a machine
 //    versus check the card — and a single "waiting" would collapse them. The server
 //    computes which one it is, because deciding needs the eligibility query.
-//  * **a question says it is waiting for *you*.** The platform never interrupts a
-//    running agent, so a reply is only seen when the agent next polls; saying so stops
-//    somebody waiting for something to happen.
+//  * **the conversation is not here.** It moved to `conversation/ConversationPanel.vue`
+//    in V2-C1, and with it went the `unanswered` guess this file used to make from "is
+//    the last message a question". Waiting state is the server's answer now, because a
+//    card that says "waiting for your reply" after the reply arrived has no other
+//    symptom (ADR 0035 §8).
 //  * **the refusal is shown verbatim.** Dispatch's 409s are written to name the thing
 //    to fix — a missing repository, a disabled agent — and swallowing them into
 //    "could not dispatch" would throw that away.
@@ -17,19 +19,11 @@ import { computed, onMounted, ref } from "vue";
 import { RouterLink } from "vue-router";
 
 import { ApiError } from "../../api/client";
-import { ACTION_RUN_DISPATCH, ACTION_TASK_UPDATE } from "../../api/dto";
-import type {
-  AgentRunner,
-  TaskArtifact,
-  TaskMessage,
-  TaskRun,
-} from "../../api/dto";
+import { ACTION_RUN_DISPATCH } from "../../api/dto";
+import type { AgentRunner, TaskArtifact, TaskRun } from "../../api/dto";
 import { api, useAuthStore } from "../../stores/auth";
 import { formatInstant } from "../../utils/time";
-import BaseBadge from "../ui/BaseBadge.vue";
 import RunBadge from "../ui/RunBadge.vue";
-import SourceBadge from "../ui/SourceBadge.vue";
-import { SOURCE_AGENT, SOURCE_PLATFORM } from "../ui/labels";
 
 const props = defineProps<{
   projectId: string;
@@ -39,14 +33,11 @@ const props = defineProps<{
 
 const auth = useAuthStore();
 const canDispatch = computed(() => auth.hasPermission(ACTION_RUN_DISPATCH));
-const canWrite = computed(() => auth.hasPermission(ACTION_TASK_UPDATE));
 
 const runs = ref<TaskRun[]>([]);
-const messages = ref<TaskMessage[]>([]);
 const artifacts = ref<TaskArtifact[]>([]);
 const agents = ref<AgentRunner[]>([]);
 const chosenAgent = ref("");
-const draft = ref("");
 const notice = ref<string | null>(null);
 const error = ref<string | null>(null);
 const available = ref(true);
@@ -62,13 +53,11 @@ const canDispatchNow = computed(
 
 async function load(): Promise<void> {
   try {
-    [runs.value, messages.value, artifacts.value, agents.value] =
-      await Promise.all([
-        api().listTaskRuns(props.taskId),
-        api().listTaskMessages(props.taskId),
-        api().listTaskArtifacts(props.taskId),
-        api().listAgents(),
-      ]);
+    [runs.value, artifacts.value, agents.value] = await Promise.all([
+      api().listTaskRuns(props.taskId),
+      api().listTaskArtifacts(props.taskId),
+      api().listAgents(),
+    ]);
     available.value = true;
   } catch (caught) {
     // A 404 means one of the two flags is off. That is not an error to show — the
@@ -109,26 +98,6 @@ async function dispatch(): Promise<void> {
   }
 }
 
-async function post(kind: "message" | "answer"): Promise<void> {
-  if (!draft.value.trim()) return;
-  error.value = null;
-  try {
-    await api().postTaskMessage(props.taskId, { body: draft.value, kind });
-    draft.value = "";
-    messages.value = await api().listTaskMessages(props.taskId);
-  } catch (caught) {
-    error.value =
-      caught instanceof Error ? caught.message : "Could not post the message.";
-  }
-}
-
-const unanswered = computed(() => {
-  const last = [...messages.value]
-    .reverse()
-    .find((m) => m.kind === "question" || m.kind === "answer");
-  return last?.kind === "question";
-});
-
 function bytes(value: number): string {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${Math.round(value / 1024)} KB`;
@@ -142,13 +111,6 @@ function bytes(value: number): string {
 
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="notice" class="notice">{{ notice }}</p>
-
-    <!-- The card says it is waiting for a person, because nothing else will: the
-         platform does not interrupt a running agent. -->
-    <p v-if="unanswered" class="waiting">
-      Agent 提了一個問題，<strong>正在等你的回覆</strong>。回覆之後 Agent
-      會在下一次拉取時看到；24 小時無人回覆這張卡會退回「阻塞」。
-    </p>
 
     <div v-if="canDispatchNow" class="dispatch">
       <select v-model="chosenAgent">
@@ -185,59 +147,6 @@ function bytes(value: number): string {
           </span>
         </li>
       </ul>
-    </div>
-
-    <div class="thread">
-      <h3>訊息</h3>
-      <ul v-if="messages.length">
-        <!-- Three sources interleaved in one thread. That is the point of it: a person
-             reading a card should not have to merge two streams mentally. -->
-        <li
-          v-for="message in messages"
-          :key="message.id"
-          :class="message.author_kind"
-        >
-          <span class="who">
-            {{
-              message.author_kind === "agent"
-                ? "Agent"
-                : message.author_kind === "system"
-                  ? "系統"
-                  : (message.author_name ?? "你")
-            }}
-          </span>
-          <SourceBadge
-            v-if="
-              message.author_kind === 'agent' ||
-              message.author_kind === 'system'
-            "
-            :source="
-              message.author_kind === 'agent' ? SOURCE_AGENT : SOURCE_PLATFORM
-            "
-          />
-          <BaseBadge
-            v-if="message.kind === 'question'"
-            variant="outline"
-            tone="run-waiting-for-input"
-          >
-            提問
-          </BaseBadge>
-          <p>{{ message.body }}</p>
-          <small class="muted">{{ formatInstant(message.created_at) }}</small>
-        </li>
-      </ul>
-      <p v-else class="muted">還沒有訊息。</p>
-
-      <div v-if="canWrite" class="compose">
-        <textarea
-          v-model="draft"
-          rows="2"
-          placeholder="在卡片上留言…"
-        ></textarea>
-        <button class="ghost" @click="post(unanswered ? 'answer' : 'message')">
-          {{ unanswered ? "回覆" : "留言" }}
-        </button>
-      </div>
     </div>
 
     <div v-if="artifacts.length" class="artifacts">

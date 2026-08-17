@@ -59,6 +59,18 @@ METRIC_PERSIST_ERROR_TOTAL = "metric_persist_error_total"
 # Labelled by block name only — a fixed, low-cardinality set.
 DASHBOARD_BLOCK_ERROR_TOTAL = "dashboard_block_error_total"
 
+# --- V2-C1 conversation (plan/23/05-…md §5) ---------------------------------
+#
+# `CONVERSATION_DUPLICATE_TURN_TOTAL` is the one to watch, and its alert threshold is
+# **greater than zero** rather than a rate. The question CAS already serialises
+# answers, so a non-zero value means a path reached continuation without going through
+# it — and that bug has no other symptom: the system keeps working and somebody's agent
+# answers twice.
+CONVERSATION_MESSAGES_TOTAL = "conversation_messages_total"
+CONVERSATION_TURNS_TOTAL = "conversation_turns_total"
+CONVERSATION_DUPLICATE_TURN_TOTAL = "conversation_duplicate_turn_total"
+CONVERSATION_QUESTION_EXPIRED_TOTAL = "conversation_question_expired_total"
+
 # --- tech §18.1: the control-plane series (P4-09) ---
 # Relay generalized from the P3 filesystem-only pair: every Central→daemon request
 # is timed and counted by message type, so a slow or unanswered `session.start` is as

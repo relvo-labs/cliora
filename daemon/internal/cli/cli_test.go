@@ -385,7 +385,9 @@ func TestTheLocalQuestionCheckUsesTheSameRuleAsTheServer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				_ = json.NewEncoder(w).Encode(tc.messages)
+				// A page object rather than a bare array since V2-C1: the thread needs
+				// a cursor, and the two consumers of this route both changed with it.
+				_ = json.NewEncoder(w).Encode(MessagePage{Items: tc.messages})
 			}))
 			defer server.Close()
 			dir := t.TempDir()

@@ -186,6 +186,20 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `PROPOSAL_REJECT_NEEDS_NOTE` | 422 | Rejecting a proposal needs a reason | The reason is the only signal that accumulates on this path: the next decomposition of the same requirement receives it as a negative example. | Write why it was turned down. | no | no | central |
 | `PROPOSAL_OVERRIDE_NOT_ACCEPTED` | 422 | That field cannot be edited while accepting | Either the item is not in this acceptance — an edit would then be applied silently at some later one — or the field is `readiness`, which would turn 'a card missing readiness lands in backlog' into a rule that disappears. | Select the item first, or edit the card after it is created. | no | no | central |
 
+## Ticket conversation
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `QUESTION_NOT_FOUND` | 404 | That question is not on this card | A question belonging to another card is reported as absent rather than as forbidden: 'not here' is true and says nothing about what exists elsewhere. | Reload the card and answer a question listed on it. | no | no | central |
+| `QUESTION_ALREADY_ANSWERED` | 409 | Somebody has already answered this question | Two people replying to one question is a normal event in a team, not an error state. `details` carries who answered and when, so the client can show the answer rather than only the failure. | Read the existing answer; add a comment if you have more to say. | no | no | central |
+| `QUESTION_NOT_OPEN` | 409 | That question is no longer open | A question that timed out is kept rather than deleted, so it can still be read — but answering it no longer starts a turn. `details.state` says which state it is in. | Dispatch the card again, or ask a new question. | no | no | central |
+| `RUN_NOT_WAITING_FOR_INPUT` | 409 | That run is not waiting for an answer | A run that is queued, claimed or running has nothing to resume. Reaching this with an open question means Central failed to park the run when the question was asked, which is a defect rather than a user error — so it is reported instead of being papered over. | Reload the card; if it persists, report it with the request id. | no | no | central |
+| `CONVERSATION_CURSOR_AHEAD` | 409 | That conversation cursor is ahead of the card | The caller's stored position is beyond anything this card has. Answering with an empty page would leave it stuck there permanently with no signal, so it is refused and `details.conversation_seq` says where the card is. | Reset the cursor to the value in `details` and read again. | yes | no | central |
+| `MESSAGE_IDEMPOTENCY_CONFLICT` | 409 | That idempotency key was used for a different message | A key identifies one message. Reusing it with different content would make the retry indistinguishable from a new message, which is the ambiguity the key exists to remove. | Use a new key, or resend the original content. | no | no | central |
+| `TURN_ALREADY_QUEUED` | 409 | A continuation for that answer already exists | One answer creates at most one agent turn. This is enforced by a unique index rather than by a check, because the failure it prevents — the agent replying twice — has no other symptom. | Wait for the existing turn; no second one is needed. | no | no | central |
+| `MESSAGE_TOO_LARGE` | 400 | That message is longer than a card message may be | `details` carries the limit and the actual length. This is a distinct code rather than a generic validation failure because the right response to it is specific: the text is safe, it needs shortening. | Shorten the message, or attach the long form as an artifact. | no | no | central |
+| `AGENT_CANNOT_DECIDE` | 403 | Deciding is a person's action | An agent may propose; accepting or rejecting a proposal requires `task.approve`, which a run credential never holds. The refusal is explicit so that it is legible and audited, rather than a generic denial. | Post the content as a proposal and let a person decide. | no | no | central |
+
 ## Document patch proposals
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

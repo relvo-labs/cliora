@@ -49,6 +49,11 @@ import type {
   Task,
   TaskArtifact,
   TaskMessage,
+  MessageKind,
+  MessagePage,
+  TaskQuestion,
+  QuestionState,
+  AnswerResult,
   TaskProposal,
   TaskRun,
   TaskWrite,
@@ -1107,21 +1112,67 @@ export class ApiClient {
     );
   }
 
-  listTaskMessages(taskId: string, since?: string): Promise<TaskMessage[]> {
-    const query = since ? `?since=${encodeURIComponent(since)}` : "";
+  // A page, not an array, since V2-C1: the thread needs a cursor, and a timestamp
+  // could not be one — two messages sharing a millisecond made `?since=` either repeat
+  // a row or lose it (ADR 0036 §7).
+  listTaskMessages(
+    taskId: string,
+    options: { afterSeq?: number; beforeSeq?: number; limit?: number } = {},
+  ): Promise<MessagePage> {
+    const query = new URLSearchParams();
+    if (options.afterSeq !== undefined)
+      query.set("after_seq", String(options.afterSeq));
+    if (options.beforeSeq !== undefined)
+      query.set("before_seq", String(options.beforeSeq));
+    if (options.limit !== undefined) query.set("limit", String(options.limit));
+    const suffix = query.toString() ? `?${query}` : "";
     return this.request(
       "GET",
-      `/api/tasks/${encodeURIComponent(taskId)}/messages${query}`,
+      `/api/tasks/${encodeURIComponent(taskId)}/messages${suffix}`,
     );
   }
 
   postTaskMessage(
     taskId: string,
-    input: { body: string; kind?: "message" | "question" | "answer" },
+    input: {
+      body: string;
+      kind?: MessageKind;
+      reply_to_message_id?: string;
+      // Generated once per composition and kept until the write succeeds, so a double
+      // click is one message rather than two (ADR 0036 §3).
+      idempotency_key?: string;
+    },
   ): Promise<TaskMessage> {
     return this.request(
       "POST",
       `/api/tasks/${encodeURIComponent(taskId)}/messages`,
+      input,
+    );
+  }
+
+  listTaskQuestions(
+    taskId: string,
+    state?: QuestionState,
+  ): Promise<TaskQuestion[]> {
+    const query = state ? `?state=${encodeURIComponent(state)}` : "";
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/questions${query}`,
+    );
+  }
+
+  // Closes the question, writes the answer and queues the next turn in **one**
+  // transaction. Two calls would make "the answer is saved but no turn was created" a
+  // reachable state, and on screen that is indistinguishable from "the agent has not
+  // replied yet" — so the person waits, sends it again, and there are two turns.
+  answerTaskQuestion(
+    taskId: string,
+    questionId: string,
+    input: { body: string; resume: boolean; idempotency_key?: string },
+  ): Promise<AnswerResult> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/questions/${encodeURIComponent(questionId)}/answer`,
       input,
     );
   }

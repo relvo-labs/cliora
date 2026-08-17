@@ -3,8 +3,11 @@ package cli
 import (
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -158,6 +161,8 @@ func NewCommand() *cobra.Command {
 	// **The card is the only channel.** A run has nobody at a terminal, so anything it
 	// does not say here is something nobody will ever know it did — and the run
 	// directory is reclaimed on a retention schedule.
+	var sayReplyTo string
+	var sayKind string
 	say := &cobra.Command{
 		Use:   "say <text>",
 		Short: "Post a message on this run's card",
@@ -167,7 +172,16 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return exit(cmd, ExitRefused, err)
 			}
-			message, code, postErr := NewClient(ctx).PostMessage(args[0], "message")
+			// Local half of a server rule, in the shape `ask` already uses: the gate is
+			// the server's 403, and this exists to say the *reason* rather than to
+			// enforce anything. An agent has a shell and a readable token file.
+			if sayKind == "decision" {
+				return exit(cmd, ExitRefused, errors.New(
+					"decision 是人的動作：接受或退回一份提案需要核准權限，"+
+						"而執行憑證永遠沒有它。\n"+
+						"把內容用 `cliora task propose-spec` 送成提案，交由人決定。"))
+			}
+			message, code, postErr := NewClient(ctx).PostMessage(args[0], sayKind, sayReplyTo)
 			if postErr != nil {
 				return exit(cmd, code, postErr)
 			}
@@ -178,6 +192,8 @@ func NewCommand() *cobra.Command {
 			return nil
 		},
 	}
+	say.Flags().StringVar(&sayReplyTo, "reply-to", "", "the message this replies to")
+	say.Flags().StringVar(&sayKind, "kind", "comment", "comment|answer")
 	ask := &cobra.Command{
 		Use:   "ask <text>",
 		Short: "Ask a question and wait for a human answer",
@@ -198,21 +214,31 @@ func NewCommand() *cobra.Command {
 						"要問新的：把兩個問題合併成一則，或先 `cliora task messages` 看看有沒有回覆。",
 					pending))
 			}
-			message, code, postErr := client.PostMessage(args[0], "question")
+			message, code, postErr := client.PostMessage(args[0], "question", "")
 			if postErr != nil {
 				return exit(cmd, code, postErr)
 			}
 			if asJSON {
 				return writeJSON(cmd, message)
 			}
-			// Said plainly, because the next thing the agent does depends on it: the
-			// answer will not be pushed, and nobody may reply at all.
-			fmt.Fprintln(cmd.OutOrStdout(),
-				"已提問。用 `cliora task messages` 拉取回覆；24 小時無人回覆這張卡會退回「阻塞」。")
+			// Three options, and **the first one is the recommendation**, for the same
+			// reason `render_run_context` puts "how to report" first: the thing most
+			// likely to go wrong is not the agent misunderstanding, it is the agent not
+			// knowing an option exists. Holding a process open for a day used to be the
+			// only way to keep a conversation alive; since V2-C1 it is the worst one.
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"已提問。你可以：\n"+
+					"  ① 直接結束這個行程——人回覆之後，平台會用新的一輪把你叫回來（建議）\n"+
+					"  ② `cliora task wait --after %d --timeout 120` 等最多兩分鐘\n"+
+					"  ③ `cliora task messages --after %d` 自己輪詢\n"+
+					"24 小時無人回覆，這張卡會退回「阻塞」。\n",
+				message.Seq, message.Seq)
 			return nil
 		},
 	}
 	var since string
+	var afterSeq int
+	var messageLimit int
 	messages := &cobra.Command{
 		Use:   "messages",
 		Short: "Read this card's conversation",
@@ -221,21 +247,103 @@ func NewCommand() *cobra.Command {
 			if err != nil {
 				return exit(cmd, ExitRefused, err)
 			}
-			items, code, listErr := NewClient(ctx).ListMessages(since)
+			// Refused locally rather than resolved: guessing which cursor the caller
+			// meant is worse than saying no, and the server refuses the same pair.
+			if since != "" && afterSeq >= 0 {
+				return exit(cmd, ExitRefused, errors.New(
+					"--after 與 --since 只能給一個。--since 會在下一版移除。"))
+			}
+			if since != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(),
+					"--since 會在下一版移除，改用 --after <seq>；每則訊息的 seq 在 --json 輸出裡。")
+			}
+			page, code, listErr := NewClient(ctx).ListMessages(afterSeq, since, messageLimit)
 			if listErr != nil {
 				return exit(cmd, code, listErr)
 			}
 			if asJSON {
-				return writeJSON(cmd, items)
+				return writeJSON(cmd, page)
 			}
-			for _, item := range items {
-				fmt.Fprintf(cmd.OutOrStdout(), "[%s] %s: %s\n",
-					item.CreatedAt, item.Author, item.Body)
+			for _, item := range page.Items {
+				// The seq leads, because it is the value the next `--after` needs.
+				fmt.Fprintf(cmd.OutOrStdout(), "[%4d] %s %s: %s\n",
+					item.Seq, item.CreatedAt, authorLabel(item), item.Body)
 			}
 			return nil
 		},
 	}
-	messages.Flags().StringVar(&since, "since", "", "only messages after this timestamp")
+	messages.Flags().StringVar(&since, "since", "", "deprecated: only messages after this timestamp")
+	messages.Flags().IntVar(&afterSeq, "after", -1, "only messages after this sequence number")
+	messages.Flags().IntVar(&messageLimit, "limit", 0, "how many messages at most")
+
+	var waitAfter int
+	var waitTimeout int
+	wait := &cobra.Command{
+		Use:   "wait",
+		Short: "Wait a short while for new messages on this card",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			if time.Duration(waitTimeout)*time.Second > WaitTimeoutMax {
+				// The ceiling is the point of the command rather than a limit on it, so
+				// the refusal names the better option instead of just the number.
+				return exit(cmd, ExitRefused, fmt.Errorf(
+					"--timeout 上限是 %d 秒。要等更久，就結束這個行程——"+
+						"人回覆之後平台會用新的一輪把你叫回來，對話不會遺失。",
+					int(WaitTimeoutMax.Seconds())))
+			}
+			page, code, waitErr := NewClient(ctx).WaitMessages(
+				waitAfter, time.Duration(waitTimeout)*time.Second)
+			if waitErr != nil {
+				return exit(cmd, code, waitErr)
+			}
+			if code == ExitTimeout {
+				// Not an error, and it prints nothing: "nothing yet" is a normal answer
+				// and an agent should be able to tell it from a refusal by the code.
+				return exit(cmd, ExitTimeout, nil)
+			}
+			if asJSON {
+				return writeJSON(cmd, page)
+			}
+			for _, item := range page.Items {
+				fmt.Fprintf(cmd.OutOrStdout(), "[%4d] %s %s: %s\n",
+					item.Seq, item.CreatedAt, authorLabel(item), item.Body)
+			}
+			return nil
+		},
+	}
+	wait.Flags().IntVar(&waitAfter, "after", -1, "wait for messages after this sequence number")
+	wait.Flags().IntVar(&waitTimeout, "timeout", 30, "seconds to wait, at most 120")
+
+	proposeSpec := &cobra.Command{
+		Use:   "propose-spec <file|->",
+		Short: "Propose a specification on this card, for a person to accept",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			body, readErr := readTextOrStdin(cmd, args[0])
+			if readErr != nil {
+				return exit(cmd, ExitRefused, readErr)
+			}
+			message, code, postErr := NewClient(ctx).ProposeSpec(string(body))
+			if postErr != nil {
+				return exit(cmd, code, postErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, message)
+			}
+			// Says what it is *not*, because that is the half an agent gets wrong: a
+			// proposal changes no readiness and passes no gate.
+			fmt.Fprintln(cmd.OutOrStdout(),
+				"已提出規格提案。這不會改變卡片的就緒狀態——要由人接受才算數。")
+			return nil
+		},
+	}
 
 	var attachMessage string
 	attach := &cobra.Command{
@@ -264,7 +372,7 @@ func NewCommand() *cobra.Command {
 	}
 	attach.Flags().StringVar(&attachMessage, "message", "", "a message to post alongside the file")
 
-	task.AddCommand(say, ask, messages, attach)
+	task.AddCommand(say, ask, messages, wait, proposeSpec, attach)
 
 	// --- V2.4: what happened, what the checks said, and what was observed (DV-06) ---
 	//
@@ -550,13 +658,47 @@ func readJSONFile(path string) (map[string]any, error) {
 	return payload, nil
 }
 
+// readTextOrStdin reads a proposal body. A file or `-`, never an argument, for the
+// reason SEC-002 gives about argv generally: a specification is long and belongs on a
+// stream rather than in `ps` output.
+func readTextOrStdin(cmd *cobra.Command, path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(cmd.InOrStdin())
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("讀不到 %s：%w", path, err)
+	}
+	return raw, nil
+}
+
+// authorLabel names the speaker the way the thread does: a runner by its name, a
+// person as "人". A uuid tells a reader nothing.
+func authorLabel(item Message) string {
+	if item.Author == "agent" && item.RunnerName != "" {
+		return item.RunnerName
+	}
+	switch item.Author {
+	case "agent":
+		return "agent"
+	case "system":
+		return "系統"
+	default:
+		return "人"
+	}
+}
+
 // exit prints the message and stops with the right code.
 //
 // `ExitUnreachable` is separated from `ExitRefused` so an agent can tell "the platform
 // is down, carry on" from "the platform said no, read this" — the distinction D14's
 // second sentence exists to make.
 func exit(cmd *cobra.Command, code int, err error) error {
-	fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+	// `task wait` reaching its ceiling passes nil: "nothing yet" is a normal answer, and
+	// printing an error for it would teach an agent to treat waiting as failure.
+	if err != nil {
+		fmt.Fprintln(cmd.ErrOrStderr(), err.Error())
+	}
 	os.Exit(code)
 	return nil
 }

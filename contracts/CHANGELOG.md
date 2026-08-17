@@ -4,6 +4,38 @@ Board-card run projections added in `plan/19` are HTTP/OpenAPI response fields, 
 WebSocket control messages, so this contract package and its protocol version are
 intentionally unchanged (D33).
 
+## Unreleased — `v2.0.0-alpha.2` conversation phase: **not one byte** (ADR 0035 §4, D44)
+
+Ticket conversation, questions, answers and continuation turns ship in
+`v2.0.0-alpha.2` without touching this package. That is a decision, so it is recorded
+here rather than left as an absence somebody has to notice.
+
+The planning document proposed two new central→node notifications
+(`task.message_available`, `run.input_available`). They were **declined for this
+release**, for the reason the 1.13.0 entry below already spells out: the daemon
+dispatches message types through an exhaustive `switch` and decodes with
+`DisallowUnknownFields`, so an unknown type from an un-upgraded node's point of view
+is a decode failure — and a decode failure on this wire is silent. A new type would
+need a `runner.register.features` declaration, a version bump on both halves, and a
+fixture proving an undeclared node never receives it.
+
+**What replaced them costs nothing on the wire.** A continuation turn is modelled as
+a child `task_runs` row, so it is offered through `runner.poll` → `run.offer` →
+`run.accept` exactly like any other queued run, and the new conversation content is
+fetched by the agent over HTTPS with its run token (`cliora task messages --after
+<seq>`). An `agentd` **0.12.0** node runs the whole flow unmodified; `agentd` 0.13.0
+changes only `internal/cli/`, and its node half has a zero-byte diff.
+
+The cost is latency, not capability: the answer→turn path is bounded by the poll
+interval (5s by default) rather than by a push, and the phase's budget is P95 < 10s
+recorded in three segments. If the poll segment is the one that misses, *that* is the
+evidence for revisiting this decision.
+
+`GATE-CV-CONTRACT-FROZEN` asserts the whole tree's sha256 against the `alpha.1`
+baseline, so this paragraph cannot quietly stop being true.
+
+## 1.13.0 — 2026-08-14 (compatible)
+
 ## 1.13.0 — 2026-08-14 (compatible)
 
 **Added — three fields, and all three travel node→central (ADR 0033).**

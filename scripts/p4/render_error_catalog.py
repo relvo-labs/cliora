@@ -215,6 +215,20 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Ticket conversation",
+        (
+            "QUESTION_NOT_FOUND",
+            "QUESTION_ALREADY_ANSWERED",
+            "QUESTION_NOT_OPEN",
+            "RUN_NOT_WAITING_FOR_INPUT",
+            "CONVERSATION_CURSOR_AHEAD",
+            "MESSAGE_IDEMPOTENCY_CONFLICT",
+            "TURN_ALREADY_QUEUED",
+            "MESSAGE_TOO_LARGE",
+            "AGENT_CANNOT_DECIDE",
+        ),
+    ),
+    (
         "Document patch proposals",
         (
             "PATCH_PROPOSAL_NOT_FOUND",

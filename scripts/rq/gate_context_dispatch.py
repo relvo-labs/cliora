@@ -30,9 +30,19 @@ RENDERERS = {
     "render_run_context",
     "render_clarification_context",
     "render_decomposition_context",
+    # V2-C1 added a fourth (ADR 0035 §4). A flag on one of the others would have been
+    # the cheaper diff and exactly what this gate's docstring argues against: a
+    # continuation is orthogonal to the card's kind, so a flag's first missed
+    # combination is a clarification turn reading the implementation pack.
+    "render_continuation_context",
 }
-# The one function allowed to call them. Tests call them directly and are not scanned.
+# The functions allowed to call them. `_base_context` is the continuation path's half
+# of the chooser — it answers "what would this card's kind have produced", and
+# `_continuation_context` wraps that answer. Both are private to `RunService`, so the
+# property this gate defends — one place decides — still holds; it is now one place with
+# two named steps rather than one function.
 CHOOSER = "_context_for"
+CHOOSERS = {"_context_for", "_base_context", "_continuation_context"}
 
 
 def main() -> int:
@@ -59,13 +69,17 @@ def main() -> int:
     problems = [
         f"{renderer} is called from {sorted(sites)}"
         for renderer, sites in callers.items()
-        if sites and sites != {f"services/runs.py::{CHOOSER}"}
+        if sites - {f"services/runs.py::{name}" for name in CHOOSERS}
     ]
     if problems:
         print("the context pack is chosen in more than one place:")
         for problem in problems:
             print(f"  {problem}")
-        print(f"\nAll three renderers must be reached only through {CHOOSER}.")
+        print(
+            "\nEvery renderer must be reached only through "
+            + ", ".join(sorted(CHOOSERS))
+            + "."
+        )
         return 1
     print("context pack dispatch: OK (one chooser)")
     return 0

@@ -26,11 +26,12 @@ from typing import Annotated
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, Response, UploadFile, status
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.api.http.deps import (
+    may_perform,
     require_action,
     require_agent_action,
     require_agent_runs_enabled,
@@ -40,6 +41,11 @@ from app.api.http.requirements import _proposal_dto, _spec_dto, requirement_deta
 from app.api.http.schemas import (
     AddEvidenceRequest,
     AgentRunnerDTO,
+    AnswerQuestionRequest,
+    AnswerResultDTO,
+    ConversationAckRequest,
+    ConversationCursorDTO,
+    ConversationInputDTO,
     CreatePatchProposalRequest,
     CreateProposalRequest,
     CreateRepositoryRequest,
@@ -52,6 +58,7 @@ from app.api.http.schemas import (
     EvidenceItemDTO,
     ExecutionPlanDTO,
     FeatureSpecDTO,
+    MessagePageDTO,
     PostMessageRequest,
     ProjectRepositoryDTO,
     RecordPlanRequest,
@@ -62,6 +69,7 @@ from app.api.http.schemas import (
     TaskArtifactDTO,
     TaskMessageDTO,
     TaskProposalDTO,
+    TaskQuestionDTO,
     TaskRunDTO,
     UpdateAgentRequest,
     VerificationReportDTO,
@@ -79,6 +87,7 @@ from app.db.models import (
     Task,
     TaskArtifact,
     TaskMessage,
+    TaskQuestion,
     TaskRun,
     User,
     VerificationReport,
@@ -86,6 +95,11 @@ from app.db.models import (
 from app.services.activity import ACTOR_AGENT, ACTOR_USER
 from app.services.agent_auth import KIND_RUN, AgentPrincipal
 from app.services.artifacts import PREVIEWABLE, ArtifactService
+from app.services.conversation import (
+    KIND_DECISION,
+    ConversationService,
+    read_kind,
+)
 from app.services.evidence import EvidenceService, PlanService, VerificationService
 from app.services.patches import PatchProposalService
 from app.services.projects import ProjectService
@@ -103,6 +117,7 @@ from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.services.requirements import RequirementService
 from app.services.runners import RepositoryService, RunnerService, RunnerView, clone_url
 from app.services.runs import MessageService, RunService
+from app.services.secrets import SecretService
 from app.services.tasks import CARD_KIND_CLARIFICATION, CARD_KIND_DECOMPOSITION, TaskService
 from app.settings import Settings, get_settings
 
@@ -193,20 +208,108 @@ def _run_dto(
     )
 
 
-def _message_dto(message: TaskMessage, *, author_name: str | None) -> TaskMessageDTO:
+#: When the deprecated `?since=` read stops being served. One release, and the date is
+#: in the header rather than only in a changelog (ADR 0036 §7).
+SINCE_SUNSET = "Wed, 31 Dec 2026 23:59:59 GMT"
+
+
+def _message_dto(
+    message: TaskMessage,
+    *,
+    author_name: str | None,
+    runner_name: str | None = None,
+    question_state: str | None = None,
+) -> TaskMessageDTO:
     return TaskMessageDTO(
         id=message.id,
         task_id=message.task_id,
         run_id=message.run_id,
+        conversation_seq=message.conversation_seq,
         author_kind=message.author_kind,
         author_user_id=message.author_user_id,
         author_name=author_name,
         author_runner_id=message.author_runner_id,
+        author_runner_name=runner_name,
         body=message.body,
-        kind=message.kind,
+        # **The one place the V2.5 spellings are translated** (ADR 0035 §8). The
+        # database keeps what it was given; every reader sees one vocabulary.
+        kind=read_kind(message.kind),
         event_kind=message.event_kind,
+        reply_to_message_id=message.reply_to_message_id,
+        question_id=message.question_id,
+        question_state=question_state,
         created_at=message.created_at,
     )
+
+
+def _question_dto(question: TaskQuestion) -> TaskQuestionDTO:
+    return TaskQuestionDTO(
+        id=question.id,
+        task_id=question.task_id,
+        run_id=question.run_id,
+        asked_message_id=question.asked_message_id,
+        state=question.state,
+        answered_message_id=question.answered_message_id,
+        created_at=question.created_at,
+        answered_at=question.answered_at,
+        expired_at=question.expired_at,
+    )
+
+
+async def _thread_dtos(session: AsyncSession, messages: list[TaskMessage]) -> list[TaskMessageDTO]:
+    """Message DTOs with the two names and the question states filled in.
+
+    Three batched lookups rather than one per message: a fifty-message page would
+    otherwise issue a hundred and fifty queries, and the thread is the one view a person
+    reloads most.
+    """
+    user_ids = {m.author_user_id for m in messages if m.author_user_id is not None}
+    runner_ids = {m.author_runner_id for m in messages if m.author_runner_id is not None}
+    question_ids = {m.question_id for m in messages if m.question_id is not None}
+    # A question card renders from the *asking* message, so its state is looked up by
+    # `asked_message_id` as well as by the answer's `question_id`.
+    users: dict[uuid.UUID, str] = {}
+    if user_ids:
+        users = {
+            row.id: row.display_name
+            for row in (await session.execute(select(User).where(User.id.in_(user_ids)))).scalars()
+        }
+    runners: dict[uuid.UUID, str] = {}
+    if runner_ids:
+        runners = {
+            row.id: row.name
+            for row in (
+                await session.execute(select(AgentRunner).where(AgentRunner.id.in_(runner_ids)))
+            ).scalars()
+        }
+    states: dict[uuid.UUID, str] = {}
+    asked_states: dict[uuid.UUID, str] = {}
+    rows = (
+        await session.execute(
+            select(TaskQuestion).where(
+                or_(
+                    TaskQuestion.id.in_(question_ids or {uuid.uuid4()}),
+                    TaskQuestion.asked_message_id.in_({m.id for m in messages} or {uuid.uuid4()}),
+                )
+            )
+        )
+    ).scalars()
+    for row in rows:
+        states[row.id] = row.state
+        asked_states[row.asked_message_id] = row.state
+    return [
+        _message_dto(
+            m,
+            author_name=users.get(m.author_user_id) if m.author_user_id else None,
+            runner_name=runners.get(m.author_runner_id) if m.author_runner_id else None,
+            question_state=(
+                asked_states.get(m.id)
+                if m.kind == "question"
+                else (states.get(m.question_id) if m.question_id else None)
+            ),
+        )
+        for m in messages
+    ]
 
 
 async def _runner_names(session: AsyncSession, runs: list[TaskRun]) -> dict[uuid.UUID, str]:
@@ -508,19 +611,53 @@ async def cancel_run(
 # --- card messages --------------------------------------------------------
 
 
-@router.get("/tasks/{task_id}/messages", response_model=list[TaskMessageDTO])
+@router.get("/tasks/{task_id}/messages", response_model=MessagePageDTO)
 async def list_task_messages(
+    response: Response,
     task_id: uuid.UUID,
-    since: datetime | None = Query(default=None),
+    after_seq: int | None = Query(default=None, ge=0),
+    before_seq: int | None = Query(default=None, ge=1),
+    since: datetime | None = Query(default=None, deprecated=True),
     limit: int = Query(default=200, ge=1, le=500),
     _user: User = Depends(require_action(PROJECT_VIEW)),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
-) -> list[TaskMessageDTO]:
-    """Readable with `project.view` — writing is not (see below)."""
-    await _require_visible_task(session, settings, task_id)
-    messages = await MessageService(session).list_for(task_id, since=since, limit=limit)
-    return [_message_dto(message, author_name=None) for message in messages]
+) -> MessagePageDTO:
+    """Readable with `project.view` — writing is not (see below).
+
+    `since` is the V2.5 read and is deprecated for one release (ADR 0036 §7): it
+    compares timestamps, so two messages written in the same millisecond either repeat
+    or vanish. Supplying it **with** `after_seq` is refused rather than resolved, because
+    guessing which the caller meant is worse than saying no.
+    """
+    task, _project = await _require_visible_task(session, settings, task_id)
+    conversation = ConversationService(session)
+    if since is not None:
+        if after_seq is not None or before_seq is not None:
+            raise ApiError(
+                "INVALID_ARGUMENT",
+                "Give either since or a sequence cursor, not both",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        _deprecate(response)
+        messages = await MessageService(session).list_for(task_id, since=since, limit=limit)
+        return MessagePageDTO(
+            items=await _thread_dtos(session, messages),
+            next_after_seq=messages[-1].conversation_seq if messages else None,
+            has_more=False,
+        )
+    page = await conversation.page(task, after_seq=after_seq, before_seq=before_seq, limit=limit)
+    return MessagePageDTO(
+        items=await _thread_dtos(session, page.items),
+        next_after_seq=page.next_after_seq,
+        has_more=page.has_more,
+    )
+
+
+def _deprecate(response: Response) -> None:
+    """Say so in the headers, not only in a changelog nobody re-reads."""
+    response.headers["Deprecation"] = "true"
+    response.headers["Sunset"] = SINCE_SUNSET
 
 
 @router.post(
@@ -529,9 +666,15 @@ async def list_task_messages(
     status_code=status.HTTP_201_CREATED,
 )
 async def post_task_message(
+    response: Response,
     task_id: uuid.UUID,
     body: PostMessageRequest,
     user: User = Depends(require_action(TASK_UPDATE)),
+    # `decision` needs more than the rest of this route: it accepts or rejects a
+    # proposal, and accepting is an approval. Shaped as `may_perform` rather than a
+    # second `require_action`, because the stronger variant is a property of the
+    # request body — the same shape the Done Gate's `--force` uses (ADR 0033 §5).
+    may_decide: bool = Depends(may_perform(TASK_APPROVE)),
     session: AsyncSession = Depends(get_session),
     settings: Settings = Depends(get_settings),
 ) -> TaskMessageDTO:
@@ -544,16 +687,87 @@ async def post_task_message(
     than a weaker one (plan/18/06-…md §1).
     """
     task, _project = await _require_visible_task(session, settings, task_id)
-    message = await MessageService(session).post(
+    # `decision` is the one kind a person needs more than `task.update` for: it is what
+    # accepts or rejects a proposal, and accepting is an approval (ADR 0037 §2).
+    if body.kind == KIND_DECISION and not may_decide:
+        raise ApiError(
+            "FORBIDDEN",
+            "You do not have permission for this action",
+            status.HTTP_403_FORBIDDEN,
+        )
+    message, replayed = await ConversationService(session).post(
         task=task,
         body=body.body,
         kind=body.kind,
         author_kind=ACTOR_USER,
         author_user_id=user.id,
+        reply_to_message_id=body.reply_to_message_id,
+        idempotency_key=body.idempotency_key,
     )
     await session.commit()
     await session.refresh(message)
+    if replayed:
+        response.status_code = status.HTTP_200_OK
     return _message_dto(message, author_name=user.display_name)
+
+
+@router.get("/tasks/{task_id}/questions", response_model=list[TaskQuestionDTO])
+async def list_task_questions(
+    task_id: uuid.UUID,
+    state: str | None = Query(default=None),
+    _user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[TaskQuestionDTO]:
+    await _require_visible_task(session, settings, task_id)
+    rows = await ConversationService(session).questions_for(task_id, state=state)
+    return [_question_dto(row) for row in rows]
+
+
+@router.post(
+    "/tasks/{task_id}/questions/{question_id}/answer",
+    response_model=AnswerResultDTO,
+    status_code=status.HTTP_201_CREATED,
+)
+async def answer_task_question(
+    response: Response,
+    task_id: uuid.UUID,
+    question_id: uuid.UUID,
+    body: AnswerQuestionRequest,
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> AnswerResultDTO:
+    """Close a question, write the answer and start the next turn — in one transaction.
+
+    Split into two endpoints, "the answer is saved but no turn was created" becomes a
+    reachable state, and on screen it is indistinguishable from "the agent has not
+    replied yet": the person waits, sends it again, and there are two turns.
+
+    When the card has been edited into an undispatchable state while it waited, the
+    answer is **still written** and only the continuation is refused (ADR 0035 §6) —
+    what a person typed is not discarded because a setting is wrong.
+    """
+    task, _project = await _require_visible_task(session, settings, task_id)
+    result = await ConversationService(session).answer(
+        task=task,
+        question_id=question_id,
+        body=body.body,
+        actor_user_id=user.id,
+        resume=body.resume,
+        idempotency_key=body.idempotency_key,
+    )
+    await session.commit()
+    await session.refresh(result.message)
+    if result.replayed:
+        response.status_code = status.HTTP_200_OK
+    return AnswerResultDTO(
+        message=_message_dto(result.message, author_name=user.display_name),
+        question=_question_dto(result.question),
+        mode=result.mode,
+        continuation_run_id=result.continuation_run_id,
+        refusal_code=result.refusal_code,
+    )
 
 
 # --- artifacts ------------------------------------------------------------
@@ -766,28 +980,121 @@ async def _run_task(session: AsyncSession, principal: AgentPrincipal) -> Task:
     return task
 
 
-@run_router.get("/messages", response_model=list[TaskMessageDTO])
+@run_router.get("/messages", response_model=MessagePageDTO)
 async def agent_list_messages(
-    since: datetime | None = Query(default=None),
+    response: Response,
+    after_seq: int | None = Query(default=None, ge=0),
+    since: datetime | None = Query(default=None, deprecated=True),
+    limit: int = Query(default=200, ge=1, le=500),
     principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
     session: AsyncSession = Depends(get_session),
-) -> list[TaskMessageDTO]:
+) -> MessagePageDTO:
     """`cliora task messages`. **Pull, never push.**
 
     There is no interrupt path to a running agent: the platform does not reach into a
-    process to tell it something arrived. An agent that asked a question polls for the
-    answer, which is also why `waiting_for_input` has its own 24-hour timer.
+    process to tell it something arrived. V2-C1 does not add one either — a continuation
+    is an ordinary queued run, so the poll that already existed is what wakes the next
+    turn (ADR 0035 §4).
+
+    What changed is the cursor. `--since` compared timestamps and lost or repeated a
+    message whenever two shared one; `after_seq` walks a sequence that cannot tie.
     """
     task = await _run_task(session, principal)
-    messages = await MessageService(session).list_for(task.id, since=since)
-    return [_message_dto(message, author_name=None) for message in messages]
+    if since is not None:
+        if after_seq is not None:
+            raise ApiError(
+                "INVALID_ARGUMENT",
+                "Give either since or after_seq, not both",
+                status.HTTP_400_BAD_REQUEST,
+            )
+        _deprecate(response)
+        messages = await MessageService(session).list_for(task.id, since=since, limit=limit)
+        return MessagePageDTO(
+            items=await _thread_dtos(session, messages),
+            next_after_seq=messages[-1].conversation_seq if messages else None,
+            has_more=False,
+        )
+    page = await ConversationService(session).page(task, after_seq=after_seq, limit=limit)
+    return MessagePageDTO(
+        items=await _thread_dtos(session, page.items),
+        next_after_seq=page.next_after_seq,
+        has_more=page.has_more,
+    )
+
+
+@run_router.get("/conversation/input", response_model=ConversationInputDTO)
+async def agent_conversation_input(
+    after_seq: int | None = Query(default=None, ge=0),
+    limit: int = Query(default=200, ge=1, le=500),
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> ConversationInputDTO:
+    """What this turn is being asked to read: new messages plus every open question.
+
+    `after_seq` defaults to the run's own `input_from_seq`, so a turn that just started
+    can ask for "my input" without knowing where the previous one stopped.
+
+    Reading advances `last_delivered_seq`. That cursor is a **record, not a queue**:
+    re-reading the same range is safe because the sequence is monotonic, and nothing in
+    the system waits on it (ADR 0036 §2).
+    """
+    task = await _run_task(session, principal)
+    conversation = ConversationService(session)
+    run = await session.get(TaskRun, principal.run_id) if principal.run_id is not None else None
+    start = after_seq if after_seq is not None else (run.input_from_seq if run else 0) or 0
+    page = await conversation.page(task, after_seq=start, limit=limit)
+    if principal.run_id is not None and page.items:
+        await conversation.mark_delivered(
+            task.id,
+            consumer_type="run",
+            consumer_id=principal.run_id,
+            seq=page.items[-1].conversation_seq,
+        )
+    open_questions = await conversation.open_questions(task.id)
+    await session.commit()
+    return ConversationInputDTO(
+        messages=await _thread_dtos(session, page.items),
+        open_questions=[_question_dto(row) for row in open_questions],
+        from_seq=start,
+        to_seq=page.next_after_seq or start,
+        has_more=page.has_more,
+    )
+
+
+@run_router.post("/conversation/ack", response_model=ConversationCursorDTO)
+async def agent_conversation_ack(
+    body: ConversationAckRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> ConversationCursorDTO:
+    """Advance "the agent has read up to here". **Nothing waits on this.**
+
+    It exists so the interface can show `agent_seen`, whose tooltip has to say the other
+    half out loud: read is not agreed. A flow that blocked on an acknowledgement would
+    stall whenever an agent died between reading and acknowledging — which is the case
+    the whole design exists to survive.
+    """
+    task = await _run_task(session, principal)
+    if principal.run_id is None:  # pragma: no cover - a run token always has one
+        raise ApiError("TASK_NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
+    cursor = await ConversationService(session).mark_acked(
+        task, consumer_type="run", consumer_id=principal.run_id, seq=body.seq
+    )
+    await session.commit()
+    return ConversationCursorDTO(
+        task_id=task.id,
+        last_delivered_seq=cursor.last_delivered_seq,
+        last_acked_seq=cursor.last_acked_seq,
+    )
 
 
 @run_router.post("/messages", response_model=TaskMessageDTO, status_code=status.HTTP_201_CREATED)
 async def agent_post_message(
+    response: Response,
     body: PostMessageRequest,
     principal: AgentPrincipal = Depends(require_agent_action(TASK_UPDATE)),
     session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
 ) -> TaskMessageDTO:
     """`cliora task say` and `cliora task ask`.
 
@@ -796,23 +1103,43 @@ async def agent_post_message(
     rather than only in the URL.
     """
     task = await _run_task(session, principal)
-    message = await MessageService(session).post(
+    conversation = ConversationService(session)
+    # The principal deliberately carries no `runner_id` — it carries no identity at all
+    # beyond the run (ADR 0028). The runner is a property of the run, so it is read
+    # from there, which also means a revoked run cannot name a runner.
+    run = await session.get(TaskRun, principal.run_id) if principal.run_id is not None else None
+    # **The redaction the daemon's own redactor cannot do** (ADR 0037 §3). That one
+    # wraps the protocol `send`; this request came over HTTPS and never passed through
+    # it. Applied before the insert, because storing the value is the thing being
+    # prevented.
+    redacted = await SecretService(session, settings=settings).redact(
+        task.project_id, list(task.required_secrets or []), body.body
+    )
+    message, replayed = await conversation.post(
         task=task,
-        body=body.body,
+        body=redacted,
         kind=body.kind,
         author_kind=ACTOR_AGENT,
         run_id=principal.run_id,
+        author_runner_id=run.runner_id if run is not None else None,
+        reply_to_message_id=body.reply_to_message_id,
+        idempotency_key=body.idempotency_key,
     )
     if body.kind == "question" and principal.run_id is not None:
         # A question parks the run: it renews its lease, accrues no execution timeout,
         # and occupies `max_waiting` rather than `max_concurrent` — a run waiting on a
         # person is not running a process (ADR 0029 §5).
-        run = await session.get(TaskRun, principal.run_id)
+        #
+        # V2-C1 makes parking optional rather than mandatory: the agent may now exit
+        # instead, and `finish()` will record `awaiting_input` (ADR 0035, D59). Both
+        # shapes project the same way onto the card.
         if run is not None and run.status == "running":
             run.status = "waiting_for_input"
             run.waiting_since = now_utc()
     await session.commit()
     await session.refresh(message)
+    if replayed:
+        response.status_code = status.HTTP_200_OK
     return _message_dto(message, author_name=None)
 
 
