@@ -98,6 +98,23 @@ echo "==> migrating + seeding admin"
 ( cd backend && uv run --project . alembic upgrade head \
   && uv run --project . python -m app.bootstrap create-admin --username "$ADMIN_USER" )
 
+# Runner mode is opt-in for the same reason the second node is: it changes what the
+# stack *does* rather than only what it has. With it on, a daemon on this machine polls
+# for agent work and launches child processes — which the P2/P3 suites neither need nor
+# expect. `CV-12`'s measurement (`scripts/cv/measure-answer-to-turn.py`) turns it on.
+if [ "${E2E_RUNNER:-}" = "1" ]; then
+  # Both flags, in this order of dependence: the agent layer is mounted *inside* the
+  # project layer, so with only the second one on every `/api/agents` route answers
+  # 404 — correctly, and indistinguishably from a typo in the path.
+  export CLIORA_PROJECTS_ENABLED=true
+  export CLIORA_AGENT_RUNS_ENABLED=true
+  # A *second* key, and Central's refusal to start without it is deliberate: a run's
+  # secrets are sealed with this one and it is kept apart from the database backup,
+  # precisely so a restored backup cannot decrypt them. Same throwaway-value reasoning
+  # as the encryption key above.
+  export CLIORA_SECRET_MASTER_KEY="${CLIORA_SECRET_MASTER_KEY:-Y2xpb3JhLWUyZS1zdGFjay1tYXN0ZXIta2V5LTMyISE=}"
+fi
+
 echo "==> starting Central on :$PORT"
 setsid bash -c "cd '$ROOT/backend' && exec uv run --project . uvicorn app.main:app --host 127.0.0.1 --port '$PORT'" \
   >"$WORK/central.log" 2>&1 &
@@ -125,6 +142,31 @@ echo "==> enrolling a node (runtime claude -> fakecli)"
 # keys embedded in the binary anyway; naming the file keeps this stack exercising the
 # node's-own-file branch, which is the one an operator uses to rotate a key.
 sed -i "s|known_hosts_path:.*|known_hosts_path: $ROOT/daemon/internal/tunnel/pinggy_known_hosts|" "$WORK/config.yaml"
+
+# The run root is a **sibling** of the workspace root, never inside it:
+# `runner.CheckIsolation` refuses to start otherwise, and that refusal is the point —
+# a run's checkout must not be reachable through the file-tree API.
+if [ "${E2E_RUNNER:-}" = "1" ]; then
+  RUNS="$WORK/runs"
+  mkdir -p "$RUNS"
+  # Edited into the block enroll-dev already wrote, not appended after it: the file is
+  # a marshalled struct, so every key is present and a second `runner:` is a parse
+  # error rather than an override.
+  python3 - "$WORK/config.yaml" "$RUNS" <<'PYEDIT'
+import sys, yaml
+path, runs = sys.argv[1], sys.argv[2]
+cfg = yaml.safe_load(open(path))
+cfg.setdefault("runner", {}).update({
+    "enabled": True,
+    "work_dir": runs,
+    "max_concurrent": 2,
+    "max_waiting": 4,
+    "poll_interval_seconds": 5,
+})
+yaml.safe_dump(cfg, open(path, "w"), sort_keys=False, allow_unicode=True)
+PYEDIT
+  export E2E_RUNNER_WORK_DIR="$RUNS"
+fi
 
 echo "==> starting daemon (port forwarding via the stand-in provider)"
 setsid env CLIORA_TUNNEL_PROVIDER_COMMAND_FOR_TESTS="$BIN/faketunnelprovider" \
@@ -201,6 +243,35 @@ print("1" if sum(1 for n in nodes if n.get("status")=="online") >= 2 else "")' <
   export E2E_SECOND_NODE_WORKSPACE="$WORKSPACE2"
 fi
 
+# `enabled` is an administrator's switch on Central and deliberately not something
+# `runner.register` can set (ADR 0029 amendment B5), so the stack has to throw it.
+if [ "${E2E_RUNNER:-}" = "1" ]; then
+  echo "==> enabling the runner"
+  runner_id=""
+  for _ in $(seq 1 30); do
+    AGENTS="$(curl -fsS "$BASE/api/agents" -H "authorization: Bearer $ACCESS" 2>/dev/null || echo '[]')"
+    runner_id="$(python3 -c 'import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: rows=[]
+print(rows[0]["id"] if rows else "")' <<<"$AGENTS")"
+    [ -n "$runner_id" ] && break
+    sleep 1
+  done
+  if [ -z "$runner_id" ]; then
+    echo "!! the daemon never registered as a runner; agentd.log tail:" >&2
+    tail -n 20 "$WORK/agentd.log" >&2 || true
+    exit 1
+  fi
+  curl -fsS -X PATCH "$BASE/api/agents/$runner_id" \
+    -H "authorization: Bearer $ACCESS" -H 'content-type: application/json' \
+    -d '{"enabled":true}' >/dev/null
+  export E2E_RUNNER_ID="$runner_id"
+  echo "==> runner $runner_id enabled"
+fi
+
+export E2E_ADMIN_USER="$ADMIN_USER"
+export E2E_ADMIN_PASSWORD="$ADMIN_PASS"
+export E2E_BASE_URL="$BASE"
 export E2E_TUNNEL_APP_PORT="$TUNNEL_APP_PORT"
 
 if [ "$#" -gt 0 ]; then

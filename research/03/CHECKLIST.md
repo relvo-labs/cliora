@@ -47,7 +47,7 @@
 | ☑ | `CV-01` | **ADR 0035** ＋ PRD／requirements 註冊（FR-CONV-001…010） |
 | ☑ | `CV-02` | **ADR 0036 ＋ 0037 ＋ 0041**；`contracts/CHANGELOG.md` 明寫「本輪不動及理由」 |
 | ☑ | `CV-03` | **Migration 0040**：seq／questions／turn 欄位／consumers ＋ backfill（相同 `created_at` 以 id 決勝） |
-| ☑ | `CV-04` | Conversation query ＋ 冪等 mutation API ＋ 八個 machine code |
+| ☑ | `CV-04` | Conversation query ＋ 冪等 mutation API ＋ **九個** machine code |
 
 **里程碑 C1 — Answer and Resume**
 
@@ -71,9 +71,9 @@
 
 | ☐ | ID | 工作 |
 |---|---|---|
-| ☑ | `CV-12` | 安全、E2E（J3／J5／J6／J7／J8／J9）、chaos、metrics |
-| ☐ | — | **SR-1 安全審查**通過並具名簽核 |
-| ☐ | — | 出口條件 14 項全綠（[`02`](./02-phase-c1-ticket-conversation.md) §9） |
+| ◑ | `CV-12` | 安全 ＋ metrics ＋ 八個 gate ＋ 15 條整合測試**已完成**；**E2E 與 chaos 未做**——J6／J9 有等價的整合測試，J3／J5／J7／J8／J1a 沒有。詳見 [`plan/23/10`](../../plan/23/10-implementation-status.md) §7 |
+| ◑ | — | **SR-1 安全審查**：[`docs/security-review-v2c1.md`](../../docs/security-review-v2c1.md) 已產出，**未簽核**——它的兩項未結發現就是下一列 |
+| ◑ | — | 出口條件：**21／23 通過**。未過的是 chaos／E2E（5、11）與未升級節點實測（16）；效能（1）已量到 P95 5.00s |
 | ☐ | — | 建立 `v2.0.0-alpha.2` annotated tag ＋ GitHub pre-release |
 
 ---
