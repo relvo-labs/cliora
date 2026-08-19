@@ -70,7 +70,13 @@ if [ -f "$BASELINE/COMMIT" ]; then
   base_commit="$(cat "$BASELINE/COMMIT")"
   touched=""
   for path in "${FORBIDDEN[@]}"; do
-    if ! git diff --quiet "$base_commit" -- "$path" 2>/dev/null; then
+    # Two questions, because `git diff` answers only the first one. A *tracked* file
+    # that changed shows up in the diff; a **new file that has never been added does
+    # not**, and the gate would pass while a forbidden directory grew. That is not
+    # hypothetical — a fix for the run credential arrived with a new test file under
+    # `internal/runner/`, and this gate stayed green until the file was staged.
+    if ! git diff --quiet "$base_commit" -- "$path" 2>/dev/null \
+      || [ -n "$(git status --porcelain --untracked-files=all -- "$path" 2>/dev/null)" ]; then
       touched="$touched $path"
     fi
   done

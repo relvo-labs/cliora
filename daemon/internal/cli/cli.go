@@ -81,6 +81,15 @@ const OfflineMessage = `無法連線到 Cliora（Session 可繼續工作）。
 const RunOfflineMessage = `無法連線到 Cliora（工作可繼續）。
 這次的訊息／產物未被記錄，恢復連線後請重新執行。`
 
+// NoCredentialMessage is what "I have a context pack but no token" says, and it exists
+// because the alternative told a lie that took a staging run to notice: a missing
+// credential rendered as "無法連線到 Cliora", so every `cliora` call inside a run read
+// as an outage while the platform was answering the daemon perfectly well. The exit
+// code stays `ExitUnreachable` — the agent's reaction is unchanged, *carry on* — but
+// whoever reads the log afterwards is now pointed at the right thing.
+const NoCredentialMessage = `找不到這次工作的憑證（.cliora/context/ 下沒有可讀的 token），指令沒有送出。
+這不是平台連不上；你的工作不受影響，繼續做。`
+
 // Context is what a session's projection — or a run's setup — left in the workspace.
 //
 // **The discovery code needed no change for runs**, and that is a consequence of the
@@ -165,8 +174,21 @@ func contextFrom(dir string, entries []os.DirEntry, session string) (Context, er
 		PackPath:  filepath.Join(dir, chosen+".md"),
 		TokenPath: filepath.Join(dir, chosen+".token"),
 	}
+	// **A run's credential does not follow the pack's name**, and assuming it did cost
+	// a staging run: the daemon writes the pack as `task.md` and the credential as
+	// `run.token` (`runner.WriteContext`), a name that is load-bearing elsewhere —
+	// `GATE-SC-NO-SECRET-TO-DISK` excludes it *by name*, and ADR 0029/0034 speak of it.
+	// So the reader adapts rather than the writer. `<id>.token` is still tried first,
+	// because that is a session's shape and a session must not be answered by a file
+	// left behind by anything else.
 	if raw, err := os.ReadFile(ctx.TokenPath); err == nil {
 		ctx.Token = strings.TrimSpace(string(raw))
+	} else if runToken := filepath.Join(dir, "run.token"); os.IsNotExist(err) {
+		if raw, runErr := os.ReadFile(runToken); runErr == nil {
+			ctx.TokenPath = runToken
+			ctx.Token = strings.TrimSpace(string(raw))
+			ctx.Run = true
+		}
 	}
 	ctx.APIBase = apiBaseFrom(ctx.PackPath)
 	return ctx, nil
@@ -230,7 +252,10 @@ type apiError struct {
 // `OfflineMessage`, and everything else is `ExitRefused` plus a sentence that says
 // what to do next. A raw `502 Bad Gateway` tells an agent nothing it can use.
 func (c *Client) do(method, path string, body any, into any) (int, error) {
-	if c.Base == "" || c.Token == "" {
+	if c.Token == "" {
+		return ExitUnreachable, errors.New(NoCredentialMessage)
+	}
+	if c.Base == "" {
 		return ExitUnreachable, errors.New(OfflineMessage)
 	}
 	var payload io.Reader
@@ -277,7 +302,10 @@ func (c *Client) do(method, path string, body any, into any) (int, error) {
 // and in nothing else, and threading a content type plus an io.Reader through the JSON
 // path would make the common case harder to read to save a dozen lines.
 func (c *Client) upload(path, contentType string, body io.Reader, into any) (int, error) {
-	if c.Base == "" || c.Token == "" {
+	if c.Token == "" {
+		return ExitUnreachable, errors.New(NoCredentialMessage)
+	}
+	if c.Base == "" {
 		return ExitUnreachable, errors.New(RunOfflineMessage)
 	}
 	req, err := http.NewRequest("POST", c.Base+path, body)
