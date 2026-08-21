@@ -1,8 +1,16 @@
 # ADR 0035 — A Ticket is a durable conversation; a run is one replaceable execution of it
 
-- Status: **proposed** (2026-08-16) — waiting on a person's approval. Until it is
-  accepted, `CV-03` onward may not touch `backend/`, `frontend/` or `daemon/`
-  (`plan/23/00-…md` §3).
+- Status: **accepted** (2026-08-21) by the repository owner, recorded by the closeout
+  session from their instruction to complete `plan/24` — **not** an independent review
+  meeting, and said so here because a status line is exactly the place a later reader
+  would assume otherwise.
+- **Ratification of work done while this was `proposed`.** The superseded status line read:
+  *"proposed (2026-08-16) — waiting on a person's approval. Until it is accepted, `CV-03`
+  onward may not touch `backend/`, `frontend/` or `daemon/`."* That order was not
+  followed: the implementation landed in `e777674`…`ac3dfef` while this ADR was still
+  proposed. The acceptance above ratifies it. It is kept as a recorded **process
+  deviation** rather than tidied away, because the sentence it broke is the only thing
+  the deviation can be measured against (`plan/24/01` D74).
 - Date: 2026-08-16
 - Amends: ADR 0029 (**amendment E**, a run may end while the card is still waiting,
   and a run may have a parent), ADR 0030 (**amendment A**, the log/artifact

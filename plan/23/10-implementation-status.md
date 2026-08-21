@@ -262,12 +262,19 @@ CLIORA_DATABASE_URL=postgresql+asyncpg://…/cliora_e2e E2E_RUNNER=1 \
 [`docs/security-review-v2c1.md`](../../docs/security-review-v2c1.md) 已寫出並公開，
 **但未簽核**——它自己的兩項未結發現就是下面 §7 的那兩項。
 
-## 7. 未完成（兩項）
+## 7. 未完成（兩項）→ **兩項都已於 2026-08-21 由 [`plan/24`](../24/README.md) 完成**
 
-| # | 項目 | 為什麼還沒做 | 誰接手 |
-|---:|---|---|---|
-| 1 | **chaos ／ 六條 E2E**（出口 5、11） | 堆疊已經起得來（§9），缺的是把 J1a／J3／J5／J7／J8 寫成可執行的旅程。J6／J9 有等價的整合測試，那不等於旅程 | `alpha.2` tag 前 |
-| 2 | **未升級節點的實測**（出口 16） | 需要一個 `agentd` 0.12.0 的 binary 跑完整生命週期。靜態論證很強（contract 與節點半邊都逐位元組相同），但那是論證不是證據 | `alpha.2` tag 前 |
+| # | 項目 | 結果 |
+|---:|---|---|
+| 1 | **chaos ／ 六條 E2E**（出口 5、11） | ☑ **七條旅程全部執行且通過**（J0 preflight ＋ J1a／J3／J5／J6／J7／J8／J9）。`GATE-CE-JOURNEY-COVERAGE` 拒絕任何一條被 skip 的執行。詳見 [`plan/24/10`](../24/10-implementation-status.md) §4 |
+| 2 | **未升級節點的實測**（出口 16） | ☑ **已實測**，而答案比原本的說法窄：**線上（wire）相容，「完成」不相容**。0.12.0 帶著一個 V2.2 就在的缺陷（`CE-17`），沒有任何測試碰得到它，因為從來沒有人讓一個真的 daemon 把一個 run 跑完。修在 `agentd` 0.13.1 |
+
+**而那兩項不只是被補上，它們各照出一個真的缺陷**——這正是「論證不是證據」這句話的代價：
+
+| 缺陷 | 誰照出來的 | 影響 |
+|---|---|---|
+| `CE-16` run 的情境包沒有平台位址 | 第一條旅程的第一步 | run 裡的 `cliora` 從來連不上 Central；`CV-08` 的四個子命令在真的 run 裡從未成功 |
+| `CE-17` `run.complete` 帶 `null git_remotes` 被靜默丟棄 | 第一次讓 run 跑到結束 | **沒有 git remote 的卡（每一張釐清卡）的 run 永遠不會結束**，症狀是租約過期 |
 
 **2026-08-19 補齊的三項**（原本列在這裡）：效能量測（§5）、release note、SR-1 安全審查。
 詳見 §9。
@@ -297,8 +304,8 @@ CLIORA_DATABASE_URL=postgresql+asyncpg://…/cliora_e2e E2E_RUNNER=1 \
 | [`01`](./01-decisions-and-governance.md) D62 | 拒絕時回 201 ＋ `mode`，不是 409 | ☑ |
 | [`research/03/02`](../../research/03/02-phase-c1-ticket-conversation.md) §6 | 刪掉 `conversation/resume` | ☑ |
 | [`research/03/08`](../../research/03/08-data-model-and-contract.md) §1 | `alpha.2` 是 14 欄不是 12 | ☑ 已是 14（§1 表格第二列） |
-| [`research/03/CHECKLIST.md`](../../research/03/CHECKLIST.md) | `alpha.2` 段落打勾 | ◑ ticket 全打勾；`CV-12` 改成 ◑（E2E／chaos 未做），三個結尾項待 §7 完成 |
-| `docs/adr/0035` | 狀態從 proposed 改 accepted（需人工核准） | ☐ |
+| [`research/03/CHECKLIST.md`](../../research/03/CHECKLIST.md) | `alpha.2` 段落打勾 | ☑ `CV-12` 已補齊為 ☑（`plan/24` 的七條旅程）；`CE-` 那一段是新的 |
+| `docs/adr/0035`（與 0036／0037／0041） | 狀態從 proposed 改 accepted（需人工核准） | ☐ **仍待人工**——清單在 [`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §3，含「同時追認在 proposed 狀態下已完成的實作」那一句 |
 
 ## 9. 2026-08-19 的收尾
 

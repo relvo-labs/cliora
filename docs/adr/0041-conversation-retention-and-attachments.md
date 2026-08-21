@@ -1,6 +1,8 @@
 # ADR 0041 — A message is product data: retention, attachments and size
 
-- Status: **proposed** (2026-08-16), together with ADR 0035–0037.
+- Status: **accepted** (2026-08-21), together with ADR 0035–0037 — one decision, and the
+  provenance is in ADR 0035's status block. (D51, the retention question this ADR answers,
+  was separately confirmed as decided on the same date: `plan/24/00` §0.3.)
 - Date: 2026-08-16
 - Related: ADR 0030 (run logs expire, artifacts do not — this document places
   messages relative to both), ADR 0024 / ADR 0026 (every write path ships with its

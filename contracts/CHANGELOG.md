@@ -36,8 +36,6 @@ baseline, so this paragraph cannot quietly stop being true.
 
 ## 1.13.0 — 2026-08-14 (compatible)
 
-## 1.13.0 — 2026-08-14 (compatible)
-
 **Added — three fields, and all three travel node→central (ADR 0033).**
 
 The interesting half of this release is what it does **not** contain: `run.offer`'s

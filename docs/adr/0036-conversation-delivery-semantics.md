@@ -1,6 +1,7 @@
 # ADR 0036 — Conversation delivery: cursors, idempotency, and at-least-once without duplicate work
 
-- Status: **proposed** (2026-08-16), together with ADR 0035.
+- Status: **accepted** (2026-08-21), together with ADR 0035 — one decision, and the
+  provenance is in ADR 0035's status block.
 - Date: 2026-08-16
 - Related: ADR 0035 (the nouns; this document is its delivery half), ADR 0029 §2
   (`claim()` — the same single-statement race argument), ADR 0030 (run logs are a

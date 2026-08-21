@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,6 +94,16 @@ func main() {
 // `CLIORA_FAKECLI_SCRIPT` is a file of shell commands run before the final event, which
 // is how an e2e test makes the "agent" do something — call `cliora task ask`, write an
 // artifact — without this binary growing a second language.
+//
+// **The script's exit status becomes this process's exit status**, because the daemon
+// judges a run failed by `outcome.ExitCode != 0` and nothing else. Reporting the failure
+// only inside the event (`"failed": true`) and then exiting 0 made a failed run
+// unreachable from the e2e stack, so the journey that shows a person a failure and lets
+// them dispatch again had nothing to stand on (`plan/24/02` §3).
+//
+// The `result` event still goes out first, and with `is_error` set. A child that
+// vanished without one is indistinguishable in the log from a child the daemon killed
+// for going idle, and those are two different failures.
 func runNonInteractive() {
 	context, _ := io.ReadAll(os.Stdin)
 	emit(map[string]any{"type": "system", "subtype": "init", "context_bytes": len(context)})
@@ -104,8 +115,30 @@ func runNonInteractive() {
 			"type": "assistant", "subtype": "script",
 			"output": string(out), "failed": err != nil,
 		})
+		if code := scriptExitCode(err); code != 0 {
+			emit(map[string]any{"type": "result", "subtype": "error", "is_error": true})
+			os.Exit(code)
+		}
 	}
 	emit(map[string]any{"type": "result", "subtype": "success", "is_error": false})
+}
+
+// scriptExitCode maps the script's failure onto an exit code this process can carry.
+//
+// A script that could not be started at all (missing file, not executable) has no exit
+// status of its own; it still has to fail, so it borrows 1 — the alternative is exiting
+// 0 on the one error that means the journey's whole premise was never exercised.
+func scriptExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var exit *exec.ExitError
+	if errors.As(err, &exit) {
+		if code := exit.ExitCode(); code > 0 {
+			return code
+		}
+	}
+	return 1
 }
 
 func emit(event map[string]any) {

@@ -1,0 +1,15 @@
+# Every product-code change this closeout phase is allowed to make, one per line:
+#
+#   <path> <ticket> <one sentence: why the journey could not proceed without it>
+#
+# `GATE-CE-NO-PRODUCT-DRIFT` asserts `backend/app/` and `frontend/src/` are unchanged
+# against the closeout baseline **except** for the paths listed here, and it prints every
+# line it honoured. D68's whole point is that a journey turning red has exactly one
+# possible cause; an exception nobody can see puts a second one back.
+#
+# A line here is not a licence for the file — it is a record that a journey found a
+# defect, and it must be matched by an entry in plan/24/10 §2 explaining what broke.
+#
+backend/app/services/runs.py CE-16 A run's context pack carried no API address, so `cliora` inside any run could not reach Central and every journey stopped at the first `cliora task ask`.
+daemon/internal/connection/run_handlers.go CE-17 A nil `git_remotes` marshalled to null, so Central silently dropped every `run.complete` from a card with no git remote — no run could finish, and the symptom was an expired lease.
+daemon/internal/connection/run_handlers_test.go CE-17 The two frame-validation tests for the line above; they live beside the code they pin.

@@ -46,6 +46,18 @@ TUNNEL_APP_PORT="${E2E_TUNNEL_APP_PORT:-5199}"
 # and a random key would make a failure impossible to reproduce.
 export CLIORA_SECRET_ENCRYPTION_KEY="${CLIORA_SECRET_ENCRYPTION_KEY:-Y2xpb3JhLWUyZS1zdGFjay1rZXktMzItYnl0ZXMhISE=}"
 
+# **Where a run's `cliora` calls back to.** This value is what `render_run_context` writes
+# into the context pack's `API：` line, and `apiBaseFrom` is the CLI's only source for it
+# — the CLI runs as the user and does not read the daemon's config. Unset, the pack
+# carries an empty base, every `cliora task …` inside a run fails to connect, and the CLI
+# says "無法連線到 Cliora" at a platform that is answering fine.
+#
+# It is not optional in a real deployment either (`compose.yaml` refuses to start without
+# it, and `check_env.py` fails a Railway deploy that gets it wrong) — so a stack that
+# omitted it was modelling a deployment that cannot exist. Same class of gap as
+# plan/23/10 §9.1, one layer further out: the token was found, the address was not.
+export CLIORA_PUBLIC_BASE_URL="${CLIORA_PUBLIC_BASE_URL:-$BASE}"
+
 WORK="$(mktemp -d)"
 BIN="$WORK/bin"
 WORKSPACE="$WORK/workspace"
@@ -78,6 +90,14 @@ cleanup() {
   for pid in "${PIDS[@]:-}"; do
     kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
   done
+  # A daemon a chaos journey restarted is **not** in PIDS — that array was fixed when
+  # this script launched it, and the replacement is a different process group. Read the
+  # group back from the file the journey updates, or the restarted daemon outlives the
+  # stack and the next run's node list has a ghost in it.
+  if [ -n "${E2E_DAEMON_PGID_FILE:-}" ] && [ -f "$E2E_DAEMON_PGID_FILE" ]; then
+    restarted="$(cat "$E2E_DAEMON_PGID_FILE" 2>/dev/null || true)"
+    [ -n "$restarted" ] && { kill -- "-$restarted" 2>/dev/null || kill "$restarted" 2>/dev/null || true; }
+  fi
   rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
@@ -89,6 +109,19 @@ export PATH="$PATH:/usr/local/go/bin"
   && go build -o "$BIN/faketunnelapp" ./cmd/faketunnelapp \
   && go build -o "$BIN/faketunnelprovider" ./cmd/faketunnelprovider \
   && go build -o "$BIN/enroll-dev" ./cmd/enroll-dev )
+
+# `cliora` beside `agentd`, pointing at it — one binary, two tools (ADR 0028 §4), and the
+# **same shape a real install uses** (`ensureCLISymlink`, /usr/local/bin/cliora). `agentd
+# cliora …` would also work, but a journey has to walk the path an agent actually walks.
+ln -sf "$BIN/agentd" "$BIN/cliora"
+
+# `$BIN` on PATH, and **in front**: a run's child process inherits the daemon's
+# environment (`run_handlers.go`: `secrets.ChildEnv(os.Environ())`), so this is the only
+# way `cliora` exists inside a run at all. Without it every `cliora task ask` in a run is
+# `command not found` — and the daemon's own tests never notice, because nothing on the
+# node side calls the CLI. That gap is why `CV-08`'s four subcommands had never run
+# inside a real run (plan/23/10 §9.1 fixed the other half of the same seam).
+export PATH="$BIN:$PATH"
 
 echo "==> starting the app to forward on :$TUNNEL_APP_PORT"
 setsid "$BIN/faketunnelapp" --addr "127.0.0.1:$TUNNEL_APP_PORT" >"$WORK/faketunnelapp.log" 2>&1 &
@@ -166,13 +199,42 @@ cfg.setdefault("runner", {}).update({
 yaml.safe_dump(cfg, open(path, "w"), sort_keys=False, allow_unicode=True)
 PYEDIT
   export E2E_RUNNER_WORK_DIR="$RUNS"
+
+  # **The agent's half of the stack.** `fakecli` runs this file before its final event
+  # (`CLIORA_FAKECLI_SCRIPT`), which is how a journey makes the "agent" ask a question or
+  # propose a spec without that stand-in growing a second language.
+  #
+  # One fixed path, rewritten by whichever journey is running, rather than one path per
+  # journey: the daemon's environment is fixed when it starts, and a journey that needed
+  # its own variable would need its own daemon. Journeys run with `--workers=1` for this
+  # reason — two of them rewriting one file would interleave.
+  AGENT_SCRIPT="$WORK/agent-script.sh"
+  printf '#!/usr/bin/env bash\nexec "%s/scripts/cv/agent/clarify.sh"\n' "$ROOT" >"$AGENT_SCRIPT"
+  chmod +x "$AGENT_SCRIPT"
+  export E2E_AGENT_SCRIPT="$AGENT_SCRIPT"
+  export CLIORA_FAKECLI_SCRIPT="$AGENT_SCRIPT"
 fi
 
 echo "==> starting daemon (port forwarding via the stand-in provider)"
 setsid env CLIORA_TUNNEL_PROVIDER_COMMAND_FOR_TESTS="$BIN/faketunnelprovider" \
   "$BIN/agentd" run --config "$WORK/config.yaml" --credentials "$WORK/credentials.yaml" \
   >"$WORK/agentd.log" 2>&1 &
-PIDS+=($!)
+DAEMON_PID=$!
+PIDS+=($DAEMON_PID)
+
+# The handles a chaos journey needs to kill this daemon and start it again as the *same*
+# node (`plan/24/02` §4). Without them a test can only kill the stack, and "the daemon
+# restarted" stops being a thing that can be tested at all.
+#
+# The PGID goes in a **file** rather than only a variable: a restart produces a new one,
+# and a child process cannot write its parent's environment. `setsid` makes PID == PGID.
+export E2E_DAEMON_BIN="$BIN/agentd"
+export E2E_DAEMON_CONFIG="$WORK/config.yaml"
+export E2E_DAEMON_CREDENTIALS="$WORK/credentials.yaml"
+export E2E_DAEMON_LOG="$WORK/agentd.log"
+export E2E_DAEMON_PROVIDER_COMMAND="$BIN/faketunnelprovider"
+export E2E_DAEMON_PGID_FILE="$WORK/agentd.pgid"
+printf '%s\n' "$DAEMON_PID" >"$E2E_DAEMON_PGID_FILE"
 
 echo "==> waiting for the node to report online"
 online=""

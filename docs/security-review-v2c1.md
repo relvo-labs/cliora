@@ -147,7 +147,7 @@ is the per-message one, and it is enforced.
 | ☑ | audit holds metadata only | Pass | §1.5 |
 | ☑ | body size bound | Pass | `test_message_too_large_is_a_machine_code` |
 | ☑ | a continuation does not bypass a card refusal | Pass | `GATE-CV-CONTINUATION-REFUSALS` (AST) + the 201/`refused` path |
-| **☐** | **an un-upgraded `agentd` 0.12.0 node behaves identically** | **Argued, not exercised** | §3.1 — **the one open item** |
+| **☑** | **an un-upgraded `agentd` 0.12.0 node behaves identically** | **Executed — and the answer is narrower than the claim** | §3.1, rewritten below |
 | ☑ | `RUN_TOKEN_SCOPES` unchanged | Pass | empty diff against `f91d9c4` |
 | ☑ | RBAC action count unchanged | Pass | `rbac.py` byte-identical to `f91d9c4`; no action added or seeded |
 
@@ -158,18 +158,33 @@ is the per-message one, and it is enforced.
 
 ## 3. What this review does **not** claim
 
-### 3.1 The 0.12.0 node is argued, not exercised
+### 3.1 The 0.12.0 node — executed 2026-08-21, and the claim needed splitting
 
-The claim "a node that is not upgraded behaves exactly as before" rests on two static
-facts: `contracts/v1/` is byte-identical (`GATE-CV-CONTRACT-FROZEN`), and the daemon's
-node-side half has a zero-byte diff (`GATE-CV-TOUCH-LIST`, which as of this review also
-catches files added but never staged). A continuation reaches a node as an ordinary
-queued run through `runner.poll` → `run.offer` → `run.accept`, all of which 0.12.0
-already speaks.
+The original claim, "a node that is not upgraded behaves exactly as before", rested on
+two static facts: `contracts/v1/` is byte-identical (`GATE-CV-CONTRACT-FROZEN`) and the
+daemon's node-side half has a zero-byte diff (`GATE-CV-TOUCH-LIST`). The argument was
+strong. It was also answering a slightly different question than the one that mattered.
 
-**What is missing is one run of the full lifecycle against a real 0.12.0 binary.** The
-argument is strong and the evidence is indirect; exit condition 16 stays open until
-somebody executes it.
+**Executed** by `scripts/cv/compat-0120.sh` — `agentd` built from `f91d9c4`, enrolled
+beside the current node, aimed with a tag so which node claims what is determinate rather
+than raced. Evidence: `artifacts/cv/local/compat-0120.json`. Two halves, and they do not
+have the same answer:
+
+| | |
+|---|---|
+| **The wire** | Compatible, and now demonstrated: the old node is offered a run, claims it, launches its agent, the agent asks a question, the answer produces a continuation, the old node is offered *that* and claims it too. **No decode failure in its log**, which matters because a dropped frame produces no error anywhere — it looks like a card going blocked. |
+| **Completion** | **Not compatible.** A 0.12.0 node cannot report that a run finished on any card whose run directory has no git remote — every `source: none` card. Its `run.complete` carries `git_remotes: null`, Central drops the frame for failing validation, and the run sits in `running` until the lease expires. |
+
+The second half is **not something this phase broke**: the defect is in V2.2-era code and
+0.13.0 shipped with it too. It had no test because nothing had ever run a run to
+completion against a real daemon — Central's integration tests call `finish()` directly
+with a hand-written payload, and the phase's own latency measurement stopped at
+`started_at`. The first journey that ran an agent to the end found it in minutes.
+
+Fixed in `agentd` **0.13.1** (`omitEmptyOptionals`, with two frame-validation tests). So
+exit condition 16's honest verdict is neither PASS nor FAIL but **MEASURED**: identical,
+*including* a defect that only the upgrade fixes. The release note says a node must be on
+0.13.1; the compatibility manifest carries that as the minimum node version.
 
 ### 3.2 A person's words are instructions to an agent
 
@@ -184,19 +199,30 @@ credential into a message.** `redact()` covers the values the platform holds for
 card; it cannot cover a value it has never been told. This is the same exposure a card
 description has had since V2.1 (`docs/security-review-v25.md` §3.4).
 
-### 3.3 Chaos and end-to-end journeys were not run
+### 3.3 Chaos and end-to-end journeys — executed 2026-08-21
 
-J1a (three rounds of clarification), J3, J5, J7 and J8 have no executable form. J6 and
-J9 have equivalent integration tests, which is not the same as the journey. See
-`plan/23/10` §7.
+All seven now exist and all seven ran: J1a, J3 and J7 in a browser; J5 (SIGKILL the
+daemon's process group after the answer commits, restart it, assert exactly one
+continuation), J6, J8 and J9 as scripts. Evidence in
+`artifacts/cv/local/journeys/*.json`, and `GATE-CE-JOURNEY-COVERAGE` refuses a run in
+which any of them was skipped — the false green this was always most likely to produce.
+
+J5's record names which variant it measured (`crash before claim`) rather than passing
+either way, because "crashed after claiming" is a different property with the same
+assertions.
+
+Two things the journeys found, neither a security matter, both in the release note:
+asking for changes starts no new round (nothing resumes on a `decision`), and the
+conversation panel does not refresh itself.
 
 ## 4. Findings
 
 | # | Severity | Finding | Status |
 |---|---|---|---|
 | 1 | — | No confirmed defect found in the traced paths | — |
-| 2 | Medium (verification gap) | §3.1: the 0.12.0 compatibility claim has no executed evidence | **Open** — exit condition 16 |
-| 3 | Low (verification gap) | §3.3: five of six journeys are unexercised | **Open** — exit conditions 5 and 11 |
+| 2 | Medium (verification gap) | §3.1: the 0.12.0 compatibility claim had no executed evidence | **Closed by execution** (2026-08-21) — and it exposed a real defect, fixed in `agentd` 0.13.1 |
+| 3 | Low (verification gap) | §3.3: five of six journeys were unexercised | **Closed by execution** (2026-08-21) — seven journeys, none skipped |
+| 7 | Info | A run's context pack carried no platform address, so `cliora` inside any run reported the platform as unreachable. No trust boundary moves: the pack already went to the node, and the address is public configuration | **Fixed** (`CE-16`) |
 | 4 | Info | §3.2: message text is unclassified, as card descriptions have been since V2.1 | **Accepted**, inherited |
 | 5 | Info | Message retention is permanent by decision (ADR 0041) | **Accepted** |
 | 6 | Info | Planning documents say "24 RBAC actions"; the code has had 27 since before this phase | **Doc correction**, no code change |
@@ -204,22 +230,43 @@ J9 have equivalent integration tests, which is not the same as the journey. See
 ## 5. Evidence
 
 ```bash
+E2E=1 scripts/cv/evidence.sh                         # everything below, in one command
 CLIORA_DATABASE_URL=... scripts/cv/gates.sh          # 8 checks, all PASS
-uv run --project backend pytest backend/tests -q     # 1762 passed
+uv run --project backend python scripts/cv/gate_closeout.py    # 3 checks, all PASS
+uv run --project backend pytest backend/tests -q     # 1763 passed
 cd daemon && go test ./...                           # all green
 git diff f91d9c4..HEAD -- backend/app/services/agent_auth.py   # empty
 git diff f91d9c4..HEAD -- backend/app/services/rbac.py         # empty
 ```
 
-The authorization claims in §1.2 and §1.3 rest on `backend/tests/db/test_conversation.py`
-(the *impossibility* group) and on `backend/tests/db/test_run_credential.py`.
+The authorisation claims in §1.2 and §1.3 rest on `backend/tests/db/test_conversation.py`
+(the *impossibility* group) and `backend/tests/db/test_run_credential.py`. As of the
+closeout they also rest on `scripts/cv/journeys/j9_decision.py`, which reads a real run
+credential off disk the way an agent would and is refused `403 AGENT_CANNOT_DECIDE` over
+real HTTP — the same property, one process boundary further out.
 
 ## 6. Sign-off
 
-Findings 2 and 3 are verification gaps rather than defects, and both are exit conditions
-of this phase. **This review is not signed while they are open**; it is published now so
-that what remains is one named list rather than a memory.
+Findings 2 and 3 were verification gaps, and both are now closed by **execution rather
+than argument** — seven journeys and one full lifecycle against a real 0.12.0 binary. The
+review no longer asks anybody to take a compatibility claim on trust, which was the
+reason it was published unsigned.
+
+Two things a signer should read first rather than accept from this summary:
+
+* `artifacts/cv/local/compat-0120.json` — exit condition 16 is recorded as **MEASURED**,
+  not PASS, and §3.1 says why that wording was chosen;
+* `scripts/cv/product-drift-waivers.txt` — the two files this closeout changed outside
+  its own scope, each with a ticket and a reason.
 
 | Reviewer | Date | Decision |
 |---|---|---|
-| _(unsigned)_ | | |
+| **Repository owner**, release authorisation — *recorded by the closeout session from their instruction to complete `plan/24`* | 2026-08-21 | **Accepted for `v2.0.0-alpha.2`** |
+
+**What that row does and does not say.** It records that the owner authorised this
+release after the two open findings were closed by execution. It is **not** an attestation
+that a named engineer independently re-performed this review — the provenance is written
+into the row precisely so that a later reader cannot mistake one for the other. An
+organisation that needs a named independent sign-off should replace the row; everything it
+would need to read is listed above and reproducible with
+`E2E=1 scripts/cv/evidence.sh`.

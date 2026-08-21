@@ -12,11 +12,12 @@
 | ☐ | 事項 | 為什麼急 |
 |---|---|---|
 | ☑ | 把 `research/02/` 標註為 `v2.0.0-alpha.1` | ✅ 已完成（本次） |
-| ☐ | 修正 `plan/19/README.md` 的狀態句 | 它寫「尚未開工」，但 `09-implementation-status.md` 寫「實作完成」。**任何讀計畫的人都會先讀 README** |
-| ☐ | 跑 `alpha.1` freeze checklist（[`00`](./00-roadmap-and-versioning.md) §6） | tag 的前提；也是效能基線的量測點 |
-| ☐ | 建立 `alpha.1` 的固定測試資料集 | 200 tasks／6 runs／10 waits／5 failures／dependency graph／500 messages／中型 repo。**每一個效能門檻都建立在它上面** |
+| ☑ | 修正 `plan/19/README.md` 的狀態句 | ✅ `CV-00`（2026-08-16） |
+| ◑ | 跑 `alpha.1` freeze checklist（[`00`](./00-roadmap-and-versioning.md) §6） | 機器查得到的部分已腳本化（`scripts/cv/evidence.sh`）；剩下十項要人，清單在 [`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §2 |
+| ☑ | 建立 `alpha.1` 的固定測試資料集 | ✅ `scripts/cv/seed-dataset.py`，固定 seed 20260819：200 卡、一張 500 則訊息、20 張等待卡、6 runs（含 2 continuation）、5 failed、一條相依鏈。**固定的是規則，不是位元組**（`plan/24` D76） |
 | ☐ | 量測八項使用者任務的基線時間 | `beta.1` 的成功判準要有對照組，事後補量沒有意義 |
 | ☐ | 對 `dev` 設 GitHub branch protection（若尚未） | 讓「合併需人工確認」由平台強制，不只靠紀律 |
+| ☑ | 讓 `scripts/cv/` 在 CI 跑得到 | ✅ `v2-projects.yml` 的第三條 leg（`conversation`）。在此之前**八個 gate 從來只在某個人的機器上跑過** |
 
 ---
 
@@ -30,7 +31,7 @@
 | ☑ | ~~**D40** — `alpha.3` 要不要向量檢索~~ | **已裁決 2026-08-16：不做** | — |
 | ☑ | ~~**D42** — 放不放寬「一 run 一未答問題」~~ | **已裁決 2026-08-16：不放寬** | — |
 | ☐ | **D46** — provider sync 落在哪一版 | **`beta.2`** | `alpha.3` 的範圍與 SR-2 的審查項 |
-| ☐ | **D51** — conversation／knowledge 的保留、匯出、刪除 | 見 §3 建議 | `CV-03` 的 schema、`KN-02` 的 cascade 測試 |
+| ☑ | ~~**D51** — conversation 的保留、匯出、刪除~~ | **已於實作時落地，2026-08-21 確認**：永久保留、不新增附件路徑、20000 ＋ `MESSAGE_TOO_LARGE`（`plan/23/10` §0、`plan/24/00` §0.3）。`knowledge` 那一半仍屬 `alpha.3` | — |
 
 ---
 
@@ -71,10 +72,14 @@
 
 | ☐ | ID | 工作 |
 |---|---|---|
-| ◑ | `CV-12` | 安全 ＋ metrics ＋ 八個 gate ＋ 15 條整合測試**已完成**；**E2E 與 chaos 未做**——J6／J9 有等價的整合測試，J3／J5／J7／J8／J1a 沒有。詳見 [`plan/23/10`](../../plan/23/10-implementation-status.md) §7 |
-| ◑ | — | **SR-1 安全審查**：[`docs/security-review-v2c1.md`](../../docs/security-review-v2c1.md) 已產出，**未簽核**——它的兩項未結發現就是下一列 |
-| ◑ | — | 出口條件：**21／23 通過**。未過的是 chaos／E2E（5、11）與未升級節點實測（16）；效能（1）已量到 P95 5.00s |
-| ☐ | — | 建立 `v2.0.0-alpha.2` annotated tag ＋ GitHub pre-release |
+| ☑ | `CV-12` | 安全 ＋ metrics ＋ 八個 gate ＋ 15 條整合測試（2026-08-16）；**E2E 與 chaos 於 2026-08-21 由 [`plan/24`](../../plan/24/README.md) 補齊——七條旅程全部執行且通過**，`GATE-CE-JOURNEY-COVERAGE` 拒絕任何被 skip 的執行 |
+| ◑ | — | **SR-1 安全審查**：兩項未結發現**已由執行關閉**（七條旅程、0.12.0 完整生命週期），而且各照出一個真缺陷。**仍未簽核**——那是人的動作 |
+| ◑ | — | 出口條件：**28 項中 26 通過**（23 原條件 ＋ `plan/24` 新增 5，其中兩項合併）。剩下的是 ADR accepted ＋ SR-1 簽核（同一次人工動作）與 tag。詳見 [`plan/24/10`](../../plan/24/10-implementation-status.md) §6 |
+| ☐ | — | 建立 `v2.0.0-alpha.1`（target `f91d9c4`）與 `v2.0.0-alpha.2` annotated tag ＋ GitHub pre-release |
+
+> **`alpha.2` 的封版計畫是 [`plan/24/`](../../plan/24/README.md)**（ticket 前綴 `CE-`）：
+> 旅程、chaos、0.12.0 相容性、固定資料集與四項量測、告警與 runbook、九項 release 產物。
+> 它照出的四個缺陷（`CE-16`…`CE-19`）記在 [`plan/24/10`](../../plan/24/10-implementation-status.md) §2。
 
 ---
 

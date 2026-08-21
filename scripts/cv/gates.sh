@@ -10,6 +10,7 @@ set -uo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 
 BASELINE="${1:-artifacts/cv/local/baseline}"
+WAIVERS="${CV_WAIVERS:-scripts/cv/product-drift-waivers.txt}"
 FAILED=0
 
 pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
@@ -85,6 +86,19 @@ if [ -f "$BASELINE/COMMIT" ]; then
   # plaintext, and putting the helper anywhere else would raise that number to two
   # (ADR 0037 §3). Listed here so the exception is visible rather than silent.
   touched="${touched// backend\/app\/services\/secrets.py/}"
+  # The closeout phase's named exceptions (`plan/24/01` D68, `plan/24/08` §1.1). Each
+  # line is a path, a ticket and a sentence, and the gate **prints every one it
+  # honours**: a journey that exposed a defect in a frozen file is a fact worth
+  # carrying, and an exception nobody can see is how a freeze quietly stops being one.
+  if [ -f "$WAIVERS" ]; then
+    while read -r path ticket reason; do
+      case "$path" in ''|'#'*) continue ;; esac
+      if [ -n "$touched" ] && [ "$touched" != "${touched// $path/}" ]; then
+        touched="${touched// $path/}"
+        printf '        waived: %s (%s) %s\n' "$path" "$ticket" "$reason"
+      fi
+    done <"$WAIVERS"
+  fi
   if [ -z "$touched" ]; then
     pass "GATE-CV-TOUCH-LIST"
   else
