@@ -10,7 +10,19 @@
 |---|---|---|
 | `GATE-CE-NO-PRODUCT-DRIFT` | `git diff --stat ac3dfef -- backend/app frontend/src` 為空，且 `git status --porcelain -uall` 對這兩個目錄為空 | D68 被悄悄推翻：旅程紅了到底是產品缺陷還是剛剛那個小修正，沒有人分得出來 |
 | `GATE-CE-JOURNEY-COVERAGE` | playwright 的 JSON report 裡七條旅程**各執行一次且沒有被 skip**；四條 API 旅程各留下一份 `artifacts/cv/local/journeys/J*.json` | **七條旅程全部 skip，套組仍然綠**——這是本期最可能發生的假綠 |
-| `GATE-CE-EVIDENCE-FRESH` | `artifacts/cv/local/*.json` 裡的 `commit` 欄位等於當前 HEAD | 引用了上一輪的數字。`plan/23/10` §5 的 29.9 秒樣本就是「舊狀態污染新結論」的一次 |
+| `GATE-CE-EVIDENCE-FRESH` | `artifacts/cv/local/*.json` 裡的 `commit` 欄位等於 `--at` 指定的 ref（預設 HEAD） | 引用了上一輪的數字。`plan/23/10` §5 的 29.9 秒樣本就是「舊狀態污染新結論」的一次 |
+
+`--at` 這個旗標是封版當天長出來的，理由值得寫下來：**證據屬於被 tag 的那個 commit，
+不屬於「之後又提交了什麼」**。打完 tag 之後只要再有一次文件提交，`--at HEAD` 就會紅，
+而一個永遠紅的 gate 是一個沒有人讀的 gate。所以：
+
+```bash
+uv run --project backend python scripts/cv/gate_closeout.py                        # 準備發版時
+uv run --project backend python scripts/cv/gate_closeout.py --at v2.0.0-alpha.2    # 事後查核那一版
+```
+
+（它用 `<ref>^{commit}` 解析，因為 annotated tag 的 `rev-parse` 給的是 tag 物件本身的
+hash——拿那個去比對證據會用一個沒有人猜得到的理由紅掉。）
 
 ### 1.1 `GATE-CE-NO-PRODUCT-DRIFT` 的例外怎麼寫
 

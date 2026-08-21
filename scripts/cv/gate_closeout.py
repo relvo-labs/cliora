@@ -44,9 +44,15 @@ PLAYWRIGHT_REPORT = REPO / "artifacts/cv/local/playwright.json"
 failures: list[str] = []
 
 
-def head() -> str:
+def rev(ref: str = "HEAD") -> str:
+    """Resolve a ref to a full commit id.
+
+    `^{commit}` so an **annotated tag** resolves to the commit it points at rather than to
+    the tag object — `git rev-parse v2.0.0-alpha.2` returns the tag's own hash, and
+    comparing evidence against that would fail for a reason nobody would guess.
+    """
     return subprocess.run(
-        ["git", "rev-parse", "HEAD"],
+        ["git", "rev-parse", f"{ref}^{{commit}}"],
         cwd=REPO,
         capture_output=True,
         text=True,
@@ -192,10 +198,17 @@ def main() -> int:
     # caller knows better. Passed rather than read from a file so a rebase cannot make
     # this gate quietly compare against the wrong thing.
     parser.add_argument("--baseline", default="ac3dfef")
+    # Which commit the evidence is supposed to belong to. HEAD while a release is being
+    # prepared — and **the tag afterwards**, because a release's evidence belongs to the
+    # commit that was tagged, not to whatever has been committed since. Without this the
+    # gate goes permanently red one bookkeeping commit after every tag, and a gate that is
+    # always red is a gate nobody reads.
+    parser.add_argument("--at", default="HEAD", metavar="REF")
     args = parser.parse_args()
 
-    commit = head()
-    print(f"V2-C1 closeout gates (baseline: {args.baseline}, HEAD: {commit[:7]})")
+    commit = rev(args.at)
+    label = "HEAD" if args.at == "HEAD" else args.at
+    print(f"V2-C1 closeout gates (baseline: {args.baseline}, {label}: {commit[:7]})")
     check_no_product_drift(args.baseline)
     check_journey_coverage(commit)
     check_evidence_fresh(commit)
