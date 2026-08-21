@@ -14,6 +14,17 @@
 set -uo pipefail
 status=0
 
+# **The preflight first**, and it earns its place twice over: everything below assumes an
+# agent can call `cliora` from inside a run, and when that assumption breaks the symptom
+# is indirect (the card is claimed, the run succeeds, nothing was ever asked). Ten seconds
+# here saves fifteen minutes of journeys failing for a reason none of them is about.
+#
+# It also has to run *somewhere*: `GATE-CE-EVIDENCE-FRESH` checks every artefact against
+# HEAD, and a preflight nothing re-runs is a file that goes stale on its own and fails the
+# gate at the worst possible moment — while tagging.
+echo "==> preflight: cliora works inside a run"
+uv run --project backend python scripts/cv/journeys/j0_agent_seam.py || status=1
+
 echo "==> answer to turn (exit condition 1)"
 uv run --project backend python scripts/cv/measure-answer-to-turn.py --samples 20 || status=1
 

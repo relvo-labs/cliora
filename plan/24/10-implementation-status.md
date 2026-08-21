@@ -225,6 +225,16 @@ daemon 全綠（＋2 條 `CE-17` 的 frame 驗證）、前端單元全綠。
 
 **一次完整的 `E2E=1 scripts/cv/evidence.sh`：7 passed, 0 failed, 0 skipped。**
 
+### 3.2 `j0` 的證據會自己過期
+
+`GATE-CE-EVIDENCE-FRESH` 檢查 `artifacts/cv/local/` **每一份** JSON 的 commit，
+而 `CE-01` 的 preflight 一開始不在 `_stack-evidence-inner.sh` 的序列裡——
+它是手動跑的。於是它的檔案留在上一個 commit 上，**在打 tag 的那一刻**讓 gate 紅。
+
+那是 gate 對的、序列漏的。preflight 已移到堆疊序列的第 0 步，而它本來就該在那裡：
+底下每一步都假設 agent 在 run 裡叫得動 `cliora`，而那個假設壞掉時症狀是間接的
+（卡片被認領、run 成功、什麼都沒問）。十秒鐘換掉十五分鐘「為了一個與自己無關的理由」而紅的旅程。
+
 ### 3.1 一個排序缺陷，記在這裡因為它會再發生
 
 第一版的 `evidence.sh` 把三個封版 gate 放在第 2 節，也就是**旅程之前**。
