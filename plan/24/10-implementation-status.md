@@ -319,22 +319,28 @@ claimed → 子行程啟動       中位數 0.013s   ← runtime
 | ☑ | 25 | 產品程式零 diff 或每處例外有具名 waiver | `GATE-CE-NO-PRODUCT-DRIFT`；兩條 waiver（`CE-16`、`CE-17`），gate 會把它們印出來 |
 | ☑ | 26 | `research/03/00` §7 的九項產物齊備 | release note 的九節（[`07`](./07-release-artifacts.md) §2 的表） |
 | ☑ | 28 | 四份 ADR `accepted` ＋ SR-1 簽核 | **已記錄（2026-08-21）**：ADR 0035 的狀態區塊寫明是誰、依據什麼、**並追認 proposed 期間已完成的實作**；SR-1 §6 的那一列連同它的來源一起寫進去 |
-| ◑ | 27 | 兩個 annotated tag | **被環境擋住**，見 §7 第 1 項——不是決定，是權限 |
+| ☑ | 27 | 兩個 annotated tag | **已建立（本機）**：`v2.0.0-alpha.1` → `f91d9c4`、`v2.0.0-alpha.2` → `139f143`。兩份 tag message 都帶著自己的元件版本、量測數字與「這不是可合併的宣稱」 |
 
-**27／28。** 唯一沒有落地的是 `git tag` 本身。
+**28／28。**
+
+順序是被 gate 逼出來的，而那正是它該做的事：commit 之後 `GATE-CE-EVIDENCE-FRESH`
+立刻把全部證據判成上一個 commit 的，所以整包 `E2E=1 scripts/cv/evidence.sh` 在
+要被 tag 的那個 commit 上**重跑了一次**（7 passed／0 failed／0 skipped），才打 tag。
+一份「在別的 commit 上量出來的」證據配一個 tag，正是這個 gate 存在的理由。
 
 ## 7. 未完成
 
 | # | 項目 | 為什麼 |
 |---:|---|---|
-| 1 | **兩個 annotated tag** | `alpha.2` 的 tag 需要一個 commit，而這個工作階段的 `git add`／`git commit`／`git tag` **被環境的權限分類器擋住**。這不是「留給人決定」——決定已經在上面那一列做了——而是這個階段沒有那個能力。指令、順序與 target 都寫好了：[`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §2／§3 |
-| 2 | **push tag ＋ GitHub pre-release** | **刻意不做。** 兩者都會發佈，而發佈與打 tag 是兩個不同的決定；一個已經 push 出去的 tag 沒辦法安靜地更正 |
-| 3 | `alpha.1` freeze checklist 的六項人工驗證 | fresh install／upgrade／downgrade 在 compose 與 Railway 兩條路徑，需要環境與帳號 |
-| 4 | 對 `dev` 的 branch protection | 平台設定，不是程式 |
-| 5 | `v2` → `dev` | **一律由人決定**，任何自動化都不得執行（`research/03/00` §8） |
+| 1 | **push tag ＋ GitHub pre-release** | **刻意不做。** 兩者都會發佈，而發佈與打 tag 是兩個不同的決定；tag 還在本機時可以更正，push 出去之後不行 |
+| 2 | `alpha.1` freeze checklist 的六項人工驗證 | fresh install／upgrade／downgrade 在 compose 與 Railway 兩條路徑，需要環境與帳號 |
+| 3 | 對 `dev` 的 branch protection | 平台設定，不是程式 |
+| 4 | `v2` → `dev` | **一律由人決定**，任何自動化都不得執行（`research/03/00` §8） |
 
-**沒有一項是「做了但沒證明」。** 第 1 項是能力，第 2 與第 5 項是刻意的界線，
-第 3、4 項需要這個工作階段沒有的環境。
+**沒有一項是「做了但沒證明」。** 第 1 與第 4 項是刻意的界線，
+第 2、3 項需要這個工作階段沒有的環境。
+
+本期知道自己沒量的東西在 [`09`](./09-open-measurements.md)。
 
 本期知道自己沒量的東西在 [`09`](./09-open-measurements.md)：旅程只在 chromium 跑、
 沒有用真的 Claude／Codex 跑過、兩個 histogram 仍未埋、`CONVERSATION_CURSOR_AHEAD` 與

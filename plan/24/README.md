@@ -3,7 +3,8 @@
 > **狀態：`CE-01`…`CE-19` 全部實作完成（2026-08-21）。** 2026-08-19 開立。
 > `E2E=1 scripts/cv/evidence.sh` → **7 passed, 0 failed, 0 skipped**；
 > 七條旅程全過、0.12.0 已實測、五項量測有數字、四份 ADR 已 accepted、SR-1 已簽核。
-> **封版條件 27／28**；唯一沒落地的是 `git tag` 本身（[`10`](./10-implementation-status.md) §7）。
+> **封版條件 28／28**；兩個 annotated tag 已建立（`v2.0.0-alpha.1` → `f91d9c4`、`v2.0.0-alpha.2` → `139f143`）。
+> **刻意留在本機**：push 與 GitHub pre-release 都會發佈，而那是與打 tag 分開的決定。
 > 上游規劃：[`research/03/02-phase-c1-ticket-conversation.md`](../../research/03/02-phase-c1-ticket-conversation.md)。
 > 實作紀錄：[`plan/23/`](../23/README.md)（**本目錄不取代它，只接在它後面**）。
 > **合併規則不變**：`v2` → `dev` 一律由人決定，出口條件全綠只是取得提案資格。
