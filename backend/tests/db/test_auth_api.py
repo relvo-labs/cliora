@@ -104,6 +104,25 @@ async def test_refresh_issues_new_access_token(api: tuple) -> None:
     assert refreshed.json()["access_token"]
 
 
+async def test_refresh_token_is_single_use(api: tuple) -> None:
+    client, maker = api
+    await _make_user(maker, username="admin", password="pw")
+    tokens = (
+        await client.post("/api/auth/login", json={"username": "admin", "password": "pw"})
+    ).json()["tokens"]
+
+    first = await client.post(
+        "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert first.status_code == 200
+
+    replay = await client.post(
+        "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
+    )
+    assert replay.status_code == 401
+    assert replay.json()["error"]["code"] == "TOKEN_INVALID"
+
+
 async def test_logout_invalidates_refresh_token(api: tuple) -> None:
     client, maker = api
     await _make_user(maker, username="admin", password="pw")
