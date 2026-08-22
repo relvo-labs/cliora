@@ -186,10 +186,38 @@ def check_evidence_fresh(commit: str) -> None:
                 f"{path.relative_to(REPO)}: measured at {str(payload['commit'])[:7]}"
             )
     if stale:
-        failures.append(
+        message = (
             "GATE-CE-EVIDENCE-FRESH: evidence from another commit:\n  "
             + "\n  ".join(stale)
         )
+        # **Say which of the two failures this is.** Both print the same list of files, and
+        # they need opposite responses: "nobody has run the journeys here yet" means run
+        # them, while "this evidence belongs to a release that was tagged, and HEAD has
+        # moved on since" means verify that release instead. Guessing wrong costs twenty
+        # minutes; naming the tag costs one `git tag --points-at`.
+        owner = _released_at(stale)
+        if owner:
+            message += (
+                f"\n  → that commit is tagged {owner}. If you meant to check the release "
+                f"rather than this working commit:\n"
+                f"      scripts/cv/gate_closeout.py --at {owner}\n"
+                f"      CE_AT={owner} scripts/cv/evidence.sh"
+            )
+        failures.append(message)
+
+
+def _released_at(stale: list[str]) -> str | None:
+    """The tag the stale evidence actually belongs to, if there is exactly one."""
+    commits = {line.rsplit(" ", 1)[-1] for line in stale if "measured at " in line}
+    if len(commits) != 1:
+        return None
+    tags = subprocess.run(
+        ["git", "tag", "--points-at", commits.pop()],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    return tags[0] if len(tags) == 1 else None
 
 
 def main() -> int:

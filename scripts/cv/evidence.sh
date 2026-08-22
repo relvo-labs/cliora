@@ -93,8 +93,12 @@ fi
 # before and fails on a clean checkout, the worse way round of the two.
 echo
 echo "=== 4. closeout gates ==="
+# `CE_AT` names the commit the evidence is supposed to belong to. HEAD while a release is
+# being prepared; **the tag afterwards**, because a released version's evidence belongs to
+# the commit that was tagged and not to whatever has been committed since.
 check "closeout gates (3)" \
-  uv run --project backend python scripts/cv/gate_closeout.py --baseline "${CE_BASELINE:-ac3dfef}"
+  uv run --project backend python scripts/cv/gate_closeout.py \
+  --baseline "${CE_BASELINE:-ac3dfef}" --at "${CE_AT:-HEAD}"
 
 echo
 printf 'evidence: %d passed, %d failed, %d skipped\n' "$PASS" "$FAIL" "$SKIP"
