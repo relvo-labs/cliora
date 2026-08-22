@@ -8,8 +8,10 @@ import { createApp } from "vue";
 import { createPinia } from "pinia";
 import App from "./App.vue";
 import { createAppRouter } from "./router";
+import { installAuthStorageSync } from "./stores/auth";
 
 const app = createApp(App);
 app.use(createPinia());
+installAuthStorageSync();
 app.use(createAppRouter());
 app.mount("#app");

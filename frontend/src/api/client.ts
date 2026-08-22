@@ -609,10 +609,25 @@ export class ApiClient {
           false,
         );
         if (!res.ok) {
+          if (this.tokens.refreshToken() !== refreshToken) {
+            return true;
+          }
           this.tokens.clear();
           return false;
         }
-        this.tokens.setTokens((await res.json()) as TokenPair);
+        const parsed = (await res.json()) as TokenPair;
+        const currentRefreshToken = this.tokens.refreshToken();
+        if (currentRefreshToken === refreshToken) {
+          this.tokens.setTokens(parsed);
+          return true;
+        }
+        if (currentRefreshToken === null) {
+          // Explicit logout landed while this refresh was in flight: do not
+          // resurrect a cleared session with the late success.
+          return false;
+        }
+        // Another context already rotated in a newer pair; let the original
+        // request retry with it instead of overwriting it with this stale one.
         return true;
       })().finally(() => {
         this.refreshInFlight = null;

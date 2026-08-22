@@ -20,6 +20,35 @@ function res(status: number, body?: unknown): FakeResponse {
   };
 }
 
+// A refresh response whose `ok`/status are already settled (so refresh() gets
+// past its `!res.ok` check and reads the current refresh token) but whose
+// `json()` body parse is controlled by the test, to land state changes inside
+// the TOCTOU window between that read and `await res.json()`.
+function deferredJsonResponse(): {
+  response: FakeResponse;
+  jsonCalled: Promise<void>;
+  resolveJson: (body: unknown) => void;
+} {
+  let markJsonCalled!: () => void;
+  const jsonCalled = new Promise<void>((resolve) => {
+    markJsonCalled = resolve;
+  });
+  let resolveJson!: (body: unknown) => void;
+  const deferredBody = new Promise<unknown>((resolve) => {
+    resolveJson = resolve;
+  });
+  const response: FakeResponse = {
+    status: 200,
+    ok: true,
+    text: () => Promise.resolve(""),
+    json: () => {
+      markJsonCalled();
+      return deferredBody;
+    },
+  };
+  return { response, jsonCalled, resolveJson };
+}
+
 function makeStore(
   access: string | null,
   refresh: string | null,
@@ -158,6 +187,214 @@ describe("ApiClient", () => {
 
     await expect(client.listNodes()).rejects.toBeInstanceOf(ApiError);
     expect(store.current()).toEqual({ access: null, refresh: null });
+  });
+
+  it("adopts a newer shared pair and retries the original request when a stale refresh loses the race", async () => {
+    // Two browser contexts share one token backing (e.g. localStorage). This
+    // store reads/writes that backing directly rather than through a private
+    // closure, so a second context's rotation is visible to the first
+    // context's in-flight refresh.
+    const backing: { access: string | null; refresh: string | null } = {
+      access: "access-1",
+      refresh: "refresh-1",
+    };
+    const sharedStore: TokenStore = {
+      accessToken: () => backing.access,
+      refreshToken: () => backing.refresh,
+      setTokens: (pair: TokenPair) => {
+        backing.access = pair.access_token;
+        backing.refresh = pair.refresh_token;
+      },
+      clear: () => {
+        backing.access = null;
+        backing.refresh = null;
+      },
+    };
+
+    let resolveRefresh!: (value: FakeResponse) => void;
+    const deferredRefresh = new Promise<FakeResponse>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let refreshRequested!: () => void;
+    const refreshWasRequested = new Promise<void>((resolve) => {
+      refreshRequested = resolve;
+    });
+
+    const fetchMock = vi.fn(
+      (url: string, init?: { headers?: Record<string, string> }) => {
+        if (url.endsWith("/api/auth/refresh")) {
+          refreshRequested();
+          return deferredRefresh;
+        }
+        const authHeader = init?.headers?.["Authorization"];
+        if (authHeader === "Bearer access-2") {
+          return Promise.resolve(res(200, [{ id: "n1" }]));
+        }
+        return Promise.resolve(
+          res(401, { error: { code: "UNAUTHENTICATED", message: "x" } }),
+        );
+      },
+    );
+    const client = new ApiClient(
+      sharedStore,
+      fetchMock as unknown as typeof fetch,
+    );
+
+    const pending = client.listNodes();
+    await refreshWasRequested; // refresh-1 was sent; its response is still pending
+
+    // Another browser context wins a concurrent refresh and rotates the shared pair.
+    backing.access = "access-2";
+    backing.refresh = "refresh-2";
+
+    resolveRefresh(
+      res(401, { error: { code: "TOKEN_INVALID", message: "expired" } }),
+    );
+
+    await expect(pending).resolves.toEqual([{ id: "n1" }]);
+    expect(backing).toEqual({ access: "access-2", refresh: "refresh-2" });
+  });
+
+  it("does not resurrect a token pair cleared by an explicit logout during an in-flight refresh", async () => {
+    // Another context calls store.clear() (e.g. the user hit "log out") while
+    // this context's refresh-1 is still in flight. The refresh landing after
+    // that clear must not write access-2/refresh-2 back in, and must not let
+    // the original request complete as if still authenticated.
+    let resolveRefresh!: (value: FakeResponse) => void;
+    const deferredRefresh = new Promise<FakeResponse>((resolve) => {
+      resolveRefresh = resolve;
+    });
+    let refreshRequested!: () => void;
+    const refreshWasRequested = new Promise<void>((resolve) => {
+      refreshRequested = resolve;
+    });
+
+    const fetchMock = vi.fn(
+      (url: string, init?: { headers?: Record<string, string> }) => {
+        if (url.endsWith("/api/auth/refresh")) {
+          refreshRequested();
+          return deferredRefresh;
+        }
+        const authHeader = init?.headers?.["Authorization"];
+        if (authHeader === "Bearer access-2") {
+          return Promise.resolve(res(200, [{ id: "n1" }]));
+        }
+        return Promise.resolve(
+          res(401, { error: { code: "UNAUTHENTICATED", message: "x" } }),
+        );
+      },
+    );
+    const client = new ApiClient(store, fetchMock as unknown as typeof fetch);
+
+    const pending = client.listNodes();
+    await refreshWasRequested; // refresh-1 was sent; its response is still pending
+
+    store.clear(); // explicit logout in another context
+
+    resolveRefresh(
+      res(200, {
+        access_token: "access-2",
+        refresh_token: "refresh-2",
+        token_type: "bearer",
+      }),
+    );
+
+    await expect(pending).rejects.toBeInstanceOf(ApiError);
+    expect(store.current()).toEqual({ access: null, refresh: null });
+  });
+
+  it("does not resurrect a token pair cleared by an explicit logout while a same-token refresh body is still parsing", async () => {
+    // The vulnerable window is inside refresh() itself: it reads the current
+    // refresh token, finds it still matches refresh-1, and only *then* awaits
+    // `res.json()`. If an explicit logout (store.clear()) lands after that read
+    // but before the body finishes parsing, the late `setTokens` must not
+    // resurrect the cleared session.
+    const { response, jsonCalled, resolveJson } = deferredJsonResponse();
+    let refreshRequested!: () => void;
+    const refreshWasRequested = new Promise<void>((resolve) => {
+      refreshRequested = resolve;
+    });
+    const fetchMock = vi.fn(
+      (url: string, init?: { headers?: Record<string, string> }) => {
+        if (url.endsWith("/api/auth/refresh")) {
+          refreshRequested();
+          return Promise.resolve(response);
+        }
+        const authHeader = init?.headers?.["Authorization"];
+        if (authHeader === "Bearer access-2") {
+          return Promise.resolve(res(200, [{ id: "n1" }]));
+        }
+        return Promise.resolve(
+          res(401, { error: { code: "UNAUTHENTICATED", message: "x" } }),
+        );
+      },
+    );
+    const client = new ApiClient(store, fetchMock as unknown as typeof fetch);
+
+    const pending = client.listNodes();
+    await refreshWasRequested; // refresh-1 was sent and its 200 has landed
+    await jsonCalled; // refresh() saw refresh-1 still current and started parsing the body
+
+    store.clear(); // explicit logout in another context, mid-parse
+
+    resolveJson({
+      access_token: "access-2",
+      refresh_token: "refresh-2",
+      token_type: "bearer",
+    });
+
+    await expect(pending).rejects.toBeInstanceOf(ApiError);
+    expect(store.current()).toEqual({ access: null, refresh: null });
+  });
+
+  it("keeps a newer rotated pair when a same-token refresh body resolves later with a stale pair", async () => {
+    // Same vulnerable window as above: another context wins its own refresh and
+    // rotates in access-3/refresh-3 while this context's refresh-1 response body
+    // is still parsing. The stale access-2 pair from that late parse must not
+    // overwrite the newer one, and the original request must retry with it.
+    const { response, jsonCalled, resolveJson } = deferredJsonResponse();
+    let refreshRequested!: () => void;
+    const refreshWasRequested = new Promise<void>((resolve) => {
+      refreshRequested = resolve;
+    });
+    const fetchMock = vi.fn(
+      (url: string, init?: { headers?: Record<string, string> }) => {
+        if (url.endsWith("/api/auth/refresh")) {
+          refreshRequested();
+          return Promise.resolve(response);
+        }
+        const authHeader = init?.headers?.["Authorization"];
+        if (authHeader === "Bearer access-3") {
+          return Promise.resolve(res(200, [{ id: "n1" }]));
+        }
+        return Promise.resolve(
+          res(401, { error: { code: "UNAUTHENTICATED", message: "x" } }),
+        );
+      },
+    );
+    const client = new ApiClient(store, fetchMock as unknown as typeof fetch);
+
+    const pending = client.listNodes();
+    await refreshWasRequested; // refresh-1 was sent and its 200 has landed
+    await jsonCalled; // refresh() saw refresh-1 still current and started parsing the body
+
+    store.setTokens({
+      access_token: "access-3",
+      refresh_token: "refresh-3",
+      token_type: "bearer",
+    }); // another context's own refresh won the race and rotated the pair
+
+    resolveJson({
+      access_token: "access-2",
+      refresh_token: "refresh-2",
+      token_type: "bearer",
+    });
+
+    await expect(pending).resolves.toEqual([{ id: "n1" }]);
+    expect(store.current()).toEqual({
+      access: "access-3",
+      refresh: "refresh-3",
+    });
   });
 
   it("clears tokens on logout even when the request fails", async () => {
