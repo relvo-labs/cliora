@@ -90,9 +90,13 @@ class AuthService:
             raise _unauthorized("TOKEN_EXPIRED", "Refresh token has expired") from exc
         except TokenError as exc:
             raise _unauthorized("TOKEN_INVALID", "Refresh token is invalid or expired") from exc
-        user = await self._users.get_by_id(claims.user_id)
+        user = await self._users.get_by_id_for_update(claims.user_id)
         if user is None or not user.is_active or user.token_version != claims.token_version:
             raise _unauthorized("TOKEN_INVALID", "Refresh token is invalid or expired")
+        # Rotate the per-user version before issuing the replacement pair. This
+        # makes the presented refresh token single-use instead of leaving a
+        # captured bearer reusable for its full 14-day lifetime.
+        await self._users.bump_token_version(user)
         return self._pair(user)
 
     async def logout(self, user: User) -> None:

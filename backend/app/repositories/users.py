@@ -19,5 +19,11 @@ class UserRepository:
     async def get_by_id(self, user_id: uuid.UUID) -> User | None:
         return await self._session.get(User, user_id)
 
+    async def get_by_id_for_update(self, user_id: uuid.UUID) -> User | None:
+        result = await self._session.execute(
+            select(User).where(User.id == user_id).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def bump_token_version(self, user: User) -> None:
         user.token_version += 1
