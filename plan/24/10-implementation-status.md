@@ -61,8 +61,8 @@
 | `CE-10` 資料集 ＋ 四項量測 | ☑ | `seed-dataset.py`（seed 20260819）＋ `measure-conversation.py`；四項全部遠低於門檻（§5） |
 | `CE-11` 告警 ＋ runbook | ☑ | 三條規則 ＋ `docs/runbooks/conversation-duplicate-turn.md`；52 條 alert 測試綠 |
 | `CE-12` release 九項產物 | ☑ | release note 補上 manifest／flag matrix／retention／rollback／evidence／sign-off；`Verified` 改成引用實際的 JSON |
-| `CE-13` `alpha.1` freeze ＋ tag | ◑ | 清單已寫成可執行的 [`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §2；**tag 需要人** |
-| `CE-14` ADR ＋ SR-1 ＋ `alpha.2` tag | ◑ | SR-1 已更新為「兩項發現由執行關閉」；**簽核與 tag 需要人** |
+| `CE-13` `alpha.1` freeze ＋ tag | ☑ | **`v2.0.0-alpha.1` → `f91d9c4`**（annotated，本機）。清單在 [`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §2；其中六項人工部署驗證需要環境，列在 §7 |
+| `CE-14` ADR ＋ SR-1 ＋ `alpha.2` tag | ☑ | 四份 ADR → `accepted`（0035 含流程偏差的追認）、SR-1 §6 已簽並寫明來源、**`v2.0.0-alpha.2` → `139f143`**（annotated，本機） |
 | `CE-15` 回寫 | ☑ | `plan/23/03` §2、`plan/23/08` §4、`plan/23/10` §7／§8、`research/03/CHECKLIST` §0／§1／§2、`research/03/00` §6、`research/03/README` |
 
 ## 2. 與計畫的差異
