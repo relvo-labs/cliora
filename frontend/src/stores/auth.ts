@@ -61,8 +61,8 @@ let client: ApiClient | null = null;
 export function api(): ApiClient {
   if (!client) {
     const tokenStore: TokenStore = {
-      accessToken: () => useAuthStore().accessToken,
-      refreshToken: () => useAuthStore().refreshToken,
+      accessToken: () => localStorage.getItem(ACCESS_KEY),
+      refreshToken: () => localStorage.getItem(REFRESH_KEY),
       setTokens: (pair) => useAuthStore().setTokens(pair),
       clear: () => useAuthStore().clearTokens(),
     };
@@ -74,4 +74,62 @@ export function api(): ApiClient {
 // Test seam: reset the memoized client between tests.
 export function _resetApiClient(): void {
   client = null;
+}
+
+// Cross-tab sync: another tab's refresh/logout writes straight to
+// localStorage, bypassing this tab's Pinia state. Mirror those writes into
+// the active store's reactive tokens so in-memory reads (and isAuthenticated)
+// stay consistent with what ApiClient's TokenStore already reads live.
+export function installAuthStorageSync(): () => void {
+  let generation = 0;
+  const handler = (event: StorageEvent): void => {
+    if (
+      event.key !== ACCESS_KEY &&
+      event.key !== REFRESH_KEY &&
+      event.key !== null
+    ) {
+      return;
+    }
+    generation += 1;
+    const eventGeneration = generation;
+    const auth = useAuthStore();
+    const accessToken = localStorage.getItem(ACCESS_KEY);
+    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    if (accessToken === null || refreshToken === null) {
+      auth.accessToken = null;
+      auth.refreshToken = null;
+      auth.user = null;
+      return;
+    }
+    auth.accessToken = accessToken;
+    auth.refreshToken = refreshToken;
+    auth.user = null;
+
+    const isStillCurrent = (): boolean =>
+      generation === eventGeneration &&
+      localStorage.getItem(ACCESS_KEY) === accessToken &&
+      localStorage.getItem(REFRESH_KEY) === refreshToken;
+
+    api()
+      .me()
+      .then((user) => {
+        if (isStillCurrent()) {
+          auth.user = user;
+        }
+      })
+      .catch(() => {
+        if (isStillCurrent()) {
+          auth.accessToken = null;
+          auth.refreshToken = null;
+          auth.user = null;
+          localStorage.removeItem(ACCESS_KEY);
+          localStorage.removeItem(REFRESH_KEY);
+        }
+      });
+  };
+  window.addEventListener("storage", handler);
+  return () => {
+    generation += 1;
+    window.removeEventListener("storage", handler);
+  };
 }
