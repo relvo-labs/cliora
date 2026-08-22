@@ -8689,6 +8689,457 @@
           "risk": "medium"
         }
       ]
+    },
+    {
+      "id": "FR-KNOW-001",
+      "kind": "functional",
+      "title": "版本化的知識來源",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-001"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-001.AC-01",
+          "source_anchor": "fr-know-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-001.AC-02",
+          "source_anchor": "fr-know-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-001.AC-03",
+          "source_anchor": "fr-know-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-001.AC-04",
+          "source_anchor": "fr-know-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-002",
+      "kind": "functional",
+      "title": "收集的可靠性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-002"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-002.AC-01",
+          "source_anchor": "fr-know-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-002.AC-02",
+          "source_anchor": "fr-know-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-002.AC-03",
+          "source_anchor": "fr-know-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-002.AC-04",
+          "source_anchor": "fr-know-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-003",
+      "kind": "functional",
+      "title": "可信層級",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-003.AC-01",
+          "source_anchor": "fr-know-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-003.AC-02",
+          "source_anchor": "fr-know-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-003.AC-03",
+          "source_anchor": "fr-know-003-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-003.AC-04",
+          "source_anchor": "fr-know-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-004",
+      "kind": "functional",
+      "title": "檢索",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-004.AC-01",
+          "source_anchor": "fr-know-004-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-004.AC-02",
+          "source_anchor": "fr-know-004-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-004.AC-03",
+          "source_anchor": "fr-know-004-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-004.AC-04",
+          "source_anchor": "fr-know-004-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-005",
+      "kind": "functional",
+      "title": "情境組裝與預算",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-005"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-005.AC-01",
+          "source_anchor": "fr-know-005-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-005.AC-02",
+          "source_anchor": "fr-know-005-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-005.AC-03",
+          "source_anchor": "fr-know-005-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-005.AC-04",
+          "source_anchor": "fr-know-005-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-006",
+      "kind": "functional",
+      "title": "指令與引用的分層",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-006"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-KNOW-006.AC-01",
+          "source_anchor": "fr-know-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-006.AC-02",
+          "source_anchor": "fr-know-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-006.AC-03",
+          "source_anchor": "fr-know-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-006.AC-04",
+          "source_anchor": "fr-know-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-007",
+      "kind": "functional",
+      "title": "引用",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-007"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-007.AC-01",
+          "source_anchor": "fr-know-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-007.AC-02",
+          "source_anchor": "fr-know-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-007.AC-03",
+          "source_anchor": "fr-know-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-007.AC-04",
+          "source_anchor": "fr-know-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-008",
+      "kind": "functional",
+      "title": "專案隔離",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-008"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-KNOW-008.AC-01",
+          "source_anchor": "fr-know-008-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-008.AC-02",
+          "source_anchor": "fr-know-008-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-008.AC-03",
+          "source_anchor": "fr-know-008-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-008.AC-04",
+          "source_anchor": "fr-know-008-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-009",
+      "kind": "functional",
+      "title": "刪除與撤銷",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-009"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "security",
+      "criteria": [
+        {
+          "id": "FR-KNOW-009.AC-01",
+          "source_anchor": "fr-know-009-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-009.AC-02",
+          "source_anchor": "fr-know-009-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-009.AC-03",
+          "source_anchor": "fr-know-009-ac-03",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-KNOW-009.AC-04",
+          "source_anchor": "fr-know-009-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-010",
+      "kind": "functional",
+      "title": "逐專案開關與來源健康狀態",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-010"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-010.AC-01",
+          "source_anchor": "fr-know-010-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-010.AC-02",
+          "source_anchor": "fr-know-010-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-010.AC-03",
+          "source_anchor": "fr-know-010-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-010.AC-04",
+          "source_anchor": "fr-know-010-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-KNOW-011",
+      "kind": "functional",
+      "title": "程式庫內容的收集",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-know-011"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-KNOW-011.AC-01",
+          "source_anchor": "fr-know-011-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-011.AC-02",
+          "source_anchor": "fr-know-011-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-011.AC-03",
+          "source_anchor": "fr-know-011-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-KNOW-011.AC-04",
+          "source_anchor": "fr-know-011-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
     }
   ]
 }

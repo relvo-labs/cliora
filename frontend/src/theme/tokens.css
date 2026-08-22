@@ -56,6 +56,16 @@
   --source-platform: #4a7c8c;
   --source-agent: #8892a0;
 
+  /* Project memory (V2-K1). **Three tiers, not ten.** There are ten authority levels
+   * and a reader can distinguish about three colours; what they actually need to tell
+   * apart is "this is a rule / this is an observation / this is something somebody
+   * said", and the precise level is carried by the text beside the badge. Ten shades
+   * would be ten shades nobody can name. */
+  --authority-high: #35575d;
+  --authority-mid: #4a7c8c;
+  --authority-low: #e3e8ed;
+  --source-stale: #c9d0d8;
+
   /* Spacing and type scales were absent from the original token set, which led V2
    * views to guess names. These values match the reviewed prototype and style.md. */
   --space-1: 4px;

@@ -200,6 +200,16 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `MESSAGE_TOO_LARGE` | 400 | That message is longer than a card message may be | `details` carries the limit and the actual length. This is a distinct code rather than a generic validation failure because the right response to it is specific: the text is safe, it needs shortening. | Shorten the message, or attach the long form as an artifact. | no | no | central |
 | `AGENT_CANNOT_DECIDE` | 403 | Deciding is a person's action | An agent may propose; accepting or rejecting a proposal requires `task.approve`, which a run credential never holds. The refusal is explicit so that it is legible and audited, rather than a generic denial. | Post the content as a proposal and let a person decide. | no | no | central |
 
+## Project memory
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `KNOWLEDGE_DISABLED` | 404 | This project has no memory | Project memory is enabled per project, not per deployment, because a 500-file project and a 50,000-file monorepo need different answers. The status is 404 rather than 403 on purpose: it does not disclose whether the project exists and has the feature switched off. | Enable project memory in the project's settings (needs `project.manage`). | no | no | central |
+| `SOURCE_NOT_FOUND` | 404 | That source is no longer available | One of three things, and the message does not distinguish them because two of the three must not be distinguishable: the source was superseded or its original was deleted, the citation label belongs to an older context pack, or it belongs to another project. Answering 403 for the last case would confirm that it exists. | Run `cliora knowledge context` again to get current citations. | no | no | central |
+| `SOURCE_EXCLUDED` | 409 | Somebody excluded this source from this card | An exclusion is per card and reversible, unlike a deletion. It exists so that one card can ignore a document without removing it from the other forty cards that cite it. | Ask whoever excluded it, or cite a different source. | no | no | central |
+| `CONTEXT_BUDGET_EXCEEDED` | 409 | This card's context cannot be assembled within its budget | The pack is cut in a fixed order — retrieved sources first, then older conversation — and the project's rules and the open questions are never cut. Reaching this means those alone do not fit, which is a data problem rather than a load problem: silently truncating them would hand an agent a half-read question. | Shorten the project's policy text, or split the card. | no | no | central |
+| `KNOWLEDGE_SYNC_TOO_LARGE` | 400 | This repository sync is over a limit | `details.limit` names which one — files, bytes or rate — and carries the count and the ceiling. A single oversized file is skipped instead and reported in `skipped`, because losing a project's whole memory over one large CHANGELOG is the wrong trade. | Narrow the sync with `.clioraignore`, or raise the project's repo_sync limits in its knowledge settings. | yes | no | central |
+
 ## Document patch proposals
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

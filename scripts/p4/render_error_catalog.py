@@ -229,6 +229,16 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Project memory",
+        (
+            "KNOWLEDGE_DISABLED",
+            "SOURCE_NOT_FOUND",
+            "SOURCE_EXCLUDED",
+            "CONTEXT_BUDGET_EXCEEDED",
+            "KNOWLEDGE_SYNC_TOO_LARGE",
+        ),
+    ),
+    (
         "Document patch proposals",
         (
             "PATCH_PROPOSAL_NOT_FOUND",

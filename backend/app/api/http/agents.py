@@ -43,6 +43,7 @@ from app.api.http.schemas import (
     AgentRunnerDTO,
     AnswerQuestionRequest,
     AnswerResultDTO,
+    ContextPackDTO,
     ConversationAckRequest,
     ConversationCursorDTO,
     ConversationInputDTO,
@@ -58,10 +59,17 @@ from app.api.http.schemas import (
     EvidenceItemDTO,
     ExecutionPlanDTO,
     FeatureSpecDTO,
+    KnowledgeHitDTO,
+    KnowledgeSearchDTO,
+    KnowledgeSourceDTO,
     MessagePageDTO,
     PostMessageRequest,
     ProjectRepositoryDTO,
     RecordPlanRequest,
+    RepoContentRequest,
+    RepoContentResponse,
+    RepoManifestRequest,
+    RepoManifestResponse,
     RequirementDetailDTO,
     RunLogLineDTO,
     RunLogPageDTO,
@@ -81,11 +89,15 @@ from app.db.models import (
     DocumentPatchProposal,
     EvidenceItem,
     ExecutionPlan,
+    KnowledgeChunk,
+    KnowledgeSource,
+    Project,
     ProjectRepository,
     Requirement,
     RunLog,
     Task,
     TaskArtifact,
+    TaskKnowledgePin,
     TaskMessage,
     TaskQuestion,
     TaskRun,
@@ -101,6 +113,9 @@ from app.services.conversation import (
     read_kind,
 )
 from app.services.evidence import EvidenceService, PlanService, VerificationService
+from app.services.knowledge.context import ContextBuilder, omitted_summary
+from app.services.knowledge.repo import ManifestEntry, RepoSyncService
+from app.services.knowledge.search import KnowledgeSearch
 from app.services.patches import PatchProposalService
 from app.services.projects import ProjectService
 from app.services.rbac import (
@@ -1020,6 +1035,219 @@ async def agent_list_messages(
         next_after_seq=page.next_after_seq,
         has_more=page.has_more,
     )
+
+
+@run_router.get("/knowledge/context-pack", response_model=ContextPackDTO)
+async def agent_context_pack(
+    layers: str | None = Query(default=None),
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> ContextPackDTO:
+    """`cliora knowledge context` — the whole pack, over HTTPS rather than on the wire.
+
+    **Why it is not in the offer** (ADR 0039): `run.offer.context` is capped at 32 KiB by
+    the daemon's decoder, and the size of a retrieved layer is decided by a query. The
+    offer carries the project's rules and one line pointing here; everything else is
+    fetched. Contract 1.13.0 is unchanged, and this is the same shape `alpha.2` used for
+    conversation.
+
+    Every call writes a `context_packs` row, and two calls write two rows. That is
+    deliberate: recording at offer time would claim a read that may never happen, and
+    collapsing two fetches would hide the case where they returned different content.
+
+    `layers=4` is worth knowing about: a continuation already holds layers 1–3 from its
+    first turn and only needs the new retrieval, which saves its own context.
+    """
+    task = await _run_task(session, principal)
+    run = await session.get(TaskRun, principal.run_id) if principal.run_id is not None else None
+    if run is None:
+        raise ApiError("TASK_NOT_FOUND", "Task not found", status.HTTP_404_NOT_FOUND)
+    project = await session.get(Project, task.project_id)
+    if project is None or not project.knowledge_enabled:
+        raise ApiError(
+            "KNOWLEDGE_DISABLED", "Project memory is not enabled", status.HTTP_404_NOT_FOUND
+        )
+    wanted = _layer_set(layers)
+    pack, pack_id = await ContextBuilder(session).build_and_record(task, run, layers=wanted)
+    await session.commit()
+    return ContextPackDTO(
+        pack_id=pack_id,
+        markdown=pack.markdown + omitted_summary(pack.omitted),
+        manifest=pack.manifest,
+        budget=pack.budget,
+        omitted=pack.omitted,
+        total_bytes=pack.total_bytes,
+    )
+
+
+def _layer_set(raw: str | None) -> set[int] | None:
+    if not raw:
+        return None
+    wanted = {int(part) for part in raw.split(",") if part.strip().isdigit()}
+    if not wanted or not wanted <= {1, 2, 3, 4, 5}:
+        raise ApiError(
+            "INVALID_ARGUMENT", "layers must be a subset of 1,2,3,4,5", status.HTTP_400_BAD_REQUEST
+        )
+    return wanted
+
+
+@run_router.get("/knowledge/search", response_model=KnowledgeSearchDTO)
+async def agent_search_knowledge(
+    q: str = Query(min_length=1, max_length=256),
+    limit: int = Query(default=8, ge=1, le=8),
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> KnowledgeSearchDTO:
+    """`cliora knowledge search`. **The cap is eight, and it is enforced here.**
+
+    Not in the prompt: an endpoint that returns fifty results is one an agent reads fifty
+    results from, whatever the instructions said. The project is the run's own and cannot
+    be named by the caller, which is the whole of the cross-project answer.
+    """
+    task = await _run_task(session, principal)
+    result = await KnowledgeSearch(session, task.project_id).search(q, limit=limit, task_id=task.id)
+    return KnowledgeSearchDTO(
+        items=[
+            KnowledgeHitDTO(
+                source_id=hit.source_id,
+                source_type=hit.source_type,
+                title=hit.title,
+                authority=hit.authority,
+                version=hit.version,
+                occurred_at=hit.occurred_at,
+                uri=hit.uri,
+                excerpt=hit.excerpt,
+                score=round(hit.score, 4),
+                historical=hit.historical,
+                why=list(hit.why),
+            )
+            for hit in result.items
+        ],
+        total=result.total,
+        channels=list(result.channels),
+        degraded=result.degraded,
+    )
+
+
+@run_router.get("/knowledge/sources/{source_id}", response_model=KnowledgeSourceDTO)
+async def agent_read_source(
+    source_id: uuid.UUID,
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> KnowledgeSourceDTO:
+    """`cliora knowledge cite <id>` — the full text behind a citation.
+
+    Three refusals, and the third is a security property rather than a nicety: a source
+    belonging to another project answers **`SOURCE_NOT_FOUND`**, not `CROSS_PROJECT_DENIED`.
+    A caller must not be able to learn that an id exists by the shape of the refusal.
+    `CROSS_PROJECT_DENIED` is for the case where nothing is disclosed by saying so — the
+    caller naming its own project's boundary.
+    """
+    task = await _run_task(session, principal)
+    source = await session.get(KnowledgeSource, source_id)
+    if source is None or source.project_id != task.project_id:
+        raise ApiError("SOURCE_NOT_FOUND", "Source not found", status.HTTP_404_NOT_FOUND)
+    if source.deleted_at is not None:
+        raise ApiError(
+            "SOURCE_NOT_FOUND",
+            "That source no longer exists",
+            status.HTTP_404_NOT_FOUND,
+            details={"reason": "deleted"},
+        )
+    excluded = await session.scalar(
+        select(TaskKnowledgePin.mode).where(
+            TaskKnowledgePin.task_id == task.id,
+            TaskKnowledgePin.source_id == source_id,
+            TaskKnowledgePin.mode == "exclude",
+        )
+    )
+    if excluded:
+        raise ApiError(
+            "SOURCE_EXCLUDED",
+            "Somebody excluded this source from this card",
+            status.HTTP_409_CONFLICT,
+        )
+    chunks = (
+        (
+            await session.execute(
+                select(KnowledgeChunk.content)
+                .where(KnowledgeChunk.source_id == source_id, KnowledgeChunk.valid_to.is_(None))
+                .order_by(KnowledgeChunk.chunk_key)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return KnowledgeSourceDTO(
+        source_id=source.id,
+        source_type=source.source_type,
+        title=source.title or source.source_external_id,
+        authority=source.authority,
+        version=source.source_version,
+        occurred_at=source.occurred_at,
+        uri=source.source_uri,
+        content="\n\n".join(chunks),
+    )
+
+
+@run_router.post("/knowledge/repo-manifest", response_model=RepoManifestResponse)
+async def agent_repo_manifest(
+    payload: RepoManifestRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> RepoManifestResponse:
+    """Step ① of the repository sync: what does Central still need? (ADR 0038 §3.4)
+
+    **Central never fetches a repository**, so this is the direction the data moves:
+    the agent already has a clean checkout of exactly this commit and already holds a
+    run token, and Central has neither a git client nor an outbound connection it is
+    allowed to use.
+
+    The manifest is **full, not incremental**. That is what makes deletion work — the
+    paths absent from it are tombstoned here, in this call — and it is why a force-push
+    needs no special handling, since nothing in the comparison depends on one commit
+    being an ancestor of another.
+    """
+    task = await _run_task(session, principal)
+    result = await RepoSyncService(session).manifest(
+        project_id=task.project_id,
+        repository_id=payload.repository_id or task.repository_id,
+        commit=payload.commit,
+        entries=[
+            ManifestEntry(path=item.path, sha256=item.sha256, size=item.size)
+            for item in payload.files
+        ],
+    )
+    await session.commit()
+    return RepoManifestResponse(
+        want=result.want,
+        skipped=result.skipped,
+        removed=result.removed,
+        unchanged=result.unchanged,
+    )
+
+
+@run_router.post("/knowledge/repo-content", response_model=RepoContentResponse)
+async def agent_repo_content(
+    payload: RepoContentRequest,
+    principal: AgentPrincipal = Depends(require_agent_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+) -> RepoContentResponse:
+    """Step ② : the bodies the manifest asked for, and nothing else.
+
+    Content-addressed negotiation means an unchanged repository reaches this endpoint
+    with an empty list, or does not reach it at all — which is what makes syncing on
+    every run affordable rather than something a person has to remember to do.
+    """
+    task = await _run_task(session, principal)
+    ingested, total = await RepoSyncService(session).content(
+        project_id=task.project_id,
+        repository_id=payload.repository_id or task.repository_id,
+        commit=payload.commit,
+        files=[(item.path, item.text) for item in payload.files],
+    )
+    await session.commit()
+    return RepoContentResponse(ingested=ingested, bytes=total)
 
 
 @run_router.get("/conversation/input", response_model=ConversationInputDTO)

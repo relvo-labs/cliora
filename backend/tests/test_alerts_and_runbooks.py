@@ -90,6 +90,10 @@ def _exported_series() -> set[str]:
         "active_terminal_connections",
         "running_sessions",
         "database_pool_usage",
+        # V2-K1: both are computed in `_gauges` for the reason the registry's docstring
+        # gives — a gauge is a question about the present.
+        "knowledge_pending_jobs",
+        "knowledge_dead_letter_age_seconds",
     }
     return from_registry | gauges
 

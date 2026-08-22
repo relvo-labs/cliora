@@ -4,6 +4,10 @@
 // by default (same-origin / vite proxy) and overridable via VITE_API_BASE_URL.
 
 import type {
+  KnowledgeDecisions,
+  KnowledgeHealth,
+  KnowledgeSearchPage,
+  KnowledgeSourceRow,
   AcceptProposalResult,
   DocumentPatchProposal,
   ActivityPage,
@@ -1276,5 +1280,120 @@ export class ApiClient {
       );
     }
     return data;
+  }
+  // --- V2-K1 project memory (ADR 0038) ---
+  //
+  // Reads take `project.view`, writes take `project.manage`, and there is no new RBAC
+  // action behind any of them.
+
+  searchKnowledge(
+    projectId: string,
+    params: {
+      q: string;
+      sourceType?: string;
+      authority?: string;
+      taskId?: string;
+      includeHistory?: boolean;
+      limit?: number;
+    },
+  ): Promise<KnowledgeSearchPage> {
+    const query = new URLSearchParams({ q: params.q });
+    if (params.sourceType) query.set("source_type", params.sourceType);
+    if (params.authority) query.set("authority", params.authority);
+    if (params.taskId) query.set("task_id", params.taskId);
+    if (params.includeHistory) query.set("include_history", "true");
+    if (params.limit) query.set("limit", String(params.limit));
+    return this.request(
+      "GET",
+      `/api/projects/${projectId}/knowledge/search?${query.toString()}`,
+    );
+  }
+
+  listKnowledgeSources(
+    projectId: string,
+    sourceType?: string,
+  ): Promise<KnowledgeSourceRow[]> {
+    const query = sourceType
+      ? `?source_type=${encodeURIComponent(sourceType)}`
+      : "";
+    return this.request(
+      "GET",
+      `/api/projects/${projectId}/knowledge/sources${query}`,
+    );
+  }
+
+  listSourceVersions(
+    projectId: string,
+    sourceId: string,
+  ): Promise<KnowledgeSourceRow[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${projectId}/knowledge/sources/${sourceId}/versions`,
+    );
+  }
+
+  knowledgeHealth(projectId: string): Promise<KnowledgeHealth> {
+    return this.request("GET", `/api/projects/${projectId}/knowledge/health`);
+  }
+
+  recentlyLearned(projectId: string): Promise<KnowledgeSourceRow[]> {
+    return this.request("GET", `/api/projects/${projectId}/knowledge/recent`);
+  }
+
+  knowledgeDecisions(projectId: string): Promise<KnowledgeDecisions> {
+    return this.request(
+      "GET",
+      `/api/projects/${projectId}/knowledge/decisions`,
+    );
+  }
+
+  setKnowledgeEnabled(projectId: string, enabled: boolean): Promise<unknown> {
+    return this.request(
+      "POST",
+      `/api/projects/${projectId}/knowledge/enabled`,
+      {
+        enabled,
+      },
+    );
+  }
+
+  setSourceAuthority(
+    projectId: string,
+    sourceId: string,
+    authority: "authoritative" | "accepted" | "retracted",
+  ): Promise<KnowledgeSourceRow> {
+    return this.request(
+      "POST",
+      `/api/projects/${projectId}/knowledge/sources/${sourceId}/authority`,
+      { authority },
+    );
+  }
+
+  setKnowledgePin(
+    projectId: string,
+    taskId: string,
+    sourceId: string,
+    mode: "pin" | "exclude",
+  ): Promise<void> {
+    return this.request("POST", `/api/projects/${projectId}/knowledge/pins`, {
+      task_id: taskId,
+      source_id: sourceId,
+      mode,
+    });
+  }
+
+  clearKnowledgePin(
+    projectId: string,
+    taskId: string,
+    sourceId: string,
+  ): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/projects/${projectId}/knowledge/pins/${taskId}/${sourceId}`,
+    );
+  }
+
+  resyncKnowledge(projectId: string): Promise<{ queued: number }> {
+    return this.request("POST", `/api/projects/${projectId}/knowledge/resync`);
   }
 }

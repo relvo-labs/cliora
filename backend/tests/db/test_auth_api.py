@@ -111,14 +111,10 @@ async def test_refresh_token_is_single_use(api: tuple) -> None:
         await client.post("/api/auth/login", json={"username": "admin", "password": "pw"})
     ).json()["tokens"]
 
-    first = await client.post(
-        "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-    )
+    first = await client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert first.status_code == 200
 
-    replay = await client.post(
-        "/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]}
-    )
+    replay = await client.post("/api/auth/refresh", json={"refresh_token": tokens["refresh_token"]})
     assert replay.status_code == 401
     assert replay.json()["error"]["code"] == "TOKEN_INVALID"
 

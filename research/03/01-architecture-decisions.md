@@ -222,7 +222,7 @@ CAS 條件是單一列**：`UPDATE task_questions SET state='answered' WHERE id=
 
 ---
 
-## 3. 仍需你裁決（四項）
+## 3. 仍需你裁決（原四項，**現只剩 D46**）
 
 每一項都沒有安全的預設值。**未裁決前，相關 ticket 不開工。**
 
@@ -272,7 +272,7 @@ embedding provider 的 egress 目的地、金鑰治理、成本模型、
 | **建議** | `beta.2`。理由是它是本輪唯一新增對外副作用的工作 |
 | **不同意的話** | `alpha.3` 的安全審查範圍要涵蓋 inbound webhook、signature 驗證、delivery 去重、provider token 保存與輪替，時程約多兩個工作波次 |
 
-### ★ D51 — conversation 與 knowledge 的保留、匯出與刪除政策
+### ☑ D51 — conversation 與 knowledge 的保留、匯出與刪除政策（**2026-08-22 已裁決**）
 
 | | |
 |---|---|
@@ -438,9 +438,9 @@ evidence layer 的內容在 render 時**明確標示為引用資料**，且：
 `ORDER BY updated_at DESC` 的順序產生初始值。scope = project。
 再平衡門檻沿用 kintra 的 24／48（背景／同步保險閥）。
 
-### ★ D51 — 保留、匯出與刪除政策
+### ☑ D51 — 保留、匯出與刪除政策（**2026-08-22 已裁決**）
 
-見 §3。→ ADR 0041
+見 §3。前兩問由 ADR 0041（`alpha.2`）回答，後兩問由 **ADR 0038 §6**（`alpha.3`，`plan/25` D81）回答。
 
 ### D52 — 不替 Conversation 與 Knowledge 開部署旗標
 

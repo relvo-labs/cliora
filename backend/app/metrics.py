@@ -71,6 +71,20 @@ CONVERSATION_TURNS_TOTAL = "conversation_turns_total"
 CONVERSATION_DUPLICATE_TURN_TOTAL = "conversation_duplicate_turn_total"
 CONVERSATION_QUESTION_EXPIRED_TOTAL = "conversation_question_expired_total"
 
+# --- V2-K1 project memory (plan/25/03-…md §5) --------------------------------
+#
+# `KNOWLEDGE_INGEST_LAG_SECONDS` is the one the exit criterion reads: the gap between a
+# fact happening and it being findable, whose budget is P95 < 10s. It gets its own
+# bucket scale because the duration buckets top out at 10s and "how far past the budget
+# are we" is the question that matters once it is breached.
+#
+# The two gauges — pending depth and dead-letter age — are deliberately **not** here.
+# This module's docstring says why: a gauge is a question about the present and is
+# answered at scrape time, so a stored copy could only ever be stale.
+KNOWLEDGE_JOBS_TOTAL = "knowledge_jobs_total"
+KNOWLEDGE_JOB_DURATION = "knowledge_job_duration_seconds"
+KNOWLEDGE_INGEST_LAG_SECONDS = "knowledge_ingest_lag_seconds"
+
 # --- tech §18.1: the control-plane series (P4-09) ---
 # Relay generalized from the P3 filesystem-only pair: every Central→daemon request
 # is timed and counted by message type, so a slow or unanswered `session.start` is as
@@ -127,6 +141,11 @@ _SIZE_BUCKETS: tuple[float, ...] = (
 
 # Histograms whose values are counts or bytes rather than seconds.
 _SIZE_HISTOGRAMS: frozenset[str] = frozenset({TERMINAL_QUEUE_BYTES, TERMINAL_QUEUE_FRAMES})
+
+# Ingest freshness spans a wider range than a request does: the budget is 10s, and the
+# interesting question above it is "minutes or hours", which `_BUCKETS` cannot express.
+_LAG_BUCKETS: tuple[float, ...] = (1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0, 1800.0, 7200.0)
+_LAG_HISTOGRAMS: frozenset[str] = frozenset({KNOWLEDGE_INGEST_LAG_SECONDS})
 
 # The closed label allowlist (ADR 0018). Adding a key here is a deliberate decision
 # that it is low-cardinality *and* carries no identifying information.
@@ -205,7 +224,11 @@ def _key(labels: dict[str, str]) -> LabelKey:
 def buckets_for(name: str) -> tuple[float, ...]:
     """The bucket bounds a histogram uses. Exported so the exporter renders the same
     bounds it was recorded with rather than assuming the duration scale."""
-    return _SIZE_BUCKETS if name in _SIZE_HISTOGRAMS else _BUCKETS
+    if name in _SIZE_HISTOGRAMS:
+        return _SIZE_BUCKETS
+    if name in _LAG_HISTOGRAMS:
+        return _LAG_BUCKETS
+    return _BUCKETS
 
 
 def increment(name: str, amount: int = 1, **labels: str) -> None:
