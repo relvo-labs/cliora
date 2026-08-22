@@ -53,6 +53,17 @@ _CLEANUP_TABLES = (
     # `session_tokens` holds one to `projects` with an `ON DELETE RESTRICT` FK to
     # `users` of its own. `terminal_sessions` is cleared above, which releases both
     # its `SET NULL` reference to `tasks` and the cascade parent of `session_tokens`.
+    # V2-K1 (KN-02). Every one of these cascades from `projects`, `tasks` or
+    # `task_runs`, so strictly none of them needs to be here. They are listed anyway
+    # because a cleanup list that omits a table is indistinguishable from one whose
+    # omission was deliberate, and the next person to add a table copies what is here.
+    # Children first, as everywhere else in this list.
+    "context_packs",
+    "task_knowledge_pins",
+    "knowledge_jobs",
+    "knowledge_links",
+    "knowledge_chunks",
+    "knowledge_sources",
     "session_tokens",
     "task_dependencies",
     "tasks",

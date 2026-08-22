@@ -1938,3 +1938,184 @@ class TaskArtifactDTO(BaseModel):
 
 class DeleteArtifactRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
+
+
+# --- V2-K1 project memory (ADR 0038) ---------------------------------------
+
+
+class RepoManifestEntry(BaseModel):
+    """One candidate file, as the agent sees it in its checkout."""
+
+    path: str = Field(min_length=1, max_length=1024)
+    sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    size: int = Field(ge=0)
+
+
+class RepoManifestRequest(BaseModel):
+    # Optional, and the default is the point: an agent should not have to know a
+    # platform UUID to describe the repository it is standing in. Omitted, Central uses
+    # the card's own `repository_id`, which is the only one a run could legitimately
+    # mean.
+    repository_id: uuid.UUID | None = None
+    # Not validated as a SHA: a repository may be at a tag or a shallow ref, and the
+    # platform's use for this is identity, not resolution. It never runs git.
+    commit: str = Field(min_length=1, max_length=128)
+    files: list[RepoManifestEntry]
+
+
+class RepoManifestResponse(BaseModel):
+    """What Central is missing, and what it just forgot.
+
+    `removed` counts tombstones applied **during this call**. Deletion happens at
+    manifest time rather than at content time because the content call may be cut short
+    by a byte ceiling, and a repository whose deletions only land when the upload
+    happens to fit is one where "I deleted that document" is sometimes true.
+    """
+
+    want: list[str]
+    skipped: list[dict[str, str]]
+    removed: int
+    unchanged: int
+
+
+class RepoContentFile(BaseModel):
+    path: str = Field(min_length=1, max_length=1024)
+    text: str
+
+
+class RepoContentRequest(BaseModel):
+    repository_id: uuid.UUID | None = None
+    commit: str = Field(min_length=1, max_length=128)
+    files: list[RepoContentFile]
+
+
+class RepoContentResponse(BaseModel):
+    ingested: int
+    bytes: int
+
+
+class KnowledgeHitDTO(BaseModel):
+    """One retrieved source.
+
+    `why` is the part that is not decoration: it is the only view of the ranking a
+    person can audit without reading SQL, and it is what the Knowledge page's
+    "why was this chosen" line renders. Retrieval that cannot explain itself makes
+    "why did the agent do that?" permanently unanswerable.
+    """
+
+    source_id: uuid.UUID
+    source_type: str
+    title: str
+    authority: str
+    version: str
+    occurred_at: datetime
+    uri: str | None
+    excerpt: str
+    score: float
+    historical: bool
+    why: list[str]
+
+
+class KnowledgeSearchDTO(BaseModel):
+    items: list[KnowledgeHitDTO]
+    total: int
+    channels: list[str]
+    # Set when the query could not use the full-text channel — a single CJK character
+    # produces no bigram. Reported rather than swallowed: an empty page reads as
+    # "nothing was written about this", which is a different and wrong answer.
+    degraded: str | None = None
+
+
+class ContextPackDTO(BaseModel):
+    """The five layers an agent actually reads, plus what it cost.
+
+    `manifest` carries **ids and metadata, never content**: storing the text a second
+    time would put a copy of the most sensitive material in the system outside every
+    retention rule that governs the first.
+    """
+
+    pack_id: uuid.UUID
+    markdown: str
+    manifest: list[dict[str, Any]]
+    budget: dict[str, Any]
+    omitted: list[dict[str, Any]]
+    total_bytes: int
+
+
+class KnowledgeSourceDTO(BaseModel):
+    """One source, expanded. What a citation resolves to."""
+
+    source_id: uuid.UUID
+    source_type: str
+    title: str
+    authority: str
+    version: str
+    occurred_at: datetime
+    uri: str | None
+    content: str
+
+
+class KnowledgeSourceRowDTO(BaseModel):
+    source_id: uuid.UUID
+    source_type: str
+    external_id: str
+    title: str
+    authority: str
+    version: str
+    occurred_at: datetime
+    ingested_at: datetime
+    uri: str | None
+    chunk_count: int
+    active: bool
+
+
+class SourceFamilyDTO(BaseModel):
+    source_type: str
+    sources: int
+    chunks: int
+    last_ingested_at: datetime | None
+
+
+class KnowledgeHealthDTO(BaseModel):
+    """What the Source health panel needs to be honest.
+
+    `repo_never_synced` exists because D77's accepted cost has to be visible: repository
+    content is pushed from inside a run, so a project whose agents never run has none —
+    and a knowledge base that cannot show you it is empty is worse than not having one.
+    """
+
+    families: list[SourceFamilyDTO]
+    pending_jobs: int
+    failed_jobs: int
+    dead_jobs: int
+    dead_letter_age_seconds: float
+    last_error: str | None
+    repo_last_synced_at: datetime | None
+    repo_commit: str | None
+    repo_never_synced: bool
+
+
+class KnowledgeDecisionsDTO(BaseModel):
+    accepted: list[KnowledgeSourceRowDTO]
+    superseded: list[KnowledgeSourceRowDTO]
+    # May legitimately stay empty: supersede is automatic. Kept because the day it is
+    # non-empty is a day somebody needs to see it.
+    conflicting: list[KnowledgeSourceRowDTO]
+
+
+class SetAuthorityRequest(BaseModel):
+    authority: Literal["authoritative", "accepted", "retracted"]
+
+
+class SetPinRequest(BaseModel):
+    task_id: uuid.UUID
+    source_id: uuid.UUID
+    mode: Literal["pin", "exclude"]
+
+
+class SetKnowledgeEnabledRequest(BaseModel):
+    enabled: bool
+
+
+class ResyncResponse(BaseModel):
+    queued: int

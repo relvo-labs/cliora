@@ -52,6 +52,7 @@ from app.api.ws.terminal import router as terminal_ws_router
 from app.db.engine import get_database, reset_database
 from app.logging import configure_logging, get_logger
 from app.security import secret_box
+from app.services.knowledge.worker import get_knowledge_worker
 from app.services.registry import get_node_registry
 from app.services.run_reaper import get_run_reaper
 from app.services.shell_reaper import get_shell_reaper
@@ -67,6 +68,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     _logger.info("central_startup", extra={"event": "central_startup"})
     await _rearm_shell_reaper()
     await _start_run_reaper()
+    await _start_knowledge_worker()
     try:
         yield
     finally:
@@ -117,6 +119,30 @@ async def _start_run_reaper() -> None:
         )
 
 
+async def _start_knowledge_worker() -> None:
+    """Drain the ingestion outbox, then keep draining it (ADR 0038 sec 3).
+
+    Same shape and the same three reasons as `_start_run_reaper`, including the sweep
+    before the loop: a fact recorded while this process was down is still un-indexed,
+    and its job row is still sitting in `pending`.
+
+    A failure here must not stop Central from serving, and the cost of skipping it is
+    smaller than for the reaper: project memory goes stale, which is visible on the
+    Source health panel, while nothing else in the product changes behaviour.
+
+    Several replicas each running one of these is correct and is faster: claiming uses
+    `FOR UPDATE SKIP LOCKED`. The reconciliation inside it is the part that must not be
+    duplicated, and it takes an advisory lock of its own.
+    """
+    try:
+        await get_knowledge_worker().start()
+    except Exception as exc:  # noqa: BLE001 - startup must not depend on this
+        _logger.warning(
+            "knowledge_worker_start_failed",
+            extra={"event": "knowledge_worker_start_failed", "error": type(exc).__name__},
+        )
+
+
 async def _drain() -> None:
     """Wind down on SIGTERM in an order the operator and the user can both live with.
 
@@ -150,6 +176,9 @@ async def _drain() -> None:
             # it reconciles on the next start — but leaving it running through a drain
             # means a transaction can still be opening while the pool is going away.
             await get_run_reaper().stop()
+            # Same reason as the sweep above: a round in flight while the pool is
+            # being torn down is a transaction opening against a closing engine.
+            await get_knowledge_worker().stop()
             await registry.close_all(code=1012)
     except TimeoutError:
         _logger.warning(

@@ -76,6 +76,16 @@ routes.push({
   props: true,
 });
 routes.push({
+  // V2-K1: a top-level route rather than another tab on ProjectDetailView, which is
+  // already 1515 lines managing twelve things (D82).
+  path: "/projects/:id/knowledge",
+  name: "project-knowledge",
+  component: () =>
+    import("../modules/knowledge/views/ProjectKnowledgeView.vue"),
+  meta: { requiresAuth: true },
+});
+
+routes.push({
   path: "/projects/:id/tasks/:taskId",
   name: "task-detail",
   component: () => import("../views/TaskDetailView.vue"),

@@ -273,6 +273,50 @@
 | FR-INSTALL-005 | [FR-INSTALL-005.AC-06](../../research/prd.md#fr-install-005-ac-06) | 替換 Binary。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>gotest:daemon/internal/update#TestASuccessfulUpdateReplacesTheBinaryAndKeepsABackup |
 | FR-INSTALL-005 | [FR-INSTALL-005.AC-07](../../research/prd.md#fr-install-005-ac-07) | 重新啟動 Daemon。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>gotest:daemon/internal/update#TestSystemdRestarterAllowsRoot |
 | FR-INSTALL-005 | [FR-INSTALL-005.AC-08](../../research/prd.md#fr-install-005-ac-08) | 若啟動失敗則回復舊版本。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:daemon/internal/install | gotest:daemon/internal/install<br>gotest:daemon/internal/update#TestAFailedRestartRollsBackAndRestartsTheOldBinary<br>gotest:daemon/internal/update#TestAFailedHealthCheckRollsBack |
+| FR-KNOW-001 | [FR-KNOW-001.AC-01](../../research/prd.md#fr-know-001-ac-01) | 每一筆知識來源都記錄出處：來源種類、原始識別、版本、可信層級、發生時間與取得時間； | — | — | — |
+| FR-KNOW-001 | [FR-KNOW-001.AC-02](../../research/prd.md#fr-know-001-ac-02) | 同一份來源的同一個版本只會存在一筆；重複收集不產生第二筆，也不改寫既有內容。 | — | — | — |
+| FR-KNOW-001 | [FR-KNOW-001.AC-03](../../research/prd.md#fr-know-001-ac-03) | 較舊的版本抵達時不覆蓋較新的版本。 | — | — | — |
+| FR-KNOW-001 | [FR-KNOW-001.AC-04](../../research/prd.md#fr-know-001-ac-04) | 新版本進入時，舊版本被標記為已被取代，且兩者之間的取代關係可被查詢。 | — | — | — |
+| FR-KNOW-002 | [FR-KNOW-002.AC-01](../../research/prd.md#fr-know-002-ac-01) | 待收集的事件保存在資料庫，不在記憶體；平台重啟不遺失待處理的事件。 | — | — | — |
+| FR-KNOW-002 | [FR-KNOW-002.AC-02](../../research/prd.md#fr-know-002-ac-02) | 收集失敗時自動重試並逐次延長間隔；達上限後進入失敗佇列，不無限重試。 | — | — | — |
+| FR-KNOW-002 | [FR-KNOW-002.AC-03](../../research/prd.md#fr-know-002-ac-03) | 失敗佇列的最舊項目年齡可被監控查詢，且顯示在專案的來源健康狀態上。 | — | — | — |
+| FR-KNOW-002 | [FR-KNOW-002.AC-04](../../research/prd.md#fr-know-002-ac-04) | 除事件路徑外另有排程校對：即使某個事件從未送達，該筆事實最終仍會進入索引。 | — | — | — |
+| FR-KNOW-003 | [FR-KNOW-003.AC-01](../../research/prd.md#fr-know-003-ac-01) | 每一筆來源有明確的可信層級，且由伺服器端依來源判定，呼叫端指定的值一律忽略。 | — | — | — |
+| FR-KNOW-003 | [FR-KNOW-003.AC-02](../../research/prd.md#fr-know-003-ac-02) | 可信層級的變更（標為正式決策、撤回、被取代）留下稽核紀錄，記錄動作者與對象， | — | — | — |
+| FR-KNOW-003 | [FR-KNOW-003.AC-03](../../research/prd.md#fr-know-003-ac-03) | 已被取代與已撤回的來源不出現在預設檢索結果；只有明確要求歷史時才回傳， | — | — | — |
+| FR-KNOW-003 | [FR-KNOW-003.AC-04](../../research/prd.md#fr-know-003-ac-04) | Agent 產出的內容其可信層級永遠低於人的決策，且永不因為時間經過而升級。 | — | — | — |
+| FR-KNOW-004 | [FR-KNOW-004.AC-01](../../research/prd.md#fr-know-004-ac-01) | 精確識別（卡片編號、函式名稱、commit 識別碼、錯誤碼）查得到， | — | — | — |
+| FR-KNOW-004 | [FR-KNOW-004.AC-02](../../research/prd.md#fr-know-004-ac-02) | 以中文語句查詢時查得到中文內容；不因語言而失去檢索能力。 | — | — | — |
+| FR-KNOW-004 | [FR-KNOW-004.AC-03](../../research/prd.md#fr-know-004-ac-03) | 排序不只看字面相關度：可信層級較高者、時間較新者、與查詢卡片有明確關聯者排在前面。 | — | — | — |
+| FR-KNOW-004 | [FR-KNOW-004.AC-04](../../research/prd.md#fr-know-004-ac-04) | 檢索能力降級時（例如查詢過短而只能做模糊比對）明確告知，不靜默降級。 | — | — | — |
+| FR-KNOW-005 | [FR-KNOW-005.AC-01](../../research/prd.md#fr-know-005-ac-01) | 提供給 Agent 的情境分層組裝，且有明確的總量上限。 | — | — | — |
+| FR-KNOW-005 | [FR-KNOW-005.AC-02](../../research/prd.md#fr-know-005-ac-02) | 超出上限時的裁切順序固定：先裁檢索到的參考資料，再壓縮較舊的對話； | — | — | — |
+| FR-KNOW-005 | [FR-KNOW-005.AC-03](../../research/prd.md#fr-know-005-ac-03) | 連專案規則與未決問題都放不下時明確拒絕，不靜默截斷。 | — | — | — |
+| FR-KNOW-005 | [FR-KNOW-005.AC-04](../../research/prd.md#fr-know-005-ac-04) | 每一次組裝留下清單，說明用了哪些來源、各自的版本、可信層級、佔用量， | — | — | — |
+| FR-KNOW-006 | [FR-KNOW-006.AC-01](../../research/prd.md#fr-know-006-ac-01) | 情境中「規則」與「引用資料」在結構上分開，且引用資料明確標示為引用。 | — | — | — |
+| FR-KNOW-006 | [FR-KNOW-006.AC-02](../../research/prd.md#fr-know-006-ac-02) | 只有人所核准的專案規則可以進入規則區塊；Agent 的產出永遠不可以。 | — | — | — |
+| FR-KNOW-006 | [FR-KNOW-006.AC-03](../../research/prd.md#fr-know-006-ac-03) | 來源文字中出現的指示性語句（例如「忽略上述規則」）不因此成為指令， | — | — | — |
+| FR-KNOW-006 | [FR-KNOW-006.AC-04](../../research/prd.md#fr-know-006-ac-04) | 上述性質不因為預算裁切而改變：裁切只會移除引用資料，不會移動它的位置。 | — | — | — |
+| FR-KNOW-007 | [FR-KNOW-007.AC-01](../../research/prd.md#fr-know-007-ac-01) | 情境與檢索結果的每一段內容都帶引用，引用可回到原始來源。 | — | — | — |
+| FR-KNOW-007 | [FR-KNOW-007.AC-02](../../research/prd.md#fr-know-007-ac-02) | 每一種來源種類都有可回溯的去處：卡片訊息、文件版本、產物或程式庫路徑。 | — | — | — |
+| FR-KNOW-007 | [FR-KNOW-007.AC-03](../../research/prd.md#fr-know-007-ac-03) | 引用的來源已不存在、已被排除或不屬於本專案時，以可辨識的錯誤碼分別說明， | — | — | — |
+| FR-KNOW-007 | [FR-KNOW-007.AC-04](../../research/prd.md#fr-know-007-ac-04) | Agent 在留言中使用的引用標記由介面盡力還原為連結；還原失敗時顯示為純文字， | — | — | — |
+| FR-KNOW-008 | [FR-KNOW-008.AC-01](../../research/prd.md#fr-know-008-ac-01) | 授權在檢索邊界完成，不是在介面上過濾結果。 | — | — | — |
+| FR-KNOW-008 | [FR-KNOW-008.AC-02](../../research/prd.md#fr-know-008-ac-02) | 無權查詢時，回傳的結果數為 0，且不以錯誤碼揭露該專案或該來源是否存在。 | — | — | — |
+| FR-KNOW-008 | [FR-KNOW-008.AC-03](../../research/prd.md#fr-know-008-ac-03) | 執行憑證只能查詢其卡片所屬專案；跨專案查詢一律拒絕。 | — | — | — |
+| FR-KNOW-008 | [FR-KNOW-008.AC-04](../../research/prd.md#fr-know-008-ac-04) | 跨專案的相似內容搜尋預設不存在，且不可由任何參數開啟。 | — | — | — |
+| FR-KNOW-009 | [FR-KNOW-009.AC-01](../../research/prd.md#fr-know-009-ac-01) | 來源在原處消失（檔案被刪、產物被刪）之後，不再出現在預設檢索。 | — | — | — |
+| FR-KNOW-009 | [FR-KNOW-009.AC-02](../../research/prd.md#fr-know-009-ac-02) | 刪除專案時，其全部知識來源、索引與情境紀錄一併消失。 | — | — | — |
+| FR-KNOW-009 | [FR-KNOW-009.AC-03](../../research/prd.md#fr-know-009-ac-03) | 撤銷不是刪除：被排除或被取代的來源仍可查詢其存在與原因，只是不進預設檢索。 | — | — | — |
+| FR-KNOW-009 | [FR-KNOW-009.AC-04](../../research/prd.md#fr-know-009-ac-04) | 機密值、憑證與敏感檔案不進入索引；由來源文字在寫入前去識別， | — | — | — |
+| FR-KNOW-010 | [FR-KNOW-010.AC-01](../../research/prd.md#fr-know-010-ac-01) | 專案記憶預設關閉，開啟需要專案管理權限並留下稽核紀錄。 | — | — | — |
+| FR-KNOW-010 | [FR-KNOW-010.AC-02](../../research/prd.md#fr-know-010-ac-02) | 關閉時不收集、不建索引，查詢回應不揭露該專案是否曾經啟用。 | — | — | — |
+| FR-KNOW-010 | [FR-KNOW-010.AC-03](../../research/prd.md#fr-know-010-ac-03) | 關閉後既有來源標記為停用而不立即刪除；刪除是另一個需要二次確認的動作。 | — | — | — |
+| FR-KNOW-010 | [FR-KNOW-010.AC-04](../../research/prd.md#fr-know-010-ac-04) | 介面顯示每一類來源的筆數、最後收集時間、待處理量、失敗數與失敗佇列年齡； | — | — | — |
+| FR-KNOW-011 | [FR-KNOW-011.AC-01](../../research/prd.md#fr-know-011-ac-01) | 程式庫內容由 Agent 在自己的執行環境中推送；平台不主動連向任何程式庫代管服務。 | — | — | — |
+| FR-KNOW-011 | [FR-KNOW-011.AC-02](../../research/prd.md#fr-know-011-ac-02) | 版本以 commit 識別碼表示，且同一個 commit 重複推送不產生第二份內容。 | — | — | — |
+| FR-KNOW-011 | [FR-KNOW-011.AC-03](../../research/prd.md#fr-know-011-ac-03) | 排除規則同時來自程式庫自身的設定與專案設定；產生的內容、相依套件目錄與二進位檔案 | — | — | — |
+| FR-KNOW-011 | [FR-KNOW-011.AC-04](../../research/prd.md#fr-know-011-ac-04) | 單次推送有明確上限；超過時以可辨識的錯誤碼拒絕並指名是哪一項上限， | — | — | — |
 | FR-NODE-001 | [FR-NODE-001.AC-01](../../research/prd.md#fr-node-001-ac-01) | Daemon 應可使用 Enrollment Token 向中央平台註冊。 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | pytest:backend/tests/db/test_node_registration.py<br>pytest:backend/tests/db/test_node_registration.py::test_node_authenticates_with_valid_signature<br>pytest:backend/tests/db/test_node_ws.py::test_ws_auth_register_heartbeat_persists |
 | FR-NODE-001 | [FR-NODE-001.AC-02](../../research/prd.md#fr-node-001-ac-02) | Node ID | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | — |
 | FR-NODE-001 | [FR-NODE-001.AC-03](../../research/prd.md#fr-node-001-ac-03) | Node 名稱 | plan:plan/02/05-registry-node-status.md<br>source:research/tech.md | code:backend/app/services/nodes.py | — |

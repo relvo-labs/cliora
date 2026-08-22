@@ -145,6 +145,9 @@ CREATE TABLE knowledge_sources (
   authored_by_type    VARCHAR(16),          -- human | runner | system
   authored_by_id      UUID,
   occurred_at         TIMESTAMPTZ NOT NULL,
+  source_updated_at   TIMESTAMPTZ NOT NULL,   -- 冪等 upsert 的比較欄（plan/25 補；
+                                              -- §4 的敘述一直在用這個名字，DDL 漏了它）
+  chunk_count         INTEGER NOT NULL DEFAULT 0,
   ingested_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
   supersedes_source_id UUID REFERENCES knowledge_sources(id) ON DELETE SET NULL,
   active              BOOLEAN NOT NULL DEFAULT true,

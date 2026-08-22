@@ -1534,3 +1534,72 @@ export interface TaskArtifact {
   delete_reason: string | null;
   previewable: boolean;
 }
+
+// --- V2-K1 project memory (ADR 0038 / 0039) --------------------------------
+
+export interface KnowledgeHit {
+  source_id: string;
+  source_type: string;
+  title: string;
+  authority: string;
+  version: string;
+  occurred_at: string;
+  uri: string | null;
+  excerpt: string;
+  score: number;
+  historical: boolean;
+  // Why this result is here, as the server computed it. Rendered verbatim: the
+  // browser must not re-derive it, because two rankings that disagree is worse
+  // than one nobody can see.
+  why: string[];
+}
+
+export interface KnowledgeSearchPage {
+  items: KnowledgeHit[];
+  total: number;
+  channels: string[];
+  // Set when the query could not use the full-text channel. Shown, never swallowed:
+  // an empty page otherwise reads as "nothing was written about this".
+  degraded: string | null;
+}
+
+export interface KnowledgeSourceRow {
+  source_id: string;
+  source_type: string;
+  external_id: string;
+  title: string;
+  authority: string;
+  version: string;
+  occurred_at: string;
+  ingested_at: string;
+  uri: string | null;
+  chunk_count: number;
+  active: boolean;
+}
+
+export interface SourceFamily {
+  source_type: string;
+  sources: number;
+  chunks: number;
+  last_ingested_at: string | null;
+}
+
+export interface KnowledgeHealth {
+  families: SourceFamily[];
+  pending_jobs: number;
+  failed_jobs: number;
+  dead_jobs: number;
+  dead_letter_age_seconds: number;
+  last_error: string | null;
+  repo_last_synced_at: string | null;
+  repo_commit: string | null;
+  // D77's accepted cost, made visible: repository content is pushed from inside a
+  // run, so a project whose agents never run has none.
+  repo_never_synced: boolean;
+}
+
+export interface KnowledgeDecisions {
+  accepted: KnowledgeSourceRow[];
+  superseded: KnowledgeSourceRow[];
+  conflicting: KnowledgeSourceRow[];
+}

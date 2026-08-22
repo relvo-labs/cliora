@@ -243,3 +243,24 @@ class ActivityService:
                 activity_payload=redact_mapping(body) if body else {},
             )
         )
+        # V2-K1 (ADR 0038 §3.1): the **only** place project memory is told that
+        # something may have changed. Here rather than in the eight services that write
+        # ingestable facts, because forgetting one of those eight is silent — that
+        # source type just stops updating and looks like a quiet week. Same transaction
+        # as the row above, deliberately: a hint that survived a rolled-back fact would
+        # make the worker re-read a state that never existed.
+        #
+        # It never raises (see `KnowledgeOutbox.note`), and the scheduled reconciler is
+        # what makes swallowing acceptable: this is the freshness path, that one is the
+        # correctness path.
+        # Imported here rather than at module scope: `knowledge.outbox` reads this
+        # module's kind constants to build its map, so a top-level import would be a
+        # cycle. The direction is the right one — knowledge depends on activity, not the
+        # other way round — and a function-local import is the cheaper of the two ways
+        # to say so (the other being a third module holding the constants, which would
+        # separate them from the vocabulary check that gives them meaning).
+        from app.services.knowledge.outbox import KnowledgeOutbox
+
+        await KnowledgeOutbox(self._session).note(
+            kind, project_id=project_id, task_id=task_id, payload=body
+        )

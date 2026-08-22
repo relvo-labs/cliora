@@ -16,6 +16,7 @@ import AsyncState from "../components/common/AsyncState.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
 import TaskAgentPanel from "../components/project/TaskAgentPanel.vue";
 import ConversationPanel from "../components/project/conversation/ConversationPanel.vue";
+import RelatedKnowledgePanel from "../modules/knowledge/components/RelatedKnowledgePanel.vue";
 import TaskCompletion from "../components/project/TaskCompletion.vue";
 import TaskDetail from "../components/project/TaskDetail.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
@@ -116,6 +117,18 @@ onMounted(() => resource.run());
            than to read a run's history. `beta.1` moves this component unchanged into
            the Task Drawer's main column. -->
       <ConversationPanel v-if="task" :task-id="task.id" />
+
+      <!-- V2-K1. **Here rather than in a Drawer**: the upstream plan puts it in the
+           Task Drawer, and the Drawer is `beta.1`'s work. This section is the only
+           answer to "why did the agent do that?", so it does not wait for a container.
+           `PX-62` re-hosts it — one line, because the props are only ids. -->
+      <RelatedKnowledgePanel
+        v-if="task"
+        :project-id="id"
+        :task-id="task.id"
+        :task-title="task.title"
+        :can-manage="auth.hasPermission('project.manage')"
+      />
 
       <TaskAgentPanel
         v-if="task"

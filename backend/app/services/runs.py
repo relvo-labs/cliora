@@ -40,6 +40,7 @@ from app.clock import now_utc
 from app.db.models import (
     AgentRunner,
     FeatureSpec,
+    Node,
     Project,
     ProjectRepository,
     Requirement,
@@ -51,6 +52,7 @@ from app.db.models import (
     TaskQuestion,
     TaskRun,
 )
+from app.logging import get_logger
 from app.services import audit as audit_actions
 from app.services.activity import (
     ACTOR_AGENT,
@@ -70,6 +72,7 @@ from app.services.conversation import (
     read_kind,
 )
 from app.services.integrations import IntegrationService
+from app.services.knowledge.context import ContextBuilder
 from app.services.process import ProcessService
 from app.services.providers import supports_host
 from app.services.runners import RepositoryService, clone_url
@@ -278,6 +281,9 @@ class RunOffer:
             "delivery": _WIRE_DELIVERY.get(self.task.delivery, self.task.delivery),
             "spec": spec,
         }
+
+
+log = get_logger("cliora.runs")
 
 
 class RunService:
@@ -1000,27 +1006,67 @@ class RunService:
         # bypassed — this wraps it (ADR 0035 §4, `plan/23` D65).
         if run is not None and run.parent_run_id is not None:
             return await self._continuation_context(task, run, secrets)
-        if task.card_kind in REQUIREMENT_KINDS and task.requirement_id is not None:
-            requirement = await self._session.get(Requirement, task.requirement_id)
-            if requirement is not None:
-                latest = (
-                    await self._session.execute(
-                        select(FeatureSpec)
-                        .where(FeatureSpec.requirement_id == requirement.id)
-                        .order_by(FeatureSpec.seq.desc())
-                        .limit(1)
-                    )
-                ).scalar_one_or_none()
-                process = await ProcessService(self._session).effective(
-                    project=await self._session.get(Project, task.project_id)
-                )
-                if task.card_kind == CARD_KIND_CLARIFICATION:
-                    return render_clarification_context(task, requirement, latest)
-                rejected = await self._rejected_notes(requirement.id)
-                return render_decomposition_context(
-                    task, requirement, latest, process.readiness_keys(), rejected
-                )
-        return render_run_context(task, secret_names=[item.name for item in secrets])
+        base = await self._base_context(task, secrets)
+        return base + await self._knowledge_digest(task, run)
+
+    async def _knowledge_digest(self, task: Task, run: TaskRun | None) -> str:
+        """The project's rules, appended to whichever pack the card's kind produced.
+
+        **Appended rather than rendered.** `GATE-RQ-CONTEXT-DISPATCH` asserts that the
+        four renderers have exactly one caller; adding a string after one of them is
+        neither a new renderer nor a new caller, so the gate's shape is untouched. This
+        is the difference from `CV-09`, which had to add a fourth renderer because a
+        continuation rewrites the pack's whole structure — a policy digest only sits
+        after it.
+
+        Never raises into dispatch. A card must still be dispatchable when the knowledge
+        layer is unavailable; the cost of failing here is a pack without the rules, and
+        the cost of raising is a card that cannot run.
+        """
+        try:
+            return await ContextBuilder(self._session).digest(
+                task,
+                # A daemon older than 0.14.0 has no `cliora knowledge` subcommand, and
+                # telling its agent to run one produces `unknown command` and a confused
+                # reader.
+                #
+                # **Decided by the daemon's version, not by `runner.register.features`.**
+                # The planning document assumed that field could carry a new value for
+                # free; it cannot — its enum is closed to `verification` and `evidence`
+                # (`contracts/v1/schemas/messages/runner-register.schema.json`), a
+                # misspelling is a *rejected frame* by deliberate design, and there is an
+                # invalid fixture asserting exactly that. Adding a value would be a
+                # contract change, and worse: an un-upgraded **Central** would then
+                # reject a new daemon's registration outright. The node already reports
+                # its version, and that answers the question being asked.
+                with_cli_hint=await self._daemon_has_knowledge_cli(run),
+            )
+        except Exception as exc:  # noqa: BLE001 - a card must stay dispatchable
+            log.warning(
+                "knowledge_digest_failed",
+                extra={"event": "knowledge_digest_failed", "error": type(exc).__name__},
+            )
+            return ""
+
+    async def _daemon_has_knowledge_cli(self, run: TaskRun | None) -> bool:
+        """Whether this run's node ships `cliora knowledge` (0.14.0 and later).
+
+        Compared as a tuple of integers rather than as a string: `"0.9.0" > "0.14.0"`
+        lexicographically, and that comparison is right nine times out of ten and wrong
+        on the tenth.
+        """
+        if run is None or run.runner_id is None:
+            return False
+        runner = await self._session.get(AgentRunner, run.runner_id)
+        if runner is None:
+            return False
+        node = await self._session.get(Node, runner.node_id)
+        raw = (node.daemon_version if node is not None else None) or ""
+        head = raw.split("-", 1)[0]
+        parts = head.split(".")
+        if len(parts) != 3 or not all(part.isdigit() for part in parts):
+            return False
+        return tuple(int(part) for part in parts) >= (0, 14, 0)
 
     async def _continuation_context(
         self, task: Task, run: TaskRun, secrets: tuple[MaterialisedSecret, ...]
