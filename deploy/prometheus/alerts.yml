@@ -189,3 +189,58 @@ groups:
             Heartbeat processing is unaffected by design, so the only symptom is a
             Dashboard resources block and a diagnostic history with holes in them.
           runbook: docs/runbooks/db-exhaustion.md
+
+      # --- V2-C1 conversation (plan/24/06) --------------------------------------
+      #
+      # **Greater than zero, not a rate.** The question CAS already serialises answers,
+      # so a duplicate continuation means a path reached one without going through it —
+      # and that bug has no other symptom: the platform keeps working and somebody's
+      # agent answers twice. `metrics.py` has said this since the counter was added;
+      # this is the rule the sentence was describing.
+      - alert: ClioraConversationDuplicateTurn
+        expr: increase(cliora_conversation_duplicate_turn_total[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "A question produced more than one agent turn"
+          description: >-
+            An answer was acted on twice. Check whether the unique index
+            `uq_task_runs_continuation` still exists before looking anywhere else, and
+            treat any card whose delivery is a branch or a pull request as possibly
+            having been pushed to twice.
+          runbook: docs/runbooks/conversation-duplicate-turn.md
+
+      # Expiry itself is normal — nobody answered within 24 hours. Five in an hour is not
+      # one person being busy; it is either a team that stopped reading its cards or an
+      # agent asking questions nobody can answer.
+      - alert: ClioraConversationQuestionExpirySurge
+        expr: increase(cliora_conversation_question_expired_total[1h]) > 5
+        labels:
+          severity: warning
+        annotations:
+          summary: "Agent questions are expiring unanswered"
+          description: >-
+            Each expiry put a card back into `blocked`. A late reply is still recorded
+            but starts no new turn, so these cards need dispatching again by hand.
+          runbook: docs/runbooks/conversation-duplicate-turn.md
+
+      # The mirror image of the first alert: answers going in and no turns coming out.
+      #
+      # **It has a known false positive**, and saying so is cheaper than deleting the
+      # rule: an answer to a question whose run is still polling closes it *without*
+      # creating a turn (D67), so a deployment where that is the common case will trip
+      # this. The runbook's first step separates the two. Without the rule, "I answered
+      # and nothing happened" has nobody watching it at all.
+      - alert: ClioraConversationTurnsStalled
+        expr: >-
+          increase(cliora_conversation_messages_total{kind="answer"}[15m]) > 0
+          and increase(cliora_conversation_turns_total[15m]) == 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Answers are being written but no agent turn is starting"
+          description: >-
+            Either every answer landed on a run that was still polling (normal, D67) or
+            the continuation path is broken. The runbook's first query tells them apart.
+          runbook: docs/runbooks/conversation-duplicate-turn.md

@@ -1,6 +1,7 @@
 # ADR 0037 — Who may say what on a card, and why an agent's sentence is never an approval
 
-- Status: **proposed** (2026-08-16), together with ADR 0035 and ADR 0036.
+- Status: **accepted** (2026-08-21), together with ADR 0035 and ADR 0036 — one decision,
+  and the provenance is in ADR 0035's status block.
 - Date: 2026-08-16
 - Related: ADR 0028 (`AgentPrincipal` carries no `user_id` — this document extends
   that to a third actor kind on the thread), ADR 0032 (secrets — §3 adds one

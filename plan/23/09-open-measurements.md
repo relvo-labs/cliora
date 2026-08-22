@@ -5,9 +5,9 @@
 
 | # | 項目 | 為什麼現在不量 | 何時量 | 誰負責 |
 |---:|---|---|---|---|
-| 1 | 真實對話的輪數分佈與放棄率 | 需要真實使用者。本期只有 metric 的埋點（`cliora_conversation_turns_per_task`），沒有資料 | `beta.1` 試用之後 | product |
-| 2 | continuation 該不該插隊 | 目前 `_eligible()` 是 `ORDER BY queued_at`，沒有優先權——那是 ADR 0029 明確的姿態。**先量 answer→turn 的 P95**（[`08`](./08-verification-and-exit.md) §6），超過 10 秒再談 | `alpha.2` 上線後一個月 | central |
-| 3 | poll 間隔 5 秒是否需要調短 | 與第 2 項同一組資料。若 P95 的瓶頸是 poll 那一段，選項有三個：調短間隔（成本是所有 runner 的請求量）、D44 的通知路徑、或接受 | 同上 | central／daemon |
+| 1 | 真實對話的輪數分佈與放棄率 | 需要真實使用者。**連埋點都沒有**——`turns_per_task` 這個 histogram 在實作時被砍了（[`10`](./10-implementation-status.md) §7），本期只有 `conversation_turns_total` 這個計數器，它答得出總數、答不出分佈 | `beta.1` 試用之後，與那個 histogram 一起加 | product |
+| 2 | continuation 該不該插隊 | 目前 `_eligible()` 是 `ORDER BY queued_at`，沒有優先權——那是 ADR 0029 明確的姿態。P95 已量到 **5.00s**（[`10`](./10-implementation-status.md) §5），沒有超過 10 秒，所以**這一項維持不做**；真實負載下的排隊才是它該被重新問的時候 | `alpha.2` 上線後一個月 | central |
+| 3 | poll 間隔 5 秒是否需要調短 | 與第 2 項同一組資料。**瓶頸確實是 poll 那一段**——5.00s 裡有 4.91s 是它，其餘是毫秒。三個選項（調短間隔、D44 的通知路徑、接受）都還在，而現在有數字可以談：目前選**接受** | 同上 | central／daemon |
 | 4 | **continuation 拿不到上一輪未提交的變更**，實務上有多痛 | 隔離工作目錄是 per-run 的（`FR-AGENT-011`），continuation 是新目錄。對釐清卡無影響；對實作卡的影響取決於「Agent 多常在改到一半時提問」，而那個數字現在是零筆 | `beta.1` | daemon |
 | 5 | 逾時後回覆的粗糙邊緣 | question `expired` 之後卡片在 `blocked`，UI 給的動作是「重新派工」而不是「回覆並繼續」。**新的一輪不會帶著那則遲來的回覆**——它會出現在對話裡，但不在 `input_from_seq..input_to_seq` 的範圍內 | `beta.1`，看真實逾時頻率 | central |
 | 6 | 情境包 16 KiB 上限是否合適 | 沒有真實對話長度分佈。上限選在這裡是因為它大約是 4000 token，佔一個典型 context window 的個位數百分比 | `alpha.3` 的 Context Builder 會重新校準 | central |

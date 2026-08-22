@@ -954,7 +954,14 @@ class RunService:
                 task=task,
                 repository=repository,
                 credential=issued.value,
-                context=await self._context_for(task, secrets, run),
+                # The address is stamped **outside** the chooser on purpose: which pack
+                # this card gets is a decision (and `GATE-RQ-CONTEXT-DISPATCH` asserts
+                # there is exactly one place that makes it), while where Cliora lives is
+                # not a decision at all — it is the same for every kind.
+                context=_with_api_base(
+                    await self._context_for(task, secrets, run),
+                    self._settings.public_base_url or "",
+                ),
                 secrets=secrets,
                 branch=run_branch(task, run, await self.root_seq_for(run)),
                 # Both stores, project first — and only for a node that declared it can
@@ -1691,6 +1698,44 @@ async def release_claim(session: AsyncSession, run: TaskRun) -> None:
     run.claimed_at = None
     run.lease_expires_at = None
     await session.flush()
+
+
+def _with_api_base(pack: str, api_base: str) -> str:
+    """Stamp the address a run's `cliora` calls back to onto its context pack.
+
+    **Every renderer above tells the agent to run `cliora task say` / `ask` / `attach`,
+    and until this existed none of them said where Cliora is.** The CLI's only source
+    for the address is an `API：` line in the pack it found (`cli.apiBaseFrom`) — read
+    from the pack rather than from the daemon's configuration on purpose, because the
+    CLI runs as the agent and reading a service's config would be assuming a permission
+    it has no reason to hold. With no such line the base is the empty string, every call
+    fails to connect, and the CLI reports the platform as unreachable while the platform
+    is answering the daemon perfectly well.
+
+    That is the exact symptom a staging run showed for its whole life before
+    `4a9a016` — and that fix corrected the *credential's* filename, which was the other
+    half. This is the address half: with the token found and no base, `cliora task ask`
+    still could not reach anything, so an agent's questions never arrived and the run
+    finished `RUN_DELIVERY_INCOMPLETE`.
+
+    Stamped at the single dispatch point rather than inside each of the four renderers:
+    the address is a property of the deployment, not of the card's kind, and four copies
+    would be four chances for the next renderer to forget it.
+
+    An empty `public_base_url` writes no line at all. A deployment without it is
+    misconfigured (`compose.yaml` refuses to start, `check_env.py` fails the deploy), and
+    an `API：` line with nothing after it would make the CLI report an outage instead of
+    saying its context has no address.
+    """
+    if not api_base:
+        return pack
+    # Bounded for the same reason the session pack bounds it: a malformed deployment URL
+    # must not crowd out acceptance criteria.
+    return pack.rstrip("\n") + (
+        "\n\n## 平台位址\n\n"
+        f"`cliora` 會連到這裡：API：{api_base[:256]}\n"
+        "`cliora context show` 讀本機檔案，不需要連線。\n"
+    )
 
 
 def render_run_context(task: Task, *, secret_names: list[str] | None = None) -> str:

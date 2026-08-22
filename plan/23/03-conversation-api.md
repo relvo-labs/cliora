@@ -33,8 +33,15 @@ question 狀態與投影維護。
 | `question` | human ＋ runner | 依 target | 否 | `question` |
 | `answer` | human ＋ runner | **是**（`resume=true` 且該 question open） | 否 | `answer` |
 | `proposal` | **runner only** | 否 | 否 | `proposal` |
-| `decision` | **human only**，需 `task.approve` | 依 decision | 僅對該 proposal | `decision` |
+| `decision` | **human only**，需 `task.approve` | **否**（見下） | 僅對該 proposal | `decision` |
 | `system` | 系統 only | 否 | 否 | `system`（新寫入）／`event`（既有列） |
+
+> **`decision` 的續跑欄原本寫「依 decision」，那是錯的**（2026-08-21，`CE-18`）。
+> 實作裡 `decision` 只有兩個出現點——常數與權限檢查——**沒有任何路徑替它建 continuation**，
+> 只有 `answer` 會。ADR 0035 的狀態機畫了 `SpecProposed → Clarifying: 人類要求修改` 那條邊，
+> 而今天那條邊由**人重新派工**走完；`plan/24` 的 J1a 就是這樣寫的，因為那是唯一走得通的路。
+> 要不要自動續跑是一個產品決定（理由還沒寫完就開始跑？`input_from_seq` 從哪算？），
+> 記在 `alpha.2` 的 known limitations 與 `beta.1` 的計畫裡。
 
 讀取映射（D63）在 DTO 組裝的**一處**：
 

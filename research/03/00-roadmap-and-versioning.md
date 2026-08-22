@@ -148,11 +148,11 @@ V1 compatibility 與 `master` reconciliation、security／privacy／a11y／load 
 | ☐ | 確認 tag target 仍是 `f91d9c45…` | `git rev-parse v2` 相符；不符則改版號，**不移動舊 tag** |
 | ☐ | 在乾淨環境重跑 gates 與測試 | RQ 十個 gate、Central、daemon、frontend 三組測試全綠，**保存環境／版本／輸出** |
 | ☐ | 補齊 CI 可觀測性 | HEAD 目前沒有 GitHub combined status。若 workflow 未涵蓋，保存手動驗證證據並開 issue |
-| ☐ | 產生 component manifest | Central commit `f91d9c4`、`agentd` `0.12.0`、contract `1.13.0`、migration head `0039`、RBAC 24 動作 |
+| ☐ | 產生 component manifest | Central commit `f91d9c4`、`agentd` `0.12.0`、contract `1.13.0`、migration head `0039`、RBAC **27** 動作（「24」是文件的舊錯，程式一直是 27——`plan/23/10` §9.4） |
 | ☐ | 驗證 fresh install、upgrade、downgrade／rollback | `deploy/compose` 與 Railway 兩條路徑各一次 |
 | ☐ | 驗證 feature flag 全關 = V1 行為 | `CLIORA_PROJECTS_ENABLED=false` 時畫面、API、protocol 與 V1 一致 |
 | ☐ | 列出 known limitations | Legacy V2.5 的四項 ＋ 本規劃 [`01`](./01-architecture-decisions.md) §2 確認的 conversation／knowledge 六項缺口 |
-| ☐ | 標明 diverged 狀態 | release note 明寫 ahead 60／behind 6，**alpha tag 不等於可合併** |
+| ☐ | 標明 diverged 狀態 | release note 明寫 **ahead 64／behind 6**（2026-08-21 實測；規劃時是 60／6），**alpha tag 不等於可合併** |
 | ☐ | 人工 security／release sign-off | 具名、附日期，記在 release note |
 | ☐ | 建立 annotated tag 與 GitHub pre-release | `git tag -a v2.0.0-alpha.1 f91d9c4`，勾選 pre-release |
 

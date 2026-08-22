@@ -617,3 +617,80 @@ async def test_a_secret_value_is_redacted_before_it_is_stored(
             )
         ).scalar_one()
     assert secret.last_used_at is None
+
+
+# --- the address the agent calls back to ----------------------------------
+
+
+async def test_a_runs_context_pack_says_where_cliora_is(
+    api: tuple, projects_enabled: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every renderer tells the agent to run `cliora task …`; the pack must say where to.
+
+    The CLI's *only* source for the address is an `API：` line in the pack it found
+    (`cli.apiBaseFrom`) — read from the pack rather than from the daemon's config,
+    because the CLI runs as the agent. Without the line the base is `""`, every call
+    fails to connect, and the CLI reports the platform as unreachable while the platform
+    is answering the daemon fine.
+
+    That is precisely the staging symptom `4a9a016` was chasing: it fixed the
+    *credential's* filename, and the address was the other half — with a token and no
+    base, `cliora task ask` still reached nothing and the run finished
+    `RUN_DELIVERY_INCOMPLETE`. Neither half had a test that crossed the seam, which is
+    why both survived (`plan/24/10` §2.1).
+
+    Asserted on the **offer** rather than on the renderer, because a renderer that gets
+    it right and a dispatch path that drops it look identical from inside a unit test.
+    """
+    from app.services.runs import RunService
+
+    monkeypatch.setenv("CLIORA_PUBLIC_BASE_URL", "https://cliora.example.com")
+    from app.settings import get_settings
+
+    get_settings.cache_clear()
+    try:
+        client, maker = api
+        _user, headers = await _actor(client, maker)
+        project, task = await _card(client, headers)
+
+        async with maker() as session:
+            node = Node(
+                id=uuid.uuid4(),
+                name=f"n-{uuid.uuid4().hex[:6]}",
+                hostname=f"{uuid.uuid4().hex[:6]}.invalid",
+                status="online",
+                agent_runner=True,
+            )
+            session.add(node)
+            await session.flush()
+            runner = AgentRunner(
+                id=uuid.uuid4(),
+                node_id=node.id,
+                name=node.name,
+                runtimes=["claude"],
+                labels=[],
+                enabled=True,
+                max_concurrent=1,
+                max_waiting=5,
+            )
+            session.add(runner)
+            await session.commit()
+            runner_id = runner.id
+
+        dispatched = await client.post(
+            f"/api/tasks/{task['id']}/dispatch", json={}, headers=headers
+        )
+        assert dispatched.status_code == 202, dispatched.text
+
+        async with maker() as session:
+            runner_row = await session.get(AgentRunner, runner_id)
+            offer = await RunService(session).poll(runner=runner_row, capacity=1)
+            await session.commit()
+
+        assert offer is not None, "the card was dispatched but never offered"
+        assert "API：https://cliora.example.com" in offer.context
+        # The pack still leads with how to report — the address is appended, not
+        # inserted ahead of the mandatory first section (D8/M2).
+        assert offer.context.startswith(f"# {task['card_ref']}")
+    finally:
+        get_settings.cache_clear()

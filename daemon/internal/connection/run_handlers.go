@@ -164,6 +164,39 @@ func (m *Manager) pollLoop(ctx context.Context, write func(string, string, any) 
 	}
 }
 
+// omitEmptyOptionals drops the optional fields that are empty rather than sending them.
+//
+// **Omitted when empty, never sent as "" or null.** The contract gives the optional
+// strings `minLength: 1` and the lists `type: array`, and a frame that fails validation
+// is dropped by the receiver *silently* — so the cost of one wrong field is the whole
+// message. `pushed_branch` joined the strings in 1.13.0: an empty one would have taken
+// the entire `run.complete` with it, and the symptom would have been an expired lease
+// rather than an error (plan/18 D2).
+//
+// **`git_remotes` is the one that rule missed**, and it is why no run on a card without a
+// git remote could finish. `Remotes()` returns a nil slice both for a repository with no
+// remotes and for a directory that is not a repository at all — which is every
+// `source: none` card, so every clarification card — a nil `[]string` marshals to
+// `null`, and `null` is not an array. Claimed, started, then silence until the lease
+// expired: exactly the failure the paragraph above was written to prevent, one type
+// later. A nil `[]string` inside a `map[string]any` is not `== nil`, so it needs a case
+// of its own rather than a generic nil check (`plan/24/10` §2.2).
+func omitEmptyOptionals(payload map[string]any) {
+	for _, key := range []string{"summary", "message", "pushed_branch"} {
+		if value, ok := payload[key].(string); ok && value == "" {
+			delete(payload, key)
+		}
+	}
+	// One key rather than a speculative list: `git_remotes` is the only `[]string` any
+	// frame from this path carries today, and a name here that nothing sends is a claim
+	// of coverage no test can hold up.
+	for _, key := range []string{"git_remotes"} {
+		if value, ok := payload[key].([]string); ok && len(value) == 0 {
+			delete(payload, key)
+		}
+	}
+}
+
 // handleRunOffer starts a run, or declines it.
 //
 // `run_id: null` is the "nothing for you" answer and the common case, so it is checked
@@ -223,16 +256,7 @@ func (m *Manager) executeRun(
 
 	send := func(kind string, payload map[string]any) {
 		payload["run_id"] = runID
-		// Optional strings are **omitted when empty, never sent as ""**: the contract
-		// gives them `minLength: 1`, and a frame that fails validation is dropped by the
-		// receiver *silently*. `pushed_branch` joins the list in 1.13.0 — an empty one
-		// would take the whole `run.complete` with it, and the symptom would be an
-		// expired lease rather than an error (plan/18 D2).
-		for _, key := range []string{"summary", "message", "pushed_branch"} {
-			if value, ok := payload[key].(string); ok && value == "" {
-				delete(payload, key)
-			}
-		}
+		omitEmptyOptionals(payload)
 		_ = write(kind, protocol.NewID(), redactor.Payload(payload))
 	}
 

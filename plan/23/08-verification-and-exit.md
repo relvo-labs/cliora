@@ -106,7 +106,7 @@ AST 掃 `backend/app/`，找對 `Task.waiting_for_actor` 與 `Task.open_question
 
 | # | 旅程 | 關鍵斷言 |
 |---|---|---|
-| **J3** | Ready 卡被認領 → Running → Agent 提問 → 卡片顯示「等待你的回覆」 | 卡片徽章來自投影欄，不是前端推導 |
+| **J3** | Ready 卡被認領 → Running → Agent 提問 → 卡片顯示「等待你的回覆」 | 徽章來自 server 的 questions 清單（**不是**投影欄——`CV-13` 是「先寫入不顯示」）；投影欄另以 API 斷言。見 `plan/24/03` §0.1 |
 | **J5** | answer commit 後 daemon 斷線／重啟 → 補拉且**只建立一個 turn** | 重啟後 `SELECT count(*) FROM task_runs WHERE resumed_question_id = ?` 恰為 1 |
 | **J6** | 只送 comment → **run 不被誤 resume** | 送 20 則 comment，`task_runs` 筆數不變、run 狀態不變 |
 | **J7** | Run failure → 顯示原因 → retry，**conversation 保留** | retry 之後訊息串完整，seq 連續 |
@@ -117,7 +117,7 @@ AST 掃 `backend/app/`，找對 `Task.waiting_for_actor` 與 `Task.open_question
 
 | # | 旅程 | 關鍵斷言 |
 |---|---|---|
-| **J1a** | **三輪釐清 ＋ spec proposal ＋ 要求修改 ＋ 接受**，全程不進 Terminal | 每一輪都是新的 run（`turn_seq` 1→2→3→4）；只有人類的 `decision` 讓 readiness 前進 |
+| **J1a** | **三輪釐清 ＋ spec proposal ＋ 要求修改 ＋ 接受**，全程不進 Terminal | 四輪都是新的 run，但**不是** `turn_seq` 1→2→3→4：兩次 answer 產生 continuation（2、3），第四輪是「要求修改」之後**人重新派工**的 root（`CE-18`）。`decision` **不改** readiness——那是刻意的（出口 8）。見 `plan/24/03` §0 |
 
 `J1a` 是 `beta.1` 主旅程 J1 的前半段。**它是本期不可降級的那一條。**
 

@@ -1,8 +1,9 @@
 # 10 — 實作進度與證據
 
-> **狀態：`CV-00`…`CV-13` 已實作（2026-08-16）。**
+> **狀態：`CV-00`…`CV-13` 已實作（2026-08-16），收尾補齊至 2026-08-19。**
 > `make check` 全綠、**八個 gate** 全 PASS、Central **1762** 條測試、前端 **686** 條、daemon 全綠。
-> **實作與計畫的十二處差異、三項未完成的收尾，記在 §2 與 §7。**
+> 出口條件 **21／23 通過**；效能已量測（§5），release note 與 SR-1 已產出。
+> **實作與計畫的十二處差異在 §2；剩下的兩項在 §7；2026-08-19 那一輪複查在 §9。**
 >
 > 沿用 `plan/17/09`／`plan/19/09`／`plan/22/11` 的體例：
 > **這裡記的是實際發生的事**，與計畫不同時，**以這裡為準並回寫計畫**。
@@ -31,7 +32,7 @@
 
 | ticket | 狀態 | 證據 |
 |---|---|---|
-| `CV-00` | ☑ | `plan/19/README.md` 狀態句已更正並註明原因 |
+| `CV-00` | ☑ | `plan/19/README.md` 狀態句已更正並註明原因；`alpha.1` known limitations 六條寫進 `docs/release-note-requirements-and-decomposition.md`（**2026-08-19 補**，見 §9） |
 | `CV-01` | ☑ | `docs/adr/0035-conversation-run-and-turn.md`；PRD §8.17；`FR-CONV-001`…`-010` 註冊（168→178） |
 | `CV-02` | ☑ | ADR `0036`／`0037`／`0041`；`contracts/CHANGELOG.md` 的「not one byte」一節 |
 | `CV-03` | ☑ | migration `0040`，兩張新表 ＋ 14 欄；upgrade→downgrade→upgrade schema 逐位元組相同 |
@@ -79,7 +80,7 @@
 
 `root_run_id`（D60）與 `resumed_question_id`（`uq_task_runs_continuation` 的另一半）
 都是寫計畫時才發現的。[`02`](./02-data-layer.md) 已在寫作當下更新，
-[`research/03/08`](../../research/03/08-data-model-and-contract.md) §1 的「12 欄」仍待回寫。
+[`research/03/08`](../../research/03/08-data-model-and-contract.md) §1 也已經是 14 欄。
 
 ### 2.3 reaper 需要兩段掃描，不是一段
 
@@ -192,14 +193,46 @@ V2-C1 gates (baseline: artifacts/cv/local/baseline, f91d9c4)
 
 ## 5. 效能量測
 
-**尚未執行**（見 §7）。`answer → turn 開始` 的三段拆解需要一個真的 runner 在跑，
-本期的測試以直接改資料庫狀態代替。
+**已執行（2026-08-19）。** 20 個樣本、乾淨資料庫、真的 daemon 在輪詢：
+
+```text
+answer → turn 開始      P95 5.00s   中位數 4.94s   最差 5.59s   （目標 < 10s）
+  answer commit          中位數 0.014s    ← Central
+  queued → claimed       中位數 4.912s    ← runner 的 5 秒 poll
+  claimed → 子行程啟動     中位數 0.016s    ← runtime（此處是 fakecli）
+```
+
+**幾乎整個延遲就是 poll 間隔**，這正是 [`08`](./08-verification-and-exit.md) §6 說
+「如果是第一段，那就是 D44 的證據」的那一段。D44 選擇不動 contract 的代價，
+量出來是平均半個 poll 間隔，其餘都在毫秒級。
+
+重跑（輸出落在 `artifacts/*/local/`，與基線同一個慣例，不進版本控制）：
+
+```bash
+dropdb cliora_e2e && createdb cliora_e2e      # 見下面那個陷阱
+CLIORA_DATABASE_URL=postgresql+asyncpg://…/cliora_e2e E2E_RUNNER=1 \
+  scripts/e2e/run-stack.sh \
+  uv run --project backend python scripts/cv/measure-answer-to-turn.py --samples 20
+```
+
+工具是 `scripts/cv/measure-answer-to-turn.py`，跑在 `E2E_RUNNER=1` 的 e2e 堆疊裡
+（`scripts/e2e/run-stack.sh` 本期新增的 opt-in runner 模式）。
+量到的區間是真的：人的回覆走 HTTP 進去，碼錶停在**真的 daemon** 寫的
+`claimed_at`／`started_at` 上。**被造出來的是回覆之前的東西**——parent run 與那個
+未答問題是直接寫進去的，因為那不在被量的區間上，而讓它自然發生只會替 setup 加上
+一個與量測無關的競態。第三段是這個堆疊的行程啟動時間，與 Claude／Codex 無關，
+所以它分開列。
+
+**一個量測本身的陷阱，記在這裡因為它會再發生一次**：第一次跑出了一個 29.9 秒的樣本，
+而原因不是平台——是同一個資料庫裡上一輪留下的 run 還在佔 runner 的 `max_concurrent`
+名額。腳本現在會在開始前數還在飛的 run，**不是零就拒絕跑**：那個數字若被印出來，
+就會被引用。
 
 ## 6. 出口條件
 
 | ☑ | # | 條件 | 證據 |
 |---|---:|---|---|
-| ☐ | 1 | answer → 新 turn P95 < 10s | **未量測**（§7） |
+| ☑ | 1 | answer → 新 turn P95 < 10s | **P95 5.00s**（20 樣本）；`artifacts/cv/local/answer-to-turn.json`、§5 |
 | ☑ | 2 | 每則 answer 至多一個 continuation | `test_two_people_answering_one_question_produce_one_turn` ＋ `uq_task_runs_continuation` |
 | ☑ | 3 | retry 不產生重複訊息 | `test_the_same_idempotency_key_writes_one_message`（送 10 次，1 則） |
 | ☑ | 4 | process 結束後 conversation 可從 DB 恢復 | `test_answering_closes_the_question_and_queues_exactly_one_turn` |
@@ -220,18 +253,31 @@ V2-C1 gates (baseline: artifacts/cv/local/baseline, f91d9c4)
 | ☑ | 19 | 前端不推導等待狀態 | `GATE-CV-NO-CLIENT-WAITING-DERIVATION` ＋ 元件測試 |
 | ☑ | 20 | 使用者打的字在任何失敗後都不消失 | `test the draft survives a failed send` |
 | ☑ | 21 | `make check` 全綠、七個 gate 全 PASS | §3 |
-| ☐ | 22 | release note 列出 known limitations | **未撰寫**（§7） |
+| ☑ | 22 | release note 列出 known limitations | `docs/release-note-ticket-conversation.md`，六條 |
 | ☐ | 23 | `v2` → `dev` 由人工核准 | 流程，未執行 |
 
-**19 項通過，4 項未完成。** 四項全部列在 §7，沒有一項是「做了但沒證明」。
+**21 項通過，2 項未完成。** 兩項都列在 §7，沒有一項是「做了但沒證明」。
 
-## 7. 未完成（三項）
+出口條件之外還有一項 `research/03/CHECKLIST.md` §2 記著的：**SR-1 安全審查**。
+[`docs/security-review-v2c1.md`](../../docs/security-review-v2c1.md) 已寫出並公開，
+**但未簽核**——它自己的兩項未結發現就是下面 §7 的那兩項。
 
-| # | 項目 | 為什麼沒做 | 誰接手 |
-|---:|---|---|---|
-| 1 | **效能量測**（出口 1） | 需要一個真的 runner 在跑才量得到三段拆解；本期的測試以直接改資料庫狀態代替 | `alpha.2` tag 前 |
-| 2 | **chaos／E2E**（出口 5、11、16） | 需要 `scripts/e2e/run-stack.sh` 起完整堆疊 ＋ 一個 `agentd` 0.12.0 的 binary | `alpha.2` tag 前 |
-| 3 | **release note ＋ known limitations**（出口 22） | 等 1–2 完成後一次寫 | `alpha.2` tag 前 |
+## 7. 未完成（兩項）→ **兩項都已於 2026-08-21 由 [`plan/24`](../24/README.md) 完成**
+
+| # | 項目 | 結果 |
+|---:|---|---|
+| 1 | **chaos ／ 六條 E2E**（出口 5、11） | ☑ **七條旅程全部執行且通過**（J0 preflight ＋ J1a／J3／J5／J6／J7／J8／J9）。`GATE-CE-JOURNEY-COVERAGE` 拒絕任何一條被 skip 的執行。詳見 [`plan/24/10`](../24/10-implementation-status.md) §4 |
+| 2 | **未升級節點的實測**（出口 16） | ☑ **已實測**，而答案比原本的說法窄：**線上（wire）相容，「完成」不相容**。0.12.0 帶著一個 V2.2 就在的缺陷（`CE-17`），沒有任何測試碰得到它，因為從來沒有人讓一個真的 daemon 把一個 run 跑完。修在 `agentd` 0.13.1 |
+
+**而那兩項不只是被補上，它們各照出一個真的缺陷**——這正是「論證不是證據」這句話的代價：
+
+| 缺陷 | 誰照出來的 | 影響 |
+|---|---|---|
+| `CE-16` run 的情境包沒有平台位址 | 第一條旅程的第一步 | run 裡的 `cliora` 從來連不上 Central；`CV-08` 的四個子命令在真的 run 裡從未成功 |
+| `CE-17` `run.complete` 帶 `null git_remotes` 被靜默丟棄 | 第一次讓 run 跑到結束 | **沒有 git remote 的卡（每一張釐清卡）的 run 永遠不會結束**，症狀是租約過期 |
+
+**2026-08-19 補齊的三項**（原本列在這裡）：效能量測（§5）、release note、SR-1 安全審查。
+詳見 §9。
 
 **已於收尾補齊的三項**（原本列在這裡）：
 
@@ -257,6 +303,67 @@ V2-C1 gates (baseline: artifacts/cv/local/baseline, f91d9c4)
 | [`04`](./04-answer-resume-and-turns.md) §4 | reaper 是兩段掃描 | ☑ |
 | [`01`](./01-decisions-and-governance.md) D62 | 拒絕時回 201 ＋ `mode`，不是 409 | ☑ |
 | [`research/03/02`](../../research/03/02-phase-c1-ticket-conversation.md) §6 | 刪掉 `conversation/resume` | ☑ |
-| [`research/03/08`](../../research/03/08-data-model-and-contract.md) §1 | `alpha.2` 是 14 欄不是 12 | ☐ |
-| [`research/03/CHECKLIST.md`](../../research/03/CHECKLIST.md) | `alpha.2` 段落打勾 | ☐ |
-| `docs/adr/0035` | 狀態從 proposed 改 accepted（需人工核准） | ☐ |
+| [`research/03/08`](../../research/03/08-data-model-and-contract.md) §1 | `alpha.2` 是 14 欄不是 12 | ☑ 已是 14（§1 表格第二列） |
+| [`research/03/CHECKLIST.md`](../../research/03/CHECKLIST.md) | `alpha.2` 段落打勾 | ☑ `CV-12` 已補齊為 ☑（`plan/24` 的七條旅程）；`CE-` 那一段是新的 |
+| `docs/adr/0035`（與 0036／0037／0041） | 狀態從 proposed 改 accepted（需人工核准） | ☐ **仍待人工**——清單在 [`docs/release-checklist-alpha2.md`](../../docs/release-checklist-alpha2.md) §3，含「同時追認在 proposed 狀態下已完成的實作」那一句 |
+
+## 9. 2026-08-19 的收尾
+
+深入複查本期時發現的五件事，以及對它們做的處置。**四件是文件與交付物的缺口，
+一件是程式的缺陷**——而那個缺陷是這次複查真正的收穫。
+
+### 9.1 ★ run 裡的 `cliora` 從來找不到自己的憑證
+
+daemon 把憑證寫成 `.cliora/context/run.token`（`runner.WriteContext`），
+而 CLI 只讀 `<id>.token`。**兩邊各自的單元測試都是綠的，中間那條縫沒有任何測試。**
+症狀是一個 staging run 的一生都在對著回應正常的平台印「無法連線到 Cliora」，
+最後以 `RUN_DELIVERY_INCOMPLETE` 收場——`CV-08` 那四個子命令在真的 run 裡從來沒通過。
+
+修在 `4a9a016`：讀的一邊退回 `run.token`（`run.token` 這個名字是有承載的——
+`GATE-SC-NO-SECRET-TO-DISK` 按名字排除它），缺憑證改用 `NoCredentialMessage`
+說實話而不是謊報離線，測試放在 `internal/cli/context_seam_test.go`。
+
+**測試的位置本身是一個決定**：它最自然的家 `internal/runner/` 在禁區清單上。
+放在那裡會讓 `GATE-CV-TOUCH-LIST` 紅——而一個被真話弄紅的 gate，會用刪掉真話來變綠
+（`plan/18/09` §3 item 15、本檔 §2.8 各記過一次）。所以測試放在可以動的那一邊。
+
+**同一件事也暴露了那個 gate 的洞**：它用 `git diff` 比對基線，
+而**從沒被 `add` 過的新檔案不在 diff 裡**。這個修正的測試檔就在禁區底下待著，
+gate 一路是綠的，直到它被 stage。現在也問 `git status --porcelain --untracked-files=all`，
+並且有一個負面測試（在禁區丟一個檔案，gate 必須紅）。
+
+### 9.2 效能量測（出口 1）→ §5
+
+為了量它，`scripts/e2e/run-stack.sh` 新增了 opt-in 的 `E2E_RUNNER=1`：
+兩個 feature flag、`runner` 設定區塊、以及 Central 那一側的 runner 啟用開關
+（`enabled` 刻意不是 `runner.register` 設得動的東西）。
+`daemon/cmd/fakecli` 同時獲得一個 runner 模式（`-p` ＋ JSONL 事件流），
+否則它會被判定為 not runner-capable 而拿不到任何工作。
+
+**這一段基礎設施正是 §7 第 1 項缺的東西**——六條 E2E 現在缺的是旅程本身，不是堆疊。
+
+### 9.3 `CV-00` 只做了一半
+
+證據欄只有 `plan/19/README.md` 的更正；
+[`research/03/01`](../../research/03/01-architecture-decisions.md) §2 的**六條缺口**
+沒有進 `alpha.1` 的 release note。已補進
+`docs/release-note-requirements-and-decomposition.md`，
+並註明其中四條已由本期關閉——否則讀那份 note 的人會以為它們還開著。
+
+### 9.4 SR-1 安全審查
+
+[`docs/security-review-v2c1.md`](../../docs/security-review-v2c1.md)，
+[`08`](./08-verification-and-exit.md) §5 的十三列逐條列出證據。
+十二列通過，一列（未升級節點）是**論證而非證據**。**未簽核**，理由寫在它的 §6。
+
+審查過程中順手校正一個數字：計畫一直寫「RBAC 24 個動作」，`len(ALL_ACTIONS)` 是 **27**，
+而 `rbac.py` 與基線逐位元組相同——**是文件的數字錯，不是程式多了動作**。
+
+### 9.5 四處文件互相矛盾
+
+| 文件 | 原本 | 現在 |
+|---|---|---|
+| [`09`](./09-open-measurements.md) §1 | 說 `turns_per_task` 有埋點 | 那個 histogram 在實作時被砍了（§7），改寫 |
+| 本檔 §8 | `research/03/08` 的「12 欄」待回寫 | 早就是 14 欄，打勾 |
+| `research/03/CHECKLIST.md` `CV-12` | ☑ 含「E2E、chaos」 | ◑，並指向 §7 |
+| `research/03/CHECKLIST.md` `CV-04` | 八個 machine code | 九個 |

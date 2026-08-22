@@ -57,3 +57,80 @@ jobs:
       - run: make integration
       - name: complete live-stack browser suite
         run: scripts/e2e/run-stack.sh bash -c 'cd frontend && npm run test:e2e -- --project=chromium --workers=1'
+
+  # The runner leg: a real daemon polling, a real child process, and the seven journeys
+  # `v2.0.0-alpha.2` is tagged on (`plan/24` `CE-08`, D73).
+  #
+  # **A third leg rather than a flag on the matrix above.** Runner mode changes what the
+  # stack *does* — it starts child processes and completes runs — and folding it into the
+  # `projects=false` leg would be meaningless, because with the project layer off every
+  # `/api/agents` route answers 404.
+  #
+  # It is also the first time `scripts/cv/` runs anywhere but somebody's laptop: the eight
+  # V2-C1 gates and the three closeout gates had no CI at all before this job
+  # (`grep -rn scripts/cv .github/workflows` returned nothing).
+  conversation:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cliora
+          POSTGRES_PASSWORD: cliora
+          POSTGRES_DB: cliora_e2e
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora -d cliora_e2e"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_e2e
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_e2e
+      CLIORA_PROJECTS_ENABLED: "true"
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+      # The two that make this leg what it is. Without the second, `conversation.spec.ts`
+      # skips every test and the job still passes — which is the false green
+      # `GATE-CE-JOURNEY-COVERAGE` exists to catch.
+      E2E_RUNNER: "1"
+      E2E_CONVERSATION: "1"
+    steps:
+      - uses: actions/checkout@v4
+        # The closeout gates diff against a baseline commit, and the compatibility check
+        # builds `agentd` from `f91d9c4` in a worktree. Neither works in a shallow clone.
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: uv sync --project backend --locked
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: uv run --project backend alembic -c backend/alembic.ini upgrade head
+
+      # The gates first: they are seconds, and a phase whose invariants have already
+      # drifted does not need twenty minutes of journeys to say so.
+      - name: V2-C1 gates
+        run: scripts/cv/gates.sh
+      - name: journeys, compatibility and measurements
+        run: scripts/cv/stack-evidence.sh
+      # Last, because it is the check that reads what everything above produced.
+      - name: closeout gates
+        run: uv run --project backend python scripts/cv/gate_closeout.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: alpha2-evidence
+          path: artifacts/cv/local/
+          retention-days: 14

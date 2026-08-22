@@ -130,3 +130,63 @@ func TestRunnerRegisterLabelsAreNeverNull(t *testing.T) {
 		t.Fatal("labels marshalled to null; the contract requires an array")
 	}
 }
+
+// The same failure as `TestRunnerRegisterPayloadIsValidWithNoCapableRuntimes`, one
+// message later and with a worse blast radius: a nil `[]string` marshals to `null`, the
+// contract says `git_remotes` is an array, and Central drops a frame that fails
+// validation **without reporting anything**.
+//
+// `Remotes()` returns nil both for a repository with no remotes and for a directory that
+// is not a repository — which is every `source: none` card, so every clarification card
+// this milestone is about. The run was claimed, started, and then nothing: no completion,
+// no error, and a lease quietly expiring three minutes later. Found by the first journey
+// that ran an agent to the end (`plan/24/10` §2.2).
+func TestRunCompleteIsAValidFrameWithNoGitRemotes(t *testing.T) {
+	payload := map[string]any{
+		"run_id":           uuid.New().String(),
+		"result":           "succeeded",
+		"summary":          "已在卡片上留言。",
+		"disk_bytes":       4096,
+		"git_remotes":      []string(nil), // what Summarise leaves behind off a repo
+		"unpushed_commits": 0,
+		"untracked_files":  0,
+		"pushed_branch":    "", // already handled; asserted here so it stays handled
+	}
+	omitEmptyOptionals(payload)
+
+	if _, present := payload["git_remotes"]; present {
+		t.Fatal("git_remotes survived as null; the whole run.complete would be dropped")
+	}
+	if _, present := payload["pushed_branch"]; present {
+		t.Fatal("an empty pushed_branch survived")
+	}
+
+	frame, err := protocol.BuildControl(
+		"run.complete", uuid.New(), protocol.NewID(), payload, timeFixed(),
+	)
+	if err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	// Validated the way the far end validates it — the assertion above only proves the
+	// key is gone, not that what is left is acceptable.
+	if err := protocol.ValidateControl(frame); err != nil {
+		t.Fatalf("a run that pushed nothing cannot report success: %v", err)
+	}
+}
+
+// The other direction: a run that *did* touch a remote must still carry the evidence.
+// A fix that dropped the field unconditionally would pass the test above and delete the
+// observability ADR 0031 §5 chose instead of blocking the agent from pushing.
+func TestRunCompleteKeepsTheRemotesItHas(t *testing.T) {
+	payload := map[string]any{
+		"run_id":      uuid.New().String(),
+		"result":      "succeeded",
+		"git_remotes": []string{"origin\thttps://github.com/example/repo (fetch)"},
+	}
+	omitEmptyOptionals(payload)
+
+	remotes, ok := payload["git_remotes"].([]string)
+	if !ok || len(remotes) != 1 {
+		t.Fatalf("git_remotes = %#v; a real remote must survive", payload["git_remotes"])
+	}
+}

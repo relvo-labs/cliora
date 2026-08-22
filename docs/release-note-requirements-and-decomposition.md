@@ -65,7 +65,13 @@ the defect this replaced.
 
 ## Known limitations
 
-Four, and each is a decision rather than an omission.
+Ten, in two groups, and the split is the useful part. The first four are answers to
+*why not in this phase*; the last six are answers to *what the platform still cannot
+do* — they were true before V2.5 and V2.5 does not touch them.
+
+### The four this phase decided
+
+Each is a decision rather than an omission.
 
 1. **The mockup preview is not built** (`RQ-11b`). With the tunnel integration off,
    everything behaves correctly — the `ui` gate disables itself, Project Settings says
@@ -91,6 +97,22 @@ Four, and each is a decision rather than an omission.
    is the posture a card description has had since V2.1, but the intake box is now the
    first thing a new user meets. One line of UI guidance is recommended before wide
    rollout (`docs/security-review-v25.md` §3.4).
+
+### The six the platform still carries
+
+Confirmed against the code rather than remembered (`research/03/01` §2). They are also
+the reason the next two releases exist, so the right-hand column is a pointer and not
+an apology. **Four of the six are closed by `v2.0.0-alpha.2`** — noted here so that a
+reader of this note is not left believing they are still open.
+
+| # | Gap | Evidence at `alpha.1` | Closed by |
+|---:|---|---|---|
+| 5 | A card's conversation is paged by **timestamp, not by a monotonic sequence**. Two messages written in the same millisecond can be delivered twice or not at all | `cliora task messages --since <timestamp>`; `task_messages` has no `seq` column | `alpha.2` (`CV-03`) |
+| 6 | **A message POST carries no idempotency key.** A retried send is a second identical message | `task_messages` has no `idempotency_key` column | `alpha.2` (`CV-04`) |
+| 7 | **A conversation ends when the agent's process does.** There is no continuation model, so the only way to hold one open is to keep polling — which holds a lease and a `max_waiting` slot for up to 24 hours | `ACTIVE_STATUSES` includes `waiting_for_input`; the lease sweep deliberately skips it | `alpha.2` (`CV-05`, `CV-07`) |
+| 8 | **An ordinary comment and an answer are the same API call**, distinguished only by a `kind` string, with no "should this resume the run" semantics | `agents.py` changes the run's state only when `kind == "question"` | `alpha.2` (`CV-05`) |
+| 9 | **There is no project-scoped knowledge layer.** Every run's context pack is assembled from nothing, and an agent cannot cite an earlier decision | `services/context_projection.py` projects the card and the process, and nothing else | `alpha.3` (`KN-*`) |
+| 10 | **Board cards have no single attention projection.** "Whose turn is it" is assembled by each client | `BoardCardDTO` carries `active_run_status`, `waiting_reason` and `blocking_count` side by side, with no precedence between them | `PX-24` |
 
 ## Upgrading
 
