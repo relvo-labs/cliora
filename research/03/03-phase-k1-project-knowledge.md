@@ -32,7 +32,7 @@ Ticket 是「局部工作記憶」，Knowledge Hub 是「跨 Ticket 長期記憶
 | Verification／Evidence | verification report、evidence item | `verified` | DB event | ✅ |
 | Artifact | 產物 metadata ＋ 可索引的文字型產物 | `verified`／`generated` | DB event | ✅ |
 | Git repository | tracked 文件、README、docs、symbol map | `canonical at commit` | **既有 repo 憑證的增量同步** | ✅ |
-| Activity | actor、state transition、approval metadata | `platform fact` | DB event | ✅ |
+| Activity | actor、state transition、approval metadata | `platform fact` → **存成 `verified`** | DB event | ✅ |
 | PR／MR | title、description、review、diff summary、merge state | `reviewed`／`canonical` | provider webhook／API | ❌ `beta.2` |
 | Release | tag、release note、artifact metadata | `released` | provider webhook／API | ❌ `beta.2` |
 | External docs | 已連結的設計、規格、runbook | source-dependent | connector | ❌ 延後 |
@@ -43,7 +43,12 @@ Ticket 是「局部工作記憶」，Knowledge Hub 是「跨 Ticket 長期記憶
 
 ## 3. Authority levels
 
-十級，定義與寫入規則見 [D45](./01-architecture-decisions.md)。檢索排序**不只看相似度**：
+十級，定義與寫入規則見 [D45](./01-architecture-decisions.md)。
+> **`platform fact` 不是第十一級。** §2 的 Activity 那一列用了這個字，但 D45 的十級裡沒有它；
+> `plan/25` 把它對應到 **`verified`**（平台自己觀察到的事實，與機器驗證同一等級），
+> 而不是新增一級——一個只有一種來源在用的等級不值得讓所有排序邏輯多一個分支。
+
+檢索排序**不只看相似度**：
 
 ```text
 score = lexical_relevance

@@ -34,8 +34,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import metrics
 from app.api.errors import ApiError
+from app.clock import now_utc
 from app.db.engine import get_database, get_session
-from app.db.models import Node, TerminalSession
+from app.db.models import KnowledgeJob, Node, TerminalSession
 from app.logging import get_logger
 from app.repositories.sessions import ACTIVE_STATES
 from app.services.registry import ONLINE, compute_status, get_node_registry
@@ -149,6 +150,34 @@ async def _gauges(session: AsyncSession, settings: Settings) -> list[str]:
         lines.append(f"# TYPE {PREFIX}running_sessions gauge")
         for runtime, count in sorted(per_runtime.items()):
             lines.append(f'{PREFIX}running_sessions{{runtime="{_escape_label(runtime)}"}} {count}')
+
+    # V2-K1 (ADR 0038 §3). Both are questions about *now* and both are one indexed
+    # query, so they belong here rather than in the registry. The dead-letter age is the
+    # one that matters most: it is the only number that says whether anybody is reading
+    # the Source health panel, and its alert threshold is an hour rather than a rate.
+    async def knowledge_queue() -> tuple[int, float]:
+        pending = await session.scalar(
+            select(func.count()).select_from(KnowledgeJob).where(KnowledgeJob.state == "pending")
+        )
+        oldest = await session.scalar(
+            select(func.min(KnowledgeJob.dead_lettered_at)).where(KnowledgeJob.state == "dead")
+        )
+        age = 0.0 if oldest is None else max(0.0, (now_utc() - oldest).total_seconds())
+        return int(pending or 0), age
+
+    knowledge = await _bounded("knowledge_queue", knowledge_queue, timeout)
+    if knowledge is not None:
+        pending, dead_age = knowledge
+        lines += _gauge(
+            "knowledge_pending_jobs",
+            "Ingestion hints waiting to be processed.",
+            float(pending),
+        )
+        lines += _gauge(
+            "knowledge_dead_letter_age_seconds",
+            "Age of the oldest ingestion job that gave up. Zero when there are none.",
+            dead_age,
+        )
 
     # Pool occupancy is read from the pool itself, not counted by us — a parallel
     # counter would drift the first time a connection was invalidated behind our back.

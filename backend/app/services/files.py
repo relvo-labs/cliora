@@ -159,7 +159,7 @@ def _reject_filename(name: str) -> str:
     return name
 
 
-def _keyword_digest(keyword: str) -> str:
+def keyword_digest(keyword: str) -> str:
     """Short, stable digest of a search keyword for correlation logs. The keyword
     itself may name a confidential project or file and must never be logged."""
     return hashlib.sha256(keyword.encode("utf-8")).hexdigest()[:12]
@@ -300,7 +300,7 @@ class FileRelayService:
             # A keyword can name a confidential project or file, so it is never
             # logged in the clear: a short digest correlates repeats instead
             # (ADR 0015 redaction).
-            detail["keyword_digest"] = _keyword_digest(keyword)
+            detail["keyword_digest"] = keyword_digest(keyword)
             detail["keyword_length"] = len(keyword)
             payload: dict[str, Any] = {"session_id": str(session_id), "keyword": keyword}
             if root:

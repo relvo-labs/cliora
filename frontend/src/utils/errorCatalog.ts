@@ -565,6 +565,41 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "把內容以提案送出，交由人決定。",
     retryable: false,
   },
+  KNOWLEDGE_DISABLED: {
+    cause:
+      "這個專案沒有啟用專案記憶。開關是逐專案的，不是整個部署的——" +
+      "一個 500 檔的專案與一個 50000 檔的 monorepo 需要不同的答案。",
+    nextStep: "在專案設定裡啟用專案記憶（需要專案管理權限）。",
+    retryable: false,
+  },
+  SOURCE_NOT_FOUND: {
+    cause:
+      "這份來源已不可用：可能被新版本取代、原始檔案已刪除，" +
+      "或這個引用標記來自更早的一次情境組裝。",
+    nextStep: "重新取得目前的引用清單（`cliora knowledge context`）。",
+    retryable: false,
+  },
+  SOURCE_EXCLUDED: {
+    cause:
+      "有人把這份來源從這張卡排除了。排除是逐卡片、可還原的，" +
+      "與刪除不同——它讓一張卡忽略某份文件，而不影響其他引用它的卡。",
+    nextStep: "問問排除它的人，或引用別的來源。",
+    retryable: false,
+  },
+  CONTEXT_BUDGET_EXCEEDED: {
+    cause:
+      "這張卡的情境包在預算內組不出來。裁切順序是固定的——先砍檢索到的參考資料，" +
+      "再壓縮較舊的對話——而專案規則與未決問題永不被裁切。",
+    nextStep: "縮短專案規則的文字，或把卡片拆小。",
+    retryable: false,
+  },
+  KNOWLEDGE_SYNC_TOO_LARGE: {
+    cause:
+      "這次程式庫同步超過上限。回應會指名是哪一項——檔數、位元組或頻率。" +
+      "單一過大的檔案只會被跳過，不會讓整次同步失敗。",
+    nextStep: "用 `.clioraignore` 縮小範圍，或調整專案的同步上限。",
+    retryable: true,
+  },
   SPEC_SECTION_UNKNOWN: {
     cause: "規格書的九個章節是封閉的，否則兩個撰寫者會用兩種拼法寫同一件事。",
     nextStep: "改用清單上的章節名稱。",

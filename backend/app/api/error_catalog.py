@@ -1647,6 +1647,75 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "so that it is legible and audited, rather than a generic denial.",
             "Post the content as a proposal and let a person decide.",
         ),
+        # --- V2-K1 project memory (ADR 0038 / 0039) -------------------------
+        #
+        # Two of the six answer with **404 where 403 would be the obvious choice**, and
+        # that is the whole design of this group: a 403 confirms that the thing exists
+        # and you may not have it, which is precisely the disclosure project isolation
+        # is for.
+        _entry(
+            "KNOWLEDGE_DISABLED",
+            status.HTTP_404_NOT_FOUND,
+            "This project has no memory",
+            "Project memory is enabled per project, not per deployment, because a "
+            "500-file project and a 50,000-file monorepo need different answers. The "
+            "status is 404 rather than 403 on purpose: it does not disclose whether the "
+            "project exists and has the feature switched off.",
+            "Enable project memory in the project's settings (needs `project.manage`).",
+        ),
+        _entry(
+            "SOURCE_NOT_FOUND",
+            status.HTTP_404_NOT_FOUND,
+            "That source is no longer available",
+            "One of three things, and the message does not distinguish them because two "
+            "of the three must not be distinguishable: the source was superseded or its "
+            "original was deleted, the citation label belongs to an older context pack, "
+            "or it belongs to another project. Answering 403 for the last case would "
+            "confirm that it exists.",
+            "Run `cliora knowledge context` again to get current citations.",
+        ),
+        # **`CROSS_PROJECT_DENIED` is deliberately absent**, and its absence is the
+        # design rather than an omission. `plan/25` listed it, and every call site it
+        # could have had turns out to be one where a 403 would disclose that an id
+        # exists somewhere: a run token naming another project's repository, source or
+        # card must be told 404. The only shape that discloses nothing would be a caller
+        # naming its own project's boundary, and no endpoint lets a run token name a
+        # project at all — the project comes from the token. A code with no site is a
+        # code somebody eventually raises in the wrong place.
+        _entry(
+            "SOURCE_EXCLUDED",
+            status.HTTP_409_CONFLICT,
+            "Somebody excluded this source from this card",
+            "An exclusion is per card and reversible, unlike a deletion. It exists so "
+            "that one card can ignore a document without removing it from the other "
+            "forty cards that cite it.",
+            "Ask whoever excluded it, or cite a different source.",
+        ),
+        _entry(
+            "CONTEXT_BUDGET_EXCEEDED",
+            status.HTTP_409_CONFLICT,
+            "This card's context cannot be assembled within its budget",
+            "The pack is cut in a fixed order — retrieved sources first, then older "
+            "conversation — and the project's rules and the open questions are never "
+            "cut. Reaching this means those alone do not fit, which is a data problem "
+            "rather than a load problem: silently truncating them would hand an agent a "
+            "half-read question.",
+            "Shorten the project's policy text, or split the card.",
+        ),
+        _entry(
+            "KNOWLEDGE_SYNC_TOO_LARGE",
+            status.HTTP_400_BAD_REQUEST,
+            "This repository sync is over a limit",
+            "`details.limit` names which one — files, bytes or rate — and carries the "
+            "count and the ceiling. A single oversized file is skipped instead and "
+            "reported in `skipped`, because losing a project's whole memory over one "
+            "large CHANGELOG is the wrong trade.",
+            "Narrow the sync with `.clioraignore`, or raise the project's repo_sync "
+            "limits in its knowledge settings.",
+            # Retryable in the sense the affordance means: the same call with a smaller
+            # payload succeeds. The rate-limited variant is retryable on a clock.
+            retryable=True,
+        ),
         _entry(
             "SPEC_SECTION_UNKNOWN",
             status.HTTP_422_UNPROCESSABLE_ENTITY,

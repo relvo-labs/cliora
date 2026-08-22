@@ -389,6 +389,37 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("POST", "/api/cli/runs/spec"): None,
     ("POST", "/api/cli/runs/proposal"): None,
     ("POST", "/api/cli/runs/patch-proposal"): None,
+    # V2-K1's repository sync (ADR 0038 §3.4). `None` like every other run-token route:
+    # the floor is the run credential itself, and its scope is checked against the run's
+    # own card by `_run_task` rather than by a role.
+    #
+    # **Two writes and no read.** The same restraint V2.4 recorded above — an agent does
+    # not need to read back the manifest it just sent, and the answer to "what does
+    # Central already have" comes back in the response to call ①.
+    # V2-K1 project memory (ADR 0038). **Reads are `project.view`, writes are
+    # `project.manage`, and no new action was added** — the boundary the existing two
+    # describe is exactly the one this needs, and adding a third would mean touching
+    # `rbac.py`, the seed migration and three role tables (`research/03` D53).
+    ("GET", "/api/projects/{project_id}/knowledge/search"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/knowledge/sources"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/knowledge/sources/{source_id}/versions"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/knowledge/health"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/knowledge/recent"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/knowledge/decisions"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/knowledge/enabled"): rbac.PROJECT_MANAGE,
+    ("POST", "/api/projects/{project_id}/knowledge/sources/{source_id}/authority"): (
+        rbac.PROJECT_MANAGE
+    ),
+    ("POST", "/api/projects/{project_id}/knowledge/pins"): rbac.PROJECT_MANAGE,
+    ("DELETE", "/api/projects/{project_id}/knowledge/pins/{task_id}/{source_id}"): (
+        rbac.PROJECT_MANAGE
+    ),
+    ("POST", "/api/projects/{project_id}/knowledge/resync"): rbac.PROJECT_MANAGE,
+    ("GET", "/api/cli/runs/knowledge/context-pack"): None,
+    ("GET", "/api/cli/runs/knowledge/search"): None,
+    ("GET", "/api/cli/runs/knowledge/sources/{source_id}"): None,
+    ("POST", "/api/cli/runs/knowledge/repo-manifest"): None,
+    ("POST", "/api/cli/runs/knowledge/repo-content"): None,
     ("GET", "/api/sessions"): rbac.SESSION_VIEW,
     ("GET", "/api/sessions/{session_id}"): rbac.SESSION_VIEW,
     ("POST", "/api/sessions/{session_id}/attach"): rbac.SESSION_VIEW,

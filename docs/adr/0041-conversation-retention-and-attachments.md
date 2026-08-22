@@ -11,6 +11,10 @@
 - Requirements: `FR-CONV-010`.
 - Scope note: this ADR is numbered 0041 because `research/03` reserved 0038–0040 for
   the `alpha.3` and `beta.1` milestones. Nothing in it depends on those.
+- **The knowledge half of D51 is answered in ADR 0038 §6** (2026-08-22), not here: this
+  document is accepted and its subject is messages. §6 there extends the retention
+  taxonomy with a fourth member (a derived copy lives as long as the fact it derives
+  from) and settles project-deletion cascade and export. Nothing below changes.
 
 ## Context
 

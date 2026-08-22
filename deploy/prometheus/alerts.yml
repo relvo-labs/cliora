@@ -244,3 +244,60 @@ groups:
             Either every answer landed on a run that was still polling (normal, D67) or
             the continuation path is broken. The runbook's first query tells them apart.
           runbook: docs/runbooks/conversation-duplicate-turn.md
+
+      # --- V2-K1 project memory (plan/25/03-…md §5) ---------------------------
+      #
+      # Three rules for one failure mode with three faces. Project memory breaking is
+      # **silent by construction**: search returns nothing, and nothing is exactly what
+      # a project with little written about it also returns. There is no error, no
+      # failed request and no unhappy user — only an agent that stops citing anything.
+      #
+      # The dead-letter age is the important one. An hour is not a latency budget; it is
+      # the point at which "nobody is reading the Source health panel" becomes the more
+      # likely explanation than "somebody is looking into it".
+      - alert: ClioraKnowledgeDeadLetterAging
+        expr: cliora_knowledge_dead_letter_age_seconds > 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "An ingestion job has been in the dead letter for over an hour"
+          description: >-
+            Some project facts are no longer reaching search, and the affected source
+            type has been stale since the job first failed. Agents will still run and
+            will simply not cite what they cannot find.
+          runbook: docs/runbooks/knowledge-ingestion.md
+
+      # The freshness budget is P95 < 10s. Sixty seconds is not "slow", it is broken —
+      # the worker either cannot keep up or is retrying one thing forever.
+      - alert: ClioraKnowledgeIngestLagHigh
+        expr: >-
+          histogram_quantile(0.95,
+            sum(rate(cliora_knowledge_ingest_lag_seconds_bucket[15m])) by (le)) > 60
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Newly written project facts are taking over a minute to become searchable"
+          description: >-
+            A decision accepted now will not be in an agent's context pack for at least
+            a minute, so a run dispatched immediately after an approval may work from
+            the previous version.
+          runbook: docs/runbooks/knowledge-ingestion.md
+
+      # Backlog depth. Two very different causes — a project that was just switched on
+      # and is backfilling, or a worker that stopped — and the runbook's first query
+      # separates them. The rule exists because the first is temporary and the second is
+      # invisible.
+      - alert: ClioraKnowledgePendingBacklog
+        expr: cliora_knowledge_pending_jobs > 5000
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "The knowledge ingestion queue is not draining"
+          description: >-
+            Either a large project was enabled recently and is still backfilling, or the
+            worker is not running. Half an hour is long enough that a backfill of any
+            reasonable size would be visibly shrinking.
+          runbook: docs/runbooks/knowledge-ingestion.md

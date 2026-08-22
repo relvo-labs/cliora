@@ -28,7 +28,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -387,6 +387,28 @@ class Project(Base):
     # the feature it guards.
     require_project_verification: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false")
+    )
+    # --- project memory (V2-K1, ADR 0038 sec 7) -----------------------------
+    # **Off by default, and per project rather than per deployment** (D52/D58). A
+    # 500-file project and a 50,000-file monorepo need different answers about what is
+    # worth indexing, and a deployment flag cannot give two. Turning it on takes
+    # ``project.manage`` and writes an audit row; turning it off marks existing sources
+    # inactive and deletes nothing, because deletion is a separate action with a second
+    # confirmation.
+    #
+    # It is also the backfill trigger: the reconciler's watermark queries find every
+    # entity that has no source yet, so there is no backfill script anywhere. One
+    # filling routine is more correct than two that have to agree forever.
+    knowledge_enabled: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false")
+    )
+    # Exclude globs and repository sync bounds. JSONB rather than a table for the reason
+    # ``process_overrides`` above gives: read and written with the project, no query of
+    # its own. It carries **no retention override** — ADR 0038 sec 6 decided knowledge
+    # keeps no clock of its own, and a setting with no sweep behind it is worse than an
+    # absent one because somebody will read it and believe it.
+    knowledge_settings: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -1871,3 +1893,278 @@ class DocumentPatchProposal(Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     decision_note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+# ---------------------------------------------------------------------------
+# V2-K1 — project memory (ADR 0038 / 0039)
+# ---------------------------------------------------------------------------
+
+
+class KnowledgeSource(Base):
+    """One version of one fact the project already had, kept so it can be found again.
+
+    **Nothing writes here by hand.** Every row is derived from something the platform
+    already stores, or — for ``repo_doc`` — from a checkout the platform already caused
+    to exist. That absence of an authoring path is the property that keeps this from
+    becoming a wiki: a derived copy cannot go stale relative to its original, because
+    it *is* its original, re-read.
+
+    ``authority`` is **a column, not a derivation** (ADR 0038 sec 2). Deriving it would
+    need a join to the origin table and there are eight of those; it changes over time
+    and the change is itself auditable; and "what was this trusted as *at the time*" is
+    a historical fact that a derivation cannot answer. Only the ingestion pipeline
+    writes it — ``GATE-KN-AUTHORITY-SERVER-SIDE`` asserts no request schema has the
+    field, the same structural rule ``FR-VERIFY-002`` states for a report's ``source``.
+
+    ``source_version`` takes a monotonic counter where one exists, a content address
+    where one does not, and a timestamp only when neither is available. The order
+    matters both ways: a timestamp cannot be an identity when two workers may handle one
+    entity in the same second, and a content hash cannot be one for a ticket, because
+    then correcting a typo starts a new version and the supersede chain has two hundred
+    links by the end of the week.
+
+    ``active`` and ``deleted_at`` say different things and **neither deletes the row**:
+    the first is "not in default retrieval" (the switch is off, superseded, or a person
+    excluded it), the second is "the original is gone". ``context_packs.source_manifest``
+    may cite this row, and a manifest that can answer "this source has since been
+    deleted" is worth more than one holding a dangling id.
+    """
+
+    __tablename__ = "knowledge_sources"
+    __table_args__ = (
+        UniqueConstraint(
+            "project_id",
+            "source_type",
+            "source_external_id",
+            "source_version",
+            name="uq_knowledge_sources_identity",
+        ),
+        CheckConstraint(
+            "source_type IN ('policy','ticket','conversation','decision',"
+            "'artifact','verification','repo_doc','activity')",
+            name="source_type",
+        ),
+        CheckConstraint(
+            "authority IN ('authoritative','accepted','canonical','verified','reviewed',"
+            "'generated','discussion','diagnostic','superseded','retracted')",
+            name="authority",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    source_type: Mapped[str] = mapped_column(String(32))
+    source_external_id: Mapped[str] = mapped_column(String(255))
+    source_uri: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_version: Mapped[str] = mapped_column(String(128))
+    authority: Mapped[str] = mapped_column(String(16))
+    visibility: Mapped[str] = mapped_column(
+        String(16), default="project", server_default=text("'project'")
+    )
+    checksum: Mapped[str] = mapped_column(CHAR(64))
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    authored_by_type: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    authored_by_id: Mapped[uuid.UUID | None] = mapped_column(nullable=True)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The comparison column for the idempotent upsert. **Not the same as
+    # ``occurred_at``**: a message written yesterday may be ingested today, and it is
+    # this that decides whether an arriving row is newer than the stored one.
+    source_updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    ingested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    # Derived, and stored anyway: the Sources panel asks for five source families at
+    # once, and ``count(*)`` over ``knowledge_chunks`` five times a page load is five
+    # scans of the largest table in the schema.
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    supersedes_source_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="SET NULL"), nullable=True
+    )
+    active: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class KnowledgeChunk(Base):
+    """A retrievable slice of a source, with the two indexes that find it.
+
+    ``project_id`` **is denormalised on purpose.** It could be joined through
+    ``source_id``; the column buys a shorter proof instead. Every table can then be
+    asserted independently in an isolation test, and ``GATE-KN-PROJECT-SCOPED`` can
+    require a ``project_id`` predicate on every select — a gate that is only *writable*
+    because the column is on every table.
+
+    ``search_document`` is ``NOT NULL`` although nothing in the database computes it. It
+    is built in Python from a single tokenizer (ADR 0038 sec 4): ``to_tsvector`` is
+    ``STABLE``, so PostgreSQL refuses it in a generated column, and a trigger would
+    split "how is the index computed" across two languages. The constraint means any
+    path that inserts a chunk without going through ``services/knowledge/`` fails
+    loudly, which is the intent — the tokenizer must be the only writer, because when
+    the index and the query disagree the result is silence rather than an error.
+
+    ``chunk_key`` is an ordinal rather than a content hash. A hash would make "a
+    sentence was added at the top" mean every chunk is new, and rebuild the whole GIN
+    index for a typo.
+
+    ``embedding_ref`` is reserved by D40 and is always ``NULL`` here. The column exists
+    so that the day a vector channel is added is a data migration rather than a schema
+    argument.
+    """
+
+    __tablename__ = "knowledge_chunks"
+    __table_args__ = (UniqueConstraint("source_id", "chunk_key", name="uq_knowledge_chunks_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="CASCADE")
+    )
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    chunk_key: Mapped[str] = mapped_column(String(128))
+    content: Mapped[str] = mapped_column(Text)
+    content_hash: Mapped[str] = mapped_column(CHAR(64))
+    token_count: Mapped[int] = mapped_column(Integer)
+    embedding_ref: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    search_document: Mapped[Any] = mapped_column(TSVECTOR)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    valid_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class KnowledgeLink(Base):
+    """An explicit relation between two sources, used by the graph boost.
+
+    A table rather than a JSONB list on the source, because this is the one relation
+    with queries of its own and it is read in **both** directions — "what supersedes
+    this" and "what does this verify". The primary key serves only the first, which is
+    why ``ix_knowledge_links_to`` exists.
+    """
+
+    __tablename__ = "knowledge_links"
+    __table_args__ = (
+        CheckConstraint(
+            "relation IN ('supersedes','derived_from','references','verifies','delivers','blocks')",
+            name="relation",
+        ),
+    )
+
+    from_source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    relation: Mapped[str] = mapped_column(String(24), primary_key=True)
+    to_source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+class KnowledgeJob(Base):
+    """ "This entity may have changed; go and look."
+
+    **A job holds an entity key, never content** (ADR 0038 sec 3.2). The worker re-reads
+    the entity's current state and upserts from that, which is what makes retries free,
+    duplicate enqueues free, and the scheduled reconciler and a human's "resync" button
+    the same code path. The bug class "the payload in the job was stale by the time it
+    ran" does not exist here.
+
+    Claiming is ``FOR UPDATE SKIP LOCKED``, so there is **no cursor** — which matters,
+    because a cursor over ``activity_events`` would be unsafe: its ``id`` is a ``uuid4``
+    and its ``occurred_at`` is the transaction's start time, so a row that began earlier
+    and committed later is skipped, and a ``BIGSERIAL`` would only move the problem to
+    sequence holes.
+
+    ``started_at`` is how a job that was ``running`` when Central was killed is
+    recognised. Its recovery deliberately does **not** count an attempt: that was not a
+    failed try, it was a try with no conclusion, and counting it would send good jobs to
+    the dead letter after three restarts.
+    """
+
+    __tablename__ = "knowledge_jobs"
+    __table_args__ = (
+        CheckConstraint("state IN ('pending','running','done','failed','dead')", name="state"),
+        CheckConstraint(
+            "source_type IN ('policy','ticket','conversation','decision',"
+            "'artifact','verification','repo_doc','activity')",
+            name="source_type",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    source_type: Mapped[str] = mapped_column(String(32))
+    external_id: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    state: Mapped[str] = mapped_column(String(16), default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dead_lettered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class TaskKnowledgePin(Base):
+    """A person overriding the ranking for one card.
+
+    ``pin`` outranks every computed score rather than merely adding to it, and ``exclude``
+    removes a source from this card alone. That asymmetry with a tombstone is the point:
+    excluding is "this card should not use it" and is reversible per card, while a
+    tombstone is "it does not exist" and is project-wide. Merging the two would mean one
+    person excluding a document on one card silently removed it from forty others.
+
+    ``created_by`` is ``SET NULL``, so a pin outlives the person who made it. That is
+    correct — a pin is the project's decision about a card rather than that person's
+    preference — but it is written down here because the first reader to see a NULL will
+    otherwise assume the data is broken.
+    """
+
+    __tablename__ = "task_knowledge_pins"
+    __table_args__ = (CheckConstraint("mode IN ('pin','exclude')", name="mode"),)
+
+    task_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("tasks.id", ondelete="CASCADE"), primary_key=True
+    )
+    source_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("knowledge_sources.id", ondelete="CASCADE"), primary_key=True
+    )
+    mode: Mapped[str] = mapped_column(String(8))
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ContextPack(Base):
+    """What one turn actually read, recorded when it read it.
+
+    Written on **fetch**, not on offer (ADR 0039): at offer time nobody knows whether the
+    agent will come and get it, and a row claiming it did would be a lie the audit trail
+    tells. A run may fetch more than once — a retry, a continuation — and each fetch is
+    its own row, deliberately without a unique key, because two fetches returning
+    different content is exactly the thing that has to stay visible.
+
+    ``source_manifest`` holds **ids and metadata, never content**. Storing the text would
+    make a second copy of the most sensitive material in the system and place it outside
+    every retention rule that governs the first.
+
+    The row cascades from its run (ADR 0038 sec 6): "what this turn read" is a
+    diagnostic and shares the run's lifetime, in the same way a run log does. The
+    durable record is the citation inside the agent's message, and messages never
+    expire — a manifest is a debugging tool, a citation is the record.
+    """
+
+    __tablename__ = "context_packs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("task_runs.id", ondelete="CASCADE"))
+    task_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tasks.id", ondelete="CASCADE"))
+    project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
+    turn_seq: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    built_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    total_bytes: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    source_manifest: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
+    budget_json: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    omitted_json: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)

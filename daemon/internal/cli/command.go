@@ -617,7 +617,193 @@ func NewCommand() *cobra.Command {
 		},
 	})
 
-	root.AddCommand(context, task, plan, verify, evidence, spec, proposal, patch, requirement)
+	// --- V2-K1: project memory (ADR 0038) ---
+	//
+	// A `knowledge` tree of its own rather than a subcommand of `task`, because its
+	// scope is the project and not the card. It sits beside `context` rather than
+	// inside it for the opposite reason: `cliora context show` is the one command
+	// guaranteed to work with Central down (D14), and putting a command that makes a
+	// network request into that tree would break the guarantee.
+	//
+	// **There is no `mark-authoritative`, no `retract` and no `pin` here**, for the
+	// reason `approve` is absent from the whole tool: those are a person's actions,
+	// they need `project.manage`, and a run credential never holds it. A subcommand
+	// that exists invites an agent to try, and what it gets back is a 403 it then has
+	// to interpret.
+	knowledge := &cobra.Command{Use: "knowledge", Short: "This project's memory"}
+	var dryRun bool
+	sync := &cobra.Command{
+		Use:   "sync",
+		Short: "Push this checkout's documents into the project's memory",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			root, err := os.Getwd()
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			commit, err := HeadCommit(root)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			files, err := CollectSyncFiles(root)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			if len(files) > maxSyncFiles {
+				return exit(cmd, ExitRefused, fmt.Errorf(
+					"這個檢出有 %d 個候選檔案，超過上限 %d。用 .clioraignore 縮小範圍",
+					len(files), maxSyncFiles))
+			}
+			// `--dry-run` is not a convenience. It is the only way to find out whether
+			// an exclude rule does what its author meant *before* uploading, and an
+			// exclude rule that can only be checked by looking at the result afterwards
+			// is one nobody maintains.
+			if dryRun {
+				if asJSON {
+					return writeJSON(cmd, map[string]any{"commit": commit, "files": files})
+				}
+				for _, file := range files {
+					fmt.Fprintf(cmd.OutOrStdout(), "%8d  %s\n", file.Size, file.Path)
+				}
+				fmt.Fprintf(cmd.OutOrStdout(), "\n%d 個檔案會被送出（commit %s）。未上傳。\n",
+					len(files), commit)
+				return nil
+			}
+			client := NewClient(ctx)
+			manifest, code, manifestErr := client.RepoManifest("", commit, files)
+			if manifestErr != nil {
+				return exit(cmd, code, manifestErr)
+			}
+			batches, skipped, _ := BatchContent(files, manifest.Want)
+			ingested := 0
+			for _, batch := range batches {
+				result, code, contentErr := client.RepoContent("", commit, batch)
+				if contentErr != nil {
+					return exit(cmd, code, contentErr)
+				}
+				ingested += result.Ingested
+			}
+			if asJSON {
+				return writeJSON(cmd, map[string]any{
+					"commit": commit, "ingested": ingested,
+					"unchanged": manifest.Unchanged, "removed": manifest.Removed,
+					"skipped": append(skipped, pathsOf(manifest.Skipped)...),
+				})
+			}
+			fmt.Fprintf(cmd.OutOrStdout(),
+				"%d 個檔案已建立索引、%d 個未變、%d 個已移除、%d 個跳過（commit %s）。\n",
+				ingested, manifest.Unchanged, manifest.Removed,
+				len(skipped)+len(manifest.Skipped), commit)
+			return nil
+		},
+	}
+	sync.Flags().BoolVar(&dryRun, "dry-run", false, "list what would be sent, and send nothing")
+	knowledge.AddCommand(sync)
+
+	var layers string
+	contextCmd := &cobra.Command{
+		Use:   "context",
+		Short: "Read this card's full context pack, with citations",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			pack, code, fetchErr := NewClient(ctx).FetchContextPack(layers)
+			if fetchErr != nil {
+				return exit(cmd, code, fetchErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, pack)
+			}
+			// The markdown *is* the output. It is written to be read by whatever is
+			// reading this, and reformatting it here would mean maintaining the same
+			// document in two places.
+			fmt.Fprint(cmd.OutOrStdout(), pack.Markdown)
+			return nil
+		},
+	}
+	// `--layers 4` is worth knowing about: a continuation already holds layers 1–3 from
+	// its first turn and only needs the new retrieval, which saves its own context.
+	contextCmd.Flags().StringVar(&layers, "layers", "", "subset of 1,2,3,4,5 (default: all)")
+	knowledge.AddCommand(contextCmd)
+
+	var searchLimit int
+	search := &cobra.Command{
+		Use:   "search <詞>",
+		Short: "Search this project's memory",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			page, code, searchErr := NewClient(ctx).SearchKnowledge(args[0], searchLimit)
+			if searchErr != nil {
+				return exit(cmd, code, searchErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, page)
+			}
+			for index, hit := range page.Items {
+				fmt.Fprintf(cmd.OutOrStdout(), "[S%d] %-12s %s\n     %s\n",
+					index+1, hit.Authority, hit.Title, firstLine(hit.Excerpt))
+			}
+			// A degraded search says so. Silence would read as "this project has nothing
+			// written about that", which is a different and wrong answer.
+			if page.Degraded != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(),
+					"（查詢過短，只做了模糊比對——換一個長一點的詞可能找到更多。）")
+			}
+			return nil
+		},
+	}
+	search.Flags().IntVar(&searchLimit, "limit", 8, "how many results (server caps at 8)")
+	knowledge.AddCommand(search)
+
+	knowledge.AddCommand(&cobra.Command{
+		Use:   "cite <S2|source-id>",
+		Short: "Read the full text behind a citation",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, err := FindContext(".", sessionID)
+			if err != nil {
+				return exit(cmd, ExitRefused, err)
+			}
+			client := NewClient(ctx)
+			target := args[0]
+			// A short label is only meaningful against a pack, so fetching one is part
+			// of resolving it. A uuid skips this.
+			if _, ok := ResolveLabel(ContextPack{}, target); !ok {
+				pack, code, fetchErr := client.FetchContextPack("")
+				if fetchErr != nil {
+					return exit(cmd, code, fetchErr)
+				}
+				resolved, ok := ResolveLabel(pack, target)
+				if !ok {
+					return exit(cmd, ExitRefused, fmt.Errorf(
+						"%s 不在這一次的引用清單裡。先跑 `cliora knowledge context`", args[0]))
+				}
+				target = resolved
+			}
+			source, code, readErr := client.ReadKnowledgeSource(target)
+			if readErr != nil {
+				return exit(cmd, code, readErr)
+			}
+			if asJSON {
+				return writeJSON(cmd, source)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "%s\n來源類型：%s　可信層級：%s　版本：%s\n\n%s\n",
+				source.Title, source.SourceType, source.Authority, source.Version, source.Content)
+			return nil
+		},
+	})
+
+	root.AddCommand(context, task, plan, verify, evidence, spec, proposal, patch, requirement,
+		knowledge)
 	return root
 }
 
@@ -707,4 +893,26 @@ func writeJSON(cmd *cobra.Command, value any) error {
 	encoder := json.NewEncoder(cmd.OutOrStdout())
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(value)
+}
+
+// pathsOf pulls the paths out of the server's `skipped` entries so the two skip lists —
+// the one this process made and the one Central made — can be counted together. The
+// reasons differ and both are shown in `--json`; the human line only needs the number.
+func pathsOf(entries []map[string]string) []string {
+	out := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, entry["path"])
+	}
+	return out
+}
+
+// firstLine keeps a search result to one line each. An excerpt may contain newlines and
+// a list that reflows is a list nobody scans.
+func firstLine(text string) string {
+	for index, ch := range text {
+		if ch == '\n' {
+			return text[:index] + "…"
+		}
+	}
+	return text
 }

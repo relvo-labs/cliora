@@ -3,8 +3,8 @@
 本目錄是 [`research/cliora-project-experience-redesign-plan.md`](../cliora-project-experience-redesign-plan.md)
 （下稱**體驗重設提案**，v1.3）落到**這個 repo 現況**的執行規劃。
 
-提案回答「要做什麼、為什麼」；本目錄回答「在已經存在的 168 條需求、40 個 migration、
-1695 行 model、24 個 RBAC 動作、contract 1.13.0 與 `agentd` 0.12.0 之上，
+提案回答「要做什麼、為什麼」；本目錄回答「在已經存在的 178 條需求、41 個 migration、
+1873 行 model、27 個 RBAC 動作、contract 1.13.0 與 `agentd` 0.13.1 之上，
 **怎麼做得出來、做完怎麼證明、哪一段不該做**」。
 
 一句話說明這一輪要做的事：
@@ -31,9 +31,9 @@
 
 | 文件 | 用途 |
 |---|---|
-| [CHECKLIST.md](./CHECKLIST.md) | **執行清單**：76 張 ticket、9 份 ADR、2 項待裁決、9 個未量測項攤平成可打勾的清單 |
+| [CHECKLIST.md](./CHECKLIST.md) | **執行清單**：76 張 ticket、9 份 ADR、待裁決（**現只剩 D46**）、9 個未量測項攤平成可打勾的清單 |
 | [00-roadmap-and-versioning.md](./00-roadmap-and-versioning.md) | 版本定案、release train、rolling-horizon roadmap、`alpha.1` freeze checklist |
-| [01-architecture-decisions.md](./01-architecture-decisions.md) | **D37–D58 決策**，含「與提案不同的八處」與「仍需你裁決的四項」 |
+| [01-architecture-decisions.md](./01-architecture-decisions.md) | **D37–D58 決策**，含「與提案不同的八處」與待裁決項（**現只剩 D46**）|
 | [02-phase-c1-ticket-conversation.md](./02-phase-c1-ticket-conversation.md) | `alpha.2` Ticket-native Agent Conversation（`CV-`） |
 | [03-phase-k1-project-knowledge.md](./03-phase-k1-project-knowledge.md) | `alpha.3` Project Knowledge Hub（`KN-`） |
 | [04-phase-p1-view-and-read-model.md](./04-phase-p1-view-and-read-model.md) | `beta.1` 第一段：View schema、attention projection、work-items API（`PX-`） |
@@ -49,8 +49,8 @@
 ## 建議使用方式
 
 1. 先讀 [`01`](./01-architecture-decisions.md) 的 **§1（與提案不同的七處）**——那是本目錄唯一真正需要你看的東西。
-2. §3 的裁決狀態：**D40／D42／D44 已於 2026-08-16 裁決**（不做向量檢索／不放寬／不動 contract），
-   剩 **D46**（provider sync 落點）與 **D51**（保留政策）。
+2. §3 的裁決狀態：**D40／D42／D44 已於 2026-08-16 裁決**（不做向量檢索／不放寬／不動 contract）；
+   **D51 已於 2026-08-22 隨 `plan/25` 的 D81 關閉**。只剩 **D46**（provider sync 落點）。
 3. 一次只啟動一個里程碑。`C1` 與 `K1` 可以並行（依賴只有一條，見 `00` §4），但**共享契約先定稿**。
 4. 每張 ticket 以「決策 → 契約 → 實作 → 自動測試 → 操作證據」完成。
 5. 里程碑出口條件未通過，不建立該 prerelease tag。
@@ -69,20 +69,21 @@
 conversation 是既有 `task_messages` 的修復，用旗標關掉等於讓留言在兩種語意間漂移；
 knowledge 的開關是 **per-project 的 ingestion 設定**而不是部署旗標，因為它的成本與風險是逐專案的。
 
-## 規劃基準（已核對過的事實，2026-08-16）
+## 規劃基準（2026-08-16 核對，**2026-08-22 由 `plan/25` 的 `KN-00` 更新**）
 
-以下每一條都在寫這份規劃時實際讀過程式碼確認，**不是從既有文件抄的**：
+以下每一條都在寫這份規劃時實際讀過程式碼確認，**不是從既有文件抄的**。
+加註「規劃時是…」的列是 `alpha.2` 之後變動的事實。
 
 | 項目 | 現況 |
 |---|---|
-| `v2` HEAD | `f91d9c4`，相對 `master` **ahead 60／behind 6** |
+| `v2` HEAD | `45a3143`（2026-08-22）。規劃時是 `f91d9c4`，ahead 60／behind 6 |
 | contract | **1.13.0**（`contracts/CHANGELOG.md`） |
-| `agentd` | **0.12.0**（`daemon/cmd/agentd/main.go` 為 `0.12.0-dev`） |
-| migration head | **0039**`_requirements_agent_driven` |
-| RBAC 動作 | **24 個**（`services/rbac.py`），run token scope 只有 `project.view` ＋ `task.update` |
-| ADR | 到 **0034**（缺號 0025，實際 33 份） |
-| 執行計畫目錄 | `plan/01`–`plan/22` |
-| `traceability/requirements.json` | **168 條**，26 個 ID family |
+| `agentd` | **0.13.1**（`daemon/VERSION`）。規劃時是 0.12.0；`alpha.2` 升過 |
+| migration head | **0040**`_ticket_conversation`。規劃時是 0039 |
+| RBAC 動作 | **27 個**（`len(ALL_ACTIONS)`；「24」是文件的舊錯，程式一直是 27——`plan/23/10` §9.4），run token scope 只有 `project.view` ＋ `task.update` |
+| ADR | 到 **0037** ＋ **0041**（缺號 0025；`0038`／`0039`／`0040` 是本輪預留的空號，`alpha.3` 用掉前兩個） |
+| 執行計畫目錄 | `plan/01`–`plan/25` |
+| `traceability/requirements.json` | **178 條**，27 個 ID family（`FR-CONV` 十條已於 `alpha.2` 註冊，`lifecycle: proposed`） |
 | `frontend/src/theme/tokens.css` | **58 個 custom property**，已含 `--stage-*`／`--run-*`／`--risk-*` |
 | `plan/19`（前端修復期） | **已實作**（`plan/19/09-implementation-status.md`），README 的「尚未開工」是過期字串 |
 | Board 排序 | `updated_at DESC`——**`tasks` 沒有 rank／position 欄位** |
@@ -98,9 +99,9 @@ knowledge 的開關是 **per-project 的 ingestion 設定**而不是部署旗標
 >
 > | 里程碑 | 執行計畫 | 狀態（2026-08-21） |
 > |---|---|---|
-> | C1 實作 | [`plan/23/`](../../plan/23/README.md) | **已實作**（`CV-00`…`CV-13`），出口條件 21／23 |
-> | **C1 封版** | [`plan/24/`](../../plan/24/README.md) | **九項裁決完成，可開工**——旅程、chaos、0.12.0 相容性、兩個 tag |
-> | K1 | `plan/25/` | 未建立 |
+> | C1 實作 | [`plan/23/`](../../plan/23/README.md) | **已實作**（`CV-00`…`CV-13`），剩下的兩項由 `plan/24` 關閉 |
+> | **C1 封版** | [`plan/24/`](../../plan/24/README.md) | **已完成**（`CE-01`…`CE-19`），封版條件 28／28，兩個 annotated tag 已建立（留在本機） |
+> | **K1** | [`plan/25/`](../../plan/25/README.md) | **已建立**（2026-08-22），A 類五項裁決完成，波次 1 起可開工 |
 > | P1 | `plan/26/` | 未建立 |
 > | E1 | `plan/27/` | 未建立 |
 >

@@ -53,8 +53,10 @@ async def login(
 async def refresh(
     body: RefreshRequest,
     auth: AuthService = Depends(get_auth_service),
+    session: AsyncSession = Depends(get_session),
 ) -> TokenResponse:
     pair = await auth.refresh(body.refresh_token)
+    await session.commit()
     return TokenResponse(access_token=pair.access_token, refresh_token=pair.refresh_token)
 
 

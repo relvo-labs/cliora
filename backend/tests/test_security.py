@@ -1,8 +1,11 @@
 import uuid
 from pathlib import Path
+from typing import cast
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.errors import ApiError
 from app.db.models import Role, User
 from app.security.hashing import generate_secret, keyed_hash, verify_hash
 from app.security.passwords import hash_password, verify_password
@@ -15,6 +18,7 @@ from app.security.tokens import (
     issue_refresh_token,
 )
 from app.services import ws_ticket
+from app.services.auth import AuthService
 from app.services.rbac import NODE_MANAGE, NODE_VIEW, has_action
 from app.services.ws_ticket import WsTicketService
 from app.settings import Settings
@@ -55,6 +59,44 @@ def test_refresh_token_roundtrip_and_type_isolation() -> None:
         decode_refresh_token(issue_access_token(user_id, "Admin"))
     with pytest.raises(TokenError):
         decode_access_token(refresh)
+
+
+class _InMemoryUsers:
+    def __init__(self, user: User) -> None:
+        self.user = user
+
+    async def get_by_id(self, user_id: uuid.UUID) -> User | None:
+        return self.user if self.user.id == user_id else None
+
+    async def get_by_id_for_update(self, user_id: uuid.UUID) -> User | None:
+        return await self.get_by_id(user_id)
+
+    async def bump_token_version(self, user: User) -> None:
+        user.token_version += 1
+
+
+@pytest.mark.asyncio
+async def test_refresh_token_cannot_be_replayed(monkeypatch: pytest.MonkeyPatch) -> None:
+    user_id = uuid.uuid4()
+    role = Role(name="Admin", permissions={"actions": []})
+    user = User(
+        id=user_id,
+        username="admin",
+        password_hash="unused",
+        display_name="Admin",
+        role=role,
+        is_active=True,
+        token_version=0,
+    )
+    service = AuthService(cast(AsyncSession, object()))
+    monkeypatch.setattr(service, "_users", _InMemoryUsers(user))
+    refresh = issue_refresh_token(user_id, user.token_version)
+
+    await service.refresh(refresh)
+
+    with pytest.raises(ApiError) as replay:
+        await service.refresh(refresh)
+    assert replay.value.code == "TOKEN_INVALID"
 
 
 def test_expired_token_raises_expired_subclass() -> None:

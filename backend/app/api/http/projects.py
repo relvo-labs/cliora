@@ -29,20 +29,36 @@ from app.api.http.schemas import (
     ActivityPageDTO,
     BindWorkspaceRequest,
     CreateProjectRequest,
+    KnowledgeDecisionsDTO,
+    KnowledgeHealthDTO,
+    KnowledgeHitDTO,
+    KnowledgeSearchDTO,
+    KnowledgeSourceRowDTO,
     ProjectDetailDTO,
     ProjectSummaryDTO,
     ProjectWorkspaceDTO,
+    ResyncResponse,
+    SetAuthorityRequest,
+    SetKnowledgeEnabledRequest,
+    SetPinRequest,
+    SourceFamilyDTO,
     UpdateProjectRequest,
 )
 from app.db.engine import get_session
-from app.db.models import User
+from app.db.models import KnowledgeSource, User
+from app.logging import get_logger
 from app.repositories.projects import ProjectSummary
 from app.services.activity import redact_actors
 from app.services.authz import may_view_activity_actors
+from app.services.files import keyword_digest
+from app.services.knowledge.admin import KnowledgeAdmin
+from app.services.knowledge.search import KnowledgeSearch, SearchHit
 from app.services.projects import DEFAULT_ACTIVITY_PAGE, MAX_ACTIVITY_PAGE, ProjectService
 from app.services.rbac import PROJECT_MANAGE, PROJECT_VIEW
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 from app.settings import Settings, get_settings
+
+log = get_logger("cliora.projects")
 
 router = APIRouter(
     prefix="/api/projects",
@@ -306,3 +322,288 @@ async def unbind_workspace(
     await service.unbind_workspace(user, project, binding_id)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- V2-K1 project memory (ADR 0038) ---------------------------------------
+#
+# **`project.view` reads, `project.manage` writes, and no new RBAC action.** Adding one
+# means touching `rbac.py`, the seed migration and three role tables for a capability
+# whose boundary the existing two already describe exactly (`research/03` D53).
+
+
+@router.get("/{project_id}/knowledge/search", response_model=KnowledgeSearchDTO)
+async def search_knowledge(
+    project_id: uuid.UUID,
+    q: str = Query(min_length=1, max_length=256),
+    source_type: str | None = Query(default=None),
+    authority: str | None = Query(default=None),
+    task_id: uuid.UUID | None = Query(default=None),
+    include_history: bool = Query(default=False),
+    limit: int = Query(default=20, ge=1, le=50),
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> KnowledgeSearchDTO:
+    """Search one project's memory.
+
+    **The query string is not recorded anywhere**: not in the audit log, not in a metric
+    label — metrics are the one sink with no redaction — and not in a table. What
+    somebody is searching for says what they are thinking about, and it has no audit
+    value. The application log keeps only a digest, reusing the function
+    `filesystem.search` already uses for the same reason.
+
+    A project with memory switched off answers **404**, not 403: the status must not
+    disclose that the project exists and has the feature turned off.
+    """
+    project = await _service(session, settings).require(project_id)
+    result = await KnowledgeSearch(session, project.id).search(
+        q,
+        limit=limit,
+        source_types=_csv(source_type),
+        authorities=_csv(authority),
+        task_id=task_id,
+        include_history=include_history,
+    )
+    log.info(
+        "knowledge_search",
+        extra={
+            "event": "knowledge_search",
+            "keyword_digest": keyword_digest(q),
+            "results": result.total,
+            "degraded": result.degraded,
+        },
+    )
+    return KnowledgeSearchDTO(
+        items=[_hit_dto(hit) for hit in result.items],
+        total=result.total,
+        channels=list(result.channels),
+        degraded=result.degraded,
+    )
+
+
+def _csv(value: str | None) -> list[str] | None:
+    if not value:
+        return None
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _hit_dto(hit: SearchHit) -> KnowledgeHitDTO:
+    return KnowledgeHitDTO(
+        source_id=hit.source_id,
+        source_type=hit.source_type,
+        title=hit.title,
+        authority=hit.authority,
+        version=hit.version,
+        occurred_at=hit.occurred_at,
+        uri=hit.uri,
+        excerpt=hit.excerpt,
+        score=round(hit.score, 4),
+        historical=hit.historical,
+        why=list(hit.why),
+    )
+
+
+def _source_row(row: KnowledgeSource) -> KnowledgeSourceRowDTO:
+    return KnowledgeSourceRowDTO(
+        source_id=row.id,
+        source_type=row.source_type,
+        external_id=row.source_external_id,
+        title=row.title or row.source_external_id,
+        authority=row.authority,
+        version=row.source_version,
+        occurred_at=row.occurred_at,
+        ingested_at=row.ingested_at,
+        uri=row.source_uri,
+        chunk_count=row.chunk_count,
+        active=row.active,
+    )
+
+
+@router.get("/{project_id}/knowledge/sources", response_model=list[KnowledgeSourceRowDTO])
+async def list_knowledge_sources(
+    project_id: uuid.UUID,
+    source_type: str | None = Query(default=None),
+    limit: int = Query(default=100, ge=1, le=500),
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[KnowledgeSourceRowDTO]:
+    project = await _service(session, settings).require(project_id)
+    rows = await KnowledgeAdmin(session).sources(project.id, source_type=source_type, limit=limit)
+    return [_source_row(row) for row in rows]
+
+
+@router.get(
+    "/{project_id}/knowledge/sources/{source_id}/versions",
+    response_model=list[KnowledgeSourceRowDTO],
+)
+async def list_source_versions(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[KnowledgeSourceRowDTO]:
+    """Every version of the thing this source is a version of, newest first."""
+    project = await _service(session, settings).require(project_id)
+    rows = await KnowledgeAdmin(session).versions(project.id, source_id)
+    return [_source_row(row) for row in rows]
+
+
+@router.get("/{project_id}/knowledge/health", response_model=KnowledgeHealthDTO)
+async def knowledge_health(
+    project_id: uuid.UUID,
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> KnowledgeHealthDTO:
+    project = await _service(session, settings).require(project_id)
+    admin = KnowledgeAdmin(session)
+    health = await admin.health(project.id)
+    return KnowledgeHealthDTO(
+        families=[
+            SourceFamilyDTO(
+                source_type=family.source_type,
+                sources=family.sources,
+                chunks=family.chunks,
+                last_ingested_at=family.last_ingested_at,
+            )
+            for family in health.families
+        ],
+        pending_jobs=health.pending_jobs,
+        failed_jobs=health.failed_jobs,
+        dead_jobs=health.dead_jobs,
+        dead_letter_age_seconds=health.dead_letter_age_seconds,
+        last_error=health.last_error,
+        repo_last_synced_at=health.repo_last_synced_at,
+        repo_commit=health.repo_commit,
+        repo_never_synced=await admin.stale_repo(project.id),
+    )
+
+
+@router.get("/{project_id}/knowledge/recent", response_model=list[KnowledgeSourceRowDTO])
+async def recently_learned(
+    project_id: uuid.UUID,
+    limit: int = Query(default=20, ge=1, le=100),
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> list[KnowledgeSourceRowDTO]:
+    """What arrived lately.
+
+    Not decoration: this is where a person checks that the decision they just accepted
+    is findable, which is the ingest-freshness budget as a thing you can look at.
+    """
+    project = await _service(session, settings).require(project_id)
+    rows = await KnowledgeAdmin(session).recent(project.id, limit=limit)
+    return [_source_row(row) for row in rows]
+
+
+@router.get("/{project_id}/knowledge/decisions", response_model=KnowledgeDecisionsDTO)
+async def knowledge_decisions(
+    project_id: uuid.UUID,
+    user: User = Depends(require_action(PROJECT_VIEW)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> KnowledgeDecisionsDTO:
+    project = await _service(session, settings).require(project_id)
+    columns = await KnowledgeAdmin(session).decisions(project.id)
+    return KnowledgeDecisionsDTO(
+        accepted=[_source_row(row) for row in columns["accepted"]],
+        superseded=[_source_row(row) for row in columns["superseded"]],
+        conflicting=[_source_row(row) for row in columns["conflicting"]],
+    )
+
+
+@router.post("/{project_id}/knowledge/enabled", response_model=ProjectSummaryDTO)
+async def set_knowledge_enabled(
+    project_id: uuid.UUID,
+    payload: SetKnowledgeEnabledRequest,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ProjectSummaryDTO:
+    """The per-project switch (ADR 0038 §7). Audited, and off deletes nothing."""
+    service = _service(session, settings)
+    project = await service.require(project_id)
+    await KnowledgeAdmin(session).set_enabled(user, project.id, payload.enabled)
+    await session.commit()
+    return _summary_dto(await service.summary(project))
+
+
+@router.post(
+    "/{project_id}/knowledge/sources/{source_id}/authority",
+    response_model=KnowledgeSourceRowDTO,
+)
+async def set_source_authority(
+    project_id: uuid.UUID,
+    source_id: uuid.UUID,
+    payload: SetAuthorityRequest,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> KnowledgeSourceRowDTO:
+    """Mark a source as a formal decision, or withdraw it.
+
+    A person may assert what *they* decided; they may not assert what the platform
+    observed. `canonical` and `verified` are not in the allowlist for that reason.
+    """
+    project = await _service(session, settings).require(project_id)
+    row = await KnowledgeAdmin(session).set_authority(
+        user, project.id, source_id, payload.authority
+    )
+    await session.commit()
+    return _source_row(row)
+
+
+@router.post("/{project_id}/knowledge/pins", status_code=status.HTTP_204_NO_CONTENT)
+async def set_knowledge_pin(
+    project_id: uuid.UUID,
+    payload: SetPinRequest,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    project = await _service(session, settings).require(project_id)
+    await KnowledgeAdmin(session).set_pin(
+        user, project.id, payload.task_id, payload.source_id, payload.mode
+    )
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/{project_id}/knowledge/pins/{task_id}/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def clear_knowledge_pin(
+    project_id: uuid.UUID,
+    task_id: uuid.UUID,
+    source_id: uuid.UUID,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    project = await _service(session, settings).require(project_id)
+    await KnowledgeAdmin(session).clear_pin(user, project.id, task_id, source_id)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{project_id}/knowledge/resync", response_model=ResyncResponse)
+async def resync_knowledge(
+    project_id: uuid.UUID,
+    user: User = Depends(require_action(PROJECT_MANAGE)),
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+) -> ResyncResponse:
+    """Re-read everything now.
+
+    The same code path as the scheduled reconciler, because a job is a hint rather than
+    content — so this is not a second implementation of ingestion that could disagree
+    with the first.
+    """
+    project = await _service(session, settings).require(project_id)
+    queued = await KnowledgeAdmin(session).resync(user, project.id)
+    await session.commit()
+    return ResyncResponse(queued=queued)
