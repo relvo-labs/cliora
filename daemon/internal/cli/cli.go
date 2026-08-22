@@ -286,7 +286,7 @@ func (c *Client) do(method, path string, body any, into any) (int, error) {
 		return ExitUnreachable, errors.New(OfflineMessage)
 	}
 	if resp.StatusCode >= 400 {
-		return ExitRefused, errors.New(explain(resp.StatusCode, raw))
+		return ExitRefused, errors.New(explain(resp.StatusCode, raw, c.Base, path))
 	}
 	if into != nil {
 		if err := json.Unmarshal(raw, into); err != nil {
@@ -326,7 +326,7 @@ func (c *Client) upload(path, contentType string, body io.Reader, into any) (int
 		return ExitUnreachable, errors.New(RunOfflineMessage)
 	}
 	if resp.StatusCode >= 400 {
-		return ExitRefused, errors.New(explain(resp.StatusCode, raw))
+		return ExitRefused, errors.New(explain(resp.StatusCode, raw, c.Base, path))
 	}
 	if into != nil {
 		if err := json.Unmarshal(raw, into); err != nil {
@@ -340,15 +340,42 @@ func (c *Client) upload(path, contentType string, body io.Reader, into any) (int
 //
 // Written here rather than echoed from the server because the reader is an agent
 // deciding what to do next, and "409 Conflict" is not a decision it can make.
-func explain(status int, raw []byte) string {
+func explain(status int, raw []byte, base, path string) string {
 	var parsed apiError
 	_ = json.Unmarshal(raw, &parsed)
 	switch parsed.Error.Code {
 	case "":
+		// **No error envelope.** Every refusal Cliora issues carries
+		// `{"error":{"code":…}}`; a body without one did not come from Cliora's error
+		// handler, so this is not a refusal at all — it is a request that never reached
+		// a route. Saying "請求被拒絕" here is worse than unhelpful, it is wrong.
+		//
+		// This branch exists because it cost a whole run. An agent finished thirteen
+		// minutes of real work, could not write a single message or artifact, was told
+		// only "請求被拒絕（HTTP 404）", spent the rest of its life guessing URLs,
+		// concluded from a 401 on an unrelated route that its token had expired — it had
+		// not — and gave up. The card recorded `RUN_DELIVERY_INCOMPLETE` and nothing
+		// else. The cause was one line of deployment configuration: the context pack's
+		// API address pointed at a **different, older Cliora** that has no `/api/cli/`
+		// surface at all.
+		//
+		// The agent could not have diagnosed that from the message it was given. It can
+		// from this one.
+		if status == http.StatusNotFound {
+			return fmt.Sprintf(
+				"這個位址上沒有這個路由：%s%s\n"+
+					"回應不是 Cliora 的錯誤格式，表示請求沒有進到任何一條路由——"+
+					"**不是被拒絕，是打錯了地方**。最可能的原因是情境包裡的 API 位址"+
+					"指向另一台、或版本較舊的 Cliora（舊版沒有 `/api/cli/` 這一整組介面）。\n"+
+					"這不是重試會好的問題。請人確認那台 Central 的版本與 "+
+					"`CLIORA_PUBLIC_BASE_URL`；在那之前，你的產出請留在工作目錄裡，"+
+					"不要因為寫不進看板就丟掉。",
+				base, path)
+		}
 		if status == http.StatusUnauthorized {
 			return "這個 Session 的憑證已失效（Session 可能已結束）。看板上的紀錄需要由人補上。"
 		}
-		return fmt.Sprintf("請求被拒絕（HTTP %d）。", status)
+		return fmt.Sprintf("請求被拒絕（HTTP %d，位址 %s%s）。", status, base, path)
 	case "TASK_VERSION_CONFLICT":
 		return "這張卡剛被別人改過。用 `cliora task get <ref>` 看目前的狀態再試一次。"
 	case "TASK_DEPENDENCY_UNSATISFIED":
