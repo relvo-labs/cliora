@@ -3,7 +3,7 @@ name = "cliora-central"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
-  "fastapi==0.116.1",
+  "fastapi==0.120.1",
   # Imported directly by `api/middleware.py`, so it is declared directly. It arrives
   # with FastAPI either way — but a package you import is a package you depend on, and
   # relying on somebody else's transitive dependency means their next release decides
