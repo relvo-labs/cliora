@@ -145,7 +145,7 @@ that is not a current Central, and dispatch anything.
 
 ## 7. What the agent now sees
 
-Since `agentd` 0.14.0 the CLI distinguishes the two 404s itself, names the address, says
+Since `agentd` 0.14.1 the CLI distinguishes the two 404s itself, names the address, says
 that retrying will not help, and tells the agent to keep its output where it is. Before
 that it said only `請求被拒絕（HTTP 404）` — unhelpful, and **wrong**: nothing refused
 the request. A run showing the old message is running a daemon that predates the fix,

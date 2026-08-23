@@ -12,7 +12,7 @@
   ADR 0033 (an agent's output is not an approval — §2 is the same rule applied to text).
 - Requirements: `FR-KNOW-005`, `-006`, `-007`.
 - Contract: **v1.13.0, unchanged.** §1 is the reason the whole design has this shape.
-- Ships in: Central (minor), `agentd` **0.14.0** (CLI only).
+- Ships in: Central (minor), `agentd` **0.14.1** (CLI only).
 
 ## Context
 
