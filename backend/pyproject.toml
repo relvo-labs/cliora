@@ -20,7 +20,7 @@ dependencies = [
   "alembic==1.14.0",
   "argon2-cffi==23.1.0",
   "pyjwt==2.10.1",
-  "cryptography>=45,<46",
+  "cryptography>=48.0.1,<49",
   # Multipart form parsing, for artifact upload only (ADR 0030 Part B). The one new
   # runtime dependency this phase adds, and it is Starlette's own recommended parser
   # rather than a hand-rolled one: multipart is a format with a long history of parser
