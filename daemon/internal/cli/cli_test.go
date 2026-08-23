@@ -428,3 +428,78 @@ func TestTheCommandTreeHasNoAcceptOrApplySubcommand(t *testing.T) {
 		}
 	}
 }
+
+// A 404 with no Cliora error envelope is **not** a refusal.
+//
+// These tests exist because the distinction cost a whole run. An agent worked for
+// thirteen minutes, could not write one message or artifact, was told only
+// "請求被拒絕（HTTP 404）", spent the rest of its life guessing URLs, wrongly concluded
+// from a 401 on an unrelated route that its credential had expired, and gave up. The
+// cause was a context pack whose API address pointed at an older Cliora with no
+// `/api/cli/` surface — diagnosable in one line, and the line was not there.
+
+func TestABareNotFoundIsReportedAsAWrongAddressNotARefusal(t *testing.T) {
+	msg := explain(404, []byte(`{"detail":"Not Found"}`),
+		"https://cliora.example", "/api/cli/runs/messages")
+
+	// It must name the address, or the reader cannot check the one thing that is wrong.
+	if !strings.Contains(msg, "https://cliora.example/api/cli/runs/messages") {
+		t.Fatalf("the message does not name the address: %q", msg)
+	}
+	// It must not say the request was refused: nothing refused it.
+	if strings.Contains(msg, "請求被拒絕") {
+		t.Fatalf("a bare 404 is not a refusal: %q", msg)
+	}
+	// It must say retrying will not help, because the agent's next instinct is to retry.
+	if !strings.Contains(msg, "不是重試會好的問題") {
+		t.Fatalf("the message does not rule out a retry: %q", msg)
+	}
+	// And it must tell the agent to keep its work, because the card channel is gone and
+	// the run directory is the only copy left.
+	if !strings.Contains(msg, "留在工作目錄") {
+		t.Fatalf("the message does not tell the agent to preserve its output: %q", msg)
+	}
+}
+
+func TestACliora404StillReadsAsARefusal(t *testing.T) {
+	// The opposite case, and the reason the check is on the envelope rather than on the
+	// status: a 404 that *did* come from Cliora is a real answer about a real route, and
+	// must keep its own message.
+	msg := explain(404, []byte(`{"error":{"code":"TASK_NOT_FOUND","message":"Task not found"}}`),
+		"https://cliora.example", "/api/cli/runs/messages")
+	if !strings.Contains(msg, "找不到這張卡") {
+		t.Fatalf("a Cliora 404 lost its specific message: %q", msg)
+	}
+	if strings.Contains(msg, "不是重試會好的問題") {
+		t.Fatalf("a Cliora 404 must not be reported as a wrong address: %q", msg)
+	}
+}
+
+func TestAnUnknownCodeStillReturnsTheServersMessage(t *testing.T) {
+	msg := explain(404, []byte(`{"error":{"code":"NOT_FOUND","message":"Not found"}}`),
+		"https://cliora.example", "/api/projects")
+	// `NOT_FOUND` with an envelope is what a disabled project layer answers. It has no
+	// case of its own, so the server's own wording is what the agent sees — and it must
+	// **not** be mistaken for the wrong-address case.
+	if msg != "Not found" {
+		t.Fatalf("expected the server's message, got %q", msg)
+	}
+}
+
+func TestOtherBareStatusesNameTheAddressToo(t *testing.T) {
+	// Not only 404. Any bare non-2xx leaves the agent guessing which address failed, and
+	// the address is free to include.
+	msg := explain(418, []byte(`<html>teapot</html>`), "https://edge.example", "/api/cli/runs/plan")
+	if !strings.Contains(msg, "https://edge.example/api/cli/runs/plan") {
+		t.Fatalf("the message does not name the address: %q", msg)
+	}
+}
+
+func TestABareUnauthorizedKeepsItsSessionWording(t *testing.T) {
+	// 401 is genuinely about the credential, and its existing wording is right. Guarded
+	// so the new 404 branch cannot swallow it.
+	msg := explain(401, []byte(``), "https://cliora.example", "/api/cli/runs/messages")
+	if !strings.Contains(msg, "憑證已失效") {
+		t.Fatalf("401 lost its wording: %q", msg)
+	}
+}
