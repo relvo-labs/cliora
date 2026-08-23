@@ -20,7 +20,7 @@
 - Requirements: `FR-KNOW-001`…`-004`, `-008`…`-011`.
 - Contract: **v1.13.0, unchanged.** §3.4 is why that is possible: the one new inbound
   data path is an HTTPS request an agent makes with a credential it already has.
-- Ships in: Central (minor), `agentd` **0.14.0** (CLI subcommands only; the node half
+- Ships in: Central (minor), `agentd` **0.14.1** (CLI subcommands only; the node half
   has a zero-byte diff), frontend (minor).
 
 ## Context

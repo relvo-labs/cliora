@@ -338,3 +338,31 @@ knowledge source 產品資料的衍生，與來源同生命週期
 
 一個查詢字串會包含使用者正在想什麼，而它沒有稽核價值——
 `services/files.py` 已經替 `filesystem.search` 做過同一個判斷，本期沿用同一個函式。
+
+### D91 — 0.14.0 沒發出去過，於是它變成 0.14.1
+
+D87 為 `knowledge` 子命令切了 0.14.0，而它**從未 tag、從未建出 artifact**
+（`docs/release-note-project-memory.md` 的 `Status: not tagged`、
+`.goreleaser.yaml` 的 `release.disable: true`）。在它出去之前，
+同一個 `internal/cli/` 又收了第二個改動：CLI 現在能分辨裸 404 與「被拒絕」，
+不再對兩者都印 `請求被拒絕（HTTP 404）`。
+
+於是**沒有任何一個 artifact 只帶第一個改動**。
+把兩者一起叫 0.14.0，等於讓版本號描述一個沒人拿得到的 binary；
+`daemon/VERSION` 因此走到 `0.14.1`。
+
+| 面 | 影響 |
+|---|---|
+| `GATE-KN-TOUCH-LIST` | **不受影響**。禁區是 `daemon/internal/{protocol,runner,connection,workspace,gitfetch}`，`internal/cli/` 不在其中 |
+| D87 的「節點半邊零 diff」 | **仍然成立**，兩個改動都只在 `internal/cli/` |
+| Central 能力判斷 | `RunService._daemon_has_knowledge_cli()` 比的是 `node.daemon_version >= 0.14.0`，`0.14.1` 通過。**版本以整數 tuple 比較**（見 [`07`](./07-cli-and-agent-contract.md) §5），這裡正是那個判斷要付出代價的地方 |
+| 要改的地方 | `daemon/VERSION` 與 `cmd/agentd/main.go` 的 `version` 兩處，由 `TestVersionMatchesTheVersionFile` 綁住（`plan/23/10` §2.12） |
+
+**代價**：`plan/25` 全篇寫的是 0.14.0，而發出去的是 0.14.1。
+這份決策就是那個落差的紀錄——**沒有回頭改 `plan/25` 的其他文件**，
+因為那些是當期的計畫，不是發版事實；發版事實在 release note。
+
+但 ADR 0038／0039 的 `Ships in:` **是**發版事實，不是計畫，
+所以那兩行改成 0.14.1——否則它們指著一個永遠不會存在的版本。
+同理，`backend/` 那邊寫的 `>= 0.14.0` **一個都不動**：
+那是門檻不是版本，而 0.14.1 過得去。

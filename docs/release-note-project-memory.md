@@ -51,7 +51,7 @@ words rather than showing an empty list.
 | Component | Before | After |
 |---|---|---|
 | Central | `45a3143` | this release |
-| `agentd` | 0.13.1 | **0.14.0** — `internal/cli/` only; the node half has a zero-byte diff |
+| `agentd` | 0.13.1 | **0.14.1** — `internal/cli/` only; the node half has a zero-byte diff |
 | contract | 1.13.0 | **1.13.0, unchanged** (`GATE-KN-CONTRACT-FROZEN`) |
 | migration | 0040 | **0042** |
 | RBAC actions | 27 | **27** — no new action |
@@ -61,6 +61,16 @@ words rather than showing an empty list.
 have.** Central decides from the node's reported version whether to mention
 `cliora knowledge context`; the project's rules are delivered either way. Measured in
 journey J15, not argued.
+
+**Why 0.14.1 and not 0.14.0.** `plan/25` cut 0.14.0 for the `knowledge` subcommands
+(D87) and it was never tagged. Before it shipped, the same `internal/cli/` gained a
+second change — the CLI now tells a bare 404 apart from a refusal instead of reporting
+`請求被拒絕（HTTP 404）` for both ([runbook
+§7](./runbooks/agent-cli-cannot-write.md)) — so no artifact was ever built that carries
+the first change without the second, and calling the pair 0.14.0 would have described a
+binary nobody can obtain. Both changes stay inside `internal/cli/`; the node half's
+zero-byte diff and `GATE-KN-TOUCH-LIST` are unaffected. Central's capability check is
+`node.daemon_version >= 0.14.0`, which 0.14.1 satisfies.
 
 ## Known limitations
 
