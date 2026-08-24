@@ -857,7 +857,7 @@ baseline 與資料庫名稱而失敗，於是本期會因為別人的過期 fixt
 | ☑ | 22–31 | `alpha.2`／`alpha.3` 的十項 | 交叉引用（本期未改動它們守的東西） |
 | ☑ | 32 | `BoardCardDTO` 與 `/board` 未變且未變大 | `GATE-PX-BOARD-UNCHANGED` ＋ bytes 釘死測試 |
 | ☑ | 33 | `agentd` 0.14.1 行為不變、daemon diff 為零 | diff 為零由 `GATE-PX-NO-DAEMON-DIFF` 斷言（含 `VERSION` 未變）；**完整 run 生命週期已跑**——J1 用 0.14.1 的節點走完派工 → 認領 → 對話 → 交付 → 驗證 → 完成 |
-| ☐ | 34 | `v2` → `dev` 由人工核准 | **人的動作。** 本期未合併、未 push、未打 tag |
+| ☐ | 34 | `v2` → 上游由人工核准 | **提案已送出，核准仍待人**：`v2` 已 push（`bf9633c`），PR [#45](https://github.com/Lei-k/cliora/pull/45) → `staging` 已開。**未合併、未打 tag。** 條件全綠只是取得提案資格，合併是一個獨立的人的決定 |
 | ☑ | 35 | attention 在三處對同一張卡一致 | `test_attention_consistency.py` 逐卡比對三個端點 |
 | ☑ | 36 | 相位 B 與 `resolve_waiting_reason` 一致 | 同上，四種形狀各一 |
 | ☑ | 37 | 未新增對外連線、未新增推播通道 | `GATE-KN-NO-NEW-EGRESS` 形狀的 httpx 檢查 ＋ 無 WS 票券新增 |
