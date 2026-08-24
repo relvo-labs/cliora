@@ -30,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
 from app.clock import now_utc
-from app.db.models import Epic, Project, Task, TaskRun, UserStory
+from app.db.models import Epic, Project, Requirement, Task, TaskRun, UserStory
 from app.repositories.tasks import BoardCard, TaskRepository
 from app.services import audit as audit_actions
 from app.services.activity import (
@@ -46,6 +46,13 @@ from app.services.activity import (
 from app.services.audit import AuditService
 from app.services.done_gate import CRITERION_RESULTS, DoneGateService
 from app.services.process import DEPENDENCY_GATED_STAGES, STAGES, EffectiveProcess, ProcessService
+from app.services.work.ranking import (
+    INITIAL_RANK,
+    INLINE_REBALANCE_THRESHOLD,
+    REBALANCE_THRESHOLD,
+    rank_between,
+    rebalanced_ranks,
+)
 from app.settings import Settings, get_settings
 
 # Fields a `PATCH` may set. Anything outside this set is refused by name rather than
@@ -77,6 +84,15 @@ EDITABLE_FIELDS = frozenset(
         "existing_pr_ref",
         "required_secrets",
         "assigned_runner_id",
+        # V2-P1 (ADR 0040 §1, ADR 0042 §5). Three of the four are in
+        # `AGENT_FORBIDDEN_FIELDS`: unblocking a card and reordering the queue are both
+        # human acts, and an agent doing either to its own card would bypass a rule
+        # rather than exercise a permission. `blocking_message` is free text nobody acts
+        # on programmatically, so an agent explaining why it is stuck is allowed.
+        "is_blocked",
+        "blocking_reason",
+        "blocking_message",
+        "rank",
         # V2.5 (ADR 0034 §5). Editable so a card filed under the wrong kind can be
         # corrected, but **only until it has been run**: `_require_kind_unlocked` below
         # refuses once any `task_runs` row exists, because a clarification card that
@@ -421,6 +437,23 @@ class TaskService:
             await self._require_epic(project, epic_id)
         if story_id is not None:
             await self._require_story(project, story_id)
+        requirement_id = payload.pop("requirement_id", None)
+        kind = str(payload.get("card_kind") or CARD_KIND_IMPLEMENTATION)
+        payload["card_kind"] = kind
+        if requirement_id is not None:
+            await self._require_requirement(project, requirement_id)
+        elif kind in REQUIREMENT_KINDS:
+            # **At create, not only at dispatch.** `RunService` refuses the same thing,
+            # and keeping both is deliberate: the dispatch check covers a card whose kind
+            # was corrected afterwards, and this one stops a card existing that can only
+            # ever be refused. A card nobody can dispatch is worse than an error, because
+            # it looks like progress.
+            raise ApiError(
+                "TASK_KIND_NEEDS_REQUIREMENT",
+                f"A `{kind}` card must name the requirement it works on",
+                status.HTTP_409_CONFLICT,
+                details={"card_kind": kind},
+            )
 
         card_ref = await self._repo.allocate_card_ref(project.id, "TASK")
         task = Task(
@@ -430,6 +463,8 @@ class TaskService:
             stage=stage,
             epic_id=epic_id,
             user_story_id=story_id,
+            requirement_id=requirement_id,
+            rank=await self._rank_for_new_card(project.id),
             created_by=actor_id,
             **self._validated(payload),
         )
@@ -445,6 +480,27 @@ class TaskService:
             payload={"card_ref": card_ref, "kind": "task", "title": task.title, "stage": stage},
         )
         return WriteResult(task=task, warnings=warnings)
+
+    async def _rank_for_new_card(self, project_id: uuid.UUID) -> str:
+        """A new card goes to the **top** of its project (V2-P1, ADR 0042 §5).
+
+        Top rather than bottom, because that is where a new card already appeared: the
+        V1 board is `ORDER BY updated_at DESC` and the `0043` backfill assigned ranks in
+        that same order, so the newest card holds the smallest rank. Sending new cards to
+        the bottom would put them behind a two-hundred-card backlog on the first screen
+        after the upgrade.
+
+        **Two concurrent creates can produce the same rank.** There is no unique
+        constraint on the column and this is deliberate: the collision costs a tie broken
+        by the secondary sort key, while a constraint would cost a retry loop on the
+        create path. The background rebalance separates them the next time it runs.
+        """
+        lowest = (
+            await self._session.execute(
+                select(func.min(Task.rank)).where(Task.project_id == project_id)
+            )
+        ).scalar_one_or_none()
+        return rank_between(None, lowest) if lowest else INITIAL_RANK
 
     # --- update -----------------------------------------------------------------
 
@@ -703,6 +759,180 @@ class TaskService:
         )
         return task
 
+    # --- ordering (V2-P1, ADR 0042 sec 5) ---------------------------------------
+
+    async def reorder(
+        self,
+        *,
+        task: Task,
+        actor_id: uuid.UUID,
+        expected_version: int,
+        previous_task_id: uuid.UUID | None,
+        next_task_id: uuid.UUID | None,
+        stage: str | None = None,
+    ) -> Task:
+        """Put this card between two named neighbours. **One `UPDATE tasks`.**
+
+        The neighbours are **identifiers, not an index**. On a filtered board an index
+        does not mean what the server would take it to mean — position 3 of a filtered
+        list is not position 3 of the lane — and the defect that produces is a card that
+        lands somewhere the person did not point at.
+
+        `RANK_NEIGHBOR_STALE` is raised when the pair the caller described no longer
+        exists: a neighbour was deleted, moved to another project, or somebody else
+        reordered so that the two are no longer in the stated order. **The refusal
+        carries the neighbours' current ranks**, so the browser can re-render and retry
+        rather than asking the user to work out what happened.
+
+        **No activity row.** `_record` writes both trails, and this deliberately writes
+        only the audit one: reordering does not change what a card *says*, and a hundred
+        drags would bury the card's real history under its own arrangement. The audit log
+        is where "who rearranged the board" belongs.
+        """
+        if task.version != expected_version:
+            fresh = await self.require_task(task.id)
+            raise ApiError(
+                "TASK_VERSION_CONFLICT",
+                "This card was changed by someone else",
+                status.HTTP_409_CONFLICT,
+                details={
+                    "card_ref": fresh.card_ref,
+                    "version": fresh.version,
+                    "current": _task_snapshot(fresh),
+                },
+            )
+        previous = await self._rank_neighbour(task, previous_task_id)
+        following = await self._rank_neighbour(task, next_task_id)
+        if previous is not None and following is not None and previous >= following:
+            raise ApiError(
+                "RANK_NEIGHBOR_STALE",
+                "The cards you dropped between are no longer next to each other",
+                status.HTTP_409_CONFLICT,
+                details={"previous_rank": previous, "next_rank": following},
+            )
+        try:
+            rank = rank_between(previous, following)
+        except ValueError as invalid:
+            # A stored rank that violates an invariant is a data defect, not a bad
+            # request — but it reaches the user as this move failing, so it must say
+            # something actionable rather than a 500.
+            raise ApiError(
+                "RANK_NEIGHBOR_STALE",
+                "A neighbouring card's position is not usable; reload the board",
+                status.HTTP_409_CONFLICT,
+                details={"previous_rank": previous, "next_rank": following},
+            ) from invalid
+
+        if stage is not None and stage != task.stage:
+            # **Through `update_task`, not by assigning the column.** `task.stage` has one
+            # writer and `GATE-DV-SINGLE-DONE-PATH` scans for a second: a card crossing
+            # into `done` from a drag must meet the Done Gate's six conditions exactly as
+            # it would from the card detail page. So the lane change goes the long way and
+            # the rank goes the short way, in one transaction.
+            await self.update_task(
+                task=task,
+                actor_id=actor_id,
+                actor_kind="user",
+                expected_version=expected_version,
+                changes={"stage": stage},
+            )
+            # `update_task` already advanced the version and recorded both trails.
+            task.rank = rank
+            await self._session.flush()
+            return task
+
+        task.rank = rank
+        task.version += 1
+        await self._session.flush()
+        await self._audit.record(
+            audit_actions.TASK_UPDATE,
+            user_id=actor_id,
+            metadata={
+                "task_id": str(task.id),
+                "card_ref": task.card_ref,
+                "fields": ["rank"],
+                "previous_task_id": str(previous_task_id) if previous_task_id else None,
+                "next_task_id": str(next_task_id) if next_task_id else None,
+            },
+        )
+        if len(rank) >= INLINE_REBALANCE_THRESHOLD:
+            # The safety valve. Past this the strings are long enough that the next
+            # insertion at the same spot keeps growing them, so the project is
+            # rebalanced inside this request rather than hoping a background pass
+            # arrives first. It costs one UPDATE per card and it is rare: reaching 48
+            # characters takes roughly 240 consecutive inserts at one position.
+            await self.rebalance(project_id=task.project_id)
+            await self._session.refresh(task)
+        return task
+
+    async def _rank_neighbour(self, task: Task, neighbour_id: uuid.UUID | None) -> str | None:
+        """The neighbour's current rank, or None for "this end of the list"."""
+        if neighbour_id is None:
+            return None
+        if neighbour_id == task.id:
+            raise ApiError(
+                "RANK_NEIGHBOR_STALE",
+                "A card cannot be dropped next to itself",
+                status.HTTP_409_CONFLICT,
+                details={"task_id": str(task.id)},
+            )
+        neighbour = await self._repo.get(neighbour_id)
+        if neighbour is None or neighbour.project_id != task.project_id:
+            raise ApiError(
+                "RANK_NEIGHBOR_STALE",
+                "One of the cards you dropped between is no longer in this project",
+                status.HTTP_409_CONFLICT,
+                details={"neighbour_task_id": str(neighbour_id)},
+            )
+        return neighbour.rank
+
+    async def rebalance(self, *, project_id: uuid.UUID) -> int:
+        """Space every card in a project evenly, **without changing any relative order**.
+
+        Returns the number of rows written. Idempotent: an already balanced project
+        rebalances to the same values, so a second pass writes nothing — which is what
+        makes it safe to call from a background job on a schedule.
+
+        `version` is deliberately **not** bumped. A rebalance is the platform tidying its
+        own representation; incrementing every card's version would invalidate every open
+        editor in the deployment and make a maintenance pass look like two hundred people
+        editing at once.
+        """
+        rows = list(
+            (
+                await self._session.execute(
+                    select(Task.id, Task.rank)
+                    .where(Task.project_id == project_id)
+                    .order_by(Task.rank, Task.id)
+                )
+            ).all()
+        )
+        if not rows:
+            return 0
+        written = 0
+        for (task_id, current), fresh in zip(rows, rebalanced_ranks(len(rows)), strict=True):
+            if current == fresh:
+                continue
+            await self._session.execute(update(Task).where(Task.id == task_id).values(rank=fresh))
+            written += 1
+        return written
+
+    async def projects_needing_rebalance(self) -> list[uuid.UUID]:
+        """Projects holding a rank at or past the background threshold.
+
+        The threshold is on the *longest* rank rather than on a count of cards: length is
+        what actually runs out of room, and a project with a thousand evenly spaced cards
+        is in better shape than one with ten cards inserted at the same spot forty times.
+        """
+        rows = (
+            await self._session.execute(
+                select(Task.project_id)
+                .where(func.length(Task.rank) >= REBALANCE_THRESHOLD)
+                .group_by(Task.project_id)
+            )
+        ).scalars()
+        return list(rows)
+
     # --- dependencies -----------------------------------------------------------
 
     async def add_dependency(
@@ -817,6 +1047,27 @@ class TaskService:
             )
         values.pop("stage", None)
         return values
+
+    async def _require_requirement(self, project: Project, requirement_id: uuid.UUID) -> None:
+        """The requirement must exist **and be this project's**.
+
+        The project check is the whole reason this is a method rather than an FK. The FK
+        says the row exists; it does not say the caller may point one project's card at
+        another project's requirement — and a clarification run reads its requirement
+        through the run credential, so the link *is* the read authorization.
+
+        A 404 rather than a 403 for a foreign requirement, because "not in this project"
+        and "does not exist" are the same fact from where the caller stands, and the
+        difference between the two answers confirms the existence of a row they cannot see.
+        """
+        requirement = await self._session.get(Requirement, requirement_id)
+        if requirement is None or requirement.project_id != project.id:
+            raise ApiError(
+                "REQUIREMENT_NOT_FOUND",
+                "Requirement not found",
+                status.HTTP_404_NOT_FOUND,
+                details={"requirement_id": str(requirement_id)},
+            )
 
     async def _require_kind_unlocked(self, task: Task) -> None:
         """A card's kind is fixed once it has ever been run (ADR 0034 §5).

@@ -113,12 +113,18 @@ const entries = computed<NavEntry[]>(() => {
     ];
   }
 
-  // `Projects` and `Sessions` are single-entry groups, so they render as plain rows
-  // — a heading whose only child repeats it is two rows saying one thing. Only
-  // `Infrastructure` is genuinely two levels.
+  // V2-P1 (PX-63). Four regions, and the order is the order of a day rather than of
+  // the org chart: **My Work first**, because "what is waiting for me" is the question
+  // somebody opens this application to answer, and it is the one only Cliora has to
+  // answer — there is a fleet of agents waiting on people.
+  //
+  // `Home`, `My Work`, `Projects`, `Sessions` and `Agents` stay flat. A heading whose
+  // only child repeats it is two rows saying one thing; only `Infrastructure` and
+  // `Administration` are genuinely two levels.
   const rail: NavEntry[] = [
+    { kind: "link", label: "Home", icon: "◈", route: "dashboard" },
+    { kind: "link", label: "My Work", icon: "◎", route: "my-work" },
     { kind: "link", label: "Projects", icon: "▦", route: "projects" },
-    sessions,
   ];
   // Between the work and the machines, because that is what it is: an agent is a
   // machine doing the work, and putting it under Infrastructure would file it with
@@ -126,7 +132,22 @@ const entries = computed<NavEntry[]>(() => {
   if (showAgents.value) {
     rail.push({ kind: "link", label: "Agents", icon: "◆", route: "agents" });
   }
-  rail.push({ kind: "group", label: "Infrastructure" }, ...infrastructure);
+  rail.push(sessions);
+  // **Administration is split out of Infrastructure**, which used to hold all five.
+  // `Nodes` and `Integrations` are things an operator maintains; `Audit` and
+  // `Enrollment` are things an administrator grants. Filing "who may join the fleet"
+  // next to "which machines are up" is how a permission-shaped action ends up in an
+  // operator's routine.
+  const machines = infrastructure.filter((entry) =>
+    ["Nodes", "Integrations"].includes(entry.label),
+  );
+  const administration = infrastructure.filter((entry) =>
+    ["Audit", "Enrollment"].includes(entry.label),
+  );
+  rail.push({ kind: "group", label: "Infrastructure" }, ...machines);
+  if (administration.length) {
+    rail.push({ kind: "group", label: "Administration" }, ...administration);
+  }
   return rail;
 });
 

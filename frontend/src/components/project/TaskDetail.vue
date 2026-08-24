@@ -179,6 +179,25 @@ async function setExecution(changes: Record<string, unknown>): Promise<void> {
   }
 }
 
+/** Tick or untick one readiness item (V2-P1, PX-30).
+ *
+ *  **The whole map, not a patch of one key.** `readiness` is a JSONB column and
+ *  `update_task` assigns the value it is given, so sending `{acceptance_criteria: true}`
+ *  alone would erase the other six. The server does not merge, and it should not: a
+ *  partial write to a JSON column is the kind of API where losing data looks like it
+ *  worked.
+ *
+ *  Ticking one is **not** a claim that the platform verified it. A readiness item is
+ *  somebody's judgement that the card is ready to be worked on, which is why the list
+ *  warns and never refuses (ADR 0028 §1) — and why the console had no control for it until
+ *  the Ready-transition dialog gave "fill it in" somewhere to go.
+ */
+async function setReadiness(key: string, met: boolean): Promise<void> {
+  await setExecution({
+    readiness: { ...(props.task.readiness ?? {}), [key]: met },
+  });
+}
+
 async function toggleGate(key: string, approved: boolean): Promise<void> {
   if (!approved && !window.confirm("確定要取消這項人工核准嗎？")) return;
   error.value = null;
@@ -288,10 +307,32 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
 
         <h4>就緒條件</h4>
         <ul class="readiness">
-          <li v-for="item in readiness" :key="item.key" :data-met="item.met">
-            <span aria-hidden="true">{{ item.met ? "✓" : "○" }}</span>
-            {{ item.label }}
-            <small>{{ item.hint }}</small>
+          <li
+            v-for="item in readiness"
+            :key="item.key"
+            :data-met="item.met"
+            :data-readiness="item.key"
+          >
+            <label v-if="canEdit">
+              <input
+                type="checkbox"
+                :checked="item.met"
+                :data-readiness-check="item.key"
+                @change="
+                  setReadiness(
+                    item.key,
+                    ($event.target as HTMLInputElement).checked,
+                  )
+                "
+              />
+              {{ item.label }}
+              <small>{{ item.hint }}</small>
+            </label>
+            <template v-else>
+              <span aria-hidden="true">{{ item.met ? "✓" : "○" }}</span>
+              {{ item.label }}
+              <small>{{ item.hint }}</small>
+            </template>
           </li>
         </ul>
         <p class="hint">

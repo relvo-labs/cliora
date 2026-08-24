@@ -78,8 +78,31 @@ RUN_TOKEN_SCOPES: frozenset[str] = frozenset({PROJECT_VIEW, TASK_UPDATE})
 # card carries no secret" refusal for the card's *next* dispatch. The field is otherwise
 # editable — a person may correct a miscategorised card until it has been run — so
 # excluding it here is the whole of the boundary (ADR 0034 §5).
+#
+# V2-P1 adds three, and **all three widen the set rather than narrowing it**
+# (plan/26/00 §3, exception 1 and 4):
+#
+# * `is_blocked` and `blocking_reason` — an agent that can mark its own card
+#   "not blocked" has cleared the way past the dependency gate, which is the one rule
+#   ADR 0028 said the process refuses. The field is editable by a person because a
+#   person is who unblocks things.
+# * `rank` — an agent that can change its own ordering can put itself at the front of
+#   the queue. `runner.poll` is first-in-first-out and nothing else, which is what
+#   "the platform does not schedule" means; a writable rank would make it advisory.
+#
+# `blocking_message` is deliberately **not** here: it is free text a person reads, it
+# grants nothing, and an agent explaining why it is stuck is useful.
 AGENT_FORBIDDEN_FIELDS = frozenset(
-    {"gates", "owner_user_id", "assigned_runner_id", "required_secrets", "card_kind"}
+    {
+        "gates",
+        "owner_user_id",
+        "assigned_runner_id",
+        "required_secrets",
+        "card_kind",
+        "is_blocked",
+        "blocking_reason",
+        "rank",
+    }
 )
 
 

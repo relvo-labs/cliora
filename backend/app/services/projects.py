@@ -58,6 +58,7 @@ from app.services.favorites import (
     validate_path,
 )
 from app.services.sessions import authorize_workspace
+from app.services.work.views import seed_statements
 from app.settings import Settings, get_settings
 
 ACTIVE = "active"
@@ -226,6 +227,14 @@ class ProjectService:
         )
         self._session.add(project)
         await self._session.flush()
+
+        # Five project views, through the same function migration `0043` used for the
+        # projects that already existed (ADR 0042 §3, D101). Without this, a project
+        # created after the upgrade opens onto an empty board — and "the default views
+        # only exist on projects created before the upgrade" is the kind of split
+        # nobody notices until a customer has projects on both sides of it.
+        for statement, params in seed_statements(project_id=project.id):
+            await self._session.execute(statement, params)
 
         await self._audit.record(
             audit_actions.PROJECT_CREATE,

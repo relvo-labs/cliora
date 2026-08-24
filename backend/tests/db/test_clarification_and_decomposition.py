@@ -1164,3 +1164,115 @@ async def test_a_project_row_is_needed_before_the_dispatch_refusals_run(
     project = await _project(client, headers)
     resp = await client.get(f"/api/projects/{project['id']}", headers=headers)
     assert resp.status_code == 200, resp.text
+
+
+# --- V2-P1: the create path the console has actually been using -----------------------
+#
+# Every test above builds its clarification card by inserting a `Task` row, which is why
+# the gap these three cover survived V2.5 unnoticed: there was no HTTP route that could
+# make one. `CreateTaskRequest` declared neither `card_kind` nor `requirement_id` and does
+# not forbid extras, so the console's "send to agent" button posted both and Pydantic threw
+# them away. The card came back 201 with `card_kind='implementation'` and no requirement,
+# and the requirement flow silently never started. J1 is what found it.
+
+
+async def test_creating_a_clarification_card_links_it_to_its_requirement(
+    api: tuple, projects_enabled: None
+) -> None:
+    """The console's own request, asserted end to end.
+
+    The two fields are read off the **response**, not the database: a field accepted into
+    the row but absent from the DTO is the same defect one layer further on, and the
+    console decides what to do next from the response.
+    """
+    client, maker = api
+    _, headers = await _actor(client, maker)
+    project = await _project(client, headers)
+    requirement = await _requirement(client, headers, project["id"])
+    resp = await client.post(
+        f"/api/projects/{project['id']}/tasks",
+        json={
+            "title": f"釐清 {requirement['card_ref']}",
+            "card_kind": "clarification",
+            "requirement_id": requirement["id"],
+            "source": "repo",
+            "delivery": "artifact",
+            "stage": "ready",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 201, resp.text
+    task = resp.json()["task"]
+    assert task["card_kind"] == "clarification"
+    assert task["requirement_id"] == requirement["id"]
+
+
+async def test_a_clarification_card_cannot_be_created_without_a_requirement(
+    api: tuple, projects_enabled: None
+) -> None:
+    """Refused at create, not only at dispatch.
+
+    Both checks exist. This one stops a card that can only ever be refused from existing
+    at all — and a card nobody can dispatch is worse than an error, because it looks like
+    progress.
+    """
+    client, maker = api
+    _, headers = await _actor(client, maker)
+    project = await _project(client, headers)
+    resp = await client.post(
+        f"/api/projects/{project['id']}/tasks",
+        json={"title": "釐清什麼都沒有", "card_kind": "clarification", "delivery": "artifact"},
+        headers=headers,
+    )
+    assert resp.status_code == 409, resp.text
+    assert resp.json()["error"]["code"] == "TASK_KIND_NEEDS_REQUIREMENT"
+
+
+async def test_a_card_cannot_point_at_another_projects_requirement(
+    api: tuple, projects_enabled: None
+) -> None:
+    """404, not 403 — and the reason is disclosure.
+
+    The link *is* the read authorization: a clarification run reads its requirement through
+    the run credential, which resolves the requirement from the card. So a card pointed at
+    a foreign requirement would be a cross-project read with no further check. A 403 would
+    also confirm that the requirement exists, which is exactly what the caller must not
+    learn.
+    """
+    client, maker = api
+    _, headers = await _actor(client, maker)
+    mine = await _project(client, headers)
+    theirs = await _project(client, headers)
+    foreign = await _requirement(client, headers, theirs["id"])
+    resp = await client.post(
+        f"/api/projects/{mine['id']}/tasks",
+        json={
+            "title": "指到別的專案",
+            "card_kind": "clarification",
+            "requirement_id": foreign["id"],
+            "delivery": "artifact",
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 404, resp.text
+    assert resp.json()["error"]["code"] == "REQUIREMENT_NOT_FOUND"
+
+
+async def test_an_ordinary_card_still_needs_neither_field(
+    api: tuple, projects_enabled: None
+) -> None:
+    """The default path, unchanged.
+
+    Worth a test of its own because the new branch reads `card_kind` before validating it,
+    and a defaulting mistake there would make every ordinary create fail.
+    """
+    client, maker = api
+    _, headers = await _actor(client, maker)
+    project = await _project(client, headers)
+    resp = await client.post(
+        f"/api/projects/{project['id']}/tasks", json={"title": "普通卡"}, headers=headers
+    )
+    assert resp.status_code == 201, resp.text
+    task = resp.json()["task"]
+    assert task["card_kind"] == "implementation"
+    assert task["requirement_id"] is None

@@ -271,6 +271,31 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/tasks/{task_id}/evidence"): rbac.PROJECT_VIEW,
     ("POST", "/api/tasks/{task_id}/evidence"): rbac.TASK_UPDATE,
     ("GET", "/api/projects/{project_id}/board"): rbac.PROJECT_VIEW,
+    # V2-P1 read model. All `project.view`: these answer questions about cards the
+    # caller can already read, so a second action would only create a role that can see
+    # a board but not why anything on it is stuck (D53 — the count stays at 27).
+    ("GET", "/api/projects/{project_id}/work-items"): rbac.PROJECT_VIEW,
+    ("GET", "/api/projects/{project_id}/work-counts"): rbac.PROJECT_VIEW,
+    # One card's full signal set — what the board's card deliberately does not carry
+    # (D107). Same action for the same reason: it answers *why* a card the caller can
+    # already read is stuck, and a card they cannot read is a 404 from the scope rather
+    # than a 403 from a second action.
+    ("GET", "/api/tasks/{task_id}/attention"): rbac.PROJECT_VIEW,
+    # View CRUD is `project.view` at the boundary; the *shared* half additionally needs
+    # `project.manage`, checked inside with `may_perform` because it depends on the
+    # requested scope rather than on the route (ADR 0042 §2).
+    ("GET", "/api/projects/{project_id}/views"): rbac.PROJECT_VIEW,
+    ("POST", "/api/projects/{project_id}/views"): rbac.PROJECT_VIEW,
+    ("PATCH", "/api/work-views/{view_id}"): rbac.PROJECT_VIEW,
+    ("DELETE", "/api/work-views/{view_id}"): rbac.PROJECT_VIEW,
+    ("POST", "/api/work-views/{view_id}/duplicate"): rbac.PROJECT_VIEW,
+    # Bulk update is a write, so it is `task.update` — the same action one card needs,
+    # applied per card inside (D96).
+    ("POST", "/api/tasks/bulk-update"): rbac.TASK_UPDATE,
+    # `/api/me/*` answers only about the caller, so the guard is the read action and the
+    # subject is the session (see `api/http/me.py`'s module docstring).
+    ("GET", "/api/me/work-items"): rbac.PROJECT_VIEW,
+    ("GET", "/api/me/attention-counts"): rbac.PROJECT_VIEW,
     ("GET", "/api/projects/{project_id}/roadmap"): rbac.PROJECT_VIEW,
     ("GET", "/api/projects/{project_id}/tasks"): rbac.PROJECT_VIEW,
     ("GET", "/api/tasks/{task_id}"): rbac.PROJECT_VIEW,
@@ -280,6 +305,8 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("PATCH", "/api/epics/{epic_id}"): rbac.TASK_UPDATE,
     ("PATCH", "/api/user-stories/{story_id}"): rbac.TASK_UPDATE,
     ("PATCH", "/api/tasks/{task_id}"): rbac.TASK_UPDATE,
+    # V2-P1: board ordering. `task.update`, the same action a drag already needed.
+    ("POST", "/api/tasks/{task_id}/rank"): rbac.TASK_UPDATE,
     ("POST", "/api/tasks/{task_id}/dependencies"): rbac.TASK_UPDATE,
     ("DELETE", "/api/tasks/{task_id}/dependencies/{depends_on_id}"): rbac.TASK_UPDATE,
     ("POST", "/api/tasks/{task_id}/gates/{gate_key}"): rbac.TASK_APPROVE,

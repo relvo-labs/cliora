@@ -151,6 +151,19 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         (
             "TASK_NOT_FOUND",
             "TASK_VERSION_CONFLICT",
+            # V2-P1. Sits beside the version conflict because it is the same kind of
+            # answer — "the board moved under you" — about a different thing: not the
+            # card's content but its neighbours (ADR 0042 §5).
+            "RANK_NEIGHBOR_STALE",
+            # V2-P1's filter allowlist. In the task-layer section rather than a section
+            # of their own: the thing being filtered is a board, and a reader who hits
+            # one of these is looking at cards.
+            "FILTER_FIELD_NOT_ALLOWED",
+            "FILTER_OP_NOT_ALLOWED",
+            "FILTER_TOO_COMPLEX",
+            "VIEW_NAME_CONFLICT",
+            "VIEW_NOT_OWNED",
+            "BULK_LIMIT_EXCEEDED",
             "TASK_DEPENDENCY_UNSATISFIED",
             "TASK_DEPENDENCY_CYCLE",
             "TASK_STAGE_INVALID",

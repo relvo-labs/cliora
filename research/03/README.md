@@ -3,8 +3,8 @@
 本目錄是 [`research/cliora-project-experience-redesign-plan.md`](../cliora-project-experience-redesign-plan.md)
 （下稱**體驗重設提案**，v1.3）落到**這個 repo 現況**的執行規劃。
 
-提案回答「要做什麼、為什麼」；本目錄回答「在已經存在的 178 條需求、41 個 migration、
-1873 行 model、27 個 RBAC 動作、contract 1.13.0 與 `agentd` 0.13.1 之上，
+提案回答「要做什麼、為什麼」；本目錄回答「在已經存在的 189 條需求、43 個 migration、
+1873 行 model、27 個 RBAC 動作、contract 1.13.0 與 `agentd` 0.14.1 之上，
 **怎麼做得出來、做完怎麼證明、哪一段不該做**」。
 
 一句話說明這一輪要做的事：
@@ -69,22 +69,22 @@
 conversation 是既有 `task_messages` 的修復，用旗標關掉等於讓留言在兩種語意間漂移；
 knowledge 的開關是 **per-project 的 ingestion 設定**而不是部署旗標，因為它的成本與風險是逐專案的。
 
-## 規劃基準（2026-08-16 核對，**2026-08-22 由 `plan/25` 的 `KN-00` 更新**）
+## 規劃基準（2026-08-16 核對，**2026-08-23 由 `plan/26` 的 `PX-00` 更新**）
 
 以下每一條都在寫這份規劃時實際讀過程式碼確認，**不是從既有文件抄的**。
 加註「規劃時是…」的列是 `alpha.2` 之後變動的事實。
 
 | 項目 | 現況 |
 |---|---|
-| `v2` HEAD | `45a3143`（2026-08-22）。規劃時是 `f91d9c4`，ahead 60／behind 6 |
+| `v2` HEAD | `3e503de`（2026-08-23）。規劃時是 `f91d9c4`，ahead 60／behind 6 |
 | contract | **1.13.0**（`contracts/CHANGELOG.md`） |
-| `agentd` | **0.13.1**（`daemon/VERSION`）。規劃時是 0.12.0；`alpha.2` 升過 |
-| migration head | **0040**`_ticket_conversation`。規劃時是 0039 |
+| `agentd` | **0.14.1**（`daemon/VERSION`）。規劃時是 0.12.0；`alpha.2`／`alpha.3` 各升過一次 |
+| migration head | **0042**`_knowledge_tables`。規劃時是 0039 |
 | RBAC 動作 | **27 個**（`len(ALL_ACTIONS)`；「24」是文件的舊錯，程式一直是 27——`plan/23/10` §9.4），run token scope 只有 `project.view` ＋ `task.update` |
-| ADR | 到 **0037** ＋ **0041**（缺號 0025；`0038`／`0039`／`0040` 是本輪預留的空號，`alpha.3` 用掉前兩個） |
+| ADR | 到 **0039** ＋ **0041**（缺號 0025；`alpha.3` 用掉 `0038`／`0039`，`0041` 已 accepted）。**空號只剩 `0040` 與 `0042`**，`plan/26` 的 `PX-21` 用掉這兩個，之後從 **0044** 起（`0043` 已指派給 `beta.2` 的 provider ingestion） |
 | 執行計畫目錄 | `plan/01`–`plan/25` |
-| `traceability/requirements.json` | **178 條**，27 個 ID family（`FR-CONV` 十條已於 `alpha.2` 註冊，`lifecycle: proposed`） |
-| `frontend/src/theme/tokens.css` | **58 個 custom property**，已含 `--stage-*`／`--run-*`／`--risk-*` |
+| `traceability/requirements.json` | **189 條**，**28** 個 ID family（`FR-CONV` 十條於 `alpha.2`、`FR-KNOW` 十一條於 `alpha.3` 註冊，皆 `lifecycle: proposed`） |
+| `frontend/src/theme/tokens.css` | **72 個 custom property**（`alpha.3` 之後 62，`plan/26` 的 `PX-17` 加 10），已含 `--stage-*`／`--run-*`／`--risk-*`／`--attention-*`／`--work-*` |
 | `plan/19`（前端修復期） | **已實作**（`plan/19/09-implementation-status.md`），README 的「尚未開工」是過期字串 |
 | Board 排序 | `updated_at DESC`——**`tasks` 沒有 rank／position 欄位** |
 | `task_messages` | 有 `kind ∈ {message,question,answer,event}`，**沒有 seq、沒有 reply_to、沒有 idempotency key** |
@@ -97,12 +97,12 @@ knowledge 的開關是 **per-project 的 ingestion 設定**而不是部署旗標
 
 > 本目錄只做規劃，不含程式碼變更。執行計畫在 `plan/` 下逐里程碑建立，沿用 `plan/22/` 的文件結構：
 >
-> | 里程碑 | 執行計畫 | 狀態（2026-08-21） |
+> | 里程碑 | 執行計畫 | 狀態（2026-08-23） |
 > |---|---|---|
 > | C1 實作 | [`plan/23/`](../../plan/23/README.md) | **已實作**（`CV-00`…`CV-13`），剩下的兩項由 `plan/24` 關閉 |
 > | **C1 封版** | [`plan/24/`](../../plan/24/README.md) | **已完成**（`CE-01`…`CE-19`），封版條件 28／28，兩個 annotated tag 已建立（留在本機） |
-> | **K1** | [`plan/25/`](../../plan/25/README.md) | **已建立**（2026-08-22），A 類五項裁決完成，波次 1 起可開工 |
-> | P1 | `plan/26/` | 未建立 |
+> | **K1** | [`plan/25/`](../../plan/25/README.md) | **已實作**（`KN-00`…`KN-13`），出口條件 **26／28**，`v2.0.0-alpha.3` **未 tag**（缺 Railway `pg_trgm` 驗證與 SR-2 簽核） |
+> | **P1** | [`plan/26/`](../../plan/26/README.md) | **已建立**（2026-08-23），A 類八項裁決完成，波次 0 已實作 |
 > | E1 | `plan/27/` | 未建立 |
 >
 > **K1 之後各順移一號**：`alpha.2` 的封版工作佔用了原先留給 K1 的 `plan/24/`，

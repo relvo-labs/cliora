@@ -55,10 +55,23 @@ function vueCss(source) {
   return regions;
 }
 
+// Comments are blanked, not removed: every remaining character keeps its offset, so the
+// line numbers this reports still point at the right line.
+//
+// **This exists because the checker matched its own explanation.** A comment saying "a
+// `var(--cell-tone)` here would be unresolvable" was reported as an unresolvable
+// `var(--cell-tone)`, and the cheapest way to green that is to delete the sentence saying
+// why the rule exists — the failure `plan/18/09` §3 item 15 records for three V2.2 gates.
+function withoutComments(source) {
+  return source.replace(/\/\*[\s\S]*?\*\//g, (comment) =>
+    comment.replace(/[^\n]/g, " "),
+  );
+}
+
 function references(source, offset = 0) {
   const found = [];
   const variable = /var\(\s*(--[a-z0-9-]+)(\s*,[^)]*)?\s*\)/gi;
-  for (const match of source.matchAll(variable)) {
+  for (const match of withoutComments(source).matchAll(variable)) {
     found.push({
       name: match[1],
       fallback: Boolean(match[2]),

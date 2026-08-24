@@ -120,7 +120,22 @@ URL 長度要控制：filter 序列化用短鍵（`f=`）＋ base64url，
 | 顯示 `sending` / `sent` / `agent_seen` / `failed` | `agent_seen` 的 tooltip 說明它**不代表模型同意** |
 | **raw log 不混進 conversation** | system event 可折疊；log 以 deep link 開啟 |
 | spec proposal 以可比較的 proposal card 呈現 | 接受／要求修改是**人類動作**，按鈕在人類權限下才出現 |
-| WSS 事件只 invalidate／append**已確認的** metadata | **不以 socket event 取代 server query** |
+| ~~WSS 事件只 invalidate／append**已確認的** metadata~~ | **瀏覽器端沒有 WSS**，見下 |
+
+> **這一列在 `beta.1` 不成立**（2026-08-23，`plan/26`
+> [D95](../../plan/26/01-decisions-and-governance.md)）。
+> `frontend/src/api/client.ts` 唯一鑄造的 WebSocket 票券是 terminal 的；
+> `grep -rn "WebSocket" frontend/src/api frontend/src/stores` 只有那兩行。
+> 而看板目前**完全不會自己更新**——`reloadTasks()` 只在 mutation 之後被呼叫，
+> 所以「這張卡剛剛開始等你回覆」在畫面上永遠不會自己出現。
+>
+> `beta.1` 的新鮮度是**輪詢 `work-counts`**：20 秒一次、`document.hidden` 時停、
+> counts 有 delta 才去重取 items；Drawer 開著時 conversation 5 秒。
+> 開一條 central→browser 的認證通道是**新的信任邊界**（票券、per-project 訂閱授權、
+> reconnect 與 backfill、斷線期間錯過的事件怎麼補），
+> 那會把 SR-3 的範圍從「讀模型的權限邊界」變成「＋一條新的推播通道」——
+> 與 [`01`](./01-architecture-decisions.md) §1.4 把 provider sync 移到 `beta.2`
+> 的理由逐字相同。落在 `beta.2`。
 
 ## 6. 元件清單（新增）
 

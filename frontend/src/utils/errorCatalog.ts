@@ -283,6 +283,60 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "看板已重新載入這張卡，請再拖一次。",
     retryable: false,
   },
+  VIEW_NAME_CONFLICT: {
+    cause:
+      "同一個擁有者底下已經有同名的檢視——共用檢視以專案為範圍，個人檢視以人為範圍。" +
+      "已刪除的檢視名稱會釋出，因為背後的索引是部分索引。",
+    nextStep: "換一個名稱，或直接使用既有的那一個。",
+    retryable: false,
+  },
+  VIEW_NOT_OWNED: {
+    cause:
+      "這是別人的個人檢視。**回 403 而不是 404 是刻意的**：別人的個人檢視本來就不會出現在" +
+      "清單裡，所以說「這不是你的」沒有洩漏任何推不出來的事，而且讓客戶端能把它與" +
+      "「已被刪除」分開處理。",
+    nextStep: "改用「複製」建立一份屬於自己的個人檢視。",
+    retryable: false,
+  },
+  BULK_LIMIT_EXCEEDED: {
+    cause:
+      "一次批次修改的卡片太多。每一張都走與單張完全相同的寫入路徑——完成判準、相依檢查、" +
+      "稽核與活動紀錄、知識佇列——所以一批是一百次那樣的寫入，不是一句 SQL。" +
+      "`details.limit` 與 `details.received` 給出兩個數字。",
+    nextStep: "把選取範圍拆成不超過上限的幾批。",
+    retryable: false,
+  },
+  FILTER_FIELD_NOT_ALLOWED: {
+    cause:
+      "篩選用的欄位不在允許清單裡。篩選是一份白名單而不是查詢語言：十五個欄位、八個運算子，" +
+      "每一組配對只有一條編譯路徑。`details.allowed_fields` 列出可用的欄位。",
+    nextStep: "改用清單內的欄位。",
+    retryable: false,
+  },
+  FILTER_OP_NOT_ALLOWED: {
+    cause:
+      "這個運算子不適用於這個欄位——`contains` 只屬於標籤陣列，`gt`／`lt` 只屬於時間。" +
+      "`details.allowed_ops` 列出這個欄位接受哪些。",
+    nextStep: "改用 `details.allowed_ops` 裡的運算子。",
+    retryable: false,
+  },
+  FILTER_TOO_COMPLEX: {
+    cause:
+      "篩選超出上限：巢狀深度 3、葉條件 20 個、單一清單 50 個值。" +
+      "`details.limit` 說明是哪一項，並附上實際值與上限。",
+    nextStep: "簡化篩選條件；`details.limit` 指名越界的那一項。",
+    retryable: false,
+  },
+  RANK_NEIGHBOR_STALE: {
+    cause:
+      "你放下的那兩張卡已經不相鄰了——其中一張被刪除、被移到別的專案，或是有人先重排了。" +
+      "移動送出的是「放在這兩張之間」而不是一個位置編號，因為在有篩選的看板上，" +
+      "編號指的不是同一件事。",
+    // 與 TASK_VERSION_CONFLICT 同一個理由：原樣重送會再撞一次。要重來的是
+    // 「看新的順序 → 再拖」，那是使用者的動作。
+    nextStep: "看板已重新載入順序，卡片留在原位，請再拖一次。",
+    retryable: false,
+  },
   TASK_DEPENDENCY_UNSATISFIED: {
     cause:
       "前置卡片尚未完成。進入「就緒」之後的車道等於宣告這張卡可以動工，而未完成的前置卡與這個宣告矛盾。",

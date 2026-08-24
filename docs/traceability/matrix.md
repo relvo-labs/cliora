@@ -675,6 +675,54 @@
 | FR-VERIFY-003 | [FR-VERIFY-003.AC-06](../../research/prd.md#fr-verify-003-ac-06) | 管理者可強制推進，需要獨立的權限與必填理由； | — | — | — |
 | FR-VERIFY-003 | [FR-VERIFY-003.AC-07](../../research/prd.md#fr-verify-003-ac-07) | 不交付與以產物交付的卡片不得因缺少合併請求被擋； | — | — | — |
 | FR-VERIFY-003 | [FR-VERIFY-003.AC-08](../../research/prd.md#fr-verify-003-ac-08) | 流程可設定性不得觸及完成判準。 | — | — | — |
+| FR-WORK-001 | [FR-WORK-001.AC-01](../../research/prd.md#fr-work-001-ac-01) | 一張卡片的狀態由四個互相獨立的面表達：工作進展、可執行程度、Agent 執行狀況、 | — | — | — |
+| FR-WORK-001 | [FR-WORK-001.AC-02](../../research/prd.md#fr-work-001-ac-02) | 四個面全部由既有欄位推導，不新增任何一個儲存狀態的欄位； | — | — | — |
+| FR-WORK-001 | [FR-WORK-001.AC-03](../../research/prd.md#fr-work-001-ac-03) | 既有的階段值一個都不移除，且每一個都能對應到一個工作進展值； | — | — | — |
+| FR-WORK-001 | [FR-WORK-001.AC-04](../../research/prd.md#fr-work-001-ac-04) | 一張已完成的卡片永遠不是被阻擋的。 | — | — | — |
+| FR-WORK-002 | [FR-WORK-002.AC-01](../../research/prd.md#fr-work-002-ac-01) | 「這張卡需要一個人做什麼」以一個有序清單表達，順序在平台只定義一次； | — | — | — |
+| FR-WORK-002 | [FR-WORK-002.AC-02](../../research/prd.md#fr-work-002-ac-02) | 卡片上只顯示最高的那一項與同時成立的項數；完整清單在卡片詳情。 | — | — | — |
+| FR-WORK-002 | [FR-WORK-002.AC-03](../../research/prd.md#fr-work-002-ac-03) | 每一個注意力徽章除顏色之外至少還有兩個線索——文字、圖示或形狀—— | — | — | — |
+| FR-WORK-002 | [FR-WORK-002.AC-04](../../research/prd.md#fr-work-002-ac-04) | 順序的第一位是「一個 Agent 停在那裡等一句話」，因為那是唯一一個一句話就能解除、 | — | — | — |
+| FR-WORK-003 | [FR-WORK-003.AC-01](../../research/prd.md#fr-work-003-ac-01) | 「沒有符合條件的執行機器」與「指定的執行機器離線」兩項，由當下的連線狀態決定， | — | — | — |
+| FR-WORK-003 | [FR-WORK-003.AC-02](../../research/prd.md#fr-work-003-ac-02) | 因此這兩項不可作為排序依據，這件事在 API 的排序白名單上是可觀察的。 | — | — | — |
+| FR-WORK-003 | [FR-WORK-003.AC-03](../../research/prd.md#fr-work-003-ac-03) | 當連線狀態無法取得時，這兩項是缺席而不是「否」； | — | — | — |
+| FR-WORK-003 | [FR-WORK-003.AC-04](../../research/prd.md#fr-work-003-ac-04) | 對同一個排隊中的執行，卡片畫面與單一執行的診斷畫面給出相同的答案。 | — | — | — |
+| FR-WORK-004 | [FR-WORK-004.AC-01](../../research/prd.md#fr-work-004-ac-01) | 可篩選的欄位與可用的運算子都是列舉；不在列舉內的一律以可辨識的錯誤碼拒絕， | — | — | — |
+| FR-WORK-004 | [FR-WORK-004.AC-02](../../research/prd.md#fr-work-004-ac-02) | 條件的巢狀深度與條件總數各有上限；超過時以可辨識的錯誤碼拒絕並說出上限。 | — | — | — |
+| FR-WORK-004 | [FR-WORK-004.AC-03](../../research/prd.md#fr-work-004-ac-03) | 任何篩選都不能讓呼叫者看到他本來看不到的卡片； | — | — | — |
+| FR-WORK-004 | [FR-WORK-004.AC-04](../../research/prd.md#fr-work-004-ac-04) | 篩選條件不以字串拼接進資料庫查詢。 | — | — | — |
+| FR-WORK-005 | [FR-WORK-005.AC-01](../../research/prd.md#fr-work-005-ac-01) | 每一欄的數字是平台算的，不是畫面上已載入的筆數。 | — | — | — |
+| FR-WORK-005 | [FR-WORK-005.AC-02](../../research/prd.md#fr-work-005-ac-02) | 計數與清單由同一組條件產生；對同一份資料，兩者給出相同的集合大小。 | — | — | — |
+| FR-WORK-005 | [FR-WORK-005.AC-03](../../research/prd.md#fr-work-005-ac-03) | 清單以游標分頁，且每一個分組各有自己的游標；載入更多不重複、不遺漏。 | — | — | — |
+| FR-WORK-005 | [FR-WORK-005.AC-04](../../research/prd.md#fr-work-005-ac-04) | 一頁卡片的回應大小有量測過的上限，且該上限記錄了它是在哪一份資料上量的。 | — | — | — |
+| FR-WORK-006 | [FR-WORK-006.AC-01](../../research/prd.md#fr-work-006-ac-01) | 卡片在專案內有一個明確的排序位置；重新整理畫面不改變順序。 | — | — | — |
+| FR-WORK-006 | [FR-WORK-006.AC-02](../../research/prd.md#fr-work-006-ac-02) | 移動一張卡片時，用戶端送出的是相鄰卡片的識別而不是索引位置—— | — | — | — |
+| FR-WORK-006 | [FR-WORK-006.AC-03](../../research/prd.md#fr-work-006-ac-03) | 一次移動只產生一次卡片寫入。 | — | — | — |
+| FR-WORK-006 | [FR-WORK-006.AC-04](../../research/prd.md#fr-work-006-ac-04) | 排序位置在密集到無法再插入時自動重新分配，且重新分配不改變任何一張卡片的相對順序。 | — | — | — |
+| FR-WORK-007 | [FR-WORK-007.AC-01](../../research/prd.md#fr-work-007-ac-01) | 批次修改逐張經過與單張修改完全相同的規則：完成判準、相依檢查、樂觀鎖、 | — | — | — |
+| FR-WORK-007 | [FR-WORK-007.AC-02](../../research/prd.md#fr-work-007-ac-02) | 批次的授權是逐張判斷的；一個混合權限的批次整批被拒絕，不部分成功。 | — | — | — |
+| FR-WORK-007 | [FR-WORK-007.AC-03](../../research/prd.md#fr-work-007-ac-03) | 批次有筆數上限，且該上限是量測交易成本之後訂的；超過時以可辨識的錯誤碼拒絕。 | — | — | — |
+| FR-WORK-007 | [FR-WORK-007.AC-04](../../research/prd.md#fr-work-007-ac-04) | 同一個冪等鍵重送回傳原本的結果，不重複執行。 | — | — | — |
+| FR-WORK-008 | [FR-WORK-008.AC-01](../../research/prd.md#fr-work-008-ac-01) | 視圖分為個人與專案共用兩種；共用視圖的建立與修改需要專案管理權限， | — | — | — |
+| FR-WORK-008 | [FR-WORK-008.AC-02](../../research/prd.md#fr-work-008-ac-02) | 一個視圖不改變任何人的權限：共用視圖若包含呼叫者無權查看的卡片，那些卡片不出現。 | — | — | — |
+| FR-WORK-008 | [FR-WORK-008.AC-03](../../research/prd.md#fr-work-008-ac-03) | 視圖可以指定顯示哪些欄位，而顯示欄位只影響回應內容，不影響授權判斷。 | — | — | — |
+| FR-WORK-008 | [FR-WORK-008.AC-04](../../research/prd.md#fr-work-008-ac-04) | 每個專案在建立時就有可用的預設視圖；改變哪一個是預設會留下稽核紀錄， | — | — | — |
+| FR-WORK-009 | [FR-WORK-009.AC-01](../../research/prd.md#fr-work-009-ac-01) | 快速篩選只改變當前網址，不修改任何存檔的視圖。 | — | — | — |
+| FR-WORK-009 | [FR-WORK-009.AC-02](../../research/prd.md#fr-work-009-ac-02) | 當前條件與存檔視圖不同時，畫面明確顯示「已修改」，並提供「另存為」與「還原」。 | — | — | — |
+| FR-WORK-009 | [FR-WORK-009.AC-03](../../research/prd.md#fr-work-009-ac-03) | 網址可分享：同一個網址在另一個有權限的人那裡呈現同一組條件。 | — | — | — |
+| FR-WORK-009 | [FR-WORK-009.AC-04](../../research/prd.md#fr-work-009-ac-04) | 沒有指定任何條件時，套用該專案的預設視圖，而不是顯示未篩選的全部卡片。 | — | — | — |
+| FR-WORK-010 | [FR-WORK-010.AC-01](../../research/prd.md#fr-work-010-ac-01) | 打開一張卡片不離開看板：底層的視圖、篩選與捲動位置在關閉後完全保留。 | — | — | — |
+| FR-WORK-010 | [FR-WORK-010.AC-02](../../research/prd.md#fr-work-010-ac-02) | 當前打開的卡片記在網址裡：重新載入回到同一張卡片；瀏覽器的「上一頁」依序是 | — | — | — |
+| FR-WORK-010 | [FR-WORK-010.AC-03](../../research/prd.md#fr-work-010-ac-03) | 無權查看的卡片顯示拒絕狀態且不洩漏標題；已刪除的卡片顯示不存在， | — | — | — |
+| FR-WORK-010 | [FR-WORK-010.AC-04](../../research/prd.md#fr-work-010-ac-04) | 鍵盤可完成打開與關閉；打開時焦點進入面板，關閉時焦點回到原來的位置。 | — | — | — |
+| FR-WORK-011 | [FR-WORK-011.AC-01](../../research/prd.md#fr-work-011-ac-01) | 卡片在等待回覆時，詳情自動捲到並聚焦到問題與輸入框； | — | — | — |
+| FR-WORK-011 | [FR-WORK-011.AC-02](../../research/prd.md#fr-work-011-ac-02) | 「留言」與「回覆並繼續」在視覺上明確不同，且後者說明它會建立一個新的執行輪次。 | — | — | — |
+| FR-WORK-011 | [FR-WORK-011.AC-03](../../research/prd.md#fr-work-011-ac-03) | 回覆被保存但續跑被拒絕時，畫面明確說明答覆已經寫下，並顯示拒絕的原因代碼。 | — | — | — |
+| FR-WORK-011 | [FR-WORK-011.AC-04](../../research/prd.md#fr-work-011-ac-04) | 編輯衝突時保留使用者已輸入的內容，並提供重新載入與比對兩個動作。 | — | — | — |
+| FR-WORK-012 | [FR-WORK-012.AC-01](../../research/prd.md#fr-work-012-ac-01) | 有一個不必打開任何專案就能回答「哪些事情在等我」的入口，跨全部可見的專案。 | — | — | — |
+| FR-WORK-012 | [FR-WORK-012.AC-02](../../research/prd.md#fr-work-012-ac-02) | 它與單一專案的清單共用同一組條件編譯與同一段注意力推導， | — | — | — |
+| FR-WORK-012 | [FR-WORK-012.AC-03](../../research/prd.md#fr-work-012-ac-03) | 每一個區段的條件只讀 Task、Run 與審查關卡的真實狀態； | — | — | — |
+| FR-WORK-012 | [FR-WORK-012.AC-04](../../research/prd.md#fr-work-012-ac-04) | 畫面的新鮮度以固定間隔輪詢計數取得；分頁隱藏時停止， | — | — | — |
 | FR-WORKSPACE-001 | [FR-WORKSPACE-001.AC-01](../../research/prd.md#fr-workspace-001-ac-01) | Daemon 應設定一個或多個允許的 Workspace Root。 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/workspace#TestNoRootsRejectsEverything<br>gotest:daemon/internal/workspace#TestOpenWorkspaceConfinesReads |
 | FR-WORKSPACE-002 | [FR-WORKSPACE-002.AC-01](../../research/prd.md#fr-workspace-002-ac-01) | 使用者可在前端逐層展開 Workspace Root。 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | gotest:daemon/internal/workspace<br>gotest:daemon/internal/files#TestListOrderingAndExclusion<br>gotest:daemon/internal/files#TestListPagination |
 | FR-WORKSPACE-002 | [FR-WORKSPACE-002.AC-02](../../research/prd.md#fr-workspace-002-ac-02) | 名稱 | plan:plan/04/01-path-security-and-protocol.md<br>source:research/tech.md | code:daemon/internal/workspace | — |

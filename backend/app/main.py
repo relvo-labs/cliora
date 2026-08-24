@@ -32,6 +32,7 @@ from app.api.http.enrollment import router as enrollment_router
 from app.api.http.favorites import router as favorites_router
 from app.api.http.files import router as files_router
 from app.api.http.integrations import router as integrations_router
+from app.api.http.me import router as me_router
 from app.api.http.metrics import router as metrics_router
 from app.api.http.nodes import router as nodes_router
 from app.api.http.projects import router as projects_router
@@ -42,6 +43,7 @@ from app.api.http.sessions import router as sessions_router
 from app.api.http.tasks import agent_router as agent_tasks_router
 from app.api.http.tasks import router as tasks_router
 from app.api.http.tunnels import router as tunnels_router
+from app.api.http.work import router as work_router
 from app.api.middleware import (
     AuthzDenialAuditMiddleware,
     HttpMetricsMiddleware,
@@ -217,6 +219,13 @@ app.include_router(projects_router)
 # Same unconditional mount, same router-level `require_projects_enabled` (ADR 0028).
 app.include_router(tasks_router)
 app.include_router(requirements_router)
+# V2-P1 wave 0, and **scheduled for deletion**: the board-attention side-car exists only
+# until `/work-items` lands in wave 2 (plan/26/05 §9). Mounted on its own router rather
+# than added to `tasks.py` so that removing it is deleting a file and one line here.
+app.include_router(work_router)
+# V2-P1. Its own namespace with one rule, written in the module docstring: a route
+# here answers only about the authenticated caller and never takes a subject.
+app.include_router(me_router)
 # V2.2. Unconditional mount again, with **two** router-level guards whose order is
 # load-bearing: projects first, agent runs second, so a deployment with the project
 # layer off answers 404 rather than a 403 that would confirm the route exists

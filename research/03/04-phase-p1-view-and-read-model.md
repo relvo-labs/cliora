@@ -83,7 +83,7 @@ not_required | pending | approved | changes_requested
 |---|---|---|---|
 | `lifecycle` | enum | 投影自 `stage` | `tasks(project_id, stage)` |
 | `readiness` | enum | 投影 | — |
-| `attention` | enum | 投影（[D55](./01-architecture-decisions.md)） | 物化，見 §5 |
+| `attention` | enum | 投影（[D55](./01-architecture-decisions.md)） | **兩相位求值**，見 §5 |
 | `execution_status` | enum | active run | `task_runs(task_id, status)` 部分索引 |
 | `is_blocked` | bool | 新欄位 | `tasks(project_id, is_blocked)` |
 | `blocking_reason` | enum | 新欄位 | — |
@@ -173,17 +173,29 @@ def derive_attention(task, active_run, gates, verification, blocking) -> Attenti
 卡片只顯示 **primary**；其餘顯示數量，詳情在 Drawer 完整列出。
 **前端不得重建這個順序**——`PX-24` 的測試在 backend；前端測試只驗證「照著渲染」。
 
-### 要不要物化？
+### 要不要物化？——**兩個選項都不成立**（2026-08-23 由 `plan/26` 的 `PX-00` 回寫）
 
-`attention` 要能被 filter 與 group，所以它必須進得了 `WHERE`。兩條路：
+原文假設 attention 進得了 `WHERE`，並給了兩條路：
 
-| 做法 | 代價 |
+| 做法 | 原文寫的代價 |
 |---|---|
 | 每次查詢即時計算（LATERAL join active run／gates／verification） | 200 張卡實測前先不下結論；風險是三個 join 都在熱路徑 |
 | **物化成 `tasks.attention_primary` ＋ `attention_signals`，由寫入路徑維護** | 需要在 run 狀態變化、gate 變化、verification 寫入、dependency 變化四處更新 |
 
-**建議先做第一種並量測**（`PX-24` 的量測項），200 張卡若 P95 > 1 秒再改物化。
-決定寫進 `plan/25/` 的 implementation status，不在這裡預先猜。
+**八級裡有兩級不在資料庫裡。** `no_eligible_runner` 與 `assigned_runner_offline`
+由 `NodeConnectionRegistry` 決定，那是 Central 行程內的一個 dict，
+而 `services/runners.py` 的 module docstring 明文拒絕存一份副本（ADR 0029 §1）。
+於是物化會停在斷線前的答案，即時 join 則根本看不到那兩級的輸入。
+
+**實際做法是兩相位求值**（`plan/26`
+[D92](../../plan/26/01-decisions-and-governance.md)，已於波次 0 實作）：
+相位 A 在 SQL 算六級並圈出 queued 候選集，相位 B 在 Python 用一次 registry snapshot
+解出第 5、6 級。**`tasks.attention_primary` 欄位永不建立**，
+而那兩級不能當 `order_by` 鍵（`plan/26/04` §4）。
+
+量測（`artifacts/px/local/w0/attention-*.json`，固定資料集 200 卡）：
+一頁 P95 **10.2 ms**；相位 B 在 6 queued 是 0.222 ms、在 60 queued 是 0.261 ms——
+成本綁的是那一次 runner 查詢，不是佇列長度本身。
 
 ## 6. API
 
@@ -219,9 +231,14 @@ conversation_last_seq, open_question_count, waiting_for_actor
 rank, version, updated_at
 ```
 
-**釘死的大小預算：200 張卡 ≤ 160 KB**（`PX-25` 的測試，形狀比照既有
-`test_the_board_card_stays_a_summary`）。既有的 74 KB 是 15 個欄位；
-這裡是 33 個，但多數是短 enum 與 uuid，160 KB 是有餘裕的上限而不是預期值。
+**釘死的大小預算：先量再釘**（`plan/26` [D94](../../plan/26/01-decisions-and-governance.md)；
+`PX-25` 的測試，形狀比照既有 `test_the_board_card_stays_a_summary`）。
+~~200 張卡 ≤ 160 KB。既有的 74 KB 是 15 個欄位~~
+
+`PX-00` 在 2026-08-23 重量過：真正的 `BoardCardDTO` × 200 在固定資料集上是
+**75,952 bytes**（16 欄）。**74 KB 與 89,251 都不是這個東西**——前者是 `plan/17`
+的 M1、後者是 `scripts/tk/measure_board_payload.py` 的合成產生器。
+所以 `WorkItemCardDTO` 的門檻是 `PX-25` 量出來的值 × 1.15，不是從這裡抄的。
 
 `visible_fields` **只影響 response shaping，不影響 authorization**。
 
@@ -231,11 +248,33 @@ rank, version, updated_at
 POST /api/tasks/bulk-update  { task_ids: [...], patch: {...}, idempotency_key }
 ```
 
-- 上限 **100** 張。
+- 上限 **100** 張，**而且是量出來的**（`plan/26`
+  [D96](../../plan/26/01-decisions-and-governance.md)）：`PX-25` 量這個交易的 P95，
+  超過 3 秒就下修到量出來的值。
 - 每張**獨立** authorization——不是「有 project.manage 就全過」。
 - **all-or-nothing**（第一版）。partial 需要一個「哪些成功哪些失敗」的 UI，那是另一題。
 - audit：**一筆 batch 記錄 ＋ 完整 item refs**（不是 100 筆），並在 ADR 0042 寫明理由。
+  **activity 仍是 N 列**（`plan/26` D105）——卡片自己的時間軸要看得到自己那一次變更。
 - 冪等：同 key 重送回原結果。
+- **逐張呼叫 `TaskService.update()`，全部包在一個交易裡。不寫第二條 `UPDATE tasks` 路徑。**
+
+> **上游沒有提到 `task.stage` 只有一個寫入點**，而 bulk update 直接踩到它
+> （2026-08-23，`plan/26` D96）。`services/done_gate.py` 的 module docstring：
+> 「**There is one entrance.** `TaskService.update()` is the only caller, because it is
+> the only thing that assigns `task.stage`.」，並且 `GATE-DV-SINGLE-DONE-PATH`
+> 用 AST 掃描守著它。
+>
+> 一個 `UPDATE tasks SET stage='done' WHERE id = ANY(:ids)` 會同時繞過
+> Done Gate 的六個條件、相依性拒絕、樂觀鎖、audit ＋ activity，
+> 以及——**這一項上游完全沒有提到**——knowledge outbox：
+> `ActivityService.record()` 是 `alpha.3` 唯一的入列點，
+> 所以繞過 activity 就是讓那 100 張卡的知識**永遠不更新**，
+> 而症狀是「這幾張卡看起來只是安靜了一陣子」。
+>
+> 代價是 bulk 慢（100 張約 400 列寫入 ＋ 100 次 Done Gate 評估）。
+> 產品上的緩解是進度顯示與「全部或全不」的明確說明，不是偷偷放寬到 partial。
+> **既有 gate 守不到這裡**（它只掃 `runs.py`），所以本期新增
+> `GATE-PX-BULK-USES-UPDATE`。
 
 ## 7. Tickets
 
@@ -247,7 +286,7 @@ POST /api/tasks/bulk-update  { task_ids: [...], patch: {...}, idempotency_key }
 | `PX-22` | **Migration**：`work_views`、`tasks.rank`／`is_blocked`／`blocking_*`、索引 | additive、backfill rank、rollback | PX-22 |
 | `PX-23` | Filter 驗證與 query compiler | allowlist、深度限制、三個 machine code、負面測試 | PX-23 |
 | `PX-24` | **Attention projection 單一來源** ＋ 效能量測 | `derive_attention`、200 張卡 P95、物化與否的裁決 | PX-24 |
-| `PX-25` | `work-items`／`work-counts` API | cursor、per-group cursor、160 KB 釘死測試、權限一致性 | PX-25 |
+| `PX-25` | `work-items`／`work-counts` API | cursor、per-group cursor、**量測先行的**釘死測試、權限一致性 | PX-25 |
 | `PX-26` | View CRUD API | personal／project scope、default 變更 audit、duplicate | PX-26 |
 | `PX-27` | 前端最小 query 層（擴充 `useAsyncResource`） | query key、invalidation、optimistic snapshot／rollback | PX-27（[D56](./01-architecture-decisions.md)） |
 | `PX-28` | Contract snapshot、RBAC 與 audit 測試 | OpenAPI 快照、權限矩陣、audit 斷言 | PX-28 |
@@ -260,7 +299,7 @@ POST /api/tasks/bulk-update  { task_ids: [...], patch: {...}, idempotency_key }
 | ☐ | attention 在 work-items、My Work、Overview 結果一致 | 同一張卡在三處的 `primary_attention` 相同（測試） |
 | ☐ | 無權資源不因 count、group 或 filter 洩漏 | inference 測試：無權使用者的 count 與有權使用者不同且為 0 |
 | ☐ | 200 張卡 query P95 通過預算 | 見 [`10`](./10-verification-and-exit.md) §6 |
-| ☐ | `WorkItemCardDTO` 200 張 ≤ 160 KB | 釘死測試 |
+| ☐ | `WorkItemCardDTO` 200 張 ≤ 量測值 × 1.15（`plan/26` D94） | 釘死測試 |
 | ☐ | 不合法 filter 回明確 machine code 並指名欄位 | 六個負面測試 |
 | ☐ | shared default view 變更寫 audit；個人 density 不寫 | 兩個測試 |
 | ☐ | `BoardCardDTO` 與 `/board` 未變更 | OpenAPI diff 為空 |

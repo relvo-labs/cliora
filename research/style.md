@@ -851,7 +851,56 @@ Evidence source
 --source-machine      #2F7A56  (machine_verified, solid)
 --source-platform     #4A7C8C  (platform_observed, outline)
 --source-agent        #8892A0  (agent_reported, quiet)
+
+Attention（V2-P1，plan/26 PX-17）
+--attention-human     = --run-waiting    #D2691E  (1 waiting_for_your_input)
+--attention-approval  #6B5B9E                     (2 pending_human_approval)
+--attention-failed    = --status-error   #D25454  (3 verification_failed / 4 run_failed)
+--attention-warning   = --status-busy    #C68C37  (5 no_eligible_runner / 6 offline / 8 stale)
+--attention-blocked   = --stage-blocked  #B4574F  (7 dependency_blocked)
+
+Work lifecycle（--stage-* 的語意別名，不是新色）
+--work-backlog        = --stage-backlog
+--work-ready          = --stage-ready
+--work-progress       = --stage-implementing
+--work-review         = --stage-verify
+--work-done           = --stage-done
 ```
+
+八級 attention 只有五個顏色：**由同一個動作解除的兩級共用一個顏色**
+（`verification_failed` 與 `run_failed` 都是「去看為什麼壞了」；
+`no_eligible_runner`、`assigned_runner_offline` 與 `over_wip_or_stale`
+都是「這張卡在退化但沒有人在等」）。第 1 級不另鑄一個橘色——
+`--run-waiting` 在 `plan/19` D24 就已經被指定給「有一個人被等著」這個唯一語意，
+再造一個相近的橘會把那個語意拆成兩半。
+
+`--work-*` 是別名而不是新色：lifecycle 是 `tasks.stage` 的投影
+（`plan/26/03` §1.A），同一張卡不能因為某個畫面用了另一個名字就換顏色。
+
+## 顏色以外的辨識線索（V2-P1，`PX-17`）
+
+**顏色永遠不是唯一線索。** 這一節是規範，不是建議：一個只靠顏色區分的狀態，
+對色覺缺陷使用者、對高對比模式、對列印與對截圖後被壓過的縮圖都不存在。
+
+| 元素 | 顏色之外必須另有的線索（**至少兩項**） |
+|---|---|
+| Attention 徽章 | icon、文字標籤、形狀（實心／外框／左緣色條）——三者取二 |
+| Lifecycle 欄頭與 pill | 文字標籤永遠可見；顏色只作為輔助 |
+| Run 狀態 | 文字 ＋（執行中時）動態點 |
+| Risk | 文字等級，不得只有一個色點 |
+| Evidence source | `SourceBadge` 的實心／外框／低調三種形狀已滿足此條 |
+
+具體規則：
+
+1. **每個 attention 徽章都有非空的 `aria-label`**，內容是該級的完整說法
+   （「等待你的回覆」而不是「注意」）。`PX-18` 有一支元件測試對八級逐一斷言。
+2. **卡片只顯示 primary attention**；同時成立的其他級以「＋N」表示，
+   完整清單在 Task Drawer（`plan/26` D107）。「＋N」是文字，不是顏色深淺。
+3. **停用態要說出原因。** runtime 訊號不可用時（`plan/26` D92 的相位 B 失效），
+   `Blocked` 與 `No runner` 兩個 quick filter 顯示為停用並附一行說明，
+   **不得回 0 筆**——0 筆會被讀成「問題解決了」。
+4. **不得以顏色深淺表達數量或新舊。** 需要表達程度時用數字或文字。
+5. **焦點環用 `--border-focus`，不得被 attention 顏色取代。** 兩者可同時出現。
 
 共用尺度為 `--space-1` … `--space-6`（4、8、12、16、24、32px）、
 `--font-xs` … `--font-xl`（11、12、13、15、19、24px），以及系統內建的

@@ -862,6 +862,43 @@ class Task(Base):
     # ``human`` | ``agent`` | NULL. Derived from question state, so it gives the same
     # answer whether the asking run is still polling or has already ended (ADR 0035 §8).
     waiting_for_actor: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # --- work views and ordering (V2-P1, ADR 0042) ---------------------------
+    # A lexicographically ordered string, **scoped to the project rather than to the
+    # lane** (ADR 0042 §5): a card crossing a lane keeps its rank, so the move is one
+    # write instead of a renumbering. An integer column cannot do this — there is no
+    # integer between adjacent integers, so every insert renumbers the tail.
+    #
+    # **`NOT NULL` in the database, with a default here.** The migration makes the
+    # column mandatory because `ORDER BY rank` has to be total — a NULL would sort into
+    # a bucket whose position depends on the query. But a mandatory column with no
+    # default breaks every direct `Task(...)` insert, including the seed scripts and
+    # most test fixtures, so the ORM supplies `INITIAL_RANK`. `TaskService.create_task`
+    # overrides it with a real neighbour-derived value; anything that does not go
+    # through the service lands on the shared default and is ordered by the secondary
+    # key, which is the behaviour those callers had before this column existed.
+    # The literal is `ranking.INITIAL_RANK`. Written out rather than imported: this
+    # module is the bottom of the dependency graph and importing a service from it would
+    # invert that. `test_the_model_default_is_the_ranking_modules_initial_rank` keeps
+    # the two equal.
+    rank: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="a", server_default=text("'a'")
+    )
+    # The blocked face of ADR 0040 §1, and it is **not the whole truth about being
+    # blocked** until `beta.2`'s `HD-06`: `stage='blocked'` always projects onto
+    # blocked regardless of this column, because the platform's three legacy writers
+    # (`run_reaper.py` twice, `runs.py` once) still set the stage and not this.
+    # Anyone reading this column directly is wrong about the cards the reaper touched;
+    # `services/work/projection.py::project_is_blocked` is the reader.
+    is_blocked: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    # No CHECK constraint, unlike every other enumeration here. Two of its values can
+    # only come from the runtime phase of `derive_attention`, which no ordinary write
+    # path can reach; a CHECK would turn "what we derived at the time" into "an
+    # authoritative classification". The value set is a frozenset in
+    # `services/work/projection.py` with a test.
+    blocking_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    blocking_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -869,6 +906,77 @@ class Task(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+class WorkView(Base):
+    """A saved question about a project's cards (V2-P1, FR-WORK-008, ADR 0042).
+
+    Three properties are decisions rather than columns:
+
+    * **`filter_json` is JSONB and not a child table.** The filter is a value object,
+      read and written whole, and no query ever asks "which views use
+      `priority=urgent`". A child table turns one read into a join and needs a schema
+      change for every new filter dimension (the same argument ADR 0033 §5 makes about
+      `process_overrides`).
+    * **`scope` is two words and neither grants anything.** A shared view whose filter
+      matches cards the caller cannot see returns those cards *missing* — not an error,
+      and not the cards. `visible_fields_json` shapes the response and takes no part in
+      authorization, which has a test because a field list is the most natural place for
+      somebody to eventually put a permission.
+    * **Deletion is asymmetric.** `deleted_at` is only ever set on a `project` view,
+      because other people hold links to it and a hard delete turns a colleague's
+      bookmark into an unexplained 404. A `personal` view is deleted outright: nobody
+      else has a link, and a graveyard of one person's abandoned views only grows.
+
+    `layout` admits `roadmap` although only `board` and `list` are implemented, for the
+    reason `BoardDTO.has_more` exists: a value added later forces every existing client
+    to handle its absence, while one present from the start is merely unwritten.
+    """
+
+    __tablename__ = "work_views"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # NULL means a personal view spanning every project its owner can see — the
+    # cross-project My Work page is the only thing that writes one.
+    project_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    # NULL means the view belongs to the project rather than to a person.
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(64))
+    layout: Mapped[str] = mapped_column(String(16))
+    scope: Mapped[str] = mapped_column(String(16))
+    filter_json: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    group_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    subgroup_by: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    order_by_json: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    visible_fields_json: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
+    density: Mapped[str] = mapped_column(
+        String(16), default="comfortable", server_default=text("'comfortable'")
+    )
+    show_subtasks: Mapped[bool] = mapped_column(Boolean, default=True, server_default=text("true"))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"))
+    position: Mapped[int] = mapped_column(BigInteger, default=0, server_default=text("0"))
+    version: Mapped[int] = mapped_column(Integer, default=1, server_default=text("1"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class TaskDependency(Base):

@@ -46,6 +46,35 @@
   --run-failed: #d25454;
   --run-lost: #a0673f;
 
+  /* Attention (V2-P1, PX-17). Eight attention levels, five colours: the levels a
+   * person resolves the same way share one. Level 1 reuses --run-waiting rather
+   * than minting a second orange, because plan/19 D24 gave that hue to the single
+   * meaning "a person is being waited on" and a near-duplicate would split it.
+   * Colour is never the only cue: every badge also carries an icon and a label,
+   * a rule that lives in research/style.md §22 because a token file cannot
+   * enforce it. */
+  --attention-human: var(--run-waiting); /* 1 waiting_for_your_input */
+  /* 2 pending_human_approval. The one attention with no colour already in the
+   * palette. Purple because a formal decision is the same family of act as the
+   * verify stage, and darker than --stage-verify (#7a5ea8) because a badge sits on
+   * a card while a stage colour sits on a column: they are never adjacent. */
+  --attention-approval: #6b5b9e;
+  --attention-blocked: var(--stage-blocked); /* 7 dependency_blocked */
+  --attention-failed: var(
+    --status-error
+  ); /* 3 verification_failed, 4 run_failed */
+  /* 5 no_eligible_runner, 6 assigned_runner_offline, 8 over_wip_or_stale */
+  --attention-warning: var(--status-busy);
+
+  /* Work lifecycle (V2-P1, PX-17). Aliases, not new colours: lifecycle is a
+   * projection of tasks.stage (plan/26/03 §1.A), so the same card must not change
+   * colour depending on which of the two names a view happens to use. */
+  --work-backlog: var(--stage-backlog);
+  --work-ready: var(--stage-ready);
+  --work-progress: var(--stage-implementing);
+  --work-review: var(--stage-verify);
+  --work-done: var(--stage-done);
+
   --risk-low: #6b7684;
   --risk-medium: #c68c37;
   --risk-high: #c45c5c;

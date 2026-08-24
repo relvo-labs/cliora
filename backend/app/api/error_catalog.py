@@ -487,6 +487,76 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "The board reloads the card; try the move again.",
         ),
         _entry(
+            "VIEW_NAME_CONFLICT",
+            status.HTTP_409_CONFLICT,
+            "A view with that name already exists here",
+            "Names are unique per owner — per project for a shared view, per person for "
+            "a personal one. A deleted view's name becomes free again, because the index "
+            "behind this is partial.",
+            "Choose another name, or reuse the existing view.",
+        ),
+        _entry(
+            "VIEW_NOT_OWNED",
+            status.HTTP_403_FORBIDDEN,
+            "That personal view belongs to somebody else",
+            "**403 rather than 404**, deliberately: somebody else's personal view is "
+            "already absent from the listing, so saying it is not yours discloses "
+            "nothing a caller could not infer — and it lets a client tell it apart from "
+            "a view that was deleted.",
+            "Duplicate it into a personal view of your own instead.",
+        ),
+        _entry(
+            "BULK_LIMIT_EXCEEDED",
+            status.HTTP_400_BAD_REQUEST,
+            "Too many cards in one bulk update",
+            "Each card goes through the same write path a single card does — the Done "
+            "Gate, the dependency check, the audit and activity trails and the knowledge "
+            "outbox — so a batch is a hundred of those in one transaction, not one "
+            "statement. `details.limit` and `details.received` give both numbers.",
+            "Split the selection into batches of at most the stated limit.",
+        ),
+        _entry(
+            "FILTER_FIELD_NOT_ALLOWED",
+            status.HTTP_400_BAD_REQUEST,
+            "That field cannot be filtered or sorted on",
+            "The filter language is an allowlist rather than a query language: fifteen "
+            "fields and eight operators, each pair with one compilation path. "
+            "`details.field` names the field and `details.allowed_fields` lists what is "
+            "available.",
+            "Use one of the listed fields.",
+        ),
+        _entry(
+            "FILTER_OP_NOT_ALLOWED",
+            status.HTTP_400_BAD_REQUEST,
+            "That operator is not available on that field",
+            "Operators are per field — `contains` belongs only to the label array, and "
+            "`gt`/`lt` only to timestamps. `details.allowed_ops` lists the ones this "
+            "field accepts, because what the reader has to do is pick a different "
+            "operator rather than go and read the documentation.",
+            "Use one of the operators in `details.allowed_ops`.",
+        ),
+        _entry(
+            "FILTER_TOO_COMPLEX",
+            status.HTTP_400_BAD_REQUEST,
+            "The filter is past one of its limits",
+            "Depth of 3, twenty leaf conditions, and fifty values in a list. "
+            "`details.limit` says which one, with the actual and the maximum — a filter "
+            "that is refused without naming the limit cannot be fixed except by "
+            "guessing.",
+            "Simplify the filter; `details.limit` names which bound was crossed.",
+        ),
+        _entry(
+            "RANK_NEIGHBOR_STALE",
+            status.HTTP_409_CONFLICT,
+            "The cards you dropped between are no longer next to each other",
+            "A move names the two cards it lands between, not an index — on a filtered "
+            "board an index does not mean what the server would take it to mean. This "
+            "says the pair no longer describes a gap: one was deleted or moved, or "
+            "somebody else reordered. `details` carries the neighbours' current ranks, "
+            "so the board can re-render without a second request.",
+            "The board reloads and the card stays where it was; try the move again.",
+        ),
+        _entry(
             "TASK_DEPENDENCY_UNSATISFIED",
             status.HTTP_409_CONFLICT,
             "A blocking card is not finished",

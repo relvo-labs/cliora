@@ -1010,6 +1010,116 @@ export interface BoardLane {
   cards: BoardCard[];
 }
 
+/** One card as the V2-P1 read model sends it (`FR-WORK-001`, ADR 0040).
+ *
+ *  Almost every field is optional, and that is the wire contract rather than laziness: a
+ *  saved view's `visible_fields` shapes the response by **omitting** keys, because
+ *  `"owner_name": null` would mean both "this card has no owner" and "this view does not
+ *  show owners". Identity is always present. */
+/** One card's attention, in full (V2-P1).
+ *
+ *  `signals` is every level that holds, not only the most urgent one. The distinction is
+ *  the whole reason this type exists: a card can be several things at once, and the one
+ *  that wins the badge is not necessarily the one somebody needs to act on. */
+export interface TaskAttention {
+  task_id: string;
+  primary: string | null;
+  signals: string[];
+  /** False when the node registry could not be consulted, so levels 5 and 6 are **absent
+   *  rather than false**. Treating absence as "no problem" would say a card is fine when
+   *  nobody knows. */
+  runtime_signals_available: boolean;
+}
+
+export interface WorkItemCard {
+  id: string;
+  card_ref: string;
+  /** Which project. Part of identity because My Work is cross-project and a card it
+   *  cannot link to is a row a reader cannot act on. */
+  project_id: string;
+  version: number;
+  updated_at: string;
+  title?: string;
+  card_kind?: string;
+  lifecycle?: string;
+  /** What this card looks like on the V1 board, so the projection stays reversible. */
+  legacy_stage?: string;
+  readiness?: string;
+  is_blocked?: boolean;
+  blocking_reason?: string | null;
+  blocking_refs?: string[];
+  blocking_count?: number;
+  primary_attention?: string | null;
+  attention_count?: number;
+  execution_status?: string;
+  active_run_id?: string | null;
+  active_run_runner_name?: string | null;
+  active_run_started_at?: string | null;
+  pending_human_action?: string;
+  verification_state?: string | null;
+  owner_user_id?: string | null;
+  owner_name?: string | null;
+  risk?: string;
+  priority?: string;
+  delivery?: string;
+  requirement_id?: string | null;
+  epic_id?: string | null;
+  user_story_id?: string | null;
+  labels?: string[];
+  conversation_last_seq?: number;
+  open_question_count?: number;
+  waiting_for_actor?: string | null;
+  rank?: string | null;
+}
+
+export interface WorkGroup {
+  key: string;
+  /** The **server's** count, not `items.length`. A header that counts what the browser
+   *  happens to hold is the commonest lie on a board like this. */
+  count: number;
+  items: WorkItemCard[];
+  next_cursor: string | null;
+}
+
+export interface WorkItemsPage {
+  groups: WorkGroup[];
+  /** False when the node registry could not be consulted, in which case the two
+   *  runtime-dependent attention levels are **missing** rather than known-absent. A
+   *  screen must not render that as "nothing to do" (ADR 0040 §2). */
+  runtime_signals_available: boolean;
+}
+
+export interface WorkCounts {
+  by_lifecycle: Record<string, number>;
+  by_attention: Record<string, number>;
+  total: number;
+  runtime_signals_available: boolean;
+}
+
+/** A saved question about a project's cards (`FR-WORK-008`, ADR 0042).
+ *
+ *  A view **grants nothing**: a shared view whose filter matches cards the caller may not
+ *  read returns those cards missing, and `visible_fields` shapes the response while taking
+ *  no part in authorization. */
+export interface WorkView {
+  id: string;
+  project_id: string | null;
+  owner_user_id: string | null;
+  name: string;
+  layout: string;
+  scope: "personal" | "project";
+  filter: Record<string, unknown>;
+  group_by: string | null;
+  subgroup_by: string | null;
+  order_by: { field: string; direction?: string }[];
+  visible_fields: string[];
+  density: string;
+  show_subtasks: boolean;
+  is_default: boolean;
+  position: number;
+  version: number;
+}
+
 export interface Board {
   lanes: BoardLane[];
   /** Always false in V2.1, and present anyway: a field added later would force
