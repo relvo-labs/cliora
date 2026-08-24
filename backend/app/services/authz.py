@@ -35,6 +35,7 @@ from app.services.rbac import (
     FILE_UPLOAD,
     INTEGRATION_MANAGE,
     NODE_MANAGE,
+    PROJECT_VIEW,
     SESSION_CREATE,
     SESSION_TERMINATE,
     SESSION_VIEW,
@@ -150,6 +151,19 @@ def may_terminate_session(user: User, session: TerminalSession) -> bool:
     if not has_action(user, SESSION_TERMINATE):
         return False
     return is_owner(user, session) or has_action(user, NODE_MANAGE)
+
+
+def may_view_any_project(user: User) -> bool:
+    """Whether this caller may read project data at all (V2-P1, D93).
+
+    A one-line predicate with a real reason to exist here: `services/work/scope.py` is
+    the single place that turns "which projects" into a `WHERE` clause, and
+    `test_authorization_logic_is_confined_to_two_modules` requires that the *decision*
+    stay in this module. So the read model composes the predicate and this answers the
+    question — which is also the shape membership will need, because that answer will
+    stop being global.
+    """
+    return has_action(user, PROJECT_VIEW)
 
 
 def may_browse_files(user: User, session: TerminalSession) -> bool:

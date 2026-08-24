@@ -54,11 +54,23 @@ backfill 時，`stage='blocked'` 的卡設 `is_blocked=true`，
 
 1. 有未滿足的 `task_dependencies` → `dependency`
 2. active run 為 `waiting_for_input` → `human_input`
-3. 最近一次 dispatch 失敗於資格判定 → `no_eligible_runner`
-4. 指定的 runner 離線 → `assigned_runner_offline`
+3. ~~最近一次 dispatch 失敗於資格判定 → `no_eligible_runner`~~ **在 migration 裡不可用**
+4. ~~指定的 runner 離線 → `assigned_runner_offline`~~ **在 migration 裡不可用**
 5. 最近 verification 不合格 → `verification_failed`
 6. 有未通過的 gate → `gate_unmet`
 7. 以上皆非 → **`unknown`，列入 ambiguous report**
+
+**第 3、4 條刪除**（2026-08-23，`plan/26` 的 `PX-00` 回寫）。
+兩者都要問「這個 node 現在連著嗎」，而答案在 `NodeConnectionRegistry` ——
+Central 行程內的一個 dict。`alembic upgrade` 是一個獨立的程序，
+裡面沒有 registry，也沒有任何欄位存著它的內容（ADR 0029 §1 明文拒絕存）。
+
+照字面實作的下場不是錯誤而是**沉默**：`no_eligible_runner` 這一支永遠不成立，
+於是本來屬於它的卡片全部落到第 7 條，變成 `unknown`。
+report 會比預期長，而沒有任何東西會說出原因。
+
+**兩條的卡片改為直接落到 `unknown` 並列入 report**，這是誠實的答案：
+migration 確實不知道。詳見 [`plan/26/02`](../../plan/26/02-data-layer.md) §5.2。
 
 **不猜測 previous stage。** 提案 §6.2 說「若無法安全推導 previous stage，
 預設留在 `ready`」——本規劃採納，並補上：**留在 `ready` 這件事要出現在 report 上**，

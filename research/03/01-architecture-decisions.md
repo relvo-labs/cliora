@@ -135,11 +135,28 @@ outbound API 呼叫（新的 egress 與速率限制）、以及 provider token �
 **所以改成**：
 
 - `GET /api/projects/{id}/board` 與 `BoardCardDTO` **一個位元組都不動**。舊看板繼續用它。
-- 新開 `GET /api/projects/{id}/work-items`，回 `WorkItemCardDTO`，由 `CLIORA_PROJECT_EXPERIENCE_V2` 控制。
-- **新 DTO 有自己的大小預算與自己的釘死測試**（`PX-25`）：200 張卡 ≤ 160 KB。
-  這個數字是 74 KB 的兩倍多一點——新卡多了 attention、execution、conversation 三組投影，
-  合理成長；超過就表示又把不該進卡片的東西放進去了。
-- 旗標關閉、或 `beta.1` rollback 時，`work-items` 不被呼叫，`board` 完全不受影響。
+- 新開 `GET /api/projects/{id}/work-items`，回 `WorkItemCardDTO`。
+  ~~由 `CLIORA_PROJECT_EXPERIENCE_V2` 控制~~ ——**該旗標不建立**
+  （`plan/26` [D117](../../plan/26/01-decisions-and-governance.md#d117)，2026-08-23 人工確認）。
+- **新 DTO 有自己的大小預算與自己的釘死測試**（`PX-25`）：**先量再釘**
+  （`plan/26` [D94](../../plan/26/01-decisions-and-governance.md)），
+  門檻 = 量測值 × 1.15，並在測試 docstring 記錄逐欄 bytes 前五名。
+  ~~200 張卡 ≤ 160 KB。這個數字是 74 KB 的兩倍多一點~~
+
+  **原推導的兩個數字都不能用**（`plan/26` 的 `PX-00` 於 2026-08-23 重量）：
+
+  | 數字 | 它其實是什麼 |
+  |---|---|
+  | 74 KB | `plan/17` 的 M1，之後 `plan/19` 加了三欄 |
+  | 89,251 bytes | **不是 `BoardCardDTO`**，是 `scripts/tk/measure_board_payload.py` 的
+    **合成**產生器與一份手寫 summary dict，早於這個 DTO 存在 |
+  | **75,952 bytes** | 真正的 `BoardCardDTO` × 200，跑在固定資料集（seed 20260819）上 |
+
+  一個從過期數字推出來的預算，若低於實測就從第一天起不守任何東西，
+  若高於實測則會在欄位已經被用起來之後才變紅。
+- ~~旗標關閉、或 `beta.1` rollback 時，`work-items` 不被呼叫，`board` 完全不受影響。~~
+  沒有旗標（D117）。回滾路徑是「回上一個 image ＋ downgrade `0043`」，
+  而 `/board` 保留一版（`plan/26` D118）。
 
 ### 1.6 維持「一個 run 同時只有一個未答問題」
 

@@ -1113,6 +1113,13 @@ class TaskDTO(BaseModel):
     existing_pr_ref: str | None
     required_secrets: list[str]
     assigned_runner_id: uuid.UUID | None
+    # V2-P1: **the kind was missing here**, next to the requirement it explains. The
+    # console could see that a card pointed at a requirement but not that it was the
+    # clarification card for it — and the four refusals that read `card_kind` at dispatch
+    # were therefore unexplainable from anything the detail response said.
+    # `WorkItemCardDTO` has carried it since this phase started; this is the same field on
+    # the older surface.
+    card_kind: str
     requirement_id: uuid.UUID | None
     proposal_id: uuid.UUID | None
     depends_on: list[TaskDependencyDTO]
@@ -1192,6 +1199,19 @@ class CreateTaskRequest(BaseModel):
     delivery: str = "pull_request"
     base_branch: str | None = None
     target_branch: str | None = None
+    # V2.5's two, and they were **silently dropped rather than refused**. This model does
+    # not forbid extras, so the console's "send this requirement to an agent" button has
+    # been posting both since V2.5 — and getting back an ordinary implementation card with
+    # no requirement, which then dispatched as an ordinary run. Nothing errored; the flow
+    # simply did not happen. J1 found it (`plan/26/12` §2).
+    #
+    # `requirement_id` is **not** on `UpdateTaskRequest`. A card's requirement is what it
+    # is *for*, and a card that acquired one after a specification version had been
+    # written against a different one would make the version history unreadable. The kind
+    # is correctable (until the card has run) because filing a card under the wrong kind
+    # is an ordinary mistake; re-pointing it at another requirement is not.
+    card_kind: str = "implementation"
+    requirement_id: uuid.UUID | None = None
 
 
 class UpdateTaskRequest(BaseModel):
@@ -1375,6 +1395,29 @@ class AddEvidenceRequest(BaseModel):
 
 class AddDependencyRequest(BaseModel):
     depends_on_task_id: uuid.UUID
+
+
+class RankRequest(BaseModel):
+    """Where a card lands, described by its neighbours (V2-P1, ADR 0042 §5).
+
+    **Identifiers, not an index.** On a filtered board an index does not mean what the
+    server would take it to mean — position 3 of a filtered list is not position 3 of the
+    lane — so the browser sends the two cards it was dropped between. Either may be null:
+    null `previous_task_id` means the top, null `next_task_id` means the bottom, and both
+    null means this is the only card.
+    """
+
+    version: int
+    previous_task_id: uuid.UUID | None = None
+    next_task_id: uuid.UUID | None = None
+    # **A cross-group drag is one request.** Dropping a card into another column changes
+    # two things — where it sits and which lane it is in — and sending them separately
+    # renders an intermediate state where the card is in the new column at its old
+    # position. It is on *this* endpoint rather than as a `rank` field on `PATCH` because
+    # only the server can turn two neighbours into a rank, and a midpoint computed in the
+    # browser would be a second implementation of the one algebra `RANK_NEIGHBOR_STALE`
+    # exists to protect.
+    stage: str | None = None
 
 
 class GateDecisionRequest(BaseModel):

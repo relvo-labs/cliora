@@ -13,6 +13,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import Select, and_, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +27,7 @@ from app.db.models import (
     TaskDependency,
     TaskRun,
     UserStory,
+    VerificationReport,
 )
 
 ACTIVE_RUN_STATUSES = ("queued", "claimed", "running", "waiting_for_input")
@@ -33,12 +35,23 @@ ACTIVE_RUN_STATUSES = ("queued", "claimed", "running", "waiting_for_input")
 
 @dataclass(frozen=True, slots=True)
 class ActiveRunProjection:
+    """The newest active run of one card, as the board and the read model need it.
+
+    ``run_id`` and ``started_at`` were added by V2-P1 for the work-item card's deep link
+    and its "running for 12m" line. They are **new columns on this projection, not on
+    `BoardCardDTO`**: `read_board` copies only `status` and `runner_name` into the board
+    card, so the board's payload does not move a byte — and `PX-28`'s byte test is what
+    proves that rather than this comment.
+    """
+
     task_id: uuid.UUID
     status: str
     runner_name: str | None
     assigned_runner_id: uuid.UUID | None
     assigned_runner_node_id: uuid.UUID | None
     runtime: str | None
+    run_id: uuid.UUID | None = None
+    started_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +172,8 @@ class TaskRepository:
                 TaskRun.runner_id.label("runner_id"),
                 TaskRun.assigned_runner_id.label("assigned_runner_id"),
                 TaskRun.runtime.label("runtime"),
+                TaskRun.id.label("run_id"),
+                TaskRun.started_at.label("started_at"),
                 func.row_number()
                 .over(
                     partition_by=TaskRun.task_id,
@@ -183,6 +198,8 @@ class TaskRepository:
                     ranked.c.assigned_runner_id,
                     assigned.node_id,
                     ranked.c.runtime,
+                    ranked.c.run_id,
+                    ranked.c.started_at,
                 )
                 .join(claimed, claimed.id == ranked.c.runner_id, isouter=True)
                 .join(assigned, assigned.id == ranked.c.assigned_runner_id, isouter=True)
@@ -197,6 +214,8 @@ class TaskRepository:
                 assigned_runner_id=row[3],
                 assigned_runner_node_id=row[4],
                 runtime=row[5],
+                run_id=row[6],
+                started_at=row[7],
             )
             for row in rows
         }
@@ -236,6 +255,96 @@ class TaskRepository:
             )
             reasons[run.task_id] = "any" if eligible else "no_eligible_runner"
         return reasons
+
+    async def blocking_refs(
+        self, task_ids: list[uuid.UUID], *, limit: int = 3
+    ) -> dict[uuid.UUID, tuple[str, ...]]:
+        """Up to `limit` blocking `card_ref`s per card, in one query (V2-P1, PX-24).
+
+        A third query rather than an `array_agg` inside the read model's CTE: capping
+        the array at three inside the CTE needs a correlated subquery, and the planner
+        then runs it once per card. One `IN` and a group-by in Python is four lines and
+        one round trip.
+
+        Only the cards that have a blocker should be passed in — the caller already
+        knows which from `blocking_counts()`.
+        """
+        if not task_ids:
+            return {}
+        rows = (
+            await self._session.execute(
+                select(TaskDependency.task_id, Task.card_ref)
+                .join(Task, Task.id == TaskDependency.depends_on_task_id)
+                .where(TaskDependency.task_id.in_(task_ids), Task.stage != "done")
+                .order_by(TaskDependency.task_id, Task.card_ref)
+            )
+        ).all()
+        grouped: dict[uuid.UUID, list[str]] = {}
+        for task_id, card_ref in rows:
+            refs = grouped.setdefault(task_id, [])
+            if len(refs) < limit:
+                refs.append(card_ref)
+        return {task_id: tuple(refs) for task_id, refs in grouped.items()}
+
+    async def latest_run_statuses(self, project_id: uuid.UUID) -> dict[uuid.UUID, str]:
+        """The newest run's status per card, active or not (V2-P1, PX-24).
+
+        `active_runs()` answers "what is running"; this answers "what happened last",
+        and attention level 4 needs the second — a card whose run failed has no active
+        run at all. Same `row_number()` shape and the same ordering key, so the two
+        agree about which run is newest.
+        """
+        ranked = (
+            select(
+                TaskRun.task_id.label("task_id"),
+                TaskRun.status.label("status"),
+                func.row_number()
+                .over(
+                    partition_by=TaskRun.task_id,
+                    order_by=(TaskRun.queued_at.desc(), TaskRun.id.desc()),
+                )
+                .label("position"),
+            )
+            .where(TaskRun.project_id == project_id)
+            .subquery()
+        )
+        rows = (
+            await self._session.execute(
+                select(ranked.c.task_id, ranked.c.status).where(ranked.c.position == 1)
+            )
+        ).all()
+        return {row[0]: row[1] for row in rows}
+
+    async def latest_verification_results(self, project_id: uuid.UUID) -> dict[uuid.UUID, str]:
+        """The newest verification report's result per card (V2-P1, PX-24).
+
+        Newest by `reported_at`, id as the tiebreak. A card may hold several reports —
+        one per run, plus any a person filed by hand — and the read model asks only
+        whether the *current* conclusion is bad.
+        """
+        ranked = (
+            select(
+                VerificationReport.task_id.label("task_id"),
+                VerificationReport.result.label("result"),
+                func.row_number()
+                .over(
+                    partition_by=VerificationReport.task_id,
+                    order_by=(
+                        VerificationReport.reported_at.desc(),
+                        VerificationReport.id.desc(),
+                    ),
+                )
+                .label("position"),
+            )
+            .where(VerificationReport.project_id == project_id)
+            .subquery()
+        )
+        rows = (
+            await self._session.execute(
+                select(ranked.c.task_id, ranked.c.result).where(ranked.c.position == 1)
+            )
+        ).all()
+        return {row[0]: row[1] for row in rows}
 
     async def blocking_counts(self, project_id: uuid.UUID) -> dict[uuid.UUID, int]:
         """How many unfinished dependencies each card in this project still has."""

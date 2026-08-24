@@ -71,8 +71,12 @@ describe("V2 UI static guardrails", () => {
 
   it("reserves the human-waiting colour for RunBadge and board cards", () => {
     const allowed = [
-      "components/project/TaskBoard.vue",
       "components/ui/BaseBadge.vue",
+      // PX-17 mints `--attention-human` as an alias here rather than copying the
+      // hex, which is the whole point of D24: one hue, one definition. A component
+      // that wants the human-waiting treatment now asks for `--attention-human`,
+      // and this list still keeps it from reaching past the token file for it.
+      "theme/tokens.css",
     ];
     const offenders = sourceFiles()
       .filter((file) =>

@@ -25,6 +25,7 @@ function testRouter(): Router {
       { path: "/projects", name: "projects", component: blank },
       { path: "/nodes", name: "nodes", component: blank },
       { path: "/sessions", name: "sessions", component: blank },
+      { path: "/my-work", name: "my-work", component: blank },
       { path: "/enrollment", name: "enrollment", component: blank },
       { path: "/audit", name: "audit", component: blank },
       {
@@ -165,14 +166,38 @@ describe("AppLayout navigation groups", () => {
     ]);
   });
 
-  it("shows Projects and exactly one group heading when the feature is on", async () => {
+  it("shows Projects and two group headings when the feature is on", async () => {
     const wrapper = await render({}, ALL, ["projects"]);
     expect(hrefs(wrapper)).toContain("/projects");
-    // One, not three: `Projects` and `Sessions` are single-entry groups and
-    // collapse to plain rows rather than repeating themselves as a heading.
+    // Two, not five: `Home`, `My Work`, `Projects`, `Agents` and `Sessions` are
+    // single-entry groups and collapse to plain rows rather than repeating themselves as
+    // a heading. `Infrastructure` and `Administration` are genuinely two levels — and
+    // they are two rather than one because "which machines are up" and "who may join the
+    // fleet" are different people's routines (PX-63).
     const groups = wrapper.findAll("[data-nav-group]");
-    expect(groups).toHaveLength(1);
-    expect(groups[0].text()).toBe("Infrastructure");
+    expect(groups.map((group) => group.text())).toEqual([
+      "Infrastructure",
+      "Administration",
+    ]);
+  });
+
+  it("puts My Work first among the work entries (PX-63)", async () => {
+    // The order is the order of a day rather than of the org chart: "what is waiting for
+    // me" is the question somebody opens this application to answer.
+    const wrapper = await render({}, ALL, ["projects"]);
+    const links = hrefs(wrapper);
+    expect(links.slice(0, 3)).toEqual(["/dashboard", "/my-work", "/projects"]);
+  });
+
+  it("calls the dashboard Home once the project layer is on", async () => {
+    // A rename, not a rewrite: the fleet health block on it is pixel-identical to the one
+    // on Dashboard, because that block is what V1 operators use every day.
+    const wrapper = await render({}, ALL, ["projects"]);
+    expect(wrapper.text()).toContain("Home");
+    // And **not** renamed on the flag-off rail, which must stay the pre-V2 picture.
+    const legacy = await render({}, ALL, []);
+    expect(legacy.text()).toContain("Dashboard");
+    expect(legacy.text()).not.toContain("My Work");
   });
 
   it("hides Projects when the deployment has it but the person may not see it", async () => {
@@ -193,11 +218,15 @@ describe("AppLayout navigation groups", () => {
     // the case that decides it.
     const wrapper = await render({}, ["project.view"], ["projects"]);
     expect(hrefs(wrapper)).toEqual([
+      "/dashboard",
+      "/my-work",
       "/projects",
       "/sessions",
-      "/dashboard",
       "/nodes",
     ]);
-    expect(wrapper.findAll("[data-nav-group]")).toHaveLength(1);
+    // One heading, not two: this reader holds neither `audit.view` nor enrollment, so
+    // `Administration` has no children — and an empty-looking group is worse than none.
+    const groups = wrapper.findAll("[data-nav-group]");
+    expect(groups.map((group) => group.text())).toEqual(["Infrastructure"]);
   });
 });

@@ -16,6 +16,10 @@ import type {
   AuditPage,
   AuditQuery,
   Board,
+  WorkCounts,
+  WorkItemsPage,
+  TaskAttention,
+  WorkView,
   CreateSessionInput,
   CreateTunnelInput,
   DashboardSummary,
@@ -72,6 +76,21 @@ import type {
   VerificationReport,
   WorkspaceFavorite,
 } from "./dto";
+
+/** `{a: 1, b: undefined}` → `"?a=1"`.
+ *
+ *  Undefined keys are dropped rather than sent empty: `?filter=` and no filter at all are
+ *  different requests to the read model, and the second is what an absent value means. */
+function queryString(
+  values: Record<string, string | number | undefined>,
+): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(values)) {
+    if (value !== undefined && value !== "") query.set(key, String(value));
+  }
+  const encoded = query.toString();
+  return encoded ? `?${encoded}` : "";
+}
 
 export class ApiError extends Error {
   readonly code: string;
@@ -330,6 +349,142 @@ export class ApiClient {
     return this.request(
       "GET",
       `/api/projects/${encodeURIComponent(projectId)}/board`,
+    );
+  }
+
+  getWorkItems(
+    projectId: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<WorkItemsPage> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/work-items${queryString(query)}`,
+    );
+  }
+
+  /** One card's attention **in full** — the signal set, not just the primary.
+   *
+   *  The board's card deliberately carries only the primary (D107): at two hundred cards
+   *  the list is most of the payload and it drives no decision anybody makes from the
+   *  board. The Drawer is the place that needs the set, and it asks for one card. */
+  getTaskAttention(taskId: string): Promise<TaskAttention> {
+    return this.request(
+      "GET",
+      `/api/tasks/${encodeURIComponent(taskId)}/attention`,
+    );
+  }
+
+  getWorkCounts(
+    projectId: string,
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<WorkCounts> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/work-counts${queryString(query)}`,
+    );
+  }
+
+  /** Cards across every project this caller can see.
+   *
+   *  **Never takes a subject.** `/api/me/*` answers only about the authenticated caller
+   *  and the server refuses a `user_id` rather than ignoring one; looking at somebody
+   *  else's queue is a different capability on a different path. */
+  getMyWorkItems(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<WorkItemsPage> {
+    return this.request("GET", `/api/me/work-items${queryString(query)}`);
+  }
+
+  getMyAttentionCounts(
+    query: Record<string, string | number | undefined> = {},
+  ): Promise<WorkCounts> {
+    return this.request("GET", `/api/me/attention-counts${queryString(query)}`);
+  }
+
+  /** Move a card between two named neighbours (V2-P1, `FR-WORK-006`).
+   *
+   *  **Neighbour ids, never an index.** On a filtered board position 3 of the list is not
+   *  position 3 of the lane, and the defect that produces is a card landing somewhere the
+   *  person did not point at. A 409 `RANK_NEIGHBOR_STALE` means the pair no longer
+   *  describes a gap — somebody else reordered — which is a different situation from a
+   *  `TASK_VERSION_CONFLICT` and gets its own recovery. */
+  rankTask(
+    taskId: string,
+    body: {
+      version: number;
+      previous_task_id: string | null;
+      next_task_id: string | null;
+      /** Set when the move crosses columns. **One request, not two**: sent separately,
+       *  the board renders the card in its new column at its old position. */
+      stage?: string;
+    },
+  ): Promise<Task> {
+    return this.request(
+      "POST",
+      `/api/tasks/${encodeURIComponent(taskId)}/rank`,
+      body,
+    );
+  }
+
+  /** Change many cards at once. **No `version`** — see `BulkUpdateRequest` on the server:
+   *  bulk means "make these cards say this", and carrying a version per card would make
+   *  the browser read a hundred current versions first. So bulk has no optimistic lock,
+   *  and the interface says so rather than letting the last writer win quietly. */
+  bulkUpdateTasks(body: {
+    task_ids: string[];
+    patch: Record<string, unknown>;
+    idempotency_key?: string;
+  }): Promise<{ updated: number; card_refs: string[] }> {
+    return this.request("POST", "/api/tasks/bulk-update", body);
+  }
+
+  /** This project's shared views plus the caller's own personal ones.
+   *
+   *  Somebody else's personal view is **absent** from the list, which is why writing to
+   *  one is a 403 rather than a 404. */
+  listWorkViews(projectId: string): Promise<WorkView[]> {
+    return this.request(
+      "GET",
+      `/api/projects/${encodeURIComponent(projectId)}/views`,
+    );
+  }
+
+  createWorkView(
+    projectId: string,
+    body: Record<string, unknown>,
+  ): Promise<WorkView> {
+    return this.request(
+      "POST",
+      `/api/projects/${encodeURIComponent(projectId)}/views`,
+      body,
+    );
+  }
+
+  updateWorkView(
+    viewId: string,
+    body: Record<string, unknown>,
+  ): Promise<WorkView> {
+    return this.request(
+      "PATCH",
+      `/api/work-views/${encodeURIComponent(viewId)}`,
+      body,
+    );
+  }
+
+  deleteWorkView(viewId: string): Promise<void> {
+    return this.request(
+      "DELETE",
+      `/api/work-views/${encodeURIComponent(viewId)}`,
+    );
+  }
+
+  /** Always lands as a **personal** copy, whatever the source was: copying a shared view
+   *  is how somebody tries something without changing what the team sees. */
+  duplicateWorkView(viewId: string, name: string): Promise<WorkView> {
+    return this.request(
+      "POST",
+      `/api/work-views/${encodeURIComponent(viewId)}/duplicate`,
+      { name },
     );
   }
 

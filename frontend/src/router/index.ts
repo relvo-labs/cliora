@@ -16,9 +16,18 @@ export const routes: RouteRecordRaw[] = [
   },
   // The dashboard is the landing page from P4-08: fleet health is what an operator
   // wants first, and the node list is one click away.
-  { path: "/", redirect: { name: "dashboard" } },
+  // V2-P1 (PX-63): `/` **is** the page and `/dashboard` is its alias, which is the
+  // reverse of what it was. The page is called Home now and its content grows into a
+  // cross-project summary — but the name is a rename, not a rewrite, and the fleet health
+  // block on it is pixel-identical to the one on Dashboard. That is deliberate: fleet
+  // health is what V1 operators use every day, and moving it is a move.
+  //
+  // The route **keeps the name `dashboard`**. Fourteen call sites use it, including the
+  // auth guard's fallback and the catch-all, and a rename would be fourteen edits whose
+  // only visible effect is that old bookmarks break.
+  { path: "/dashboard", redirect: { name: "dashboard" } },
   {
-    path: "/dashboard",
+    path: "/",
     name: "dashboard",
     component: () => import("../views/DashboardView.vue"),
   },
@@ -65,19 +74,100 @@ export const routes: RouteRecordRaw[] = [
 // deployment with the layer switched off, shows the state driven by the server's
 // own 403 or 404 (ADR 0027).
 routes.push({
+  // V2-P1 (PX-49/PX-63). **Above Projects in the rail**, because "what is waiting for
+  // me" is the question somebody opens this application to answer. No permission guard,
+  // for the same reason as every route here: a client-side guard decides what renders,
+  // not what is allowed — without `project.view` the page shows the server's own 403.
+  path: "/my-work",
+  name: "my-work",
+  component: () => import("../modules/mywork/views/MyWorkView.vue"),
+});
+routes.push({
   path: "/projects",
   name: "projects",
   component: () => import("../views/ProjectsView.vue"),
 });
+// V2-P1 (PX-64, D117). One shell with seven children, replacing the 1,515-line
+// `ProjectDetailView.vue` and its `?tab=` state machine. The old file is **deleted**
+// rather than kept beside this: there is no version flag and no second path.
+//
+// `project-detail` keeps its name and becomes the parent, so every existing
+// `{ name: 'project-detail' }` in the codebase still resolves — the breadcrumbs in
+// `TaskDetailView`, `RequirementDetailView` and `SessionWorkspaceView` all use it. A
+// rename would have been six edits and a broken bookmark for every reader.
 routes.push({
   path: "/projects/:id",
   name: "project-detail",
-  component: () => import("../views/ProjectDetailView.vue"),
+  component: () => import("../modules/project/ProjectShell.vue"),
   props: true,
+  // `?tab=` is honoured **here**, in one place, rather than by a compatibility branch
+  // inside the shell. Old links keep working, the redirect is visibly temporary, and
+  // nothing in the components has to know the query parameter ever existed.
+  redirect: (to) => {
+    const tab = Array.isArray(to.query.tab) ? to.query.tab[0] : to.query.tab;
+    const legacy: Record<string, string> = {
+      overview: "project-overview",
+      board: "project-work",
+      roadmap: "project-roadmap",
+      requirements: "project-requirements",
+      activity: "project-activity",
+      settings: "project-settings",
+    };
+    const { tab: _dropped, ...query } = to.query;
+    return {
+      name: legacy[String(tab)] ?? "project-overview",
+      params: to.params,
+      // Everything except `tab` survives, because `?task=` is the Drawer's state and a
+      // link to a card inside a board must not lose the card on the way through.
+      query,
+    };
+  },
+  children: [
+    {
+      path: "overview",
+      name: "project-overview",
+      component: () =>
+        import("../modules/project/views/ProjectOverviewView.vue"),
+    },
+    {
+      // `work`, not `board`: a board is one layout of the work, and `PX-29` adds a list
+      // beside it. The URL should not name whichever layout came first.
+      path: "work",
+      name: "project-work",
+      component: () => import("../modules/project/views/ProjectWorkView.vue"),
+    },
+    {
+      path: "roadmap",
+      name: "project-roadmap",
+      component: () =>
+        import("../modules/project/views/ProjectRoadmapView.vue"),
+    },
+    {
+      path: "requirements",
+      name: "project-requirements",
+      component: () =>
+        import("../modules/project/views/ProjectRequirementsView.vue"),
+    },
+    {
+      path: "activity",
+      name: "project-activity",
+      component: () =>
+        import("../modules/project/views/ProjectActivityView.vue"),
+    },
+    {
+      path: "settings",
+      name: "project-settings",
+      component: () =>
+        import("../modules/project/views/ProjectSettingsView.vue"),
+    },
+  ],
 });
 routes.push({
-  // V2-K1: a top-level route rather than another tab on ProjectDetailView, which is
-  // already 1515 lines managing twelve things (D82).
+  // V2-K1 built this as a top-level route because `ProjectDetailView` was already 1,515
+  // lines managing twelve things (D82). **It stays top-level** rather than becoming a
+  // child of the shell: the knowledge page has its own header and its own loading state,
+  // and folding it in would mean rewriting both to fit a shell it does not need. The
+  // shell's navigation links to it, so a reader cannot tell the difference.
   path: "/projects/:id/knowledge",
   name: "project-knowledge",
   component: () =>

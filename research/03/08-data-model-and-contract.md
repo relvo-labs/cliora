@@ -263,7 +263,8 @@ ALTER TABLE tasks ADD COLUMN rank             VARCHAR(64);
 ALTER TABLE tasks ADD COLUMN is_blocked       BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE tasks ADD COLUMN blocking_reason  VARCHAR(32);
 ALTER TABLE tasks ADD COLUMN blocking_message TEXT;
-ALTER TABLE tasks ADD COLUMN attention_primary VARCHAR(32);   -- 若 PX-24 決定物化才用
+-- ALTER TABLE tasks ADD COLUMN attention_primary VARCHAR(32);
+--   **移除**（2026-08-23，plan/26 D92）：八級裡有兩級不在資料庫裡，見 04 §5。
 
 CREATE INDEX ix_tasks_project_rank    ON tasks(project_id, rank);
 CREATE INDEX ix_tasks_project_blocked ON tasks(project_id) WHERE is_blocked;
@@ -281,8 +282,14 @@ CREATE INDEX ix_tasks_project_owner   ON tasks(project_id, owner_user_id);
 - 預設 view：每個 project seed 五個 project view（Active Work／Backlog／Waiting for Me／
   Blocked／Verification），`is_default` 給 Active Work。
 
-`attention_primary` 欄位**只有在 `PX-24` 量測後決定物化才建立**。
-migration 先不加；若量測結果需要，另開 `0043b`。**不預先建一個可能用不到的欄位。**
+~~`attention_primary` 欄位只有在 `PX-24` 量測後決定物化才建立。~~
+
+**永不建立**（2026-08-23，`plan/26`
+[D92](../../plan/26/01-decisions-and-governance.md)）。不是因為量測結果，
+是因為八級裡有兩級的輸入不在資料庫裡——`no_eligible_runner` 與
+`assigned_runner_offline` 由 Central 行程內的 `NodeConnectionRegistry` 決定，
+而 ADR 0029 §1 明文拒絕存一份會過期的副本。物化會停在斷線前的答案。
+詳見 [`04`](./04-phase-p1-view-and-read-model.md) §5。
 
 ## 5. Contract
 
@@ -384,9 +391,21 @@ CONTEXT_BUDGET_EXCEEDED    CROSS_PROJECT_DENIED
 # beta.1
 FILTER_FIELD_NOT_ALLOWED   FILTER_OP_NOT_ALLOWED     FILTER_TOO_COMPLEX
 VIEW_NAME_CONFLICT         VIEW_NOT_OWNED            BULK_LIMIT_EXCEEDED
-RANK_NEIGHBOR_STALE        STAGE_TRANSITION_REFUSED
+RANK_NEIGHBOR_STALE
+# ~~STAGE_TRANSITION_REFUSED~~  —— 不加（2026-08-23，plan/26 D97）
 ```
 
 每一個都要有：明確的 HTTP status、可行動的訊息、以及**指名是哪一個欄位／資源**。
-`STAGE_TRANSITION_REFUSED` 的回應必須列出未滿足的 gate 項目——
-提案 §6.4「拒絕必須回傳 machine code、可行動訊息與未滿足項目」是出口條件。
+
+**`beta.1` 是七個，不是八個**（`plan/26`
+[D97](../../plan/26/01-decisions-and-governance.md)）。
+`STAGE_TRANSITION_REFUSED` **沒有 raise 點**：這個 repo 只有兩個硬拒絕
+（`TASK_DEPENDENCY_UNSATISFIED` 與 Done Gate），而 Definition of Ready
+**刻意只警告不拒絕**——理由寫在 `services/process.py` 的 module docstring 裡
+（「enforcing all seven readiness items from day one is how a board stops being
+written to」）。本期沒有帶來推翻它的新證據。
+
+一個沒有 raise 點的 machine code 是文件不是行為，
+而這正是 `plan/25` §2.12 的 `CROSS_PROJECT_DENIED` ——上一期實作到一半才發現。
+提案 §6.4 的「拒絕必須回傳未滿足項目」由既有的兩個拒絕滿足：
+Done Gate 的每一次拒絕都列出**每一個**缺項，不是第一個。

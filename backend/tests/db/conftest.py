@@ -4,6 +4,22 @@ These tests are skipped unless CLIORA_TEST_DATABASE_URL points at a PostgreSQL
 with `alembic upgrade head` already applied (the CI service container, or the
 local docker container documented in the P1 plan). This keeps the default
 hermetic `make unit` run database-free while still exercising the real schema.
+
+**Two variables, not one.** `CLIORA_TEST_DATABASE_URL` is what the fixtures below
+connect to; `CLIORA_DATABASE_URL` is what the *application* engine reads, and the tests
+that exercise a background worker (`test_run_reaper.py`) go through it. Set only the first
+and those six fail with `database "cliora" does not exist` — a message that names the
+default rather than the mistake, and one that reads like a broken test rather than a
+missing variable. `scripts/px/evidence.sh` sets both; a hand-run command has to as well.
+
+**One suite per database at a time.** The cleanup below deletes from every table
+between HTTP tests, so two runs against one URL truncate each other's fixtures
+mid-test — and the symptoms look nothing like the cause: 500s from
+`unhandled_error`, `TOKEN_INVALID` on a token minted seconds earlier, and foreign-key
+violations inserting a child whose parent "is not present in table". Every one of those
+reads as a product defect, and each individual file passes when re-run alone, which is
+the most misleading possible signal. If a full run fails and the files pass, check for a
+second `pytest tests/db` before changing any code.
 """
 
 from __future__ import annotations

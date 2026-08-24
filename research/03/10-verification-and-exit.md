@@ -107,12 +107,31 @@ context preview 的 pin／exclude／budget 揭露。
 |---|---|
 | counts 與 items 用同一 predicate | 程式碼審查 ＋ inference 測試 |
 | filter／group 不繞過授權 | 對每個 allowlist 欄位各一條測試 |
-| My Work 跨專案隔離 | 無權專案的卡不在 items **也不在 counts** |
+| My Work 跨專案隔離 | ~~無權專案的卡不在 items **也不在 counts**~~ ——**這個系統沒有 per-project membership**，見下 |
 | bulk update 逐張授權 | 混合權限的 batch → all-or-nothing 拒絕 |
 | view 不改變 Task 權限 | 共用 view 含無權卡 → 該卡不出現 |
 | UI 簡化未隱藏安全資訊 | 造成 blocked／warning 的設定自動展開（四種情境） |
 | human approval 顯示 actor 與時間 | 視覺 ＋ 元件測試 |
 | Agent 仍不可自動核准／合併／部署 | 既有負面測試套組回歸 |
+
+> **第三項改寫過**（2026-08-23，`plan/26`
+> [D93](../../plan/26/01-decisions-and-governance.md)）。
+> RBAC 是**全域三角色**，而 `_VIEWER_ACTIONS` 就含 `project.view`：
+> 拿得到它的人看得到**全部**專案，拿不到的一個都看不到。
+> `services/authz.py` 裡沒有任何 project-scope 函式，也沒有 `project_members` 表。
+>
+> 照字面寫的測試會用一個沒有 `project.view` 的角色去斷言 403 ——
+> 那證明的是 `require_action`，與讀模型的查詢邊界無關。
+> **一組毫無阻力通過的 isolation 測試比沒有測試更糟**：它讓下一個人以為這件事被守住了。
+>
+> 改成三條證得出來的：counts 與 items 由**同一個** `ProjectScope` 與同一次 filter
+> 編譯產生；`GATE-PX-ONE-PROJECT-SCOPE` 用 AST 斷言沒有第二條路徑；
+> inference 測試保留但**誠實命名**
+> （`test_a_viewer_without_project_view_sees_no_work_items_and_zero_counts`）。
+>
+> 證不出來的那一半——「有 membership 時 counts 不洩漏存在性」——
+> 寫進 [`plan/26/11`](../../plan/26/11-open-measurements.md) §1，
+> 而 SR-3 的簽核文字必須寫明「本部署的模型下無法產生負面案例，守護方式是 gate 而非測試」。
 
 ### SR-4（`beta.2` 前）— Provider ingestion 的信任邊界
 
@@ -239,6 +258,6 @@ run failure retry 率、Drawer 開啟 → 動作完成率、saved view 採用率
 | 4 | 真實對話的輪數、放棄率與多人併發頻率 | 需要真實使用者 | `beta.1` 之後 |
 | 5 | 大型 monorepo（>50k 檔）的索引時間與體積 | 手上沒有這種 repo | Horizon 2 |
 | 6 | chunk 大小與重疊的最佳值 | 需要 relevance eval 基準 | `KN-12` 之後 |
-| 7 | 十級 authority 是否過細 | 需要真實使用 | `beta.1` |
-| 8 | `cliora task wait` 的 120 秒上限 | 需要真實 Agent 行為 | `beta.1` |
+| 7 | 十級 authority 是否過細 | 需要真實使用 | ~~`beta.1`~~ → **`beta.2`**（`plan/26/11` §7） |
+| 8 | `cliora task wait` 的 120 秒上限 | 需要真實 Agent 行為 | ~~`beta.1`~~ → **`beta.2`**（`plan/26/11` §8） |
 | 9 | poll 5 秒是否需要調短 | 先量 message → turn 的 P95 | `alpha.2` |

@@ -43,6 +43,7 @@ from app.api.http.schemas import (
     ProcessOverridesRequest,
     ProjectVerificationDTO,
     ProjectVerificationRequest,
+    RankRequest,
     RoadmapDTO,
     RoadmapEpicDTO,
     RoadmapStoryDTO,
@@ -149,6 +150,10 @@ def _epic_dto(epic: Epic) -> TaskDTO:
         existing_pr_ref=None,
         required_secrets=[],
         assigned_runner_id=None,
+        # An Epic and a User Story are containers, not work. `implementation` is the
+        # column's own default and the only honest answer: they have no kind because
+        # nothing dispatches them.
+        card_kind="implementation",
         requirement_id=None,
         proposal_id=None,
         depends_on=[],
@@ -188,6 +193,10 @@ def _story_dto(story: UserStory) -> TaskDTO:
         existing_pr_ref=None,
         required_secrets=[],
         assigned_runner_id=None,
+        # An Epic and a User Story are containers, not work. `implementation` is the
+        # column's own default and the only honest answer: they have no kind because
+        # nothing dispatches them.
+        card_kind="implementation",
         requirement_id=None,
         proposal_id=None,
         depends_on=[],
@@ -229,6 +238,7 @@ async def _task_dto(service: TaskService, task: Task) -> TaskDTO:
         existing_pr_ref=task.existing_pr_ref,
         required_secrets=task.required_secrets or [],
         assigned_runner_id=task.assigned_runner_id,
+        card_kind=task.card_kind,
         requirement_id=task.requirement_id,
         proposal_id=task.proposal_id,
         depends_on=[
@@ -293,7 +303,15 @@ async def set_process_overrides(
     return dto
 
 
-@router.get("/projects/{project_id}/board", response_model=BoardDTO)
+@router.get(
+    "/projects/{project_id}/board",
+    response_model=BoardDTO,
+    # **Deprecated in V2-P1** (D118). `work-items` replaces it and the last consumer went
+    # with `ProjectDetailView.vue`. Kept for one version rather than removed with the view:
+    # after D117 there is no version flag, so `/board` and the full task page are the only
+    # degradation paths left if the new board turns out to be wrong. `beta.2` deletes it.
+    deprecated=True,
+)
 async def read_board(
     project_id: uuid.UUID,
     _: User = Depends(require_action(PROJECT_VIEW)),
@@ -663,6 +681,41 @@ async def set_task_verification_commands(
     )
     await session.flush()
     dto = await _task_dto(service, task)
+    await session.commit()
+    return dto
+
+
+@router.post("/tasks/{task_id}/rank", response_model=TaskDTO)
+async def rank_task(
+    task_id: uuid.UUID,
+    body: RankRequest,
+    user: User = Depends(require_action(TASK_UPDATE)),
+    session: AsyncSession = Depends(get_session),
+) -> TaskDTO:
+    """Move a card to a position between two named neighbours (V2-P1, `FR-WORK-006`).
+
+    Its own route rather than a `PATCH` field, for two reasons that are the same reason:
+    the payload is a *pair of neighbours* rather than a value, and the response has to be
+    able to refuse with `RANK_NEIGHBOR_STALE` — a refusal that means "the board moved
+    under you", which is not what `TASK_VERSION_CONFLICT` means. `rank` is still in
+    `EDITABLE_FIELDS` so a person can set one directly, and it is in
+    `AGENT_FORBIDDEN_FIELDS` because an agent that can reorder the queue has made
+    first-in-first-out advisory.
+
+    `task.update`, the same action a drag already needed. `read_board` and `BoardCardDTO`
+    are untouched (D48).
+    """
+    service = _tasks(session)
+    task = await service.require_task(task_id)
+    moved = await service.reorder(
+        task=task,
+        actor_id=user.id,
+        expected_version=body.version,
+        previous_task_id=body.previous_task_id,
+        next_task_id=body.next_task_id,
+        stage=body.stage,
+    )
+    dto = await _task_dto(service, moved)
     await session.commit()
     return dto
 

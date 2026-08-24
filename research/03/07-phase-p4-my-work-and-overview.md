@@ -92,7 +92,7 @@ N 個專案就是 N 個請求；分頁無法跨專案正確排序；
 
 | Section | filter |
 |---|---|
-| Waiting for your response | `attention = waiting_for_your_input` 且 open question 指向我或我是 owner |
+| Waiting for your response | `attention = waiting_for_your_input` 且 **我是 owner**——見下 |
 | Pending your approval | `attention = pending_human_approval` 且我有 `task.approve` |
 | Failed runs you own or follow | `attention = run_failed` 且 owner = 我 |
 | Assigned work | `owner = @me` 且 `lifecycle in (ready, in_progress, review)` |
@@ -100,6 +100,16 @@ N 個專案就是 N 個請求；分頁無法跨專案正確排序；
 | Recently completed deliveries | `lifecycle = done` 且近 7 天 |
 
 加上使用者自己的 saved personal views（`work_views` 的 `project_id IS NULL`）。
+
+> **「open question 指向我」在今天沒有欄位可以問**（2026-08-23，`plan/26` 的 `PX-00` 回寫）。
+> `task_questions` 沒有 `addressed_to_user_id`：一個問題是問「這張卡的人類」，
+> 不是問某一個人。加上那一欄要回答「誰指定的」「改指定算不算一次 activity」
+> 「沒有 owner 的卡問誰」三個問題，而那是一次 schema 變更加一段產品設計。
+>
+> `beta.1` 的第一段因此是 **`owner_user_id = @me`**，
+> 並在 section 標題旁寫明「你負責的卡片」而不是「問你的問題」——
+> 一個說得比實際窄的標題，比一個做不到的承諾好。
+> 詳見 [`plan/26/08`](../../plan/26/08-my-work-and-navigation.md) §3。
 
 ### 4.3 Notification 與 My Work 的界線
 
@@ -111,6 +121,18 @@ N 個專案就是 N 個請求；分頁無法跨專案正確排序；
 
 **已讀 notification 不代表 action resolved。** 這一條有測試：
 標記全部已讀之後，My Work 的 counts 不變。
+
+> **這個系統沒有 notification**（2026-08-23，`plan/26` 的 `PX-00` 回寫）。
+> 沒有表、沒有端點、沒有已讀狀態，所以上面那條出口條件**沒有可以標記已讀的東西**，
+> 而一個永遠通過的測試比沒有測試更糟。
+>
+> 這一節保留，因為它說的分界是對的——它只是還沒有第一半。
+> `beta.1` 把出口條件改成 **`GATE-PX-MYWORK-READS-STATE`**：
+> AST 斷言 My Work 的每一個 section 的述詞都只讀 Task／Run／Gate 的真實狀態，
+> 沒有任何一個讀「使用者看過了沒有」。
+> 那守住的是**未來加 notification 時不會有人把它接進 counts**，
+> 而那正是這一節真正在防的事。
+> 詳見 [`plan/26/08`](../../plan/26/08-my-work-and-navigation.md) §4。
 
 ## 5. Project Overview
 

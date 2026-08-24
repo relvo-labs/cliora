@@ -1,19 +1,29 @@
-// The project detail view's two load-bearing displays (plan/16 PJ-06 §9).
+// The project shell and its seven children (PX-64), and the three displays whose
+// silence is the failure.
 //
-// Both exist because getting them subtly wrong is silent:
+// **Ported from `views/ProjectDetailView.test.ts` when that file was split**, and
+// deliberately not rewritten: the assertions describe the same system, and rewriting them
+// alongside the refactor would mean the refactor had no test that predated it. What
+// changed is the mounting — a real nested router, so a navigation is what selects the
+// view rather than a `ref`.
+//
+// Three properties, each silent when wrong:
 //
 //   * a binding that cannot be used must say *why*, and the four reasons are not
-//     interchangeable — "the machine is down" and "this machine no longer allows
-//     this directory" call for different actions from the user;
+//     interchangeable — "the machine is down" and "this machine no longer allows this
+//     directory" call for different actions;
 //   * a missing actor means one of two different things, and leaving it blank lets
-//     "you may not see this" read as "nobody did it".
+//     "you may not see this" read as "nobody did it";
+//   * a dispatch refusal must keep the card it already created and name it.
+//
+// Plus one the split itself introduced: **`?tab=` still lands where it used to.**
 
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRouter, createWebHistory, type Router } from "vue-router";
 
-import type { BindingUsability, ProjectDetail } from "../api/dto";
+import type { BindingUsability, ProjectDetail } from "../../api/dto";
 
 const { calls } = vi.hoisted(() => ({
   calls: {
@@ -40,13 +50,21 @@ const state: {
   dispatchError: null,
 };
 
-vi.mock("../stores/auth", () => ({
+vi.mock("../../stores/auth", () => ({
   useAuthStore: () => ({
     hasPermission: (action: string) => state.permissions.includes(action),
     hasFeature: () => true,
   }),
   api: () => ({
     listRequirements: async () => state.requirements,
+    // Overview's attention strip and work distribution (PX-50). Zero counts, because what
+    // this suite is about is the shell and the pages' own content.
+    getWorkCounts: async () => ({
+      by_lifecycle: {},
+      by_attention: {},
+      total: 0,
+      runtime_signals_available: true,
+    }),
     createRequirement: async () => ({ id: "r-1" }),
     listPatchProposals: async () => [],
     decidePatchProposal: async () => undefined,
@@ -62,7 +80,7 @@ vi.mock("../stores/auth", () => ({
   }),
 }));
 
-vi.mock("../stores/projects", () => ({
+vi.mock("../../stores/projects", () => ({
   useProjectsStore: () => ({
     get current() {
       return state.detail;
@@ -86,7 +104,7 @@ vi.mock("../stores/projects", () => ({
   }),
 }));
 
-vi.mock("../stores/nodes", () => ({
+vi.mock("../../stores/nodes", () => ({
   useNodesStore: () => ({
     fetchList: async () => [
       { id: "n-1", name: "vm", hostname: "vm.invalid", status: "online" },
@@ -98,7 +116,10 @@ vi.mock("../stores/nodes", () => ({
   }),
 }));
 
-import ProjectDetailView from "./ProjectDetailView.vue";
+import ProjectShell from "./ProjectShell.vue";
+import ProjectActivityView from "./views/ProjectActivityView.vue";
+import ProjectOverviewView from "./views/ProjectOverviewView.vue";
+import ProjectRequirementsView from "./views/ProjectRequirementsView.vue";
 
 function binding(usability: BindingUsability, path = "/srv/app") {
   return {
@@ -140,11 +161,69 @@ function testRouter(): Router {
     history: createWebHistory(),
     routes: [
       { path: "/projects", name: "projects", component: blank },
-      { path: "/projects/:id", name: "project-detail", component: blank },
+      {
+        // **The real nesting**, not a stub: what this file has to be able to break is
+        // the wiring between the shell and its children, and a blank parent would test
+        // neither.
+        path: "/projects/:id",
+        name: "project-detail",
+        component: ProjectShell,
+        props: true,
+        redirect: (to) => {
+          const tab = Array.isArray(to.query.tab)
+            ? to.query.tab[0]
+            : to.query.tab;
+          const legacy: Record<string, string> = {
+            overview: "project-overview",
+            board: "project-work",
+            roadmap: "project-roadmap",
+            requirements: "project-requirements",
+            activity: "project-activity",
+            settings: "project-settings",
+          };
+          const { tab: _dropped, ...query } = to.query;
+          return {
+            name: legacy[String(tab)] ?? "project-overview",
+            params: to.params,
+            query,
+          };
+        },
+        children: [
+          {
+            path: "overview",
+            name: "project-overview",
+            component: ProjectOverviewView,
+          },
+          { path: "work", name: "project-work", component: blank },
+          { path: "roadmap", name: "project-roadmap", component: blank },
+          {
+            path: "requirements",
+            name: "project-requirements",
+            component: ProjectRequirementsView,
+          },
+          {
+            path: "activity",
+            name: "project-activity",
+            component: ProjectActivityView,
+          },
+          { path: "settings", name: "project-settings", component: blank },
+        ],
+      },
+      {
+        path: "/projects/:id/knowledge",
+        name: "project-knowledge",
+        component: blank,
+      },
       { path: "/sessions", name: "sessions", component: blank },
+      { path: "/my-work", name: "my-work", component: blank },
       { path: "/dashboard", name: "dashboard", component: blank },
       { path: "/nodes", name: "nodes", component: blank },
       { path: "/login", name: "login", component: blank },
+      {
+        path: "/settings/integrations",
+        name: "integrations",
+        component: blank,
+      },
       {
         path: "/projects/:id/requirements/:requirementId",
         name: "requirement-detail",
@@ -159,20 +238,21 @@ function testRouter(): Router {
   });
 }
 
-async function render() {
+async function render(path = "/projects/p-1/overview") {
   const router = testRouter();
-  await router.push("/projects/p-1");
+  await router.push(path);
   await router.isReady();
-  const wrapper = mount(ProjectDetailView, {
+  const wrapper = mount(ProjectShell, {
     props: { id: "p-1" },
     global: { plugins: [router] },
   });
-  for (let i = 0; i < 6; i += 1) await Promise.resolve();
+  for (let i = 0; i < 8; i += 1) await Promise.resolve();
   await wrapper.vm.$nextTick();
-  return wrapper;
+  await wrapper.vm.$nextTick();
+  return { wrapper, router };
 }
 
-describe("ProjectDetailView bindings", () => {
+describe("ProjectShell bindings", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     state.permissions = ["project.view"];
@@ -196,7 +276,7 @@ describe("ProjectDetailView bindings", () => {
         binding("outside_allowed_root", "/srv/withdrawn"),
       ],
     });
-    const wrapper = await render();
+    const { wrapper } = await render();
     const text = wrapper.text();
 
     expect(text).toContain("Machine offline");
@@ -219,7 +299,7 @@ describe("ProjectDetailView bindings", () => {
         binding("node_offline", "/srv/off"),
       ],
     });
-    const wrapper = await render();
+    const { wrapper } = await render();
     const buttons = wrapper.findAll(".bindings li button");
     const open = buttons.filter((b) => b.text() === "Open session");
     expect(open).toHaveLength(2);
@@ -232,7 +312,7 @@ describe("ProjectDetailView bindings", () => {
       status: "archived",
       workspaces: [binding("usable")],
     });
-    const wrapper = await render();
+    const { wrapper } = await render();
     const open = wrapper
       .findAll("button")
       .filter((b) => b.text() === "Open session");
@@ -242,7 +322,7 @@ describe("ProjectDetailView bindings", () => {
 
   it("hides project management controls from someone who cannot manage", async () => {
     state.detail = project({ workspaces: [binding("usable")] });
-    const wrapper = await render();
+    const { wrapper } = await render();
     const labels = wrapper.findAll("button").map((b) => b.text());
     expect(labels).not.toContain("Archive");
     expect(labels).not.toContain("Unbind");
@@ -251,7 +331,7 @@ describe("ProjectDetailView bindings", () => {
   it("lets an Admin edit the project and choose paused", async () => {
     state.permissions = ["project.view", "project.manage"];
     state.detail = project();
-    const wrapper = await render();
+    const { wrapper } = await render();
 
     await wrapper
       .findAll("button")
@@ -277,7 +357,7 @@ describe("ProjectDetailView bindings", () => {
   it("binds a workspace through the project page", async () => {
     state.permissions = ["project.view", "project.manage"];
     state.detail = project();
-    const wrapper = await render();
+    const { wrapper } = await render();
     const bind = wrapper
       .findAll("button")
       .find((button) => button.text() === "Bind workspace")!;
@@ -303,7 +383,7 @@ describe("ProjectDetailView bindings", () => {
   });
 });
 
-describe("ProjectDetailView activity", () => {
+describe("ProjectShell activity", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     state.permissions = ["project.view"];
@@ -326,23 +406,13 @@ describe("ProjectDetailView activity", () => {
     // Without the sentence, a column of dashes reads as "these events had no
     // actor" — which is a different, and false, statement.
     state.actorsHidden = true;
-    const wrapper = await render();
-    await wrapper
-      .findAll("button")
-      .filter((b) => b.text() === "Activity")[0]
-      .trigger("click");
-    await wrapper.vm.$nextTick();
+    const { wrapper } = await render("/projects/p-1/activity");
     expect(wrapper.text()).toContain("audit permission");
   });
 
   it("says nothing about hidden actors when the reader may see them", async () => {
     state.actorsHidden = false;
-    const wrapper = await render();
-    await wrapper
-      .findAll("button")
-      .filter((b) => b.text() === "Activity")[0]
-      .trigger("click");
-    await wrapper.vm.$nextTick();
+    const { wrapper } = await render("/projects/p-1/activity");
     expect(wrapper.text()).not.toContain("audit permission");
   });
 
@@ -350,7 +420,7 @@ describe("ProjectDetailView activity", () => {
     // The defect the browser smoke test caught: the timeline was pointed at the
     // *audit* label map, whose keys are a disjoint set, so every row rendered its
     // wire value. Nothing failed; it just looked unfinished.
-    const wrapper = await render();
+    const { wrapper } = await render();
     expect(wrapper.text()).toContain("綁定 Workspace");
     expect(wrapper.text()).not.toContain("workspace.bound");
   });
@@ -381,14 +451,15 @@ function requirement(status: string, ref = "REQ-1") {
 async function requirementsTab(status: string) {
   state.detail = project();
   state.requirements = [requirement(status)];
-  const wrapper = await render();
-  await wrapper.get("[data-tab='requirements']").trigger("click");
+  // Navigated to rather than clicked into: a section is a route now, and rendering it by
+  // URL is also what proves the route exists.
+  const { wrapper } = await render("/projects/p-1/requirements");
   for (let i = 0; i < 6; i += 1) await Promise.resolve();
   await wrapper.vm.$nextTick();
   return wrapper;
 }
 
-describe("ProjectDetailView requirement dispatch", () => {
+describe("ProjectShell requirement dispatch", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     state.permissions = ["project.view", "task.create", "run.dispatch"];
@@ -443,7 +514,7 @@ describe("ProjectDetailView requirement dispatch", () => {
     // The most important one. Dispatch fails for reasons that are *waits* — no runner is
     // online yet — as well as for mistakes, and a button that deleted the card on failure
     // would destroy a perfectly good card while somebody starts a machine.
-    const { ApiError: Api } = await import("../api/client");
+    const { ApiError: Api } = await import("../../api/client");
     state.dispatchError = new Api(
       "PROJECT_NO_REPOSITORY",
       "這個專案還沒有登記儲存庫",
@@ -470,5 +541,104 @@ describe("ProjectDetailView requirement dispatch", () => {
     const wrapper = await requirementsTab("intake");
     expect(wrapper.find("[data-clarify='REQ-1']").exists()).toBe(false);
     expect(wrapper.find("[data-decompose='REQ-1']").exists()).toBe(false);
+  });
+});
+
+// --- what the split itself has to keep true (PX-64) -------------------------
+//
+// Two properties, and both are about links that already exist in the wild. There is no
+// version flag and no second path (D117), so a bookmark and an in-app breadcrumb are the
+// only things that can catch a mistake here — after the fact, from a user.
+
+describe("ProjectShell routing", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    state.permissions = ["project.view"];
+    state.detail = project();
+    state.activity = [];
+    state.actorsHidden = false;
+    state.requirements = [];
+    state.dispatchError = null;
+  });
+
+  it("lands on Overview when no section is named", async () => {
+    const { router } = await render("/projects/p-1");
+    expect(router.currentRoute.value.name).toBe("project-overview");
+  });
+
+  it.each([
+    ["overview", "project-overview"],
+    ["board", "project-work"],
+    ["roadmap", "project-roadmap"],
+    ["requirements", "project-requirements"],
+    ["activity", "project-activity"],
+    ["settings", "project-settings"],
+  ])("redirects the old ?tab=%s to %s", async (tab, name) => {
+    // Every one of these is a URL somebody has bookmarked. The redirect lives in the
+    // router rather than in the shell so it is visibly temporary — a compatibility branch
+    // inside a component never looks like something to remove.
+    const { router } = await render(`/projects/p-1?tab=${tab}`);
+    expect(router.currentRoute.value.name).toBe(name);
+    expect(router.currentRoute.value.query.tab).toBeUndefined();
+  });
+
+  it("keeps every other query key through the redirect", async () => {
+    // `?task=` is the Drawer's state. A link to a card inside a board must not lose the
+    // card on the way through the redirect.
+    const { router } = await render(
+      "/projects/p-1?tab=board&task=t-9&view=v-1",
+    );
+    expect(router.currentRoute.value.name).toBe("project-work");
+    expect(router.currentRoute.value.query).toEqual({
+      task: "t-9",
+      view: "v-1",
+    });
+  });
+
+  it("renders the navigation as links, so middle-click works", async () => {
+    // They were `<button>` elements inside one page. A section is a URL now, and the two
+    // things people actually do with navigation — open in a new tab, copy the address —
+    // work on an anchor and on nothing else.
+    const { wrapper } = await render();
+    const nav = wrapper.get('nav[aria-label="Project sections"]');
+    expect(nav.findAll("button")).toHaveLength(0);
+    const links = nav.findAll("a");
+    expect(links.length).toBe(7);
+    expect(links.map((link) => link.attributes("href"))).toContain(
+      "/projects/p-1/work",
+    );
+  });
+
+  it("marks the section it is on, and only that one", async () => {
+    const { wrapper } = await render("/projects/p-1/requirements");
+    const active = wrapper
+      .get('nav[aria-label="Project sections"]')
+      .findAll("a")
+      .filter((link) => link.attributes("data-active") === "true");
+    expect(active).toHaveLength(1);
+    expect(active[0].text()).toBe("Requirements");
+  });
+
+  it("offers Knowledge in the navigation although it is a sibling route", async () => {
+    // It stays top-level — it has its own header and its own loading state, and folding
+    // it into the shell would mean rewriting both to fit a shell it does not need. The
+    // navigation is what makes that invisible to a reader.
+    const { wrapper } = await render();
+    const hrefs = wrapper
+      .get('nav[aria-label="Project sections"]')
+      .findAll("a")
+      .map((link) => link.attributes("href"));
+    expect(hrefs).toContain("/projects/p-1/knowledge");
+  });
+
+  it("loads the project once for the whole shell, not once per section", async () => {
+    // The reason the context exists. Per-view loading means the header refetches on every
+    // navigation, and the header is the part that visibly flickers.
+    const { wrapper, router } = await render();
+    const before = wrapper.text();
+    await router.push({ name: "project-requirements", params: { id: "p-1" } });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.text()).toContain("Traqora");
+    expect(before).toContain("Traqora");
   });
 });

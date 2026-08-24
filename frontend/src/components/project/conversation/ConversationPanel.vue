@@ -221,6 +221,7 @@ onMounted(thread.load);
     <MessageComposer
       v-if="canWrite"
       ref="composer"
+      class="composer"
       :task-id="taskId"
       :has-open-question="openQuestion !== null"
       :busy="busy"
@@ -295,5 +296,26 @@ onMounted(thread.load);
 
 .error {
   color: var(--status-error);
+}
+
+/* PX-46: on a phone the composer stays put while the thread scrolls under it.
+ *
+ * The conversation is the reason somebody opens a card on a phone — an agent is stopped
+ * waiting for a sentence — and a reply box that scrolls off the bottom of a forty-message
+ * thread is a reply box that does not get used. Sticky rather than fixed: fixed would
+ * escape the Drawer and sit over the board behind it.
+ *
+ * The background is opaque and the top border is not decorative: without them the messages
+ * scroll visibly *through* the composer. */
+@media (max-width: 760px) {
+  .composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin: 0 calc(-1 * var(--space-3));
+    padding: var(--space-3);
+    border-top: 1px solid var(--border-default);
+    background: var(--surface-canvas);
+  }
 }
 </style>
