@@ -146,14 +146,17 @@ run_drill() {
   if bash "scripts/p4/drills/$script" >"$log" 2>&1; then
     status="triggered"
     echo "ok: $script"
-  elif grep -qiE "^Set CLIORA_|a terminal is required|password is required|not present yet|command not found" "$log"; then
-    status="skipped (prerequisite absent)"
-    SKIPPED=$((SKIPPED + 1))
-    echo "-- skipped: $script"
   else
-    status="**FAILED**"
-    FAILURES=$((FAILURES + 1))
-    echo "FAIL: $script" >&2
+    rc=$?
+    if [ "$rc" -eq 77 ] || grep -qiE "^Set CLIORA_|a terminal is required|password is required|not present yet|command not found" "$log"; then
+      status="skipped (prerequisite absent)"
+      SKIPPED=$((SKIPPED + 1))
+      echo "-- skipped: $script"
+    else
+      status="**FAILED**"
+      FAILURES=$((FAILURES + 1))
+      echo "FAIL: $script" >&2
+    fi
   fi
   elapsed=$(( $(date +%s) - start ))
   note "| \`$script\` | \`$alert\` | [$runbook](../../docs/runbooks/$runbook) | $status | ${elapsed}s |"
