@@ -71,6 +71,8 @@ jobs:
       - name: package + verify + extract like install.sh
         run: |
           set -euo pipefail
+          # upload-artifact intentionally does not preserve Unix mode bits.
+          chmod +x dist/agentd_linux_amd64
           mkdir -p srv/api/downloads
           tar -C dist --transform 's#agentd_linux_amd64#agentd#' -czf srv/api/downloads/agentd_0.0.0_linux_amd64.tar.gz agentd_linux_amd64
           sha=$(sha256sum srv/api/downloads/agentd_0.0.0_linux_amd64.tar.gz | awk '{print $1}')
@@ -179,6 +181,9 @@ jobs:
           node-version-file: ".nvmrc"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      - name: generate a throwaway encryption key for the E2E database
+        run: |
+          python -c "import base64,secrets; print('CLIORA_SECRET_ENCRYPTION_KEY=' + base64.b64encode(secrets.token_bytes(32)).decode())" >> "$GITHUB_ENV"
       - run: uv sync --project backend --locked
       - working-directory: backend
         run: |

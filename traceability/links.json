@@ -21610,10 +21610,10 @@
       "type": "guards_scope",
       "target": {
         "kind": "pytest",
-        "locator": "backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface"
+        "locator": "backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive"
       },
       "role": "primary",
-      "assertion": "Every mounted file route is a GET and no write action exists.",
+      "assertion": "The only mounted file write routes are the two additive upload paths, and no edit, delete, or rename action exists.",
       "owner": "architecture",
       "applicability": [
         "mvp"
