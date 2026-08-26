@@ -261,9 +261,10 @@ jobs:
         working-directory: daemon
         run: go test -run 'Fuzz' -fuzz 'FuzzOpenFile' -fuzztime 60s ./internal/workspace/...
       - name: python advisories
+        working-directory: backend
         run: |
-          uv run --project backend --with pip-audit pip-audit --strict \
-            --requirement <(uv export --project backend --no-dev --no-hashes)
+          uv run --project . --with pip-audit pip-audit --strict \
+            --requirement <(uv export --project . --no-dev --no-hashes --no-emit-project)
       - name: node advisories (production only)
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high

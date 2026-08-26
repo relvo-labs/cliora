@@ -394,7 +394,7 @@
 | SCOPE-004 | [SCOPE-004.AC-01](../../research/prd.md#scope-004-ac-01) | 不建立多 Agent 自動協作流程。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow |
 | SCOPE-005 | [SCOPE-005.AC-01](../../research/prd.md#scope-005-ac-01) | 不進行任務自動分派。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch |
 | SCOPE-006 | [SCOPE-006.AC-01](../../research/prd.md#scope-006-ac-01) | 不提供 Web 端完整 IDE。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide |
-| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface |
+| SCOPE-007 | [SCOPE-007.AC-01](../../research/prd.md#scope-007-ac-01) | 不提供第一階段的檔案寫入與編輯功能。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive |
 | SCOPE-008 | [SCOPE-008.AC-01](../../research/prd.md#scope-008-ac-01) | 不提供自動 Git Commit、Push 或 Merge Request。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface |
 | SCOPE-009 | [SCOPE-009.AC-01](../../research/prd.md#scope-009-ac-01) | 不提供 CLI 對話內容的語意分析。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation |
 | SCOPE-010 | [SCOPE-010.AC-01](../../research/prd.md#scope-010-ac-01) | 不建立跨 Runtime 的統一 Agent 行為模型。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model |
@@ -883,7 +883,7 @@
 - `pytest:backend/tests/test_scope_guards.py::test_scope_004_no_multi_agent_collaboration_flow` ← `SCOPE-004.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_005_no_automatic_task_dispatch` ← `SCOPE-005.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_006_the_console_is_not_an_ide` ← `SCOPE-006.AC-01` (guards_scope)
-- `pytest:backend/tests/test_scope_guards.py::test_scope_007_no_file_write_or_edit_surface` ← `SCOPE-007.AC-01` (guards_scope)
+- `pytest:backend/tests/test_scope_guards.py::test_scope_007_the_write_paths_are_both_additive` ← `SCOPE-007.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_008_no_git_surface` ← `SCOPE-008.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_009_no_semantic_analysis_of_cli_conversation` ← `SCOPE-009.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_010_no_cross_runtime_behaviour_model` ← `SCOPE-010.AC-01` (guards_scope)
