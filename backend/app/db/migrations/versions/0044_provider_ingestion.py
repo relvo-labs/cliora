@@ -61,15 +61,20 @@ def _in(column: str, values: Sequence[str]) -> str:
 
 def upgrade() -> None:
     for table in _TABLES_WITH_SOURCE_TYPE:
-        # **The bare name, not the rendered one.** `Base.metadata` carries a naming
-        # convention that expands a check constraint to `ck_<table>_<name>`, and alembic
-        # applies it here too — passing the already-expanded name produces
-        # `ck_knowledge_sources_ck_knowledge_sources_source_type` and a DROP that finds
-        # nothing. `0042` created these as `name="source_type"` for the same reason.
+        # **The bare name here is correct, and `0046` is where the same reasoning went
+        # wrong** — worth stating together because the two look identical and are not.
+        #
+        # `0042` created these with `name="source_type"`, which the naming convention
+        # expanded to `ck_<table>_source_type`. Passing `"source_type"` to `drop` applies
+        # the same expansion and names the same thing. `0023` created the *stage* check
+        # with `name="ck_tasks_stage"` — already prefixed — so the same expansion there
+        # produces `ck_tasks_ck_tasks_stage`, and the bare-name form misses it.
+        #
+        # The rule is not "always pass the bare name". It is "pass whatever the creating
+        # migration passed", and the only way to know that is to read it. `0046` uses raw
+        # SQL with `IF EXISTS` rather than trusting either reading.
         op.drop_constraint("source_type", table, type_="check")
-        op.create_check_constraint(
-            "source_type", table, _in("source_type", _SOURCE_TYPES_AFTER)
-        )
+        op.create_check_constraint("source_type", table, _in("source_type", _SOURCE_TYPES_AFTER))
 
     # Per project, not per deployment. D52's argument about knowledge applies unchanged:
     # the cost and the risk of talking to somebody else's API are properties of a project,

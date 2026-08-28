@@ -188,13 +188,53 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 | 3 | `HD-02`、`HD-03`、`HD-15` | ☑ **實作完成**（2026-08-28）。handler、reconcile pass、五個 metric、15 支後端測試 ＋ **`HD-15` 的四種同步狀態在真的畫面上跑過**（`artifacts/hd/local/w3/provider-sync-states.png`）|
 | 4 | `HD-06` | ☑ **實作完成**（2026-08-28）。`0045`／`0046`、三個寫入點、ADR 0040 修訂。在 3800 張真實形狀的卡上演練過 roundtrip |
 | 5 | `HD-10` | ☑ **實作完成**（2026-08-28）。2000 卡 seed、七個 `EXPLAIN`、體積與成本。**找到一個 `alpha.3` 的檢索缺陷**，見 §2.10。provider queue 的那一半等波次 3 |
-| 6 | `HD-08`、`HD-09` | ☐ 未開工 |
+| 6 | `HD-08`、`HD-09` | ☑ **實作完成**（2026-08-28）。演練五步全綠（含 `pg_trgm` 邊界與 dump/restore）、rollback drill 六步全綠。**演練找到一個 `0046` 的真缺陷**，見 §2.18 |
 | 7 | `HD-14`、`HD-12` | ☐ 未開工 |
 
 ## 4. 每個波次的可看產出
 
 [`00`](./00-execution-plan.md) §4b 的八列，逐波次回填。
 **「這個波次沒有可看的東西」是一個要寫在這裡的事實**，不是一個可以略過的欄位。
+
+### ★★ 2.18 `0046` 只在「已經跑過它」的資料庫上work，而只有從空的建一次才看得出來
+
+`HD-08` 的演練從一個**空的**資料庫把整條鏈跑起來，第一步就紅了：
+
+```
+UndefinedObjectError: constraint "ck_tasks_stage" of relation "tasks" does not exist
+```
+
+原因是這個 codebase 的命名慣例把 `ck_%(table_name)s_%(constraint_name)s` 套在
+**輸入**上，而 `0023` 建這個 constraint 時給的 `name` 已經帶了前綴：
+
+```
+0023: name="ck_tasks_stage"   → 實際名字 ck_tasks_ck_tasks_stage
+drop_constraint("stage")      → 找 ck_tasks_stage           不存在
+drop_constraint("ck_tasks_stage") → 找 ck_tasks_ck_tasks_stage  存在
+```
+
+**而我兩種都試過，並且把對的那個改成錯的**：第一版用了後者，
+在 `cliora_hd` 上失敗（因為那個資料庫已經被前一次失敗的嘗試改過名），
+於是我「修正」成前者——**而它之所以在那台機器上work，正是因為它已經跑過了**。
+
+`0044` 的同一段看起來一模一樣而且是**對的**，因為 `0042` 給的 `name` 沒有前綴。
+所以規則不是「一律傳裸名」，是「傳建立它的那個 migration 傳的東西」，
+而唯一知道的方法是去讀它。`0046` 改用 raw SQL ＋ 兩個名字 ＋ `IF EXISTS`。
+
+**測試套組抓不到這個**，因為測試資料庫也是遞增遷移上來的。
+只有「從空的建一次」會抓到，而那正是 `HD-08` 存在的理由——
+它在第一次跑就付清了自己的成本。
+
+### 2.19 rollback drill 的第一版斷言了與文件相反的事
+
+drill 的 step 3 原本斷言「被封鎖的卡會回到 stage」。它紅了，而**紅得對**：
+seed 出來的卡是 `HD-06` 之後的形狀（直接寫 `is_blocked`），
+從來沒有經過 `0045`，所以**沒有 `legacy_blocked_at`**——
+downgrade 正確地不去猜它們。
+
+那正是 ADR 0040 修訂裡寫的那條不可逆性。
+斷言改成證明它，而不是要求它的反面：
+**一個要求那些卡回來的 drill，是在要求 `0043` 拒絕做的那個猜測。**
 
 ### ★★ 2.17 視覺 baseline 的第一版釘的是一整頁豆腐字
 

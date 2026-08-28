@@ -70,15 +70,32 @@ def upgrade() -> None:
             "WHERE stage = 'blocked'"
         )
     )
-    # **`"stage"`, not `"ck_tasks_stage"`.** The metadata naming convention expands a
-    # check constraint's name to `ck_<table>_<name>`, and alembic applies that to `drop`
-    # as well — passing the rendered name asks PostgreSQL for `ck_tasks_ck_tasks_stage`,
-    # which does not exist. The live constraint is `ck_tasks_stage`, and the input that
-    # produces that name here is `stage`. `0044` hit the identical trap an hour earlier
-    # on `knowledge_sources`; two migrations in one phase is enough to call it a property
-    # of this codebase rather than a slip.
-    op.drop_constraint("stage", "tasks", type_="check")
-    op.create_check_constraint("stage", "tasks", _in(_STAGES_AFTER))
+    # **Dropped by whichever name exists, in raw SQL, and that is not defensiveness.**
+    #
+    # `0023` created this constraint inside a `create_table` with `name="ck_tasks_stage"`,
+    # and the metadata naming convention `ck_%(table_name)s_%(constraint_name)s` expanded
+    # it — so on every database built by the migration chain the live name is
+    # **`ck_tasks_ck_tasks_stage`**. An `op.drop_constraint(...)` here re-applies the same
+    # convention to whatever string it is given, which means neither `"stage"` nor
+    # `"ck_tasks_stage"` names the thing reliably:
+    #
+    #     drop_constraint("stage")           → ck_tasks_stage            (does not exist)
+    #     drop_constraint("ck_tasks_stage")  → ck_tasks_ck_tasks_stage   (exists)
+    #
+    # The first version of this migration used the second form, was "corrected" to the
+    # first after it failed on a database that had **already run an earlier attempt** —
+    # and that database had the un-doubled name precisely *because* of that attempt. The
+    # migration therefore worked only where it had already run. `HD-08`'s rehearsal, which
+    # builds the chain from empty, is what found it; nothing in the test suite could,
+    # because the suite's database was migrated incrementally too.
+    #
+    # Raw SQL with both names and `IF EXISTS` ends the ambiguity: the statement says what
+    # it drops, and no convention is applied to it on the way.
+    op.execute("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS ck_tasks_ck_tasks_stage")
+    op.execute("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS ck_tasks_stage")
+    # Recreated with the undoubled name, also explicitly. From here the constraint has one
+    # name on every deployment, which is what `test_stage_sunset.py` reads.
+    op.execute(f"ALTER TABLE tasks ADD CONSTRAINT ck_tasks_stage CHECK ({_in(_STAGES_AFTER)})")
 
 
 def downgrade() -> None:
@@ -89,5 +106,10 @@ def downgrade() -> None:
     is true for cards that were never on that stage. A downgrade that guessed would undo
     the distinction it is supposed to be preserving.
     """
-    op.drop_constraint("stage", "tasks", type_="check")
-    op.create_check_constraint("stage", "tasks", _in(_STAGES_BEFORE))
+    # Same two names, same reason. A downgraded database keeps the undoubled name rather
+    # than being restored to `0023`'s doubled one: the name is not what `0023` promised —
+    # the *value set* is — and re-doubling it would leave a database that no later
+    # migration can find by either spelling.
+    op.execute("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS ck_tasks_ck_tasks_stage")
+    op.execute("ALTER TABLE tasks DROP CONSTRAINT IF EXISTS ck_tasks_stage")
+    op.execute(f"ALTER TABLE tasks ADD CONSTRAINT ck_tasks_stage CHECK ({_in(_STAGES_BEFORE)})")
