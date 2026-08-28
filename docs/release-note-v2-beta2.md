@@ -144,8 +144,8 @@ preserves a person's saved views. `scripts/hd/rollback-drill.sh` step 2 is that 
 | 7 | **`legacy_blocked_at` is a transition column**, scheduled for removal after `rc` | Development |
 | 8 | **`?tab=` redirect is not removed and its usage is not measurable.** The SPA is served by nginx, so the application never sees it. It is removed in `rc.1` regardless of usage; evidence, if wanted, is `grep -c 'tab=' access.log` | Operations |
 | 9 | **No project membership**, so "cards from a project the caller cannot see are absent from counts" remains unprovable on this deployment | Whoever signs the security review |
-| 10 | **The eighteen journeys were not run.** They need a stack with a real daemon | Release |
-| 11 | **No call was ever made to a real provider.** Every test injects a fake reader | Release |
+| 10 | **Three of the eighteen journeys were run; fifteen were not.** J1 (32/32), J4 (13/13) and J15 (8/8) passed against a real `agentd` 0.14.1 on this release's code. The rest are browser or multi-actor journeys `plan/26` ran and this phase did not re-run. **And J1's added assertion did not run** — see §11 | Release |
+| 11 | **No call was ever made to a real provider.** Every test injects a fake reader — which is also why J1's added step ("the agent cited a merged pull request") did not run. **J1 proves this release did not break the main journey; it does not prove the release extended it.** Two different sentences | Release |
 | 12 | **`pg_trgm` on Railway itself is still unverified** — closed by argument and three local role shapes, with a one-line `psql` predicate to answer it on a real deployment | Operations |
 
 **A short known-limitations list is not good news.** This one is twelve items, four of
@@ -212,6 +212,8 @@ artifacts/hd/local/w3/provider-sync-states.png  four sync states on a real scree
 artifacts/hd/local/w5/README.md         seven EXPLAIN plans, volumes, cost
 artifacts/hd/local/w6/rehearsal-compose.log     five steps, seven checks each
 artifacts/hd/local/w6/rollback/drill.log        six steps
+artifacts/hd/local/journeys/summary.json        J1 32/32, J4 13/13, J15 8/8, and what did not run
+artifacts/hd/local/evidence.log                 all nine steps in one run
 ```
 
 ---
@@ -222,7 +224,8 @@ artifacts/hd/local/w6/rollback/drill.log        six steps
 |---|---|---|
 | ☐ | **SR-4 signed**, including §4's inheritance argument and §7's third row | A person |
 | ☐ | **The a11y audit's six manual checks** — focus order, announcements, keyboard drag, 200% zoom, reduced motion, greyscale. All six say *not performed*, not *performed and passed* | A person at a browser |
-| ☐ | **The eighteen journeys**, against a real daemon | A stack |
+| ☑ | ~~The eighteen journeys~~ → **three ran and passed** (J1 32/32, J4 13/13, J15 8/8) against a real daemon on this code. Fifteen did not | Done / partial |
+| ☐ | **J1's added assertion** — that the cited knowledge includes a merged pull request | Needs a real provider |
 | ☐ | **The Railway `psql` predicate**, on a real Railway deployment | One command |
 | ☐ | **`v2.0.0-alpha.3` and `v2.0.0-beta.1` tags** — both have all exit conditions green and neither exists | A person |
 | ☐ | **`v2` → upstream approval** | A person, and never automation |
