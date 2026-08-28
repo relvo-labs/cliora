@@ -159,6 +159,49 @@ async def test_a_typo_still_finds_it_through_the_trigram_channel(session):
     assert await _titles(session, project, "lease_expire_at") == ["租約"]
 
 
+async def test_a_short_query_is_found_inside_a_realistically_long_chunk(session):
+    """The trigram channel's actual job, at the size chunks actually are.
+
+    **Every other trigram test on this page passes with a broken channel**, and that is
+    the finding rather than an aside. They store bodies of about twenty characters, where
+    `similarity(content, query)` — a *whole-string* comparison — is high because the two
+    strings are nearly the same length. A real chunk is up to 800 tokens
+    (`chunking.py::DEFAULT_CHUNK_TOKENS`), and the same comparison then measures a short
+    query against a long paragraph: measured at **0.05** for a chunk that contains the
+    query verbatim, against a floor of 0.25.
+
+    So the channel returned **nothing** for exactly the queries its docstring names — a
+    SHA, a function name, a typo — while costing 131 ms at 20,000 chunks, because the GIN
+    index offered every row as a candidate and the recheck threw all of them away.
+    Found by `HD-10`'s scale measurement (`plan/27` §2.10), not by this suite.
+
+    `<%` compares the query against the best-matching *extent* of the content, which is
+    the question that was always being asked. This test differs from its neighbours in
+    one way only: the body is long.
+    """
+    project = await _project(session)
+    filler = (
+        "這一段描述執行器在壓力下的租約續期行為，涉及重試策略與游標分頁，"
+        "並記錄了驗證流程與權限矩陣之間的相依鏈。" * 8
+    )
+    await _put(
+        session,
+        project,
+        external_id="repo:long",
+        title="docs/adr/0029.md",
+        text=f"{filler} 相關識別碼是 139f143c9a2b，後續由下一期承接。 {filler}",
+        source_type="repo_doc",
+        authority="canonical",
+    )
+    assert len(f"{filler} x {filler}") > 400, "the point of this test is a long body"
+    # **A typo, not the exact token.** Querying `139f143c9a2b` verbatim proves nothing:
+    # the tokenizer indexes it as a lexeme, so the FTS channel answers and the trigram
+    # channel could be returning zero rows without anybody noticing. That is precisely
+    # how this defect survived — the first version of this very test passed against the
+    # broken code. `139f143c9a2d` is one character off, which no lexeme matches.
+    assert await _titles(session, project, "139f143c9a2d") == ["docs/adr/0029.md"]
+
+
 async def test_a_commit_sha_is_found(session):
     project = await _project(session)
     await _put(

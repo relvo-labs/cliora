@@ -158,14 +158,41 @@ async def test_an_unmapped_activity_kind_enqueues_nothing(session):
 async def test_every_ingestable_source_type_has_an_activity_kind():
     """Coverage as an assertion rather than as a list somebody maintains.
 
-    `repo_doc` is excluded because its trigger is an agent's sync call: a commit is not
-    something Cliora did, so no activity row describes one.
+    The excluded types are the ones whose trigger is **not a Cliora action**: `repo_doc`
+    arrives by push from inside a run, and the two provider types arrive because somebody
+    merged or published on a server we do not own.
+
+    **The exclusion set is read from `store.py`, not written here.** This test used to
+    assert `== {"repo_doc"}`, and `0044` adding two types would have made it a
+    three-member literal in a test file — at which point it stops being a coverage
+    assertion and becomes a list somebody keeps in step. Reading `EXTERNALLY_TRIGGERED`
+    means the next type costs a *reason* written beside the declaration, and this test
+    keeps meaning what its name says.
     """
     from app.services.knowledge.outbox import _INGEST_MAP
-    from app.services.knowledge.store import SOURCE_TYPES
+    from app.services.knowledge.store import EXTERNALLY_TRIGGERED, SOURCE_TYPES
 
     mapped = {source_type for source_type, _ in _INGEST_MAP.values()}
-    assert SOURCE_TYPES - mapped == {"repo_doc"}
+    assert SOURCE_TYPES - mapped == EXTERNALLY_TRIGGERED
+    # And the declaration is not a place to hide a type that *does* have a kind: every
+    # excluded type must be a real one, or the two sets agree by both being wrong.
+    assert EXTERNALLY_TRIGGERED <= SOURCE_TYPES
+
+
+async def test_every_source_type_has_an_explicit_half_life():
+    """`plan/27/02` §4's silent trap, asserted.
+
+    `_HALF_LIFE_DAYS` is read with `.get(source_type, 90.0)`, so a type nobody added to it
+    does not raise — it silently decays like an artifact. For `release` that is wrong by a
+    factor of four: what shipped in v1.4 does not become less true over a year.
+
+    **Equality, not containment**: a stale entry for a deleted type is as much a defect as
+    a missing one, and only `==` catches both.
+    """
+    from app.services.knowledge.search import _HALF_LIFE_DAYS
+    from app.services.knowledge.store import SOURCE_TYPES
+
+    assert set(_HALF_LIFE_DAYS) == SOURCE_TYPES
 
 
 async def test_every_mapped_source_type_has_a_handler():

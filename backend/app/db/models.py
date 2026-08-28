@@ -22,6 +22,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     LargeBinary,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -413,6 +414,13 @@ class Project(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    # `0044` / ADR 0043 §5. **Per project, not a deployment flag** — the same argument
+    # D52 made about knowledge: the cost and the risk of calling somebody else's API are
+    # properties of a project, and a deployment-wide switch cannot say "this one, not
+    # that one". Off by default; turning it off later stops updates and deletes nothing.
+    provider_sync_enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
     )
 
 
@@ -1154,6 +1162,20 @@ class ProjectRepository(Base):
     )
     provider_token_secret_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("project_secrets.id", ondelete="RESTRICT"), nullable=True
+    )
+    # `0044` / ADR 0043 §5–§6. The reconcile cursor, and the **only** input to the rate
+    # ceiling: how often this moved in the last hour is how many rounds this repository
+    # cost, so there is no counter table (`knowledge/repo.py:255`'s argument).
+    provider_synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # **A stored copy of a transient fact, which this schema usually refuses.** ADR 0029 §1
+    # declines to store a runner's online state precisely because it is re-derivable; a
+    # poll that failed four minutes ago is not. Without this, a revoked token looks exactly
+    # like a repository where nothing has been merged — and looks like it for ever.
+    provider_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    provider_sync_failures: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default=text("0")
     )
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="RESTRICT"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -2049,7 +2071,11 @@ class KnowledgeSource(Base):
         ),
         CheckConstraint(
             "source_type IN ('policy','ticket','conversation','decision',"
-            "'artifact','verification','repo_doc','activity')",
+            "'artifact','verification','repo_doc','activity',"
+            # `0044`: two types whose trigger is not a Cliora action. They are in
+            # `store.EXTERNALLY_TRIGGERED` for that reason, and the coverage test reads
+            # that set rather than holding its own list.
+            "'pull_request','release')",
             name="source_type",
         ),
         CheckConstraint(
@@ -2188,7 +2214,11 @@ class KnowledgeJob(Base):
         CheckConstraint("state IN ('pending','running','done','failed','dead')", name="state"),
         CheckConstraint(
             "source_type IN ('policy','ticket','conversation','decision',"
-            "'artifact','verification','repo_doc','activity')",
+            "'artifact','verification','repo_doc','activity',"
+            # `0044`: two types whose trigger is not a Cliora action. They are in
+            # `store.EXTERNALLY_TRIGGERED` for that reason, and the coverage test reads
+            # that set rather than holding its own list.
+            "'pull_request','release')",
             name="source_type",
         ),
     )

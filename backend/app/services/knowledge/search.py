@@ -45,9 +45,27 @@ from app.services.knowledge.tokenize import has_cjk, lexemes
 #: only reranked three candidates would be ranking nothing.
 CANDIDATES = 50
 
-#: Trigram similarity floor. Set on the connection rather than compared in SQL:
-#: `similarity(a, b) > x` cannot use the GIN index, and `a % b` can.
-TRIGRAM_THRESHOLD = 0.25
+#: Trigram floor. Set on the connection rather than compared in SQL: a
+#: `similarity(a, b) > x` comparison cannot use the GIN index, and the operator can.
+#:
+#: **This is the `word_similarity` floor, and the change from `similarity` is a defect
+#: fix, not a tuning choice** (`plan/27` `HD-10`, 2026-08-28).
+#:
+#: `%` compares two strings *whole*. A chunk is ~100–800 characters and a query like a
+#: card reference, a commit SHA or a function name is under twenty, so the union of their
+#: trigrams is dominated by the chunk and the score is near zero however good the match:
+#: measured at **0.05** for a chunk that literally contains the query. Against a floor of
+#: 0.25 the channel therefore matched **nothing** — while still costing 131 ms at 20,000
+#: chunks, because the GIN index returned every row as a candidate and the recheck
+#: discarded all of them.
+#:
+#: `<%` (`word_similarity`) compares the query against the *best-matching extent* inside
+#: the content, which is the question this channel was always asking. Same chunk, same
+#: query: **1.0**.
+#:
+#: The docstring above says this channel exists to find "a SHA, a function name, a typo".
+#: All three are short needles in long haystacks, and `%` cannot serve any of them.
+TRIGRAM_THRESHOLD = 0.6
 
 _CHANNEL_WEIGHTS = {"fts": 1.0, "trigram": 0.8}
 
@@ -76,6 +94,13 @@ _HALF_LIFE_DAYS = {
     "repo_doc": 180.0,
     "decision": 365.0,
     "policy": 3650.0,
+    # `0044`. **Chosen, not measured** (`plan/27/10` §5), and written down rather than
+    # left to `.get(…, 90.0)`: the default would silently give a published version the
+    # same 90 days as an artifact, and "what is in v1.4" does not become less true with
+    # age. A pull request's discussion is the artifact case — it explains why the code
+    # looks the way it does for a few months, and it is not a specification.
+    "pull_request": 90.0,
+    "release": 365.0,
 }
 #: **Old is not the same as wrong.** Without a floor, a three-year-old charter ranks
 #: below yesterday's passing remark, and the whole point of the authority column is
@@ -297,17 +322,30 @@ class KnowledgeSearch:
             for row in (await self._session.execute(stmt)).all():
                 _merge(merged, row, "fts", float(row.rank))
 
-        # The threshold is a per-connection setting because `%` is the only form that
-        # uses the trigram index. A `similarity() > x` comparison reads more clearly and
-        # scans the whole table.
+        # The threshold is a per-connection setting because the operator is the only form
+        # that uses the trigram index; a `word_similarity() > x` comparison reads more
+        # clearly and scans the whole table.
+        #
+        # `SET`, not `SELECT set_limit(...)`: `%` has a setter function and `<%` does
+        # not — only the GUC. Setting `similarity_threshold` while querying with `<%`
+        # would leave the real threshold at its 0.6 default, silently and with plausible
+        # results, which is why this line does not look like the one it replaced.
+        #
+        # The value is interpolated because `SET` does not take bind parameters. `float()`
+        # is the guard: `TRIGRAM_THRESHOLD` is a module constant, and coercing it makes
+        # the statement un-injectable regardless of what someone later assigns to it.
         await self._session.execute(
-            sa.text("SELECT set_limit(:threshold)"), {"threshold": TRIGRAM_THRESHOLD}
+            sa.text(f"SET pg_trgm.word_similarity_threshold = {float(TRIGRAM_THRESHOLD)}")
         )
-        similarity = sa.func.similarity(KnowledgeChunk.content, query)
+        # **Argument order matters and is not symmetric.** `word_similarity(a, b)` asks
+        # "how well does `a` match some extent of `b`", so the query goes first. Reversed,
+        # it asks how well a whole chunk matches part of a twelve-character query, which
+        # is the near-zero number this fix exists to stop computing.
+        similarity = sa.func.word_similarity(query, KnowledgeChunk.content)
         stmt = _filters(
             sa.select(*base_columns, similarity.label("rank"))
             .join(KnowledgeSource, KnowledgeSource.id == KnowledgeChunk.source_id)
-            .where(KnowledgeChunk.content.op("%")(query))
+            .where(sa.literal(query).op("<%")(KnowledgeChunk.content))
             .order_by(similarity.desc())
             .limit(CANDIDATES)
         )

@@ -9632,6 +9632,158 @@
           "risk": "medium"
         }
       ]
+    },
+    {
+      "id": "FR-PROV-001",
+      "kind": "functional",
+      "title": "唯讀取得，且只在背景",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-prov-001"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROV-001.AC-01",
+          "source_anchor": "fr-prov-001-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROV-001.AC-02",
+          "source_anchor": "fr-prov-001-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROV-001.AC-03",
+          "source_anchor": "fr-prov-001-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-001.AC-04",
+          "source_anchor": "fr-prov-001-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROV-002",
+      "kind": "functional",
+      "title": "可信層級的上限",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-prov-002"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROV-002.AC-01",
+          "source_anchor": "fr-prov-002-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROV-002.AC-02",
+          "source_anchor": "fr-prov-002-ac-02",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-PROV-002.AC-03",
+          "source_anchor": "fr-prov-002-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-002.AC-04",
+          "source_anchor": "fr-prov-002-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROV-003",
+      "kind": "functional",
+      "title": "速率、失敗與停止",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-prov-003"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-PROV-003.AC-01",
+          "source_anchor": "fr-prov-003-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-003.AC-02",
+          "source_anchor": "fr-prov-003-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-003.AC-03",
+          "source_anchor": "fr-prov-003-ac-03",
+          "verification_profile": "inspection",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-003.AC-04",
+          "source_anchor": "fr-prov-003-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        }
+      ]
+    },
+    {
+      "id": "FR-PROV-004",
+      "kind": "functional",
+      "title": "新鮮度是一個承諾",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-prov-004"
+      },
+      "lifecycle": "proposed",
+      "applicability": [
+        "all"
+      ],
+      "criticality": "must",
+      "owner": "operations",
+      "criteria": [
+        {
+          "id": "FR-PROV-004.AC-01",
+          "source_anchor": "fr-prov-004-ac-01",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-PROV-004.AC-02",
+          "source_anchor": "fr-prov-004-ac-02",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        }
+      ]
     }
   ]
 }

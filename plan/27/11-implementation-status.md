@@ -187,7 +187,7 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 | 2 | `HD-01` | ☐ 未開工（**擋於 Railway `pg_trgm` 量測 ＋ `alpha.3` tag**；SR-2 已簽） |
 | 3 | `HD-02`、`HD-03`、`HD-15` | ☐ 未開工（同波次 2） |
 | 4 | `HD-06` | ☐ 未開工（**擋於 `beta.1` tag ＋ go／no-go**；SR-3 與 PR #45 已關） |
-| 5 | `HD-10` | ☐ 未開工，**無阻礙**（含 provider queue 的那一半要等波次 3） |
+| 5 | `HD-10` | ☑ **實作完成**（2026-08-28）。2000 卡 seed、七個 `EXPLAIN`、體積與成本。**找到一個 `alpha.3` 的檢索缺陷**，見 §2.10。provider queue 的那一半等波次 3 |
 | 6 | `HD-08`、`HD-09` | ☐ 未開工 |
 | 7 | `HD-14`、`HD-12` | ☐ 未開工 |
 
@@ -195,6 +195,30 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 
 [`00`](./00-execution-plan.md) §4b 的八列，逐波次回填。
 **「這個波次沒有可看的東西」是一個要寫在這裡的事實**，不是一個可以略過的欄位。
+
+### ★ 2.12 規劃時只找到兩個 gate，實際上有**三個**執行點
+
+[D119](./01-decisions-and-governance.md#d119) 的「兩個 gate 夾擊」寫得對，但**數漏了一個**：
+除了 `scripts/kn/gates.sh` 與 `scripts/dv/gates.sh`，
+還有 `backend/tests/test_scope_guards.py::test_scope_013_central_does_not_proxy_to_a_node_http_service`
+——**一個真正的測試，而且它才是 SCOPE-013 的實際守門人**。
+
+規劃時我 grep 的是 `scripts/`，沒有 grep `tests/`。
+新增 `provider_reads.py` 之後它紅了，訊息完全正確：
+「an HTTP client appeared outside the provider adapter」。
+
+**處置與 V2.4 當初做的一樣**：把規則收窄而不是放寬。
+那個測試自己的註解記著這段歷史——V2.4 把「哪裡都不准有 HTTP client」
+改成「只有一個模組」，並在同一步變得**更嚴格**（那個模組必須查 host allowlist）。
+`beta.2` 改成兩個**具名**模組，並且同樣在同一步變嚴格：
+
+- 兩個模組**各自**都要查 `provider_api_host_list`（不能一個繼承另一個檢查過的 client）
+- 讀取模組裡不得出現 `"POST"`／`"PUT"`／`"PATCH"`／`"DELETE"`
+- 用**名字清單**而不是數量：「恰好兩個」任兩個都滿足
+
+**教訓**：規劃階段找執行點時只看 `scripts/` 是不夠的。
+這個 repo 把不變式放在三種地方——gate script、AST gate、以及**普通測試**，
+而第三種最容易在規劃時被漏掉，因為它不在名字裡帶 `gate`。
 
 ### ★ 2.9 擋了兩個波次六個星期的那一項，問錯了問題
 
@@ -253,6 +277,50 @@ psql "$DATABASE_URL" -tAc "SELECT has_database_privilege(current_user, current_d
 | 四個語意色從「不能當小字」變成 AA | `research/style.md` §Success/Warning/Error/Info ＋ `tokens.css` |
 
 **這是本期第一個使用者看得到的變化**，而它排在波次 1 是 [D138](./01-decisions-and-governance.md#d138) 的規則。
+
+### ★★ 2.10 trigram 檢索通道對它宣稱要服務的查詢**回傳零筆**，而且花 131 毫秒
+
+`HD-10` 的規模量測找到的，不是效能問題，是**功能缺陷**。
+
+`search.py` 用 `content % query`。`%` 比較的是**兩個字串整體**——
+一個 chunk 是 100–800 個字元，而一個 commit SHA 或卡片編號不到二十個，
+於是兩者的 trigram 聯集被 chunk 主導。實測：一個**逐字包含**該查詢的 chunk，
+`similarity` 是 **0.05**，而門檻是 0.25。
+
+所以這個通道**一筆都比對不到**，同時在 20000 chunk 上花掉 **131 毫秒**——
+GIN 索引把兩萬列全部當候選丟出來，recheck 再全部丟掉。
+
+而那個模組自己的 docstring 寫著，這個通道是
+「the half of retrieval that finds `CV-05`, a commit SHA and a typo」。
+**三個都是短針長草堆，而 `%` 一個都服務不了。**
+
+改成 `<%`／`word_similarity`——它比較的是查詢與內容中**最相符的一段**，
+也就是這個通道一直在問的問題。同一個 chunk、同一個查詢：**1.0**。
+現在 27 毫秒回 20 筆。
+
+**為什麼沒有測試抓到**：`test_knowledge_search.py` 裡每一條 trigram 測試的
+body 都是二十個字左右，而在那個長度下整體相似度很高，因為兩個字串長度接近。
+**這個缺陷在 fixture 尺度上看不見，在真實尺度上是全毀。**
+
+新增的 `test_a_short_query_is_found_inside_a_realistically_long_chunk`
+與鄰居只差一件事：body 很長。**它對舊程式碼實測會紅**——
+而它的第一版不會，因為它查的是完整 SHA，**FTS 通道會答**，
+把一個回零筆的 trigram 通道遮住。最終版查的是差一個字元的錯字。
+
+### 2.11 這次量測在被相信之前說了兩次謊
+
+兩次都產生了有自信、看起來合理、而錯的數字：
+
+1. **只有一個專案。** 2000 張卡全在同一個專案裡，於是 `project_id = ?`
+   選中 2011 列裡的 2000 列，PostgreSQL 正確地偏好循序掃描。
+   每一份 plan 都印著 `Seq Scan`——那**看起來就像缺索引**。
+   加九個 sibling 專案讓目標佔 10%，才是 `ix_tasks_project_rank` 有意義的條件。
+2. **過期的 dataset 檔。** `seed-large.py` 每次重建專案、id 會變，
+   而 `explain.sh` 信任 `large-dataset.json`，於是**對一個空專案量了七份 plan**，
+   全部次毫秒、全部報告「index used」。
+
+兩者是同一種失敗：**一個分不出「很快」與「什麼都沒量到」的量測。**
+`explain.sh` 現在在專案卡數少於 100 時拒絕執行。
 
 ### ★★ 2.5 a11y 套組第一次跑是綠的，而它只掃了八個畫面裡的五個
 

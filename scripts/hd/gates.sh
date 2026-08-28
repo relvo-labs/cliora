@@ -16,12 +16,18 @@ pass() { printf '  \033[32mPASS\033[0m  %s\n' "$1"; }
 fail() { printf '  \033[31mFAIL\033[0m  %s%s\n' "$1" "${2:+ — $2}"; FAILED=1; }
 skip() { printf '  \033[33mSKIP\033[0m  %s%s\n' "$1" "${2:+ — $2}"; }
 
+# **`--untracked` on every scan in this file, and it is not a convenience.**
+# `git grep` searches the index by default, so a brand-new file is invisible to it — and
+# the files these gates care most about are exactly the ones being added. The egress gate
+# reported "one httpx importer" while `provider_reads.py` sat in the working tree
+# importing httpx, which is the single failure this gate exists to prevent.
+#
 # Assert a pattern is **absent**. Verification by absence: a check has a second call site
 # and a file that does not contain the word does not (`GATE-DV-PROVIDER-VERBS`'s reason).
 absent() {
   local name="$1" why="$2"; shift 2
   local hits
-  if hits="$(git grep -nI "$@" 2>/dev/null)" && [ -n "$hits" ]; then
+  if hits="$(git grep --untracked -nI "$@" 2>/dev/null)" && [ -n "$hits" ]; then
     fail "$name" "$why: $(printf '%s' "$hits" | head -2 | tr '\n' ' ')"
   else
     pass "$name"
@@ -32,7 +38,7 @@ absent() {
 # silent omission rather than a silent addition.
 present() {
   local name="$1" why="$2"; shift 2
-  if git grep -qI "$@" 2>/dev/null; then
+  if git grep --untracked -qI "$@" 2>/dev/null; then
     pass "$name"
   else
     fail "$name" "$why"
@@ -77,7 +83,7 @@ if [ -f "$BASELINE/httpx-importers.txt" ]; then
   if [ -f backend/app/services/provider_reads.py ]; then
     expected="$(printf '%s\nbackend/app/services/provider_reads.py\n' "$expected" | LC_ALL=C sort -u | sed '/^$/d')"
   fi
-  actual="$(git grep -l -E '^(import|from) httpx' -- 'backend/app/**/*.py' 2>/dev/null | LC_ALL=C sort -u)"
+  actual="$(git grep --untracked -l -E '^(import|from) httpx' -- 'backend/app/**/*.py' 2>/dev/null | LC_ALL=C sort -u)"
   if [ "$expected" = "$actual" ]; then
     pass "GATE-HD-EGRESS-ALLOWLIST"
     printf '        permitted: %s\n' "$(printf '%s' "$actual" | tr '\n' ' ')"
@@ -120,8 +126,8 @@ fi
 #
 # **Whole tree, not `runs.py`.** `GATE-DV-SINGLE-DONE-PATH` scans one file and one value,
 # which is why `run_reaper.py`'s two writers sat outside its view for three phases.
-if git grep -qI -E '\.stage\s*=\s*["'"'"']blocked["'"'"']' -- 'backend/app/**/*.py' 2>/dev/null; then
-  count="$(git grep -cI -E '\.stage\s*=\s*["'"'"']blocked["'"'"']' -- 'backend/app/**/*.py' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
+if git grep --untracked -qI -E '\.stage\s*=\s*["'"'"']blocked["'"'"']' -- 'backend/app/**/*.py' 2>/dev/null; then
+  count="$(git grep --untracked -cI -E '\.stage\s*=\s*["'"'"']blocked["'"'"']' -- 'backend/app/**/*.py' 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
   if [ "$count" = "3" ]; then
     skip "GATE-HD-NO-LEGACY-BLOCKED" "3 writers remain — HD-06 has not run yet (expected before wave 4)"
   else

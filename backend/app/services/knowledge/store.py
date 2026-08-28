@@ -71,8 +71,22 @@ SOURCE_TYPES: frozenset[str] = frozenset(
         "verification",
         "repo_doc",
         "activity",
+        # `0044` / ADR 0043. Both are in `EXTERNALLY_TRIGGERED` below.
+        "pull_request",
+        "release",
     }
 )
+
+#: Source types with **no `ActivityService` kind**, because the thing that changes them is
+#: not something Cliora did. `repo_doc` arrives by push from inside a run; the two provider
+#: types arrive because somebody merged or published on a server we do not own.
+#:
+#: `test_every_ingestable_source_type_has_an_activity_kind` reads **this set** rather than
+#: holding its own literal. That matters: the test used to assert
+#: `SOURCE_TYPES - mapped == {"repo_doc"}`, and adding two types would have turned a
+#: coverage assertion into a three-member list somebody maintains. Now adding a type means
+#: writing down a *reason* here, and the test keeps its meaning.
+EXTERNALLY_TRIGGERED: frozenset[str] = frozenset({"repo_doc", "pull_request", "release"})
 
 
 @dataclass(frozen=True, slots=True)
