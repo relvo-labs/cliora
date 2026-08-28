@@ -1218,6 +1218,20 @@ class UpdateTaskRequest(BaseModel):
     existing_pr_ref: str | None = None
     required_secrets: list[str] | None = None
     assigned_runner_id: uuid.UUID | None = None
+    # **Being blocked, since `beta.2` removed the lane that used to mean it** (`HD-06`,
+    # ADR 0040's amendment). Until `0046` a person said "this is stuck" by moving the card
+    # to `stage='blocked'`, which is why these three were in `EDITABLE_FIELDS` from
+    # `beta.1` and not here: the read model wrote them and nobody else needed to.
+    #
+    # Removing the lane without exposing the replacement on the same endpoint would have
+    # removed a capability rather than moved it — a `PATCH` that used to work would return
+    # 422 with no alternative on the same surface.
+    #
+    # All three are in `AGENT_FORBIDDEN_FIELDS`: a card that can declare itself unblocked
+    # has made the dependency gate advisory.
+    is_blocked: bool | None = None
+    blocking_reason: str | None = None
+    blocking_message: str | None = None
     # The Done Gate's escape hatch (V2.4, ADR 0033 §5). Not a field on the card: the
     # two travel with the patch that moves the card, because forcing is a property of
     # *this move* rather than a state somebody sets beforehand.

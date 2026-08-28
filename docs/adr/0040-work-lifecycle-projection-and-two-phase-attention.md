@@ -2,12 +2,12 @@
 
 - Status: **accepted** (2026-08-27) — with SR-3, recorded from the repository owner's
   instruction of 2026-08-27. Adopted as `plan/26`'s D92, D102 and D107 on 2026-08-23.
-- **An amendment is owed and does not exist yet.** §1's stage projection is a stated
-  transition, not an end state: `stage='blocked'` still projects onto blocked regardless
-  of `tasks.is_blocked`, because three writers set the stage and not the column. `beta.2`'s
-  `HD-06` either repays that or records that it will not — and **either outcome must appear
-  here as an amendment** (`plan/27/01-…md` D123 and D139). Its absence is `beta.2` exit
-  condition 3, so that "nobody mentioned it again" cannot become the answer.
+- **☑ The amendment that was owed is at the end of this file** (2026-08-28, `HD-06`):
+  §1's stage transition was **repaid**, not deferred. `0045` moved the data, `0046` removed
+  `blocked` from the stage's domain, and the three writers now set `tasks.is_blocked` with
+  a reason. The header used to say this amendment did not exist yet; it is left in the
+  history rather than deleted, because "either outcome must appear here" was the whole
+  point of writing it down in advance.
 - Date: 2026-08-23
 - Amends: ADR 0028 (**amendment C** — §1 there made `tasks.stage` the board's single
   axis; this keeps the column and stops it carrying four questions at once).
@@ -82,8 +82,11 @@ there:
 - **`stage='done'` is never blocked.** A finished card is not waiting on anything, and
   the backfill can otherwise leave that pair behind.
 
-Both rules disappear when `beta.2`'s `HD-06` moves the three writers. Until then they are
-the repayment plan, not a bug.
+~~Both rules disappear when `beta.2`'s `HD-06` moves the three writers.~~
+**`HD-06` landed (see the amendment at the end).** The three writers now set the column,
+so the first rule's branch is unreachable on a current schema — and it is **kept anyway**,
+because a deployment that downgraded past `0046` has `blocked` back in its CHECK and the
+read model must give the same answer there. The second rule stands unchanged.
 
 ### 2. Attention is evaluated in two phases, and the split is visible in the API
 
@@ -188,3 +191,85 @@ never created, and `0043` does not reserve it — a reserved column is one someb
 **Rejected: return `null` for levels 5 and 6.** Then My Work loses its "no eligible
 runner" section and the board loses two quick filters, which is the differentiating
 argument of the whole phase.
+
+---
+
+# Amendment (V2-E1, 2026-08-28) — the stage transition is repaid
+
+- Status: **accepted** (2026-08-28), with `HD-06`. This is the amendment §1 owed, and it
+  records that the debt was **paid** rather than deferred (`plan/27` D123, D139).
+- Migrations: `0045` (data, reversible) and `0046` (domain, **not**).
+- Requirements: none new. `FR-WORK-002`'s projection stops being a projection.
+
+## What the original said, and what it cost
+
+§1 chose to project `stage='blocked'` rather than migrate it, so that `beta.1` stayed
+purely additive. The price was stated at the time and is quoted back here because it is
+what this repays:
+
+> The two unconditional stage projections mean the `is_blocked` column is not the whole
+> truth about being blocked until `HD-06` lands, and **anyone reading the column directly
+> will be wrong** about the cards the reaper touched.
+
+A boolean column that returns the wrong answer when read is a defect with a scheduled
+repair date. This is that date. `models.py` carried the warning verbatim, and the warning
+is now gone from it.
+
+## What was done
+
+```text
+0045   ADD tasks.legacy_blocked_at         a witness, so the move is reversible
+       stage='blocked' → derived stage + is_blocked + a reason
+       three writers rewritten             run_reaper.py ×2, runs.py ×1
+0046   ck_tasks_stage narrowed to five     'blocked' is no longer a stage
+       the same CHECK added to the ORM     it lived only in 0023 until now
+```
+
+The derivation is **word for word `0043`'s** — the same five rules, and the same two
+omitted. Two migrations with two derivations would be two answers to one question, and
+the omitted pair (`no_eligible_runner`, `assigned_runner_offline`) still cannot be
+computed inside `alembic upgrade`, which has no `NodeConnectionRegistry` and, by §1 of
+ADR 0029, no stored substitute.
+
+A fourth `blocking_reason` value, `run_failed`, was added for the third writer. It is not
+`unknown`: `unknown` means the derivation could not tell, and that writer can — a run has
+exhausted its attempts. Collapsing a known cause into `unknown` lengthens the ambiguous
+report for a reason nothing records, which is precisely why `plan/26/02` §5.2 deleted two
+derivation rules rather than letting them silently never fire.
+
+## Reversibility, stated exactly
+
+| Downgrade to | What comes back | What does not |
+|---|---|---|
+| `0045` | everything | — |
+| `0044` | every card `0045` moved, restored by `legacy_blocked_at` | nothing |
+| past `0046` | the value `'blocked'` in the CHECK | **which cards would have been on it** |
+
+The last row is the irreversible part and it is narrower than it sounds. A card blocked
+*after* `0046` went through `is_blocked` and has no `legacy_blocked_at`, because that
+column is filled once, by `0045`, for the rows it moved. After a downgrade those cards are
+`is_blocked = true` on their real stage — correct, and invisible to a six-lane board.
+
+**`HD-07` had to land first for that reason**, not for tidiness: with `/board` deleted
+there is no six-lane screen, so a downgraded deployment shows those cards where they are
+with a blocked badge. Had the old board survived, the same downgrade would have hidden
+them.
+
+`project_is_blocked` keeps its `stage == 'blocked'` branch. It is unreachable on a
+current schema and is retained so that the read model gives the same answer on a
+downgraded one — deleting it would make the function correct only against the schema it
+was written for.
+
+## Measured
+
+3,800 cards on a 20,000-card fixture, upgraded and downgraded and upgraded again with
+exact restoration each time. All 3,800 derived to `unknown`, which is the honest result
+for synthetic cards with no dependencies, no runs and no verifications — and is itself
+worth recording, because a fixture that produced a plausible spread of reasons would have
+been testing the fixture rather than the derivation.
+
+## What is still owed
+
+`legacy_blocked_at` is a **transition column**, scheduled for removal after `rc`. It is in
+the release note's known limitations for that reason: a column with no removal plan is a
+column that stays.

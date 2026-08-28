@@ -85,9 +85,14 @@ STAGES = (
     ["backlog"] * int(TASKS * 0.40)
     + ["ready"] * int(TASKS * 0.20)
     + ["implementing"] * int(TASKS * 0.10)
-    + ["blocked"] * int(TASKS * 0.10)
+    # Was `blocked`. `0046` removed that value from the stage's domain, so the same 10 %
+    # is `ready` with `is_blocked=true` — the representation `0045` left real rows in.
+    + ["ready"] * int(TASKS * 0.10)
     + ["done"] * int(TASKS * 0.20)
 )
+#: Which slice of `STAGES` used to be `blocked`. After the change nothing in the list
+#: distinguishes them, so the range is written down rather than inferred.
+BLOCKED_SLICE = range(int(TASKS * 0.70), int(TASKS * 0.80))
 
 #: `source_type` values that exist today. `pull_request` and `release` arrive with
 #: `0044`; this file does not seed them, and `HD-03` extends it when they do.
@@ -190,6 +195,8 @@ async def main() -> int:
                     delivery="none",
                     risk=rng.choice(["low", "medium", "high"]),
                     priority=rng.choice(["low", "normal", "high"]),
+                    is_blocked=index in BLOCKED_SLICE,
+                    blocking_reason="unknown" if index in BLOCKED_SLICE else None,
                     updated_at=now - timedelta(minutes=rng.randrange(0, 90 * 24 * 60)),
                 )
             )
@@ -329,7 +336,8 @@ async def main() -> int:
                     "INSERT INTO tasks (id, project_id, card_ref, title, stage, source, "
                     "delivery, risk, priority, rank, updated_at, created_at) "
                     "SELECT gen_random_uuid(), :p, 'FL-' || g, 'filler ' || g, "
-                    "  (ARRAY['backlog','ready','implementing','blocked','done'])[1 + (g % 5)], "
+                    # No `blocked`: `0046` removed it from the domain (`HD-06`).
+                    "  (ARRAY['backlog','ready','implementing','verify','done'])[1 + (g % 5)], "
                     "  'none', 'none', 'medium', 'normal', 'a' || lpad(g::text, 6, '0'), "
                     "  now() - (g || ' minutes')::interval, now() "
                     "FROM generate_series(1, :n) g"

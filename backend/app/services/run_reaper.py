@@ -173,7 +173,13 @@ class RunReaper:
                     run.error_code = "RUN_WAITING_TIMEOUT"
                     run.finished_at = now_utc()
                     run.logs_expire_at = now_utc() + timedelta(days=14)
-                task.stage = "blocked"
+                # `is_blocked`, not the stage (`0045`/`0046`, ADR 0040's amendment).
+                # This was one of the three writers that made `tasks.is_blocked` give the
+                # wrong answer when read directly, for three phases. The card keeps the
+                # stage it was working in — a run giving up does not move work backwards,
+                # it marks it as needing a person.
+                task.is_blocked = True
+                task.blocking_reason = "human_input"
                 await conversation.post_event(
                     task=task,
                     body=(
@@ -243,7 +249,13 @@ class RunReaper:
                 task = await session.get(Task, run.task_id)
                 if task is None:  # pragma: no cover - the FK makes this unreachable
                     continue
-                task.stage = "blocked"
+                # `is_blocked`, not the stage (`0045`/`0046`, ADR 0040's amendment).
+                # This was one of the three writers that made `tasks.is_blocked` give the
+                # wrong answer when read directly, for three phases. The card keeps the
+                # stage it was working in — a run giving up does not move work backwards,
+                # it marks it as needing a person.
+                task.is_blocked = True
+                task.blocking_reason = "human_input"
                 await conversation.post_event(
                     task=task,
                     body=(

@@ -43,12 +43,24 @@ DEFAULT_KEY = "default"
 
 # The lane order is the board's left-to-right order and also the boundary below: any
 # lane from `ready` onwards asks for its dependencies to be finished.
-LANE_ORDER = ("backlog", "blocked", "ready", "implementing", "verify", "done")
+#
+# **Five lanes since `beta.2`, not six.** `blocked` left with `0046` (`HD-06`, ADR 0040's
+# amendment): being blocked is `tasks.is_blocked` plus a reason, not a place a card goes.
+# The value has to leave *here* as well as leave the CHECK, and for a reason worth stating
+# — `_require_stage` reads `STAGES`, so a `PATCH` naming the old value must be refused
+# with `TASK_STAGE_INVALID` and its list of legal lanes. Left in, the same request reaches
+# PostgreSQL and comes back as a constraint violation: a 500 where the user made an
+# ordinary mistake.
+LANE_ORDER = ("backlog", "ready", "implementing", "verify", "done")
 STAGES = frozenset(LANE_ORDER)
 
 # Entering one of these means claiming the card is workable, which is the claim an
-# unfinished dependency contradicts. `blocked` is deliberately *not* in the set: a
-# card is moved there precisely because something is in the way.
+# unfinished dependency contradicts.
+#
+# It used to say "`blocked` is deliberately *not* in the set: a card is moved there
+# precisely because something is in the way". That sentence is now carried by
+# `tasks.is_blocked`, which is checked separately — the set below is about lanes, and
+# there is no longer a lane that means "in the way".
 DEPENDENCY_GATED_STAGES = frozenset({"ready", "implementing", "verify", "done"})
 
 

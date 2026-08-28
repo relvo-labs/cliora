@@ -101,8 +101,15 @@ async def _fixture(session: AsyncSession) -> Project:
     )
     session.add(project)
     await session.flush()
+    # **The same 80/40/20/20/40 split, in the representation `0046` left behind.**
+    #
+    # The twenty that were `stage='blocked'` are now `ready` with `is_blocked=true` — which
+    # is exactly what `0045` did to real rows, and is why the card *count* and the
+    # proportions are untouched. That matters: this fixture is what `alpha.2`, `alpha.3`
+    # and `beta.1` measured against, and a fixture whose population changed would make
+    # those three phases' numbers incomparable. Only the encoding of "blocked" moved.
     stages = (
-        ["backlog"] * 80 + ["ready"] * 40 + ["implementing"] * 20 + ["blocked"] * 20 + ["done"] * 40
+        ["backlog"] * 80 + ["ready"] * 40 + ["implementing"] * 20 + ["ready"] * 20 + ["done"] * 40
     )
     for index in range(CARDS):
         session.add(
@@ -112,6 +119,9 @@ async def _fixture(session: AsyncSession) -> Project:
                 card_ref=f"DS-{index + 1}",
                 title=f"資料集卡片 {index + 1}",
                 stage=stages[index],
+                # Indices 140–159 are the former `blocked` twenty.
+                is_blocked=140 <= index < 160,
+                blocking_reason="unknown" if 140 <= index < 160 else None,
                 source="none",
                 delivery="none",
                 risk=("low", "medium", "high")[index % 3],

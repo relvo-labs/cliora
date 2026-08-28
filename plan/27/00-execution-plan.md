@@ -447,11 +447,11 @@ backend/pyproject.toml 的 dependencies     不新增任何套件
 |---|---|---|---|
 | contract | 1.13.0 | **1.13.0** | 沒有 wire 變更。`GATE-PX-CONTRACT-FROZEN` 沿用，換基線（[D131](./01-decisions-and-governance.md#d131)） |
 | `agentd` | 0.14.1 | **0.14.1** | **零 diff**。本期是 Central ＋ 前端 ＋ 資料 |
-| migration | 0043 | **0046** | 三個：`0044`（provider，additive、可逆）、`0045`（stage 資料，可逆）、**`0046`（收 CHECK，不可逆）** |
-| ADR | 0001–0042 | **＋0043、0044** | `0043` provider ingestion（`research/03/11` 已指派）；`0044` `/board` 的死亡與 `BoardCardDTO` 量測紀錄的歸檔 |
-| ADR 修訂 | — | **0040 修訂** | `HD-06` 的結果——還了或明確不還，兩者都要寫 |
+| migration | 0043 | **0046** ☑ | 三個都已實作並 roundtrip 過：`0044`（provider，additive、可逆）、`0045`（stage 資料，可逆，在 3800 張卡上驗過）、**`0046`（收 CHECK，不可逆）** |
+| ADR | 0001–0042 | **＋0043、0044** ☑ | 兩份都已 accepted。`0043` provider ingestion；`0044` `/board` 的死亡與 `BoardCardDTO` 量測紀錄的歸檔 |
+| ADR 修訂 | — | **0040 修訂** ☑ | **已還**。修訂在 ADR 0040 檔尾，含逐項的可逆性與 3800 張卡的演練結果 |
 | RBAC | 27 | **27** | 不新增動作（[D130](./01-decisions-and-governance.md#d130)） |
-| requirements | 201 | **≤208** | `FR-PROV-001`…（provider ingestion）＋ `NFR` 的 a11y 一條，`lifecycle: proposed` |
+| requirements | 201 | **205** ☑ | `FR-PROV-001`…`-004` 已註冊（30 個 family）。**並修訂 `FR-KNOW-011.AC-01`**——它寫著平台不連向程式庫代管服務，而 V2.4 起就在連了 |
 | API | — | **`/board` 刪除** | D118 ＋ [D126](./01-decisions-and-governance.md#d126)。OpenAPI diff 只少那一個路徑 |
 | machine code | — | **＋3** | `PROVIDER_SYNC_DISABLED`／`PROVIDER_RATE_LIMITED`／`PROVIDER_READ_FAILED`。**每一個都有 raise 點**——D97 的教訓 |
 | gate | 既有 ＋ CV 七 ＋ KN 八 ＋ PX 九 | **＋10 個 `GATE-HD-*`** | [`09`](./09-verification-and-exit.md) §2 |

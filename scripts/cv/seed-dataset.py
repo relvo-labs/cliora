@@ -61,13 +61,24 @@ WAITING_CARDS = 20
 FAILED_RUNS = 5
 # The six lanes by their real names (`process.LANE_ORDER`). **There is no `running`
 # stage** — a card being worked on is `implementing`, and a check constraint says so.
+# **The same 80/40/20/20/40 split, in the representation `0046` left behind** (`HD-06`).
+#
+# Twenty cards used to be `stage='blocked'`. That value is no longer in the stage's
+# domain, so they are `ready` with `is_blocked=true` — precisely what `0045` did to real
+# rows. `plan/27` D127 says this file is not to be edited because it is the baseline three
+# phases measured against; **the population is unchanged and that is why this edit is not
+# that**. The count, the proportions and the seed are identical; only how "blocked" is
+# written down has moved, which is the whole of what `HD-06` did.
 STAGES = (
     ["backlog"] * 80
     + ["ready"] * 40
     + ["implementing"] * 20
-    + ["blocked"] * 20
+    + ["ready"] * 20
     + ["done"] * 40
 )
+#: Indices of the twenty that were `blocked`. Kept as a range rather than inferred from
+#: `STAGES`, because after the change nothing in `STAGES` distinguishes them.
+BLOCKED_INDICES = range(140, 160)
 KINDS = ["comment", "comment", "comment", "question", "answer", "system", "proposal"]
 
 
@@ -119,6 +130,8 @@ async def main() -> int:
                 source="none",
                 delivery="none",
                 risk=rng.choice(["low", "medium", "high"]),
+                is_blocked=index in BLOCKED_INDICES,
+                blocking_reason="unknown" if index in BLOCKED_INDICES else None,
             )
             session.add(task)
             cards.append(task)

@@ -283,16 +283,26 @@ async def test_the_newest_run_and_the_newest_report_are_the_ones_that_count(
     assert derive_attention(row, None).signals == ()
 
 
-async def test_the_legacy_blocked_stage_projects_onto_ready_and_blocked(
-    session: AsyncSession,
-) -> None:
-    """Wave 0 has no `is_blocked` column, so the stage carries the whole answer (D102)."""
-    owner = await _owner(session)
-    project = await _project(session, owner)
-    await _card(session, project, "TK-1", stage="blocked")
-    rows, _ = await WorkRowReader(session).for_project(project)
-    row = _by_ref(rows, "TK-1")
-    assert (row.lifecycle, row.is_blocked, row.stage) == ("ready", True, "blocked")
+async def test_the_legacy_blocked_stage_projects_onto_ready_and_blocked() -> None:
+    """D102's rule, now exercised as a **function** rather than as a database row.
+
+    It used to insert a card with `stage='blocked'`. `0046` removed that value from the
+    domain, so the insert is refused — which is the migration working, not this test
+    breaking.
+
+    **The rule itself is still live and still needs a test.** A deployment that downgraded
+    past `0046` has `blocked` back in its CHECK, and the read model has to give the same
+    answer there; `project_is_blocked` keeps the branch for exactly that case. Testing it
+    through a row would mean testing which schema the fixture happens to be on, which is
+    not the question.
+    """
+    from app.services.work.projection import project_is_blocked, project_lifecycle
+
+    assert project_is_blocked("blocked", False) is True
+    assert project_is_blocked("blocked", None) is True
+    assert project_lifecycle("blocked") == "ready"
+    # And the second unconditional rule, which `HD-06` did **not** change.
+    assert project_is_blocked("done", True) is False
 
 
 # --- phase B, and the pairing --------------------------------------------------- #

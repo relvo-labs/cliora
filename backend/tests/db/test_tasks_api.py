@@ -209,14 +209,32 @@ async def test_a_blocked_card_cannot_enter_implementing_and_the_error_names_the_
         [blocker_a["card_ref"], blocker_b["card_ref"]]
     )
 
-    # `blocked` is deliberately reachable: moving a card there is how a person says it
-    # is blocked, and refusing that would be refusing the truth.
+    # **Saying "this is blocked" is still reachable — refusing it would be refusing the
+    # truth — but it is no longer a lane.** `0046` removed `blocked` from the stage's
+    # domain (`HD-06`), so a person marks the card instead of moving it, and the card keeps
+    # the position in the work it would otherwise have lost. That was ADR 0040 §1's whole
+    # complaint about the stage.
     resp = await client.patch(
         f"/api/tasks/{card['id']}",
-        json={"version": card["version"], "stage": "blocked"},
+        json={"version": card["version"], "is_blocked": True},
         headers=headers,
     )
     assert resp.status_code == 200, resp.text
+    # The value is asserted where it is read rather than here: `TaskDTO` deliberately does
+    # not carry `is_blocked` — the drawer gets it from the read model, which is the one
+    # place it is derived (`test_stage_sunset.py::test_is_blocked_is_now_the_whole_truth`).
+    # Widening this DTO to make one assertion shorter would put a second answer on the
+    # wire, which is the thing ADR 0040 spent a section avoiding.
+
+    # And the old spelling is refused **by the service**, not by the database: a `PATCH`
+    # naming a lane that no longer exists is an ordinary mistake and deserves the machine
+    # code with the list of legal lanes, not a constraint violation surfacing as a 500.
+    resp = await client.patch(
+        f"/api/tasks/{card['id']}",
+        json={"version": card["version"] + 1, "stage": "blocked"},
+        headers=headers,
+    )
+    assert resp.status_code == 422, resp.text
 
 
 async def test_finishing_the_blockers_unblocks_the_card(api: tuple, projects_enabled: None) -> None:

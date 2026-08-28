@@ -770,7 +770,20 @@ class Task(Base):
     """
 
     __tablename__ = "tasks"
-    __table_args__ = (UniqueConstraint("project_id", "card_ref"),)
+    __table_args__ = (
+        UniqueConstraint("project_id", "card_ref"),
+        # **The stage's value set, in the model at last.** It has been in the database
+        # since `0023` and absent from here ever since, so "which values may `stage`
+        # hold" was a question you answered by reading a migration. `0046` narrows it to
+        # five — `blocked` is `is_blocked` now — and `GATE-HD-STAGE-CHECK-IN-MODEL`
+        # asserts this line exists, because the failure mode of forgetting it is silence:
+        # the database and the ORM simply disagree, and `alembic revision --autogenerate`
+        # starts proposing a constraint that is already there.
+        CheckConstraint(
+            "stage IN ('backlog','ready','implementing','verify','done')",
+            name="stage",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     project_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"))
@@ -891,12 +904,17 @@ class Task(Base):
     rank: Mapped[str] = mapped_column(
         String(64), nullable=False, default="a", server_default=text("'a'")
     )
-    # The blocked face of ADR 0040 §1, and it is **not the whole truth about being
-    # blocked** until `beta.2`'s `HD-06`: `stage='blocked'` always projects onto
-    # blocked regardless of this column, because the platform's three legacy writers
-    # (`run_reaper.py` twice, `runs.py` once) still set the stage and not this.
-    # Anyone reading this column directly is wrong about the cards the reaper touched;
-    # `services/work/projection.py::project_is_blocked` is the reader.
+    # The blocked face of ADR 0040 §1, and **since `beta.2` it is the whole truth**.
+    #
+    # It was not, from `beta.1` until `HD-06`. This comment used to end: "anyone reading
+    # this column directly is wrong about the cards the reaper touched" — because three
+    # writers (`run_reaper.py` twice, `runs.py` once) set `stage='blocked'` and left this
+    # `false`. `0045` moved that data and gave each row a reason, `0046` removed the value
+    # from the stage's domain, and those three writers now set this column.
+    #
+    # `services/work/projection.py::project_is_blocked` is still the reader to prefer,
+    # because it also answers correctly on a deployment that downgraded past `0046`. But a
+    # direct read is no longer a defect, and that is what `HD-06` was for.
     is_blocked: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default=text("false")
     )
@@ -907,6 +925,19 @@ class Task(Base):
     # `services/work/projection.py` with a test.
     blocking_reason: Mapped[str | None] = mapped_column(String(32), nullable=True)
     blocking_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # **A transition column, and it is scheduled for removal after `rc`.**
+    #
+    # `0045` filled it once, for the rows it moved off `stage='blocked'`, and its only
+    # reader is that migration's `downgrade`: without it, going back would have to guess
+    # which cards had been on the stage — the same class of guess `0043` refused when it
+    # declined to infer a previous stage. A card blocked *after* `0045` has it `NULL`,
+    # which is what keeps the two populations distinguishable.
+    #
+    # It is in the release note's known limitations for the reason any transition column
+    # belongs there: one with no removal plan is one that stays.
+    legacy_blocked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_by: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

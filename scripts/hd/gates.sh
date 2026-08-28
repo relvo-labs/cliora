@@ -137,8 +137,19 @@ else
   pass "GATE-HD-NO-LEGACY-BLOCKED"
 fi
 
-if grep -q "ck_tasks_stage" backend/app/db/models.py 2>/dev/null; then
-  pass "GATE-HD-STAGE-CHECK-IN-MODEL"
+# **The declaration, not the rendered name.** The first version of this grepped for
+# `ck_tasks_stage` — the name PostgreSQL shows — and the model never contains it: the
+# metadata naming convention builds `ck_<table>_<name>` from `name="stage"`. A gate
+# looking for the output of a convention rather than its input reports "not yet done"
+# against a model that declares the constraint correctly, which is worse than no gate
+# because it is a red light nobody can turn green.
+if grep -qE "stage IN \('backlog'" backend/app/db/models.py 2>/dev/null; then
+  # And the value set matches `0046`: five, without `blocked`.
+  if grep -q "blocked" <(grep -E "stage IN \('backlog'" backend/app/db/models.py); then
+    fail "GATE-HD-STAGE-CHECK-IN-MODEL" "the model still admits stage='blocked'"
+  else
+    pass "GATE-HD-STAGE-CHECK-IN-MODEL"
+  fi
 else
   skip "GATE-HD-STAGE-CHECK-IN-MODEL" "HD-06 adds it; the constraint is in 0023 and not yet in the ORM"
 fi
