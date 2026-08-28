@@ -2,11 +2,20 @@
 
 > **狀態：`KN-00`…`KN-13` 全部實作完成（2026-08-22）。**
 > `make check` 全綠、`scripts/kn/gates.sh` 12 個 gate 全 PASS、五條旅程在真 daemon 上全過。
-> **出口條件 26／28**——缺 Railway 的 `pg_trgm` 驗證與 SR-2 的具名簽核，兩者都不是實作者能自己關的。
-> **未打 tag。** 實作紀錄與八處與計畫的差異在 [`11`](./11-implementation-status.md)。
+> **出口條件 27／28（2026-08-27 更新）**——**SR-2 已簽核**
+> （`docs/security-review-v2k1.md` §6，repository owner 的 release authorisation，
+> 沿用 SR-1 的形狀並明寫它不是一次獨立重做的審查）。
+> **仍缺 Railway 的 `pg_trgm` 驗證**：SR-2 的 item 8 是 `PARTIAL`，
+> 而簽名是在**知道這個缺口的情況下核准**，不是關閉它。
+> 那一項需要一次對真 Railway PostgreSQL 的量測，**不是一個簽名**，
+> 且 `docs/deployment-railway.md` 手動建 extension 的那一節**還不存在**。
+> 它由 [`plan/27`](../27/README.md) 的 `HD-00` 承接。
+> **仍未打 tag。** 實作紀錄與八處與計畫的差異在 [`11`](./11-implementation-status.md)。
 > [`00`](./00-execution-plan.md) §0 保留原文——其中三項是讀完程式碼才看得見的，
-> 而每一項的錯誤答案都會讓後面兩個波次白做。仍未裁決的只剩繼承自上游的 **★ D46**
-> （provider 同步落點），它只擋 `KN-13` 的 SR-2 範圍定義。
+> 而每一項的錯誤答案都會讓後面兩個波次白做。
+> **★ D46 已於 2026-08-25 由 [`plan/27`](../27/01-decisions-and-governance.md) 的 ★ D120 關閉**
+> （provider 同步落在 `beta.2`，形狀是 pull）。
+> **ADR 0038／0039 已於 2026-08-27 轉 accepted**，與 SR-2 同一次。
 > 上游規劃：[`research/03/03-phase-k1-project-knowledge.md`](../../research/03/03-phase-k1-project-knowledge.md)。
 > 前一期：[`plan/23`](../23/README.md)（C1 實作）＋ [`plan/24`](../24/README.md)（C1 封版，`v2.0.0-alpha.2` 已 tag）。
 > **合併規則不變**：`v2` → `dev` 一律由人決定，出口條件全綠只是取得提案資格。

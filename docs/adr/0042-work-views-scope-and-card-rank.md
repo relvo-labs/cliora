@@ -1,6 +1,12 @@
 # ADR 0042 — Saved views, who owns them, and the string that orders a board
 
-- Status: **proposed** (2026-08-23). Adopted as `plan/26`'s D50, D101, D103, D105, D112.
+- Status: **accepted** (2026-08-27) — with SR-3 and ADR 0040, recorded from the repository
+  owner's instruction of 2026-08-27. Adopted as `plan/26`'s D50, D101, D103, D105, D112 on
+  2026-08-23.
+- **Carried open by SR-3**: `RANK_NEIGHBOR_STALE`'s cross-project case is a 409 today and
+  **must become a 404** the day per-project membership lands, because a 409 confirms the
+  existence of a card in a project the caller cannot see
+  (`docs/security-review-v2p1.md` §3).
 - Date: 2026-08-23
 - Related: ADR 0028 §1 (the internalised process, whose lanes the default views are
   expressed in), ADR 0033 §5 (`process_overrides` is a JSONB column for the same reason

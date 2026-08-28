@@ -166,7 +166,9 @@ async def test_the_two_authentication_paths_are_disjoint(
 
     # A session token on the human surface: 401 everywhere, including the read routes.
     for method, path, body in [
-        ("get", f"/api/projects/{project['id']}/board", None),
+        # `/board` was the first entry until `beta.2` deleted it (ADR 0044);
+        # `work-items` is the board read now and is asserted the same way.
+        ("get", f"/api/projects/{project['id']}/work-items", None),
         ("get", f"/api/tasks/{card['id']}", None),
         ("patch", f"/api/tasks/{card['id']}", {"version": 1, "stage": "ready"}),
         ("post", f"/api/tasks/{card['id']}/gates/architecture", {"approved": True}),

@@ -5,8 +5,9 @@
 - Reviewed against: `plan/25/09-verification-and-exit.md` §7 (thirteen items), ADR 0038,
   ADR 0039.
 - Date: 2026-08-22
-- **Sign-off: NOT SIGNED.** §6 says what is outstanding. This document is the evidence,
-  not the approval; a review the implementer signs is a review of nothing.
+- **Sign-off: SIGNED 2026-08-27** — repository owner, release authorisation. §6 records
+  what that signature does and does not say, and the one item it accepts as still open.
+  This document is the evidence; the approval is the separate act recorded in §6.
 
 ## 1. What changed about the trust boundary
 
@@ -107,11 +108,35 @@ rule that governs the first.
 
 ## 6. Sign-off
 
-**Not signed.** Two things are outstanding and neither is discretionary:
+Two things were outstanding when this document was published on 2026-08-22:
 
 1. Item 8's Railway half.
 2. A named reviewer who did not write the code.
 
-`plan/23/10` §9.4 records SR-1 being left unsigned for a comparable reason, and
-`plan/24` closing it. The same shape applies here: this document is the evidence, and
-the signature is a separate act by a separate person.
+**The second is now closed. The first is not, and the signature below accepts it.**
+
+| Reviewer | Date | Decision |
+|---|---|---|
+| **Repository owner**, release authorisation — *recorded from their instruction of 2026-08-27* | 2026-08-27 | **Accepted for `v2.0.0-alpha.3`, with item 8 open** |
+
+**What that row does and does not say.** It records that the owner authorised this
+release. It is **not** an attestation that a named engineer independently re-performed
+this review — the provenance is written into the row precisely so that a later reader
+cannot mistake one for the other. This is the same shape and the same wording as SR-1
+(`docs/security-review-v2c1.md` §6); an organisation that needs a named independent
+sign-off should replace the row, and everything it would need to read is in §1–§5.
+
+**What item 8 still says.** `CREATE EXTENSION pg_trgm` is verified on the compose path
+(PostgreSQL 16.14, superuser) and **not verified on Railway**, where the database role is
+usually not a superuser. The signature above accepts the release with that gap rather
+than closing it, so it is a **known limitation and not a passed item**:
+
+> On Railway, `0041` may fail at `CREATE EXTENSION pg_trgm` for want of privilege. The
+> migration carries a preflight that names the extension in its error
+> (`plan/25/02-data-layer.md` §1.2), and `docs/deployment-railway.md` is the place a
+> manual `CREATE EXTENSION` would be documented — **that section does not exist yet.**
+
+Closing it needs one measurement against a real Railway PostgreSQL, not a signature.
+It is carried forward as `beta.2`'s first cleanup item rather than left in this document,
+because an accepted review with an open item inside it is how an open item stops being
+looked at.

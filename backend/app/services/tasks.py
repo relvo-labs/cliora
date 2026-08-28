@@ -20,7 +20,6 @@ is a source of truth that lies (research/02/03, the risk table's last row).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -31,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.errors import ApiError
 from app.clock import now_utc
 from app.db.models import Epic, Project, Requirement, Task, TaskRun, UserStory
-from app.repositories.tasks import BoardCard, TaskRepository
+from app.repositories.tasks import TaskRepository
 from app.services import audit as audit_actions
 from app.services.activity import (
     EPIC_CREATED,
@@ -252,11 +251,6 @@ class TaskService:
 
     async def process(self, project: Project | None = None) -> EffectiveProcess:
         return await self._process.effective(project=project)
-
-    async def board(
-        self, project_id: uuid.UUID, *, is_online: Callable[[uuid.UUID], bool]
-    ) -> list[BoardCard]:
-        return await self._repo.board_cards(project_id, is_online=is_online)
 
     async def roadmap(
         self, project_id: uuid.UUID

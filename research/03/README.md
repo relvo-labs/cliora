@@ -76,34 +76,45 @@ knowledge 的開關是 **per-project 的 ingestion 設定**而不是部署旗標
 
 | 項目 | 現況 |
 |---|---|
-| `v2` HEAD | `3e503de`（2026-08-23）。規劃時是 `f91d9c4`，ahead 60／behind 6 |
+| `v2` HEAD | ~~`3e503de`（2026-08-23）~~ → **`5854325`**（2026-08-28 由 `plan/27` 的 `HD-00` 回寫）。相對 `master` **ahead 91／behind 0**。規劃時是 `f91d9c4`，ahead 60／behind 6 |
 | contract | **1.13.0**（`contracts/CHANGELOG.md`） |
 | `agentd` | **0.14.1**（`daemon/VERSION`）。規劃時是 0.12.0；`alpha.2`／`alpha.3` 各升過一次 |
-| migration head | **0042**`_knowledge_tables`。規劃時是 0039 |
+| migration head | ~~**0042**`_knowledge_tables`~~ → **0043**`_work_views_and_rank`（`plan/26` 的 `PX-22` 加的，而這一列在同一期內就過期了——見表後那一段）。規劃時是 0039。**`beta.2` 會到 `0046`** |
 | RBAC 動作 | **27 個**（`len(ALL_ACTIONS)`；「24」是文件的舊錯，程式一直是 27——`plan/23/10` §9.4），run token scope 只有 `project.view` ＋ `task.update` |
-| ADR | 到 **0039** ＋ **0041**（缺號 0025；`alpha.3` 用掉 `0038`／`0039`，`0041` 已 accepted）。**空號只剩 `0040` 與 `0042`**，`plan/26` 的 `PX-21` 用掉這兩個，之後從 **0044** 起（`0043` 已指派給 `beta.2` 的 provider ingestion） |
-| 執行計畫目錄 | `plan/01`–`plan/25` |
-| `traceability/requirements.json` | **189 條**，**28** 個 ID family（`FR-CONV` 十條於 `alpha.2`、`FR-KNOW` 十一條於 `alpha.3` 註冊，皆 `lifecycle: proposed`） |
-| `frontend/src/theme/tokens.css` | **72 個 custom property**（`alpha.3` 之後 62，`plan/26` 的 `PX-17` 加 10），已含 `--stage-*`／`--run-*`／`--risk-*`／`--attention-*`／`--work-*` |
+| ADR | 到 **0044**（缺號 0025）。~~空號只剩 0040 與 0042~~——`plan/26` 用掉了，`beta.2` 用掉 `0043`（provider ingestion）與 `0044`（`/board` 日落）。**`0044` 之下沒有可用空號**。**九份 `proposed` 已於 2026-08-27 全部轉 `accepted`**（0029／0031 的 amendment、0032／0033／0034、0038／0039、0040／0042）；ADR 0040 另記一筆待補的修訂 |
+| 執行計畫目錄 | ~~`plan/01`–`plan/25`~~ → **`plan/01`–`plan/27`**（`plan/26` = P1、`plan/27` = E1） |
+| `traceability/requirements.json` | ~~**189 條**，**28** 個 family~~ → **201 條**，**29** 個 family（`plan/26` 註冊了 `FR-WORK` 十二條）。同樣在同一期內過期。**`beta.2` 會到 ≤208**（`FR-PROV` ＋ 一條 a11y NFR） |
+| `frontend/src/theme/tokens.css` | **72 個 custom property**（`alpha.3` 之後 62，`plan/26` 的 `PX-17` 加 10），已含 `--stage-*`／`--run-*`／`--risk-*`／`--attention-*`／`--work-*`。**數法要對**：`^\s+--[a-z0-9-]+\s*:` 的宣告形式；一個較鬆的 grep 會數到 73，因為 `--attention-failed` 的 `var()` 換行讓 `--status-error` 自成一列 |
 | `plan/19`（前端修復期） | **已實作**（`plan/19/09-implementation-status.md`），README 的「尚未開工」是過期字串 |
-| Board 排序 | `updated_at DESC`——**`tasks` 沒有 rank／position 欄位** |
+| Board 排序 | ~~`updated_at DESC`；`tasks` 沒有 rank~~ → `plan/26` 的 `0043` 加了 `tasks.rank`（lexicographic）＋ `is_blocked`／`blocking_reason`／`blocking_message`／`legacy_stage` 與四個索引 |
 | `task_messages` | 有 `kind ∈ {message,question,answer,event}`，**沒有 seq、沒有 reply_to、沒有 idempotency key** |
 | `cliora task messages` | 以 **timestamp** 分頁（`--since`），不是單調序號 |
 | `cliora task ask` | **不等待**；一個 run 同時只能有一個未答問題（ADR 0034 §4）；24 小時無人答 → 卡片進 blocked |
 | runner poll | 預設 **5 秒**（`DefaultRunnerPollInterval`） |
-| 前端資料層 | **沒有 query cache 套件**；`useAsyncResource` ＋ Pinia store 手寫 |
+| 前端資料層 | **仍然沒有 query cache 套件**；`plan/26` 的 D100 自製了 `modules/work/queryCache.ts`，`useAsyncResource` 一行未動 |
 | PostgreSQL | `postgres:16-alpine`，**沒有 pgvector** |
-| Central 對外連線 | 只有 `httpx`，只有 `services/providers.py` 一個模組（SCOPE-013） |
+| Central 對外連線 | 只有 `httpx`，只有 `services/providers.py` 一個模組。~~（SCOPE-013）~~ **這個引用是錯的**：SCOPE-013 的實際文字是「不由平台自建對外反向代理；埠轉發以第三方整合交付」。單模組那件事是 `GATE-KN-NO-NEW-EGRESS (httpx)`——**一個 gate，不是一條需求**。`beta.2` 的 D119 把它變成明列的兩個模組 |
+
+> **這張表在同一期之內就會過期，而那不是疏忽。**
+> `plan/26` 的 `PX-00` 在該期**開工時**回寫了它——那時 migration head 真的是 0042、
+> requirements 真的是 189 條。然後同一期的 `PX-22` 加了 `0043`、`PX-21` 加了十二條需求，
+> 而沒有任何東西回頭改這張表。於是一份標著「已回寫」的基準表，
+> 在它被標記為正確的那一天就開始變錯。
+>
+> **`plan/27` 的處置**：每一列除了現況，也寫**本期預計到哪裡**
+> （migration `0046`、requirements ≤208）。一個寫了目標值的欄位，
+> 讀者至少看得出它是不是還沒到；一個只寫現況的欄位，過期與正確長得一樣。
+> 封版時由 `HD-12` 再核對一次——**回寫是封版的動作，不是開工的動作**。
 
 > 本目錄只做規劃，不含程式碼變更。執行計畫在 `plan/` 下逐里程碑建立，沿用 `plan/22/` 的文件結構：
 >
-> | 里程碑 | 執行計畫 | 狀態（2026-08-23） |
+> | 里程碑 | 執行計畫 | 狀態（**2026-08-28** 更新） |
 > |---|---|---|
 > | C1 實作 | [`plan/23/`](../../plan/23/README.md) | **已實作**（`CV-00`…`CV-13`），剩下的兩項由 `plan/24` 關閉 |
 > | **C1 封版** | [`plan/24/`](../../plan/24/README.md) | **已完成**（`CE-01`…`CE-19`），封版條件 28／28，兩個 annotated tag 已建立（留在本機） |
-> | **K1** | [`plan/25/`](../../plan/25/README.md) | **已實作**（`KN-00`…`KN-13`），出口條件 **26／28**，`v2.0.0-alpha.3` **未 tag**（缺 Railway `pg_trgm` 驗證與 SR-2 簽核） |
-> | **P1** | [`plan/26/`](../../plan/26/README.md) | **已建立**（2026-08-23），A 類八項裁決完成，波次 0 已實作 |
-> | E1 | `plan/27/` | 未建立 |
+> | **K1** | [`plan/25/`](../../plan/25/README.md) | **已實作**（`KN-00`…`KN-13`），出口條件 ~~26／28~~ → **27／28**（SR-2 於 2026-08-27 簽核），`v2.0.0-alpha.3` **仍未 tag**——只缺 Railway 的 `pg_trgm` 驗證，**而那是一次量測不是一個簽名** |
+> | **P1** | [`plan/26/`](../../plan/26/README.md) | ~~已建立，波次 0 已實作~~ → **已實作**（`PX-00`…`PX-66`），出口條件 **40／40**（SR-3 與 PR #45 於 2026-08-27 簽核），`v2.0.0-beta.1` **未 tag** |
+> | **E1** | [`plan/27/`](../../plan/27/README.md) | ~~未建立~~ → **已建立**（2026-08-25），A 類九項裁決完成；波次 0 實作中 |
 >
 > **K1 之後各順移一號**：`alpha.2` 的封版工作佔用了原先留給 K1 的 `plan/24/`，
 > 因為它在時間上接在 `plan/23/` 之後，而一個依時間排序的目錄比一個依里程碑預留的空號好讀。

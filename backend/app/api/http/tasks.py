@@ -31,9 +31,6 @@ from app.api.http.deps import (
 )
 from app.api.http.schemas import (
     AddDependencyRequest,
-    BoardCardDTO,
-    BoardDTO,
-    BoardLaneDTO,
     CreateEpicRequest,
     CreateTaskRequest,
     CreateUserStoryRequest,
@@ -301,68 +298,6 @@ async def set_process_overrides(
     dto = _process_dto(await service.effective(project=project), overrides=stored)
     await session.commit()
     return dto
-
-
-@router.get(
-    "/projects/{project_id}/board",
-    response_model=BoardDTO,
-    # **Deprecated in V2-P1** (D118). `work-items` replaces it and the last consumer went
-    # with `ProjectDetailView.vue`. Kept for one version rather than removed with the view:
-    # after D117 there is no version flag, so `/board` and the full task page are the only
-    # degradation paths left if the new board turns out to be wrong. `beta.2` deletes it.
-    deprecated=True,
-)
-async def read_board(
-    project_id: uuid.UUID,
-    _: User = Depends(require_action(PROJECT_VIEW)),
-    session: AsyncSession = Depends(get_session),
-    settings: Settings = Depends(get_settings),
-    registry: NodeConnectionRegistry = Depends(get_registry),
-) -> BoardDTO:
-    """Every card in the project, grouped by lane. One response, no paging.
-
-    M1 (`plan/17/10-…md` §1): the summary shape is 74 KB at 200 cards and 180 KB at
-    500, while the full card is 439 KB and over a megabyte. Moving acceptance criteria
-    and gate detail out of the card bought what paging would have, without a cursor,
-    a scroll loader or an e2e for either.
-    """
-    await _project(session, settings, project_id)
-    service = _tasks(session)
-    process = await service.process()
-    cards = await service.board(project_id, is_online=registry.is_connected)
-    grouped: dict[str, list[BoardCardDTO]] = {lane["stage"]: [] for lane in process.lanes}
-    for card in cards:
-        grouped.setdefault(card.task.stage, []).append(
-            BoardCardDTO(
-                id=card.task.id,
-                card_ref=card.task.card_ref,
-                title=card.task.title,
-                stage=card.task.stage,
-                risk=card.task.risk,
-                priority=card.task.priority,
-                owner_user_id=card.task.owner_user_id,
-                owner_name=card.owner_name,
-                delivery=card.task.delivery,
-                blocking_count=card.blocking_count,
-                gates_approved_count=card.gates_approved_count,
-                active_run_status=card.active_run_status,
-                active_run_runner_name=card.active_run_runner_name,
-                waiting_reason=card.waiting_reason,
-                version=card.task.version,
-                updated_at=card.task.updated_at,
-            )
-        )
-    lanes = [
-        BoardLaneDTO(
-            stage=lane["stage"],
-            label=lane.get("label", lane["stage"]),
-            wip_suggested=lane.get("wip_suggested"),
-            count=len(grouped.get(lane["stage"], [])),
-            cards=grouped.get(lane["stage"], []),
-        )
-        for lane in process.lanes
-    ]
-    return BoardDTO(lanes=lanes)
 
 
 @router.get("/projects/{project_id}/roadmap", response_model=RoadmapDTO)
@@ -702,8 +637,9 @@ async def rank_task(
     `AGENT_FORBIDDEN_FIELDS` because an agent that can reorder the queue has made
     first-in-first-out advisory.
 
-    `task.update`, the same action a drag already needed. `read_board` and `BoardCardDTO`
-    are untouched (D48).
+    `task.update`, the same action a drag already needed. ~~`read_board` and
+    `BoardCardDTO` are untouched (D48)~~ — both were **deleted** in `beta.2` (ADR 0044);
+    `work-items` is the only board read now.
     """
     service = _tasks(session)
     task = await service.require_task(task_id)

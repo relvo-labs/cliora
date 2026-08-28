@@ -1028,49 +1028,13 @@ class ProcessDTO(BaseModel):
     overrides: dict[str, Any] = Field(default_factory=dict)
 
 
-class BoardCardDTO(BaseModel):
-    """One card as the board renders it.
-
-    **Deliberately without `acceptance_criteria` and without gate detail.** M1
-    measured the full shape at 439 KB for 200 cards and over a megabyte at 500, while
-    this shape is 74 KB and 180 KB (`plan/17/10-…md` §1). That measurement is what
-    replaced pagination, so `test_the_board_card_stays_a_summary` pins it: the day
-    someone adds one of those fields back "just for convenience", the board silently
-    becomes the thing the measurement ruled out.
-    """
-
-    id: uuid.UUID
-    card_ref: str
-    title: str
-    stage: str
-    risk: str
-    priority: str
-    owner_user_id: uuid.UUID | None
-    owner_name: str | None
-    delivery: str
-    blocking_count: int
-    gates_approved_count: int
-    active_run_status: str | None = None
-    active_run_runner_name: str | None = None
-    waiting_reason: str | None = None
-    version: int
-    updated_at: datetime
-
-
-class BoardLaneDTO(BaseModel):
-    stage: str
-    label: str
-    wip_suggested: int | None
-    count: int
-    cards: list[BoardCardDTO]
-
-
-class BoardDTO(BaseModel):
-    lanes: list[BoardLaneDTO]
-    # Always false in V2.1. Present from the first release anyway: a field added later
-    # forces every existing client to handle its absence, while one that is always
-    # there makes a future move to paging a server-side change only.
-    has_more: bool = False
+# `BoardCardDTO`, `BoardLaneDTO` and `BoardDTO` were **deleted in `beta.2`** with the
+# `/board` endpoint they served (ADR 0044, D126). `WorkItemCardDTO` replaced them.
+#
+# The measurement their docstring carried — 439 KB full vs 74 KB summary at 200 cards,
+# 89,251/90,000 after `plan/19` — is **in ADR 0044 §2**, because three live decisions
+# (`plan/26` D48, `plan/26` D94, `plan/27` D126) were argued from it and a number that
+# load-bearing must not live only in a deleted file.
 
 
 class TaskDependencyDTO(BaseModel):

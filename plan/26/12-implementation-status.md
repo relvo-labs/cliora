@@ -8,7 +8,7 @@
 > 資料庫套組、traceability、兩份已發佈目錄、四項量測、回滾演練與**六條旅程**——
 > **全綠**（`artifacts/px/local/evidence.log`）。
 >
-> **四十項出口條件：三十八項達成，剩下的兩項都是人的動作**
+> **四十項出口條件：全部達成（2026-08-27）。** 最後兩項是人的動作，兩者都已完成
 > ——34（`v2` → `dev` 核准）與 38（SR-3 具名簽名）。
 > **J1 過了**（32／32），它是不可降級的那一條，也是本期宣稱的目的本身。
 > **`views/ProjectDetailView.vue`（1,515 行）已刪除**，它的 14 支測試移植到
@@ -829,7 +829,8 @@ baseline 與資料庫名稱而失敗，於是本期會因為別人的過期 fixt
 ## 6. 出口條件
 
 四十項可打勾的格子（[`10`](./10-verification-and-exit.md) §11，含 22–31 那一格十項）。
-目前 **34／40 達成、3 項需要人的動作、3 項需要真的 daemon**。
+目前 **40／40 達成**（2026-08-27）。先前的字串是「34／40 達成、3 項需要人的動作、
+3 項需要真的 daemon」——三條旅程於 2026-08-24 補上，最後兩項於 2026-08-27 簽核。
 
 | ☑/☐ | # | 條件 | 證據 |
 |---|---:|---|---|
@@ -857,11 +858,11 @@ baseline 與資料庫名稱而失敗，於是本期會因為別人的過期 fixt
 | ☑ | 22–31 | `alpha.2`／`alpha.3` 的十項 | 交叉引用（本期未改動它們守的東西） |
 | ☑ | 32 | `BoardCardDTO` 與 `/board` 未變且未變大 | `GATE-PX-BOARD-UNCHANGED` ＋ bytes 釘死測試 |
 | ☑ | 33 | `agentd` 0.14.1 行為不變、daemon diff 為零 | diff 為零由 `GATE-PX-NO-DAEMON-DIFF` 斷言（含 `VERSION` 未變）；**完整 run 生命週期已跑**——J1 用 0.14.1 的節點走完派工 → 認領 → 對話 → 交付 → 驗證 → 完成 |
-| ☐ | 34 | `v2` → 上游由人工核准 | **提案已送出，核准仍待人**：`v2` 已 push（`bf9633c`），PR [#45](https://github.com/Lei-k/cliora/pull/45) → `staging` 已開。**未合併、未打 tag。** 條件全綠只是取得提案資格，合併是一個獨立的人的決定 |
+| ☑ | 34 | `v2` → 上游由人工核准 | **已核准（2026-08-27）**：PR [#45](https://github.com/Lei-k/cliora/pull/45) → `staging`。`v2` 已 push（`bf9633c`）。**tag 仍未建立**——那是核准之後的另一個動作 |
 | ☑ | 35 | attention 在三處對同一張卡一致 | `test_attention_consistency.py` 逐卡比對三個端點 |
 | ☑ | 36 | 相位 B 與 `resolve_waiting_reason` 一致 | 同上，四種形狀各一 |
 | ☑ | 37 | 未新增對外連線、未新增推播通道 | `GATE-KN-NO-NEW-EGRESS` 形狀的 httpx 檢查 ＋ 無 WS 票券新增 |
-| ☐ | 38 | **SR-3 具名簽核** | **人的動作。** `docs/security-review-v2p1.md` 證據齊備、簽名欄空著 |
+| ☑ | 38 | **SR-3 具名簽核** | **已簽核（2026-08-27）**，`docs/security-review-v2p1.md` §6 **兩列都填**。第二列簽的是 §3 那句證不出來的話本身。形狀沿用 SR-1 的 owner-authorisation，並在旁邊明寫它不是一次獨立重做的審查 |
 | ☑ | 39 | `/board` 已標 deprecated 且 `ProjectDetailView.vue` 已刪除 | OpenAPI `deprecated: true`；檔案已刪，14 支測試移植 |
 | ☑ | 40 | 每個波次都留下可看的產出 | `artifacts/px/local/w0`、`w3`、`w4`、`w5`、`w6`、`journeys` |
 
@@ -870,6 +871,20 @@ baseline 與資料庫名稱而失敗，於是本期會因為別人的過期 fixt
 **#34 與 #38 是人的動作**，而且刻意留白。第 38 項的簽名要簽的不只是八列表格，
 還有 [`11`](./11-open-measurements.md) §1 那一句「有 membership 時 counts 不洩漏存在性」
 ——那一句本期證不出來，而簽名的人要知道自己在簽它。
+
+> **☑ 兩項都於 2026-08-27 關閉。** #34：PR [#45](https://github.com/Lei-k/cliora/pull/45) 已核准。
+> #38：SR-3 已簽核，**而且是兩列分別簽**——第二列的文字就是那句證不出來的話本身，
+> 逐字寫進 `docs/security-review-v2p1.md` §6。
+> **簽名的形狀值得記下來**：它沿用 SR-1 的 owner-authorisation 形狀，
+> 也就是說**簽的人是指導這份工作的同一個人**，而那一列旁邊明寫著
+> 「this is not an independent re-performance」與「must not be an author of V2-P1
+> 是一個 repository owner 不滿足的條件」。
+>
+> 三次 prerelease 現在都由同一個人核准。**那是一個合法的動作，而它被記成一個**
+> ——記法本身就是唯一的保護：如果那一列只寫「已簽核」，
+> 下一個讀者會把它讀成有人獨立驗證過。
+> `beta.2` 的 SR-4 必須把 §3 那句話再寫一次（`plan/27/09` §5），
+> 因為 `project_members` 表在 `beta.2` 仍然不存在。
 
 **#15 補上了，而它本來不該被記成「缺一張截圖」。**
 旗標是 import 期讀的，所以它在一個跑著的 Central 裡切不掉——

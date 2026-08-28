@@ -3,8 +3,8 @@
 Grouped by the property being defended, the same way `test_projects_api.py` is,
 because most of these exist to stop one specific regression:
 
-* the board response stays a **summary** — the shape M1 chose instead of paging, and
-  the one someone will later widen "just for convenience" (`plan/17/10-…md` §1);
+* ~~the board response stays a **summary**~~ — that one left with `/board` in `beta.2`
+  (ADR 0044); `test_work_items_size.py` guards the shape that replaced it;
 * exactly one rule refuses, and its message **names the blocking cards**;
 * two writers cannot both land, and the loser is told the current version;
 * a review gate records a person, and a disabled gate says why it is disabled;
@@ -119,7 +119,8 @@ async def test_every_task_route_is_404_while_the_flag_is_off(
     _, headers = await _actor(client, sessionmaker, "Admin")
     project_id = uuid.uuid4()
     for method, path in [
-        ("get", f"/api/projects/{project_id}/board"),
+        # `/board` was here until `beta.2` deleted it (ADR 0044). `work-items` covers the
+        # same ground and carries its own flag-off assertion in `test_work_api.py`.
         ("get", f"/api/projects/{project_id}/roadmap"),
         ("get", f"/api/projects/{project_id}/process"),
         ("get", f"/api/tasks/{uuid.uuid4()}"),
@@ -133,45 +134,14 @@ async def test_every_task_route_is_404_while_the_flag_is_off(
 
 
 # --- the board's shape ----------------------------------------------------- #
-
-
-async def test_the_board_card_stays_a_summary(api: tuple, projects_enabled: None) -> None:
-    client, sessionmaker = api
-    """M1's decision, pinned.
-
-    The measurement (`plan/17/10-…md` §1) is what replaced paging: 74 KB for 200
-    summary cards against 439 KB for the full ones. Adding acceptance criteria or gate
-    detail back to a board card would silently undo it, and nothing else in the suite
-    would notice — the response would simply get bigger.
-    """
-    _, headers = await _actor(client, sessionmaker, "Admin")
-    project = await _project(client, headers)
-    await _card(
-        client,
-        headers,
-        project["id"],
-        acceptance_criteria=[{"id": "AC-01", "text": "something", "result": None}],
-    )
-    resp = await client.get(f"/api/projects/{project['id']}/board", headers=headers)
-    assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert [lane["stage"] for lane in body["lanes"]] == [
-        "backlog",
-        "blocked",
-        "ready",
-        "implementing",
-        "verify",
-        "done",
-    ]
-    assert body["has_more"] is False
-    card = body["lanes"][0]["cards"][0]
-    assert "acceptance_criteria" not in card
-    assert "gates" not in card
-    assert card["gates_approved_count"] == 0
-    assert card["blocking_count"] == 0
-    assert card["active_run_status"] is None
-    assert card["active_run_runner_name"] is None
-    assert card["waiting_reason"] is None
+#
+# `test_the_board_card_stays_a_summary` lived here and was **deleted in `beta.2`** with
+# the endpoint it exercised (ADR 0044). It pinned M1's decision — 74 KB for 200 summary
+# cards against 439 KB for full ones, which is what replaced paging.
+#
+# **That measurement is not lost**: ADR 0044 §2 records it, because `plan/26` D48,
+# `plan/26` D94 and `plan/27` D126 were each argued from it. The equivalent pin on the
+# shape that replaced it is `test_work_items_size.py`.
 
 
 async def test_the_roadmap_keeps_both_unclassified_buckets(
@@ -475,8 +445,11 @@ async def test_a_viewer_may_read_the_board_and_write_nothing(
     card = await _card(client, admin, project["id"])
     _, viewer = await _actor(client, sessionmaker, "Viewer")
 
+    # The read half was `/board` until `beta.2` deleted it (ADR 0044). `work-items` is
+    # the board read now and carries the same action, so the property this test names —
+    # a Viewer sees the board and writes nothing — is unchanged; only the URL moved.
     assert (
-        await client.get(f"/api/projects/{project['id']}/board", headers=viewer)
+        await client.get(f"/api/projects/{project['id']}/work-items", headers=viewer)
     ).status_code == 200
     for method, path, body in [
         ("post", f"/api/projects/{project['id']}/tasks", {"title": "x"}),

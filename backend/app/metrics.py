@@ -85,6 +85,15 @@ KNOWLEDGE_JOBS_TOTAL = "knowledge_jobs_total"
 KNOWLEDGE_JOB_DURATION = "knowledge_job_duration_seconds"
 KNOWLEDGE_INGEST_LAG_SECONDS = "knowledge_ingest_lag_seconds"
 
+# `LEGACY_ROUTE_HIT_TOTAL` was planned here for the `?tab=` sunset (`plan/27` D126) and
+# **deliberately not added**. The redirect runs in vue-router, and the SPA is served by
+# nginx (`deploy/nginx/nginx.conf`, `location /`) — the FastAPI app never sees the query
+# string, so nothing here could increment it.
+#
+# A metric with no writer is the same defect as a machine code with no raise point
+# (`plan/26` D97): it reads as instrumentation and measures nothing. The `?tab=` deletion
+# condition was rewritten instead — see ADR 0044 §4.
+
 # --- tech §18.1: the control-plane series (P4-09) ---
 # Relay generalized from the P3 filesystem-only pair: every Central→daemon request
 # is timed and counted by message type, so a slow or unanswered `session.start` is as

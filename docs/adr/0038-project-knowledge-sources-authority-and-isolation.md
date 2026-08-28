@@ -1,9 +1,12 @@
 # ADR 0038 — Project knowledge: where it comes from, how much it is trusted, and why it cannot leak
 
-- Status: **proposed** (2026-08-22). `plan/25`'s five A-class decisions (D77–D81) were
-  adopted the same day; this document is their written form. Until it is accepted,
-  treat §6 as the retention policy of record for knowledge — ADR 0041 answers the same
-  question for messages and deliberately does not answer it here.
+- Status: **accepted** (2026-08-27) — with SR-2, recorded from the repository owner's
+  instruction of 2026-08-27. `plan/25`'s five A-class decisions (D77–D81) were adopted on
+  2026-08-22 and this document is their written form. §6 is the retention policy of record
+  for knowledge — ADR 0041 answers the same question for messages and deliberately does
+  not answer it here.
+- **Carried open by SR-2**: `CREATE EXTENSION pg_trgm` is unverified on Railway
+  (`docs/security-review-v2k1.md` §6). Accepting this ADR did not close that.
 - Date: 2026-08-22
 - Amends: ADR 0030 (**amendment B** — the log / artifact / message distinction gains a
   fourth member: a *knowledge source*, which is a derived copy with the lifetime of the

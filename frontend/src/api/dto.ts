@@ -979,36 +979,10 @@ export type TaskStage =
   | "verify"
   | "done";
 
-/** A card as the *board* renders it. Deliberately without acceptance criteria and
- *  without gate detail: M1 measured the full card at 439 KB for 200 cards against
- *  74 KB for this shape, and that measurement is what replaced pagination
- *  (`plan/17/10-…md` §1). Widening this type is how that decision gets undone. */
-export interface BoardCard {
-  id: string;
-  card_ref: string;
-  title: string;
-  stage: TaskStage;
-  risk: string;
-  priority: string;
-  owner_user_id: string | null;
-  owner_name: string | null;
-  delivery: string;
-  blocking_count: number;
-  gates_approved_count: number;
-  active_run_status: RunStatus | null;
-  active_run_runner_name: string | null;
-  waiting_reason: string | null;
-  version: number;
-  updated_at: string;
-}
-
-export interface BoardLane {
-  stage: TaskStage;
-  label: string;
-  wip_suggested: number | null;
-  count: number;
-  cards: BoardCard[];
-}
+/* `BoardCard`, `BoardLane` and `Board` were **deleted in `beta.2`** with the `/board`
+ * endpoint they typed (ADR 0044). `WorkItemCard` below is the shape that replaced them.
+ * The measurement their comment carried — 439 KB full vs 74 KB summary at 200 cards —
+ * is in ADR 0044 §2, because three live decisions were argued from it. */
 
 /** One card as the V2-P1 read model sends it (`FR-WORK-001`, ADR 0040).
  *
@@ -1118,13 +1092,6 @@ export interface WorkView {
   is_default: boolean;
   position: number;
   version: number;
-}
-
-export interface Board {
-  lanes: BoardLane[];
-  /** Always false in V2.1, and present anyway: a field added later would force
-   *  every existing client to handle its absence. */
-  has_more: boolean;
 }
 
 export interface ProcessGate {

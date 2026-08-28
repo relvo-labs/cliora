@@ -1,9 +1,14 @@
 """The read model's HTTP surface: work items, counts, and saved views (PX-25, PX-26).
 
-Also still the home of the **wave-0 side-car**, `GET /projects/{id}/board-attention`,
-which is temporary and whose removal is `PX-25`'s job — it stays until the existing board
-is replaced, because deleting it earlier would take the attention badges off the only
-board there is.
+**This paragraph used to describe a route that is not here.** It said this module was
+"still the home of the wave-0 side-car, `GET /projects/{id}/board-attention`" — and
+`PX-25` had already removed it, leaving a docstring that sent the next reader looking for
+a route the `@router.get` list does not contain. Corrected in `beta.2` (`HD-13`).
+
+Worth keeping the sentence rather than deleting it silently: a docstring that describes
+something absent does not fail any test, and it costs more than a blank one, because a
+blank one gets filled in and a wrong one gets believed. Since `beta.1` the V1 board went
+too (ADR 0044), so this module is the *only* board read there is.
 
 Two rules govern everything here, and both are about the same failure:
 

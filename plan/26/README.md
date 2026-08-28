@@ -5,8 +5,15 @@
 > 一次跑完的證據在 [`artifacts/px/local/evidence.log`](../../artifacts/px/local/README.md)。
 > **J1／J4／J15 已對真的 daemon 跑過**（J1 32／32、J4 13／13、J15 8／8），
 > 其中 J1 是不可降級的那一條，也是本期目的的證明。
-> **四十項出口條件三十八項達成，剩下的兩項都是人的動作**
-> ——`v2` → `dev` 的人工核准、SR-3 的具名簽名。逐項在 [`12`](./12-implementation-status.md) §6。
+> **四十項出口條件全部達成（2026-08-27 更新）。**
+> 最後兩項是人的動作，兩者都已完成：**SR-3 已簽核**
+> （`docs/security-review-v2p1.md` §6，**兩列都簽**——第二列簽的是 §3 那句
+> 「有 membership 時 counts 不洩漏存在性」**在這個部署上證不出來**，
+> 而 V2-P1 仍然出貨）；**PR [#45](https://github.com/Lei-k/cliora/pull/45) 已核准**。
+> **ADR 0040／0042 已於同一次轉 accepted**；ADR 0040 另記下一筆**待補的修訂**
+> ——stage 投影是過渡，由 `beta.2` 的 `HD-06` 還或明確不還。
+> **`v2.0.0-beta.1` tag 尚未建立**，那是一個獨立的動作。
+> 逐項在 [`12`](./12-implementation-status.md) §6。
 >
 > **更正（2026-08-24）**：這一段先前寫「需要 Go 工具鏈」，那是錯的。
 > Go 1.26.5 就在 `/usr/local/go/bin`，`scripts/e2e/run-stack.sh` 第 106 行本來就會把它加進 `PATH`。
@@ -14,7 +21,8 @@
 > **讓一件做得到的事看起來做不到**——這是這份文件裡最值得記住的一次錯誤。
 > **波次 1 起是在三項前置條件未關閉的情況下、經人工裁決開工的**（[`12`](./12-implementation-status.md) §2.7）。
 > 上游規劃：[`research/03/04`](../../research/03/04-phase-p1-view-and-read-model.md)–[`07`](../../research/03/07-phase-p4-my-work-and-overview.md)。
-> 前一期：[`plan/25`](../25/README.md)（K1 實作完成，出口條件 26／28，**尚未打 `v2.0.0-alpha.3` tag**）。
+> 前一期：[`plan/25`](../25/README.md)（K1 實作完成，出口條件 **27／28**（2026-08-27，SR-2 已簽核），
+> **仍未打 `v2.0.0-alpha.3` tag**——缺的一項是 Railway 的 `pg_trgm` 驗證）。
 > A 類八項的全文在 [`00`](./00-execution-plan.md) §0.1，每一項都寫了「不同意的話會怎樣」——
 > **裁決之後那一段仍然保留**，它是日後想推翻某一項的人唯一的參考。裁決單在 [`12`](./12-implementation-status.md) §1。
 > **合併規則不變**：`v2` → `dev` 一律由人決定，出口條件全綠只是取得提案資格。
@@ -125,7 +133,7 @@ Ticket 前綴 `PX-`。
 | 項目 | 現況 | 讀哪裡 |
 |---|---|---|
 | `v2` HEAD | `3e503de`（`Merge pull request #44 from Lei-k/v2`） | `git rev-parse HEAD` |
-| tag | `v2.0.0-alpha.1`、`v2.0.0-alpha.2` 已建立；**`alpha.3` 未建立**（`plan/25` 出口 26／28） | `git tag` |
+| tag | `v2.0.0-alpha.1`、`v2.0.0-alpha.2` 已建立；**`alpha.3` 未建立**（`plan/25` 出口 **27／28**，2026-08-27 更新）；**`beta.1` 未建立**（出口 40／40 全綠，tag 是另一個動作） | `git tag` |
 | contract | **1.13.0**；`run.offer.context` 上限 32768 bytes | `contracts/CHANGELOG.md`、`daemon/internal/protocol/codec.go:962` |
 | `agentd` | **0.14.1** | `daemon/VERSION` |
 | migration head | **0042**`_knowledge_tables` | `backend/app/db/migrations/versions/` |

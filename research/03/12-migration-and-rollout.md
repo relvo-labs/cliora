@@ -28,10 +28,17 @@ Conversation 與 Knowledge **沒有部署旗標**（[D52](./01-architecture-deci
 | `0041` | `pg_trgm` ＋ `projects.knowledge_*` | ⚠️ **extension 的 drop 需要沒有依賴物件**；downgrade 順序是先 `0042` 再 `0041` |
 | `0042` | knowledge 六張表 | ✅ |
 | `0043` | `work_views` ＋ `tasks` 五欄 ＋ 索引 | ✅ |
-| `0044`／`0045` | provider sync（`beta.2`） | 待 ADR 0043 |
+| `0044` | provider：兩個 source type 進兩張 CHECK ＋ `projects.provider_sync_enabled` ＋ `project_repositories` 三欄（`beta.2`，ADR 0043） | ✅ |
+| `0045` | stage 資料改寫 ＋ `tasks.legacy_blocked_at`（`beta.2`，`HD-06`） | ✅ **完全可逆**——那一欄就是為了讓 downgrade 說得出「這張卡曾經是 stage-blocked」 |
+| `0046` | `ck_tasks_stage` 收成五值（`beta.2`，`HD-06`） | ❌ **值域可還原，資料不可**。V2 系列第一個不可逆的 migration |
 
 **每一個 migration 都要有一次演練**：在 `alpha.1` 的資料快照上跑 upgrade → 驗證 → downgrade → 驗證。
 `HD-08` 是這件事的 ticket。
+
+> **2026-08-28 更新（`plan/27` 的 `HD-00`）**：上游把 `0044`／`0045` 都寫成
+> 「provider sync，待 ADR 0043」。實際落點是三個 revision 而不是兩個，
+> 而第三個（`0046`）**不可逆**——上游沒有預料到這一點，因為它把 `HD-06` 寫成一段五個步驟。
+> 拆分的理由與「退回去失去什麼」在 [`plan/27/03`](../../plan/27/03-stage-final-migration.md) §3。
 
 ## 3. Stage 相容投影與最終遷移
 
@@ -102,6 +109,11 @@ Report 是一個 CSV／JSON 檔案 ＋ 一個 UI 清單，內容：card_ref、ti
 | `/projects/:id/runs/:runId` | 不變 | 保留 |
 | `/dashboard` | `/` → Home | 保留 `/dashboard` 為別名 |
 
+> **☑ 六列全部已於 `beta.1` 實作**（`plan/26` 的 `PX-64`，`router/index.ts:106` 一處）。
+> `beta.2` 的 `HD-07` 因此不是實作而是**日落**：`/board` 整組刪除；
+> `?tab=` 保留到 `rc.1` 並**以宣告而非量測**決定移除
+> ——SPA 由 nginx 送，FastAPI 看不到 `?tab=`，計數式做不出來（ADR 0044 §4）。
+
 **browser back 必須依序：關閉 Drawer → 還原 view → 才離開 Project。**
 這一條有 E2E 測試，因為它是「Drawer 用 `router.replace` 還是 `push`」
 這個看似細節的選擇的可觀察後果。
@@ -113,7 +125,7 @@ Report 是一個 CSV／JSON 檔案 ＋ 一個 UI 清單，內容：card_ref、ti
 | 新 schema additive | 除 `pg_trgm` 外全部可 drop |
 | 舊 UI 保留至少一個 release window | `beta.1` 與 `beta.2` 都保留 |
 | PX flag 關閉後不讀 view tables | 程式碼層面的 guard ＋ 測試 |
-| 新增資料不破壞舊 Task API | `BoardCardDTO` OpenAPI diff 為空 |
+| 新增資料不破壞舊 Task API | ~~`BoardCardDTO` OpenAPI diff 為空~~ → **`/board` 已於 `beta.2` 刪除**（ADR 0044）。改由 `GATE-HD-OPENAPI-DIFF` 斷言 diff **恰好**是那一條路徑 |
 | **rollback 不刪除使用者 saved views** | 表保留，只是不被讀取 |
 | **rollback 不刪除 conversation** | `alpha.2` 的資料是產品資料，降版後仍在 |
 | knowledge 可整組停用 | `knowledge_enabled=false`，資料保留待人決定 |
@@ -125,21 +137,31 @@ Report 是一個 CSV／JSON 檔案 ＋ 一個 UI 清單，內容：card_ref、ti
 
 | ID | 工作 | 來源 |
 |---|---|---|
-| `HD-01` | **ADR 0043** ＋ provider webhook 入口（signature、delivery 去重、非同步 enqueue） | PX-K11 |
-| `HD-02` | PR／MR ingestion 與 authority transition（merge 後升 `canonical`） | PX-K11 |
+| `HD-01` | **ADR 0043** ＋ ~~provider webhook 入口~~ → **`services/provider_reads.py`（只 GET）＋ migration `0044` ＋ 掛進既有 reconciler**。★ D120 裁決只做 pull | PX-K11 |
+| `HD-02` | PR／MR ingestion 與 authority transition（~~merge 後升 `canonical`~~ → **升 `reviewed`**；`canonical` 永不可從 provider 資料產生，D122） | PX-K11 |
 | `HD-03` | Release ingestion ＋ provider reconciliation 排程 | PX-K11 |
 | `HD-04` | Accessibility audit（WCAG 2.2 AA） | PX-57 |
-| `HD-05` | 視覺回歸套組擴充（沿用 `plan/19` baseline 機制，只補新畫面） | PX-55 ＋ PX-20 |
-| `HD-06` | **Stage 最終遷移**（拆掉 D49 的過渡） | PX-54 |
-| `HD-07` | 舊路由 redirect 與 `?tab=` 相容 | PX-53 |
+| `HD-05` | 視覺回歸套組~~擴充（沿用 `plan/19` baseline 機制，只補新畫面）~~ → **建立**：那個 baseline 機制**不存在**（`toHaveScreenshot` 在 `frontend/` 全樹為零），`plan/19` 的是一疊人工截圖 | PX-55 ＋ PX-20 |
+| `HD-06` | **Stage 最終遷移**（拆掉 D49 的過渡）。**拆成 `0045`／`0046`，第二個不可逆**，且有 go／no-go | PX-54 |
+| `HD-07` | ~~舊路由 redirect 與 `?tab=` 相容~~ → **日落**：`plan/26` 的 `PX-64` 已經實作了 redirect。本期刪 `/board` 整組 | PX-53 |
 | `HD-08` | Migration rehearsal（upgrade／downgrade／restore，兩條部署路徑） | PX-59 |
 | `HD-09` | Rollback drill ＋ 效能／負載測試 | PX-58 ＋ PX-59 |
 | `HD-10` | 大 Project 的 indexing、retention、queue、cost 與 observability | 新增 |
-| `HD-11` | E2E 十六條旅程的完整回歸 | PX-56 |
-| `HD-12` | Release note、known limitations、compatibility manifest、人工合併提案 | PX-60 |
+| ~~`HD-11`~~ | ~~E2E 十六條旅程的完整回歸~~ → **併入 `HD-12`**；旅程與 release 產物是同一批證據 | PX-56 |
+| `HD-12` | Release note、known limitations、compatibility manifest、人工合併提案 **＋ 十八條旅程** | PX-60 |
+| **`HD-00`** | **新增**：文件校正與基準線 ＋ 承接 `alpha.3` 的 Railway `pg_trgm` 量測 | — |
+| **`HD-13`** | **新增**：死碼與過期敘述 | — |
+| **`HD-14`** | **新增**：SR-4、十個 `GATE-HD-*`、負面測試。上游只有一行「SR-4 通過」，沒有 ticket | — |
+| **`HD-15`** | **新增**：Drawer 的 Related delivery ＋ provider 設定頁。**上游十二張沒有一張是畫面** | — |
 
-`HD-09` 是**選配的通知路徑**（若 D44 改為採納）的落點；
+~~`HD-09` 是選配的通知路徑（若 D44 改為採納）的落點；~~
 維持不動 contract 時，`HD-09` 只做 rollback drill 與效能測試。
+
+> **2026-08-28 更新（`plan/27` 的 `HD-00`）**：十二張 → **十六張**
+> （12 保留 ＋ 1 併入 ＋ 4 新增，見 [`plan/27/00`](../../plan/27/00-execution-plan.md) §2）。
+> 五處措辭已按實際實作更正，**原文保留並劃掉**——
+> 上游寫的是構想，而其中三處（webhook、`canonical`、`plan/19` 的 baseline）
+> 在對到程式碼之後**不成立**。
 
 ## 7. 每個 prerelease 的發布流程
 

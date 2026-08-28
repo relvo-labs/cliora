@@ -82,7 +82,7 @@ V1 pixel-stability 工作，並列為 `PX-2` 一整個 phase（`PX-14`–`PX-20`
   改 migration（`CREATE EXTENSION`）、改 Railway 的資料庫方案，並且**沒有 downgrade 路徑**
   ——一個裝了 extension 的資料庫回不去 stock image。
 - embedding 要嘛呼叫外部 API，要嘛在本機跑模型。前者讓 Central 多一條對外連線：
-  目前 `backend/pyproject.toml` 只有 `httpx` 一個對外用的套件，`SCOPE-013` 明文限定它
+  目前 `backend/pyproject.toml` 只有 `httpx` 一個對外用的套件。~~`SCOPE-013` 明文限定它~~
   「只從一個模組（`services/providers.py`）可達」。多一個 embedding provider 等於多一個
   金鑰、多一個 egress 目的地、多一份把 Project 內容送出去的資料流——**而 Project 內容
   正是這個系統最敏感的東西**。後者則多一個 GPU／記憶體需求與模型版本治理問題。
@@ -239,7 +239,11 @@ CAS 條件是單一列**：`UPDATE task_questions SET state='answered' WHERE id=
 
 ---
 
-## 3. 仍需你裁決（原四項，**現只剩 D46**）
+## 3. ~~仍需你裁決（原四項，**現只剩 D46**）~~ → **四項全部已裁決**
+
+> **☑ D46 於 2026-08-25 由 `plan/27` 的 ★ D120 一併關閉**：
+> provider 同步落在 `beta.2`，**形狀是 pull 而不是 webhook**。
+> 這一節至此清空，而每一項的原文都保留在下面——那是被放棄的選項的紀錄。
 
 每一項都沒有安全的預設值。**未裁決前，相關 ticket 不開工。**
 
@@ -257,7 +261,7 @@ CAS 條件是單一列**：`UPDATE task_questions SET state='answered' WHERE id=
 1. `KN-02` 的 migration **不含 `CREATE EXTENSION vector`**，只有 `pg_trgm`。
    於是 `alpha.3` 唯一一個非純 additive 的資料庫變更變成一行 contrib extension，
    而它在 compose 與 Railway 兩條路徑都要驗（`KN-02` 的出口條件）。
-2. `SCOPE-013`（Central 對外連線只有 `services/providers.py` 一個模組）
+2. ~~`SCOPE-013`~~ **`GATE-KN-NO-NEW-EGRESS (httpx)`**（Central 對外連線只有 `services/providers.py` 一個模組）——**引用錯了三處，2026-08-28 由 `plan/27` 的 `HD-00` 更正**：SCOPE-013 的實際文字是「不由平台自建對外反向代理；埠轉發以第三方整合交付」，與模組數無關。單模組是一個 **gate**，而 gate 可以被一個決定改寫（`beta.2` 的 D119 就把它改成明列的兩個）；一條需求不行。把 gate 當需求引用，會讓一個本來可以討論的限制看起來不能討論
    **在 `alpha.3` 維持不變**，SR-2 的「Central 未新增對外連線」那一項成為可過的條件。
 3. [`10`](./10-verification-and-exit.md) §10 第 1 項（「沒有向量檢索的召回率損失」）
    從「D40 裁決後量」改為 **`KN-12` 的 relevance eval 建立基準值**——
@@ -282,11 +286,12 @@ embedding provider 的 egress 目的地、金鑰治理、成本模型、
 | **不同意的話** | contract 升 1.14.0、新增兩個訊息型別、`runner.register.features` 加宣告、`agentd` 升 0.13.0，並且**所有未升級節點必須驗證「收到未知型別不會壞」**——而 1.13.0 的 changelog 已經記錄過一次「未升級節點靜默丟棄 offer」的缺陷 |
 | **注意** | 這一項與 §1.2 是同一個決定的兩面。裁決 D44 = 裁決 §1.2 |
 
-### ★ D46 — provider（PR／MR／Release）同步落在哪一版
+### ☑ ★ D46 — provider（PR／MR／Release）同步落在哪一版（**2026-08-25 已裁決**）
 
 | | |
 |---|---|
-| **建議** | `beta.2`。理由是它是本輪唯一新增對外副作用的工作 |
+| **裁決** | **`beta.2`，且只做 pull**（`plan/27` 的 ★ D120）。理由是它是本輪唯一新增對外副作用的工作，而 pull 連那個副作用都只剩唯讀 GET |
+| **建議**（原文） | `beta.2`。理由是它是本輪唯一新增對外副作用的工作 |
 | **不同意的話** | `alpha.3` 的安全審查範圍要涵蓋 inbound webhook、signature 驗證、delivery 去重、provider token 保存與輪替，時程約多兩個工作波次 |
 
 ### ☑ D51 — conversation 與 knowledge 的保留、匯出與刪除政策（**2026-08-22 已裁決**）

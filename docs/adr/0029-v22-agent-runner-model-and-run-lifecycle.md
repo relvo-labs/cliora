@@ -249,7 +249,9 @@ action. The platform issues no `git push` of its own in this phase, at all.
 
 # Amendment (V2.3, 2026-08-13) — tag dispatch, and the fifth eligibility condition
 
-- Status: **proposed**, waiting on the same gate two as ADR 0032.
+- Status: **accepted** (2026-08-27) — gate two closed by the repository owner, recorded
+  from their instruction of 2026-08-27, together with ADR 0031's amendment and
+  ADR 0032/0033/0034.
 - Scope: this amendment adds the tag half of pairing. The claim model, the lease,
   the three timers and "a run is not a session" are unchanged above.
 - Requirements: `FR-RUNENV-008`

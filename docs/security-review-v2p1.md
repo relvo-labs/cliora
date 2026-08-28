@@ -6,8 +6,9 @@
 - Reviewed against: `plan/26/10-verification-and-exit.md` §2 (eight items), ADR 0040,
   ADR 0042.
 - Date: 2026-08-23
-- **Sign-off: NOT SIGNED.** §6 says what is outstanding. This document is the evidence,
-  not the approval; a review the implementer signs is a review of nothing.
+- **Sign-off: SIGNED 2026-08-27** — repository owner, release authorisation, **both rows**
+  (§6). The second row signs §3's unproved sentence, which is a separate act from
+  accepting the eight rows in §2. This document is the evidence; the approval is §6.
 
 ## 1. What changed about the trust boundary
 
@@ -143,7 +144,7 @@ reviewer reading §5 needs to know what that sentence cost.
 
 ## 6. Sign-off
 
-**Not signed.** Two things are outstanding and neither is discretionary:
+Two things were outstanding when this document was published on 2026-08-23:
 
 1. **A named reviewer who did not write this code.** Everything they would read is in §1–§5
    and in `artifacts/px/local/evidence.log`.
@@ -151,14 +152,35 @@ reviewer reading §5 needs to know what that sentence cost.
    because it is a separate act: rows 1–8 of §2 say "we checked this"; that sentence says
    "we know this is not checkable here, and we are shipping anyway".
 
-`plan/23/10` §9.4 records SR-1 being left unsigned for a comparable reason, and `plan/24`
-closing it. `plan/25` §8.1 records the same for SR-2, still open. The shape applies again:
-this document is the evidence, and the signature is a separate act by a separate person.
+**Both are now recorded below.** The second row is filled in deliberately as its own row
+rather than folded into the first, because the two say different things.
 
 | Role | Name | Date | Signature |
 |---|---|---|---|
-| Reviewer — must not be an author of V2-P1 | | | |
-| Accepting §3's unproved sentence | | | |
+| Reviewer — must not be an author of V2-P1 | **Repository owner**, release authorisation — *recorded from their instruction of 2026-08-27*. **See the note below: this is not an independent re-performance** | 2026-08-27 | Accepted for `v2.0.0-beta.1` |
+| Accepting §3's unproved sentence | **Repository owner** — *same instruction* | 2026-08-27 | Accepted: *"with per-project membership, counts do not leak the existence of a card in a project the caller cannot see"* is **not proved on this deployment**, and V2-P1 ships anyway |
+
+**What the first row does and does not say.** It records that the owner authorised this
+release. It is **not** an attestation that a named engineer independently re-performed
+this review, and the role label above it says "must not be an author of V2-P1" — a
+condition the repository owner does not meet. The provenance is written into the row
+precisely so that a later reader cannot mistake one for the other. This is the same shape
+and the same wording as SR-1 (`docs/security-review-v2c1.md` §6) and SR-2
+(`docs/security-review-v2k1.md` §6). An organisation that needs a named independent
+sign-off should replace the row; everything it would need to read is in §1–§5 and
+reproducible with `scripts/px/evidence.sh`.
+
+**Why the second row is not redundant.** Three prereleases have now been authorised by
+the same person who directed the work. That is a legitimate act and it is recorded as
+one — but it means the *only* protection against the unproved sentence in §3 being
+forgotten is that it is written on its own line, with its own date, in its own words.
+`plan/26/11` §1 carries it as an open measurement, and **SR-4 must repeat it**
+(`plan/27/09-verification-and-exit.md` §5) because the condition it describes will still
+be unprovable in `beta.2`: there is still no `project_members` table.
+
+**One consequence for whoever adds membership**, restated here so it is not only in §3:
+`RANK_NEIGHBOR_STALE`'s cross-project case is a **409** today and **must become a 404**
+the day membership lands.
 
 ### If the reviewer wants to re-derive rather than read
 

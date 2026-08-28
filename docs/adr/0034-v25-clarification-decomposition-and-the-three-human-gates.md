@@ -1,9 +1,8 @@
 # ADR 0034 — Two kinds of run that produce no code, the fields an agent may write, and the three gates that only a person passes
 
-- Status: **proposed** (2026-08-14) — waiting on gate two, which is a person's
-  approval. Until it is accepted, `RQ-02` onward may not touch `backend/`,
-  `frontend/` or `daemon/` (`plan/22/00-…md` §3). A document that marks itself
-  accepted would make that gate meaningless.
+- Status: **accepted** (2026-08-27) — gate two closed by the repository owner, recorded
+  from their instruction of 2026-08-27. Same note as ADR 0032: the code this gate guarded
+  shipped before the gate was closed.
 - Date: 2026-08-14
 - Amends: ADR 0028 (**amendment A**, the card's kind), ADR 0029 (**amendment D**,
   two run purposes that never modify a repository).

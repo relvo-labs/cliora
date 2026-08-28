@@ -4,7 +4,11 @@
 > 目前狀態（2026-08-22）：**`KN-00`…`KN-13` 全部實作完成，五個波次走完。**
 > `make check` **全綠**（exit 0）；`scripts/kn/gates.sh` **12 個 gate 全 PASS**；
 > 五條旅程 **J11–J15 全 PASS**，在真的 daemon 上跑出來的。
-> 尚未簽核、尚未打 tag——出口條件 **26／28**，缺的兩項在 §8。
+> **更新（2026-08-27）：SR-2 已簽核，出口條件 27／28。**
+> 先前這裡寫「尚未簽核、尚未打 tag——出口條件 **26／28**」。
+> **仍缺一項且仍未打 tag**：Railway 的 `pg_trgm` 驗證（SR-2 的 item 8 是 `PARTIAL`，
+> 而簽名**接受了**這個缺口而不是關閉它）。那一項需要一次對真 Railway PostgreSQL 的量測，
+> 由 [`plan/27`](../27/README.md) 的 `HD-00` 承接。§8 有逐項。
 
 ## 0. 要回寫上游的六處
 
@@ -253,7 +257,7 @@ unit backend 1919 ＋ frontend 699、contract 192、build、traceability、railw
 倍率沒有門檻是刻意的：沒有人知道合理值是多少，
 而**一個第一次紅就被調高的門檻，是形式而不是標準**。
 
-## 7. 出口條件（26／28）
+## 7. 出口條件（**27／28**，2026-08-27 更新；原 26／28）
 
 | ☑ | # | 條件 | 證據 |
 |---|---:|---|---|
@@ -282,22 +286,25 @@ unit backend 1919 ＋ frontend 699、contract 192、build、traceability、railw
 | ☑ | 23 | Related knowledge 顯示的與 Agent 讀到的同一份 | 同一個 `KnowledgeSearch`，同一個 `task_id` |
 | ☑ | 24 | 從未同步 repo 的 project 看得出來 | `repo_never_synced` ＋ 前端測試 |
 | ☑ | 25 | relevance 基準已記錄 | `artifacts/kn/local/measurements.json` |
-| ☐ | 26 | **SR-2 已簽核** | 文件齊備、**未簽核** |
+| ☑ | 26 | **SR-2 已簽核** | **2026-08-27**，`docs/security-review-v2k1.md` §6。repository owner 的 release authorisation，沿用 SR-1 的形狀並明寫它不是一次獨立重做的審查。**簽核時 item 8 仍是 `PARTIAL`，而簽名接受了它** |
 | ☑ | 27 | 九項 release 產物齊備 | `docs/release-note-project-memory.md` |
 | ☑ | 28 | `make check` 全綠 | exit 0 |
 
 ## 8. 未完成
 
-### 8.1 兩項出口條件未達成——**都不是可以自己解決的**
+### 8.1 一項出口條件未達成（原兩項，2026-08-27 關掉一項）
 
-| # | 缺什麼 | 為什麼不能自己補 |
-|---:|---|---|
-| 17 | `CREATE EXTENSION pg_trgm` 在 **Railway** 未驗 | 需要一個 Railway 專案與它的資料庫憑證。compose 那半已驗（PostgreSQL 16.14，migration 角色是 superuser） |
-| 26 | **SR-2 未簽核** | 簽核要具名，而且**必須是沒有寫這段程式的人**。`docs/security-review-v2k1.md` 十三列逐項有證據，十二列通過、一列（第 17 項的另一半）待補。實作者簽自己的審查，等於沒有審查 |
+| ☑/☐ | # | 缺什麼 | 現況 |
+|---|---:|---|---|
+| ☐ | 17 | `CREATE EXTENSION pg_trgm` 在 **Railway** 未驗 | **仍未驗。** 需要一個 Railway 專案與它的資料庫憑證。compose 那半已驗（PostgreSQL 16.14，migration 角色是 superuser）。由 [`plan/27`](../27/README.md) 的 `HD-00` 承接，**並列在 `beta.2` 的 known limitations 第 0 條** |
+| ☑ | 26 | ~~**SR-2 未簽核**~~ → **已簽核** | **2026-08-27。** 原本寫著「簽核要具名，而且必須是沒有寫這段程式的人；實作者簽自己的審查，等於沒有審查」——那句話仍然對，而實際發生的是**沿用 SR-1 的 owner-authorisation 形狀**：由 repository owner 核准，並在那一列旁明寫它**不是**一次獨立重做的審查 |
 
-`plan/23/10` §9.4 記過同一件事（SR-1 未簽核），`plan/24` 才關掉。形狀一樣。
+`plan/23/10` §9.4 記過同一件事（SR-1 未簽核），`plan/24` 才關掉。形狀一樣——
+**而三次都以同一種方式關掉，那本身是一件要知道的事**（`plan/26/12` §6 有一段）。
 
-**在這兩項關閉之前不建立 `v2.0.0-alpha.3` tag。**
+**`v2.0.0-alpha.3` tag 仍未建立**，因為第 17 項還開著。
+它現在是**一次量測而不是一個簽名**——這是關掉一項之後最重要的變化：
+擋著 tag 的東西從「等一個人」變成「一個下午的工作」。
 
 ### 8.2 一項先前就存在的失敗，已修，並記在這裡
 

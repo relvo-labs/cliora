@@ -341,11 +341,22 @@ async def test_no_eligible_agent_is_a_different_reason(api: tuple, projects_enab
 async def test_board_projects_the_active_run_without_an_n_plus_one(
     api: tuple, projects_enabled: None
 ) -> None:
-    """The board adds three scalars in four grouped repository queries, never per card."""
+    """The board adds three scalars in a bounded number of grouped queries, never per card.
+
+    **Ported from `/board` to `work-items` in `beta.2`** (ADR 0044). The invariant belongs
+    to the read model rather than to the endpoint that used to expose it: `WorkRowReader`
+    documents the same four-query budget `board_cards()` did, and it is now the only path
+    that projects an active run onto a card.
+
+    The budget is asserted as an *upper bound that does not grow with the board*, not as
+    an exact number — `for_project` also runs the three lateral projections its own
+    docstring is honest about.
+    """
     from app.api.http import agents as agents_api
     from app.api.http import tasks as tasks_api
     from app.main import app
-    from app.repositories.tasks import TaskRepository
+    from app.services.work.attention import ASSIGNED_RUNNER_OFFLINE, derive_attention
+    from app.services.work.rows import WorkRowReader
 
     client, maker = api
     owner, headers = await _actor(client, maker)
@@ -364,17 +375,18 @@ async def test_board_projects_the_active_run_without_an_n_plus_one(
         )
         assert dispatched.status_code == 202, dispatched.text
 
-        response = await client.get(f"/api/projects/{project}/board", headers=headers)
+        response = await client.get(f"/api/projects/{project}/work-items", headers=headers)
         assert response.status_code == 200, response.text
         card = next(
             item
-            for lane in response.json()["lanes"]
-            for item in lane["cards"]
+            for group in response.json()["groups"]
+            for item in group["items"]
             if item["id"] == str(task)
         )
-        assert card["active_run_status"] == "queued"
+        # `active_run_status` on the old card is `execution_status` here — the read
+        # model's name for `task_runs.status` verbatim (ADR 0040 §1.C).
+        assert card["execution_status"] == "queued"
         assert card["active_run_runner_name"]
-        assert card["waiting_reason"] == "assigned_offline"
 
         async with maker() as session:
             queries = 0
@@ -383,18 +395,26 @@ async def test_board_projects_the_active_run_without_an_n_plus_one(
                 nonlocal queries
                 queries += 1
 
+            project_row = await session.get(Project, project)
             engine = session.get_bind()
             sa.event.listen(engine, "before_cursor_execute", count_query)
             try:
-                cards = await TaskRepository(session).board_cards(
-                    project, is_online=registry.is_connected
+                rows, runtime = await WorkRowReader(session).for_project(
+                    project_row, is_online=registry.is_connected
                 )
             finally:
                 sa.event.remove(engine, "before_cursor_execute", count_query)
 
-        projected = next(item for item in cards if item.task.id == task)
-        assert projected.waiting_reason == "assigned_offline"
-        assert queries <= 4
+        projected = next(row for row in rows if row.task_id == task)
+        assert projected.active_run is not None
+        assert projected.active_run.status == "queued"
+        # `/board`'s `waiting_reason == "assigned_offline"` is this, in the read model's
+        # vocabulary: the same fact, phase B, named the way ADR 0040 names it.
+        assert runtime is not None
+        assert derive_attention(projected, runtime).primary == ASSIGNED_RUNNER_OFFLINE
+        # **The number that matters is that it does not grow with the board.** One card
+        # here; `scripts/px/measure-attention.py` is what holds it at 200.
+        assert queries <= 8
     finally:
         app.dependency_overrides.pop(agents_api.get_registry, None)
         app.dependency_overrides.pop(tasks_api.get_registry, None)

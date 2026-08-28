@@ -1,6 +1,8 @@
 # ADR 0039 — What an agent is told, what it is merely shown, and why the two travel differently
 
-- Status: **proposed** (2026-08-22). Adopted alongside ADR 0038 as `plan/25`'s D78.
+- Status: **accepted** (2026-08-27) — with SR-2 and ADR 0038, recorded from the repository
+  owner's instruction of 2026-08-27. Adopted alongside ADR 0038 as `plan/25`'s D78 on
+  2026-08-22.
 - Date: 2026-08-22
 - Amends: ADR 0028 (**amendment B** — the context pack gains a second half that is
   fetched rather than delivered), ADR 0035 (**amendment A** — §4 there established that

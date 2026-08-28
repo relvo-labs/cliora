@@ -85,23 +85,13 @@ fi
 
 # --- GATE-PX-BOARD-UNCHANGED -------------------------------------------------
 #
-# Two halves, and the second is the one that catches the real regression: the shape is
-# guarded by the OpenAPI snapshot, and the **bytes** by a pinned test. The read model
-# shares `active_runs()` and `blocking_counts()` with the V1 board, so a column added for
-# a new card widens the old one while the OpenAPI diff stays empty.
-if git diff --quiet HEAD -- backend/app/api/http/tasks.py 2>/dev/null; then
-  : # nothing to say; the test below is the real assertion
-fi
-if grep -q "class BoardCardDTO" backend/app/api/http/schemas.py \
-  && [ "$(uv run --project backend python - <<'PY'
-from app.api.http.schemas import BoardCardDTO
-print(len(BoardCardDTO.model_fields))
-PY
-)" = "16" ]; then
-  pass "GATE-PX-BOARD-UNCHANGED (16 fields)"
-else
-  fail "GATE-PX-BOARD-UNCHANGED (16 fields)" "BoardCardDTO's field count moved"
-fi
+# **Deleted in `beta.2`** (ADR 0044, `plan/27` D126). It asserted that `BoardCardDTO`
+# still had exactly 16 fields; `BoardCardDTO` no longer exists, and a gate guarding a
+# deleted type passes for the wrong reason.
+#
+# The property it protected — a card that renders a board stays a summary — is now
+# enforced on the shape that replaced it, by `backend/tests/db/test_work_items_size.py`.
+# `GATE-HD-BOARD-GONE` in `scripts/hd/gates.sh` asserts the deletion itself stayed done.
 
 # --- GATE-PX-TOUCH-LIST ------------------------------------------------------
 #

@@ -1,6 +1,13 @@
 # ADR 0040 — Four state faces, and the two attention levels that are not in the database
 
-- Status: **proposed** (2026-08-23). Adopted as `plan/26`'s D92, D102 and D107.
+- Status: **accepted** (2026-08-27) — with SR-3, recorded from the repository owner's
+  instruction of 2026-08-27. Adopted as `plan/26`'s D92, D102 and D107 on 2026-08-23.
+- **An amendment is owed and does not exist yet.** §1's stage projection is a stated
+  transition, not an end state: `stage='blocked'` still projects onto blocked regardless
+  of `tasks.is_blocked`, because three writers set the stage and not the column. `beta.2`'s
+  `HD-06` either repays that or records that it will not — and **either outcome must appear
+  here as an amendment** (`plan/27/01-…md` D123 and D139). Its absence is `beta.2` exit
+  condition 3, so that "nobody mentioned it again" cannot become the answer.
 - Date: 2026-08-23
 - Amends: ADR 0028 (**amendment C** — §1 there made `tasks.stage` the board's single
   axis; this keeps the column and stops it carrying four questions at once).

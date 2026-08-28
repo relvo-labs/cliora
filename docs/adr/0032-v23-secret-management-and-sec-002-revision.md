@@ -1,9 +1,11 @@
 # ADR 0032 — Project secrets: envelope encryption, delivery at the claim, and the one sentence of SEC-002 that is withdrawn
 
-- Status: **proposed** (2026-08-13) — waiting on gate two, which is a person's
-  approval. Until it is accepted, `SC-03` onward may not touch `backend/`,
-  `frontend/`, `daemon/` or `contracts/` (`plan/20/00-…md` §4). A document that
-  marks itself accepted would make that gate meaningless.
+- Status: **accepted** (2026-08-27) — gate two closed by the repository owner, recorded
+  from their instruction of 2026-08-27. **The gate this paragraph described was passed
+  after the code it guarded had already shipped**: V2.3 was implemented, released and
+  built upon while this document still said `SC-03` onward may not touch `backend/`.
+  That is recorded rather than tidied away — a gate noticed fourteen days late is a gate
+  nobody was watching, and the next ADR that writes itself one should know this happened.
 - Date: 2026-08-13
 - Amends: **SEC-002**, in exactly one clause (§1). Everything else in SEC-002 is
   reproduced here unchanged, because a revision that only lists what it removes

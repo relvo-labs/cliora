@@ -8,12 +8,14 @@ phase that broke it:
 * the three new agent-forbidden fields are actually refused, per field, through the write
   path an agent can reach;
 * the RBAC action count is still 27 (D53);
-* `/board` and `BoardCardDTO` are unchanged in **shape** (their bytes are pinned in
-  `test_work_items_size.py`);
 * the wave-0 side-car is **gone**, now that the board it propped up is — the schedule was
   written into a test rather than into a wave number, and this is where it comes due;
-* `/board` is deprecated and **still serving**, because after D117 it is one of the two
-  degradation paths left.
+* `/board` is **gone too**, one release later than the side-car and for the opposite
+  reason: it had callers, so it waited for their count to reach zero (`beta.2`, ADR 0044).
+
+Two assertions left with it: `/board`'s shape and `BoardCardDTO`'s 16 fields. What they
+guarded — a card that renders a board stays a summary — is pinned on the replacement, in
+`test_work_items_size.py`.
 """
 
 from __future__ import annotations
@@ -25,7 +27,6 @@ import sqlalchemy as sa
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
-from app.api.http.schemas import BoardCardDTO
 from app.db.models import AgentRunner, Node, Project, Role, Task, TaskRun, User
 from app.security.passwords import hash_password
 from app.services import rbac
@@ -198,30 +199,6 @@ async def test_the_action_count_is_still_twenty_seven() -> None:
     assert len(rbac.ALL_ACTIONS) == 27
 
 
-async def test_the_board_response_is_unchanged(api, projects_enabled) -> None:
-    """D48 on **shape**. The bytes are pinned separately, in `test_work_items_size.py`.
-
-    Both halves are needed: the read model shares two queries with the V1 board, so a
-    column added for a new card widens the old payload while this assertion stays green.
-    """
-    client, maker = api
-    headers = await _admin(client, maker)
-    project_id = (
-        await client.post("/api/projects", json={"name": "compat"}, headers=headers)
-    ).json()["id"]
-    await client.post(
-        f"/api/projects/{project_id}/tasks", json={"title": "a card"}, headers=headers
-    )
-    board = await client.get(f"/api/projects/{project_id}/board", headers=headers)
-    assert board.status_code == 200, board.text
-    card = next(card for lane in board.json()["lanes"] for card in lane["cards"])
-    assert set(card) == set(BoardCardDTO.model_fields)
-    assert len(BoardCardDTO.model_fields) == 16
-    # None of the read model's vocabulary leaked into it.
-    for absent in ("lifecycle", "primary_attention", "is_blocked", "rank", "readiness"):
-        assert absent not in card
-
-
 async def test_the_side_car_is_gone_now_that_the_v1_board_is(api, projects_enabled) -> None:
     """The scheduled deletion, asserted rather than remembered.
 
@@ -246,21 +223,41 @@ async def test_the_side_car_is_gone_now_that_the_v1_board_is(api, projects_enabl
     assert "/api/projects/{project_id}/board-attention" not in app.openapi()["paths"]
 
 
-async def test_the_board_endpoint_stays_one_more_version(api, projects_enabled) -> None:
-    """D118, and the reason it differs from the side-car.
+async def test_the_board_endpoint_is_gone(api, projects_enabled) -> None:
+    """D118's schedule, come due — the side-car test's twin, flipped the same way.
 
-    `/board` is **deprecated and still serving**. After D117 removed the version flag there
-    is no switch that turns the new interface off, so `/board` and the full task page are
-    the only degradation paths left. The side-car was never one of those — nothing outside
-    this repository ever called it.
+    `/board` was deprecated in V2-P1 and kept for one version, because after D117 removed
+    the version flag it was one of the two degradation paths left if the new board turned
+    out to be wrong. It did not, and `beta.2` deletes it (ADR 0044, D126).
+
+    `getBoard()` had **zero call sites** when this was written. That is what made the
+    deletion a deletion rather than a migration, and it is the difference between this
+    test and the one above it: the side-car was never called from outside the repository,
+    while `/board` was — so this one waited for a release and for the count to reach zero.
     """
     from app.main import app
 
-    board = app.openapi()["paths"]["/api/projects/{project_id}/board"]["get"]
-    assert board.get("deprecated") is True
+    assert "/api/projects/{project_id}/board" not in app.openapi()["paths"]
 
     client, maker = api
     headers = await _admin(client, maker)
-    created = await client.post("/api/projects", json={"name": "still-here"}, headers=headers)
+    created = await client.post("/api/projects", json={"name": "gone"}, headers=headers)
     response = await client.get(f"/api/projects/{created.json()['id']}/board", headers=headers)
-    assert response.status_code == 200, response.text
+    assert response.status_code == 404, response.text
+
+
+async def test_the_deleted_board_types_are_not_importable() -> None:
+    """The DTOs went with the route, not just the route.
+
+    A deleted endpoint whose response model is still importable is a deletion that the
+    next person undoes in one line, because the expensive half — agreeing on the shape —
+    still looks done. ADR 0044 §2 carries the measurement those types documented.
+    """
+    import app.api.http.schemas as schemas
+
+    for name in ("BoardCardDTO", "BoardLaneDTO", "BoardDTO"):
+        assert not hasattr(schemas, name), f"{name} survived the sunset"
+
+    from app.repositories.tasks import TaskRepository
+
+    assert not hasattr(TaskRepository, "board_cards")
