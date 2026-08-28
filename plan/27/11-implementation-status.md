@@ -96,8 +96,8 @@
 | ☑ | SR-3 具名簽核（**兩列**） | — | **2026-08-27**，`docs/security-review-v2p1.md` §6 |
 | ☑ | PR [#45](https://github.com/Lei-k/cliora/pull/45) 核准 | — | **2026-08-27** |
 | ☑ | 九份 `proposed` ADR 轉 accepted | — | **2026-08-27** |
-| ☐ | **`plan/25` 的 Railway `pg_trgm` 量測** | **2、3** | **一次量測，不是一個簽名。** SR-2 item 8 仍是 `PARTIAL`；`HD-00` 承接 |
-| ☐ | `v2.0.0-alpha.3` annotated tag | 2、3 | 條件 **27／28**，只等上一列 |
+| ☑ | **`plan/25` 的 `pg_trgm` 驗證** | — | **2026-08-28 關閉**（`HD-00`）。不是量測出來的，是發現判準是資料庫 `CREATE` 權限而不是 superuser |
+| ☐ | `v2.0.0-alpha.3` annotated tag | **2、3** | 條件 **28／28 全綠**；tag 是一個人的動作 |
 | ☐ | `v2.0.0-beta.1` annotated tag | 4 | 條件 **40／40 全綠**；tag 是核准之後的另一個動作 |
 | — | **波次 0、1、5 不被擋且無前序依賴 → 現在可開工** | — | 六張 ticket |
 | — | 波次 6、7 不被前置條件擋，但等波次 4、5 的產物 | — | — |
@@ -195,6 +195,41 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 
 [`00`](./00-execution-plan.md) §4b 的八列，逐波次回填。
 **「這個波次沒有可看的東西」是一個要寫在這裡的事實**，不是一個可以略過的欄位。
+
+### ★ 2.9 擋了兩個波次六個星期的那一項，問錯了問題
+
+`plan/25` 的出口條件第 17 項寫著「Railway 的 PostgreSQL 通常給非 superuser，**必須實測**」，
+而 `CREATE EXTENSION` 需要 superuser 這個前提**對 `pg_trgm` 不成立**。
+
+`pg_trgm` 的 control 檔寫著 `trusted = true`。PostgreSQL 13 起，
+一個 trusted extension 可以由**任何持有資料庫 `CREATE` 權限的角色**安裝——
+而 Railway 配給的使用者**擁有**它配的資料庫。所以那裡的預期結果是**成功**。
+
+實測（PostgreSQL 16.14，三種角色）：
+
+| 角色 | 資料庫 `CREATE` | `0041` |
+|---|---|---|
+| superuser | 有 | 成功 |
+| **擁有自己的資料庫、不是 superuser** | 有 | **成功**——正是這一項假設會失敗的情況 |
+| 只有 schema 權限 | 無 | 停在 preflight 的第二段訊息；管理員照訊息跑一次 `CREATE EXTENSION pg_trgm` 之後，`alembic upgrade head` 走到 `0043`，`gin_trgm_ops` 索引建起來 |
+
+兩條拒絕路徑都跑過，兩條都給出它們該給的、可行動的訊息。
+`docs/deployment-railway.md` 補上了那一節——**包含一行部署前就能跑的述詞**：
+
+```bash
+psql "$DATABASE_URL" -tAc "SELECT has_database_privilege(current_user, current_database(), 'CREATE');"
+```
+
+**沒有對真 Railway 跑過**，而那正是這一行述詞存在的理由：
+它把剩下的未知（Railway 自己的 extension allowlist）縮成一次 `psql` 呼叫，
+而不是一個期。
+
+**值得單獨記的是時間**：這一項開了六個星期，擋著兩個波次，
+而關掉它花的是一個下午——其中大部分時間在建三個測試角色。
+「Railway 通常給非 superuser」是**真的，而且無關**，
+兩者之間的距離就是那六個星期。
+
+`test_pg_trgm_is_a_trusted_extension` 讓這個前提不會再漂走。
 
 ### 2.8 兩個同時跑的 `pytest` 會互相污染，而症狀讀起來像回歸
 

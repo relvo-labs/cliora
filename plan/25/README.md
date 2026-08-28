@@ -2,14 +2,20 @@
 
 > **狀態：`KN-00`…`KN-13` 全部實作完成（2026-08-22）。**
 > `make check` 全綠、`scripts/kn/gates.sh` 12 個 gate 全 PASS、五條旅程在真 daemon 上全過。
-> **出口條件 27／28（2026-08-27 更新）**——**SR-2 已簽核**
+> **☑ 出口條件 28／28（2026-08-28）。** `v2.0.0-alpha.3` 的**條件全綠，tag 仍未建立**——那是一個獨立的人的動作。
+>
+> 先前寫「27／28」的那一項（Railway 的 `pg_trgm`）於 2026-08-28 關閉，
+> 而**它是靠發現問題問錯了才關的**：`pg_trgm` 是 *trusted* extension，
+> PostgreSQL 13 起任何持有資料庫 `CREATE` 權限的角色都能安裝，**superuser 不是判準**。
+> 三種角色實測、兩條拒絕路徑各驗一次、`docs/deployment-railway.md` 補上那一節。
+> 全文在 `docs/security-review-v2k1.md` §6.1。
+>
+> 以下是 2026-08-27 的紀錄，保留：**SR-2 已簽核**
 > （`docs/security-review-v2k1.md` §6，repository owner 的 release authorisation，
 > 沿用 SR-1 的形狀並明寫它不是一次獨立重做的審查）。
-> **仍缺 Railway 的 `pg_trgm` 驗證**：SR-2 的 item 8 是 `PARTIAL`，
-> 而簽名是在**知道這個缺口的情況下核准**，不是關閉它。
-> 那一項需要一次對真 Railway PostgreSQL 的量測，**不是一個簽名**，
-> 且 `docs/deployment-railway.md` 手動建 extension 的那一節**還不存在**。
-> 它由 [`plan/27`](../27/README.md) 的 `HD-00` 承接。
+> ~~**仍缺 Railway 的 `pg_trgm` 驗證**……那一項需要一次對真 Railway PostgreSQL 的量測~~
+> ——**那句話裡「對真 Railway」是多餘的**，見上。
+> `docs/deployment-railway.md` 的那一節現在存在了。
 > **仍未打 tag。** 實作紀錄與八處與計畫的差異在 [`11`](./11-implementation-status.md)。
 > [`00`](./00-execution-plan.md) §0 保留原文——其中三項是讀完程式碼才看得見的，
 > 而每一項的錯誤答案都會讓後面兩個波次白做。

@@ -285,8 +285,8 @@ provider 同步、migration 演練、rollback drill、負載測試——對使�
 | ☑ | **SR-3 具名簽核**（兩列） | — | **已簽核（2026-08-27）**，`docs/security-review-v2p1.md` §6 |
 | ☑ | **`v2` → 上游核准**（PR [#45](https://github.com/Lei-k/cliora/pull/45)） | — | **已核准（2026-08-27）** |
 | ☑ | 九份 `proposed` ADR 轉 accepted | — | **已完成（2026-08-27）**：0029／0031 的 amendment、0032／0033／0034、0038／0039、0040／0042 |
-| ☐ | **`plan/25` 的 Railway `pg_trgm` 驗證** | **波次 2、3** | **實作者自己**（`HD-00` 承接）。SR-2 的 item 8 是 `PARTIAL`，**簽名是在知道這個缺口的情況下核准，不是關閉它**。需要一次對真 Railway PostgreSQL 的量測 ＋ 在 `docs/deployment-railway.md` 補一節手動建 extension（**那一節還不存在**） |
-| ☐ | `v2.0.0-alpha.3` annotated tag | 波次 2、3 | 人。**條件現在是 27／28**——只等上面那一項 |
+| ☑ | **`plan/25` 的 `pg_trgm` 驗證** | — | **已於 2026-08-28 關閉**（`HD-00`），而且是**發現問題問錯了**：`pg_trgm` 是 trusted extension，判準是資料庫的 `CREATE` 權限不是 superuser。三種角色實測、兩條拒絕路徑各驗、`docs/deployment-railway.md` 補上該節、新增一支斷言 trusted 的測試 |
+| ☐ | `v2.0.0-alpha.3` annotated tag | **波次 2、3** | 人。**條件 28／28 全綠**，沒有任何東西擋著它——建 tag 本身是一個人的動作 |
 | ☐ | `v2.0.0-beta.1` annotated tag | 波次 4 | 人。**條件 40／40 全綠**，tag 是核准之後的另一個動作 |
 | — | **波次 0、1、5 不被擋，且沒有前序依賴 → 現在可開工** | — | a11y、視覺回歸、日落、負載測試都只讀既有程式碼 |
 | — | 波次 6、7 不被前置條件擋，但**等前一個波次的產物** | — | 演練與封版要驗的東西還不存在 |
