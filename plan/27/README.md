@@ -1,15 +1,11 @@
 # Cliora `v2.0.0-beta.2` — V2-E1 Ecosystem and Hardening
 
-> **狀態（2026-08-25）：計畫已建立，A 類九項裁決全部完成，尚未開工。**
-> **★ [D120](./01-decisions-and-governance.md#d120) 裁決為「只做 pull，不做 inbound webhook」**
-> ——這一項同時關閉了上游 `research/03/01` §3 的最後一個待裁決項（★ D46），
-> 也把 SR-4 從五項變成兩項保留 ＋ 三項改寫 ＋ 三項新增。
-> 其餘八項全部採納計畫的答案。裁決單在 [`01`](./01-decisions-and-governance.md) §0。
-> **波次 0、1、5 不被任何前置條件擋，現在就可以開工**（六張 ticket）；
-> **前置條件（2026-08-27 更新）**：SR-2、SR-3、PR #45 核准**全部已簽**，
-> 九份 `proposed` ADR 一併轉 accepted。剩下三項且性質不同——
-> 波次 2、3 擋於**一次沒人去做的 Railway `pg_trgm` 量測**（`HD-00` 承接）＋ `alpha.3` tag；
-> 波次 4 擋於 `beta.1` tag ＋ `HD-06` 的 go／no-go。
+> **狀態（2026-08-28）：十六張 ticket 全部實作完成，八個波次走完。**
+> `scripts/hd/evidence.sh` 前八步全綠（十七 gate、backend 2,144、frontend 852、
+> 兩次演練、a11y 0/0、七個 `EXPLAIN`）；**第九步兩個 FAIL，兩個都是人的簽名**。
+> J1 **32／32** 對真 daemon 通過——本期動過 stage 值域、三個寫入點、`/board` 與檢索通道，
+> 而不可降級的那一條一個斷言都沒掉。
+> 逐項與二十條「與計畫的差異」在 [`11`](./11-implementation-status.md)。
 > 上游規劃：[`research/03/12`](../../research/03/12-migration-and-rollout.md) §6 的十二張 `HD-` ticket。
 > 前一期：[`plan/26`](../26/README.md)（P1 已實作，出口條件 **40／40 全綠**
 > ——SR-3 與 PR #45 於 2026-08-27 簽核；**`v2.0.0-beta.1` 仍未 tag**，那是核准之後的另一個動作）。
