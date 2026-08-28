@@ -18,13 +18,16 @@ import uuid
 from datetime import UTC, datetime
 
 import pytest
+import sqlalchemy as sa
 
+from app.services import provider_reads
 from app.services.knowledge import provider_sources
 from app.services.knowledge.provider_sources import (
     PROVIDER_AUTHORITIES,
     published_version_source,
     pull_request_source,
 )
+from app.settings import Settings
 
 pytestmark = pytest.mark.asyncio
 
@@ -194,3 +197,172 @@ async def test_the_two_provider_types_are_declared_everywhere() -> None:
 
     assert _HALF_LIFE_DAYS["release"] == 365.0, "a version is not an artifact"
     assert _HALF_LIFE_DAYS["pull_request"] == 90.0
+
+
+# --- the pass itself, end to end -------------------------------------------- #
+
+
+class _FakeReader:
+    """A reader with canned answers, injected in place of `GitHubReader`.
+
+    Injected rather than intercepting httpx: the thing under test is the *pass* — which
+    repositories it visits, what it writes, what it does after a failure — and a fake HTTP
+    layer would add a second thing that can be wrong.
+    """
+
+    def __init__(self, pulls=(), versions=(), fail: bool = False) -> None:
+        self._pulls = list(pulls)
+        self._versions = list(versions)
+        self._fail = fail
+        self.calls = 0
+
+    async def list_pull_requests(self, *, repo_path, token, since=None):
+        self.calls += 1
+        if self._fail:
+            raise provider_reads.ProviderReadError("PROVIDER_READ_FAILED", "401: Bad credentials")
+        return self._pulls
+
+    async def list_published_versions(self, *, repo_path, token):
+        self.calls += 1
+        if self._fail:
+            raise provider_reads.ProviderReadError("PROVIDER_READ_FAILED", "401: Bad credentials")
+        return self._versions
+
+
+async def _repo_project(session, *, enabled: bool = True, with_token: bool = True):
+    from app.db.models import Project, ProjectRepository, ProjectSecret, Role, User
+    from app.security.passwords import hash_password
+
+    role = (await session.execute(sa.select(Role).where(Role.name == "Admin"))).scalar_one()
+    name = f"prov-{uuid.uuid4().hex[:8]}"
+    user = User(
+        id=uuid.uuid4(),
+        username=name,
+        display_name=name,
+        password_hash=hash_password("pw-12345678"),
+        role_id=role.id,
+    )
+    session.add(user)
+    await session.flush()
+    project = Project(
+        id=uuid.uuid4(),
+        name=name,
+        slug=name,
+        owner_user_id=user.id,
+        knowledge_enabled=True,
+        provider_sync_enabled=enabled,
+    )
+    session.add(project)
+    await session.flush()
+
+    # A real row, because `project_repositories.provider_token_secret_id` carries a real
+    # foreign key. The **ciphertext is not real** — `_token` is monkeypatched in the tests
+    # that need a value, so nothing here decrypts. Building a genuinely encrypted secret
+    # would make these tests depend on the envelope scheme, which `test_secrets.py` covers
+    # and which is not what a sync pass is about.
+    secret_id = None
+    if with_token:
+        secret = ProjectSecret(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            name="GITHUB_TOKEN",
+            kind="provider_token",
+            value_encrypted=b"x",
+            value_nonce=b"y",
+            dek_wrapped=b"z",
+            dek_nonce=b"w",
+            key_version=1,
+            created_by=user.id,
+        )
+        session.add(secret)
+        await session.flush()
+        secret_id = secret.id
+
+    repository = ProjectRepository(
+        id=uuid.uuid4(),
+        project_id=project.id,
+        scheme="https",
+        host="github.com",
+        path="cliora/demo",
+        default_branch="main",
+        auth_kind="ambient",
+        provider_token_secret_id=secret_id,
+        created_by=user.id,
+    )
+    session.add(repository)
+    await session.flush()
+    return project, repository
+
+
+async def test_a_disabled_project_makes_no_call_at_all(session, monkeypatch) -> None:
+    """The flag is checked **before** anything reaches the network.
+
+    `FR-PROV-001.AC-03`, and it is the assertion J16 extends: a deployment that has not
+    asked for provider sync must not be visible in anybody's API logs.
+    """
+    from app.services.knowledge import provider_sync
+
+    project, _repository = await _repo_project(session, enabled=False)
+    reader = _FakeReader()
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+
+    outcome = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    assert outcome == provider_sync.SyncOutcome()
+    assert reader.calls == 0
+
+
+async def test_a_repository_with_no_token_is_skipped_and_says_so(session, monkeypatch) -> None:
+    """Skipped, not failed — and the difference is the stored reason.
+
+    A missing token will still be missing next round, so counting it as a failure would
+    eventually "stop" a repository that never started. But silence here is the exact
+    failure `provider_sync_error` exists to prevent: on screen, a repository that cannot
+    be read looks like one where nothing has been merged.
+    """
+    from app.services.knowledge import provider_sync
+
+    project, repository = await _repo_project(session, with_token=False)
+    reader = _FakeReader()
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+
+    outcome = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    assert outcome.skipped == 1
+    assert reader.calls == 0
+    assert repository.provider_sync_error is not None
+    assert "token" in repository.provider_sync_error
+
+
+async def test_three_consecutive_failures_stop_the_repository(session, monkeypatch) -> None:
+    """`FR-PROV-003.AC-02`, and J18's assertion.
+
+    An un-revoked token would otherwise burn quota every five minutes for ever. The count
+    resets on success, so a transient outage does not accumulate towards a stop.
+    """
+    from app.services.knowledge import provider_sync
+
+    project, repository = await _repo_project(session)
+    failing = _FakeReader(fail=True)
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: failing)
+    monkeypatch.setattr(
+        provider_sync, "_token", lambda secrets, project, repository: _resolved("t")
+    )
+
+    for expected in (1, 2, 3):
+        outcome = await provider_sync.sync_project(
+            session, project_id=project.id, settings=Settings()
+        )
+        assert outcome.failures == 1
+        assert repository.provider_sync_failures == expected
+
+    calls_before = failing.calls
+    outcome = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    assert outcome.skipped == 1
+    assert failing.calls == calls_before, "a stopped repository was read again"
+    assert "Bad credentials" in (repository.provider_sync_error or "")
+
+
+def _resolved(value):
+    async def _inner(*_args, **_kwargs):
+        return value
+
+    return _inner()

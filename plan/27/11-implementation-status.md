@@ -184,8 +184,8 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 |---|---|---|
 | 0 | `HD-00`、`HD-07`、`HD-13` | ☑ **完成**（2026-08-28）。基準線、`/board` 整組刪除、九處回寫、四處死碼。詳見 §4 |
 | 1 | `HD-04`、`HD-05` | ☑ **實作完成**（2026-08-28）。axe 0/0×8、八張 baseline ＋ 反向測試。**六項人工 checklist 未執行**，見 §6 |
-| 2 | `HD-01` | ☐ 未開工（**擋於 Railway `pg_trgm` 量測 ＋ `alpha.3` tag**；SR-2 已簽） |
-| 3 | `HD-02`、`HD-03`、`HD-15` | ☐ 未開工（同波次 2） |
+| 2 | `HD-01` | ☑ **實作完成**（2026-08-28）。ADR 0043、`provider_reads.py`、migration `0044`、FR-PROV 四條 |
+| 3 | `HD-02`、`HD-03` | ☑ **實作完成**（2026-08-28）。handler、reconcile pass、五個 metric、15 支測試。**`HD-15`（畫面）未做** |
 | 4 | `HD-06` | ☑ **實作完成**（2026-08-28）。`0045`／`0046`、三個寫入點、ADR 0040 修訂。在 3800 張真實形狀的卡上演練過 roundtrip |
 | 5 | `HD-10` | ☑ **實作完成**（2026-08-28）。2000 卡 seed、七個 `EXPLAIN`、體積與成本。**找到一個 `alpha.3` 的檢索缺陷**，見 §2.10。provider queue 的那一半等波次 3 |
 | 6 | `HD-08`、`HD-09` | ☐ 未開工 |
@@ -195,6 +195,18 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 
 [`00`](./00-execution-plan.md) §4b 的八列，逐波次回填。
 **「這個波次沒有可看的東西」是一個要寫在這裡的事實**，不是一個可以略過的欄位。
+
+### 2.16 metric 的 label allowlist 在呼叫點擋下了一個新標籤，而它是對的
+
+`provider_read_total` 第一版用 `outcome="ok"`／`"refused"`。
+`_check_labels` 直接 raise：`outcome` 不在 allowlist 裡。
+
+改用既有的 `status`。**一個想法兩個標籤名，是儀表板長出兩條本該是一條的序列的方式**——
+而這個 allowlist 是在呼叫點而不是在 scrape 時擋下來的，
+所以它是一個立刻失敗的測試而不是三個月後的一張圖。
+
+`metrics.py` 的 docstring 早就說了理由（「a metric that silently loses its labels
+looks like it is working」）；這是它第一次真的擋下東西。
 
 ### 2.13 `HD-06` 的 go／no-go：在本機資料上做，而那不是計畫說的那個
 

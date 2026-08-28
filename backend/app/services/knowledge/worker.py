@@ -33,10 +33,11 @@ import sqlalchemy as sa
 from app import metrics
 from app.clock import now_utc
 from app.db.engine import get_database
-from app.db.models import KnowledgeJob, Project
+from app.db.models import KnowledgeJob, Project, ProjectRepository
 from app.logging import get_logger
 from app.services.knowledge import sources as source_handlers
 from app.services.knowledge.outbox import KnowledgeOutbox
+from app.settings import Settings
 
 log = get_logger("cliora.knowledge.worker")
 
@@ -72,9 +73,13 @@ def _next_attempt_delay(attempts: int) -> int:
 class KnowledgeWorker:
     """Owns the loop. One per Central process; several processes are fine."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: Settings | None = None) -> None:
         self._task: asyncio.Task[None] | None = None
         self._rounds_until_reconcile = 0
+        # Only the provider pass needs it (for the API host allowlist and the secret
+        # service). Optional and lazily defaulted so that every existing construction site
+        # — `main.py`'s lifespan and a dozen tests — keeps working unchanged.
+        self._settings = settings or Settings()
 
     async def start(self) -> None:
         await self.sweep()
@@ -297,6 +302,15 @@ class KnowledgeWorker:
                 outbox = KnowledgeOutbox(session)
                 for project_id in projects:
                     enqueued += await self._reconcile_project(session, outbox, project_id)
+                # **Provider reads happen here, in the pass that already exists** (ADR 0043
+                # §2). Not a second loop: this one already holds the advisory lock, already
+                # runs at the 300-second cadence the freshness promise is stated in, and is
+                # already safe to run twice or to miss. A loop of its own would need its
+                # own copy of each of those and its own way of getting them wrong.
+                #
+                # Failures are absorbed per repository and stored as a reason, so an
+                # unwell provider cannot abort reconciliation for the other projects.
+                enqueued += await self._sync_providers(session)
                 await session.commit()
             finally:
                 await session.execute(
@@ -308,6 +322,57 @@ class KnowledgeWorker:
                 extra={"event": "knowledge_reconciled", "count": enqueued},
             )
         return enqueued
+
+    async def _sync_providers(self, session) -> int:
+        """One provider pass per project that asked for one.
+
+        Separate from `knowledge_enabled`: a project may index its own facts without
+        talking to anybody else's server, and ADR 0043 §5 makes provider sync its own
+        per-project switch for that reason.
+
+        Also where the freshness promise is measured. `provider_reconcile_lag_seconds` is
+        the gap between a repository's last successful read and now — the number ADR 0043
+        §2 gives up webhooks in exchange for, and without it "within 300 seconds" is a
+        sentence rather than a measurement.
+        """
+        from app.services.knowledge import provider_sync
+
+        rows = (
+            (
+                await session.execute(
+                    sa.select(Project.id).where(Project.provider_sync_enabled.is_(True))
+                )
+            )
+            .scalars()
+            .all()
+        )
+        written = 0
+        for project_id in rows:
+            outcome = await provider_sync.sync_project(
+                session, project_id=project_id, settings=self._settings
+            )
+            written += outcome.sources
+
+        lags = (
+            (
+                await session.execute(
+                    sa.select(ProjectRepository.provider_synced_at)
+                    .join(Project, Project.id == ProjectRepository.project_id)
+                    .where(
+                        Project.provider_sync_enabled.is_(True),
+                        ProjectRepository.provider_synced_at.is_not(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        now = now_utc()
+        for synced_at in lags:
+            metrics.observe(
+                metrics.PROVIDER_RECONCILE_LAG_SECONDS, (now - synced_at).total_seconds()
+            )
+        return written
 
     async def _reconcile_project(
         self, session, outbox: KnowledgeOutbox, project_id: uuid.UUID
