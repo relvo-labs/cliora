@@ -39,6 +39,19 @@ from app.services.knowledge.store import ExtractedSource
 #: is the first, and it is the one a reader sees.
 PROVIDER_AUTHORITIES: frozenset[str] = frozenset({"discussion", "reviewed"})
 
+#: Consecutive failed rounds before a repository stops being read (`plan/27` D128).
+#:
+#: A product decision rather than a tuning one: an un-revoked token would otherwise
+#: produce an error every five minutes for ever, and the console would show nothing —
+#: "no new pull requests" and "we stopped asking" look identical on screen.
+#:
+#: **It lives in this module rather than beside the reader** because two places need it
+#: and only one of them may import the reader: `provider_sync` acts on it, and the
+#: repository DTO renders the verdict. `GATE-HD-NO-PROVIDER-IN-REQUEST` keeps `api/http/`
+#: away from `provider_reads`, so a shared home was the only way to avoid a second copy of
+#: the number — and a threshold with two homes eventually disagrees with itself.
+MAX_CONSECUTIVE_FAILURES = 3
+
 #: What a merged pull request and a published version are worth.
 #:
 #: `reviewed` has had a rerank weight since `alpha.3` and no writer; `store.py` recorded

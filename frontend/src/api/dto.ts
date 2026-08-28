@@ -1450,6 +1450,18 @@ export interface ProjectRepository {
   // anywhere, which is what makes a credential in one impossible rather than filtered.
   url: string;
   created_at: string;
+  /** Provider sync's whole visible surface (`HD-15`, ADR 0043 §5).
+   *
+   *  `provider_sync_error` is the one that earns its place. Without it a revoked token and
+   *  a week with nothing merged render identically — and that is the failure the column
+   *  was added for, so rendering it is what finishes the argument rather than an extra. */
+  provider_synced_at: string | null;
+  /** Derived by the server from the last success and the reconcile cadence, never stored:
+   *  a stored "next run" goes stale the moment the interval changes. */
+  next_provider_sync_at: string | null;
+  provider_sync_error: string | null;
+  /** Three consecutive failures and this repository is no longer read at all. */
+  provider_sync_stopped: boolean;
 }
 
 export interface DispatchResult {

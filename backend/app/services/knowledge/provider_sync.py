@@ -88,7 +88,7 @@ async def sync_project(
     secrets = SecretService(session, settings=settings)
 
     for repository in repositories:
-        if repository.provider_sync_failures >= provider_reads.MAX_CONSECUTIVE_FAILURES:
+        if repository.provider_sync_failures >= provider_sources.MAX_CONSECUTIVE_FAILURES:
             outcome = _with(outcome, skipped=1)
             continue
         if not provider_reads.supports_host(repository.host):

@@ -1729,6 +1729,20 @@ class ProjectRepositoryDTO(BaseModel):
     # which is what makes a credential in one impossible rather than filtered.
     url: str
     created_at: datetime
+    # **Provider sync's whole visible surface** (`HD-15`, ADR 0043 §5).
+    #
+    # `provider_sync_error` is the field that exists so a stopped repository does not look
+    # like a quiet one. Without it, a revoked token and a week with no merges render
+    # identically — which is the failure the column was added for, and rendering it is
+    # what completes that argument.
+    #
+    # `provider_synced_at` is null before the first pass, and `next_sync_at` is derived
+    # rather than stored: it is the cadence applied to the last success, and storing it
+    # would be a second answer that goes stale the moment the interval changes.
+    provider_synced_at: datetime | None = None
+    next_provider_sync_at: datetime | None = None
+    provider_sync_error: str | None = None
+    provider_sync_stopped: bool = False
 
 
 class CreateRepositoryRequest(BaseModel):

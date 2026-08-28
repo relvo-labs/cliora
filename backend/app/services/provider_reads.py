@@ -61,11 +61,16 @@ MAX_READS_PER_ROUND = 3
 # `knowledge/sources.py`.
 PAGE_SIZE = 50
 
-# Consecutive failed rounds before a repository stops being read. `plan/27` D128, and it
-# is a product decision rather than a tuning one: a revoked token otherwise produces an
-# error every five minutes for ever, and the console shows nothing because "no new pull
-# requests" and "we stopped asking" look identical.
-MAX_CONSECUTIVE_FAILURES = 3
+# `MAX_CONSECUTIVE_FAILURES` **is deliberately not here.** It is a policy number — how
+# many failures before we give up — and the settings page has to render the same verdict
+# the sync pass acts on. But `GATE-HD-NO-PROVIDER-IN-REQUEST` forbids `api/http/` from
+# importing this module at all, and rightly: a route that can reach a reader is one call
+# away from reading inside a request.
+#
+# So it lives in `services/knowledge/provider_sources.py`, which has no network in it and
+# which both sides may import. The alternative was a second copy of `3` in the DTO
+# builder, and a threshold with two homes is a threshold that will eventually disagree
+# with itself.
 
 
 class ProviderReadError(Exception):

@@ -17,11 +17,16 @@ import { onMounted, ref } from "vue";
 import { ApiError } from "../../api/client";
 import type { ProjectRepository } from "../../api/dto";
 import { api } from "../../stores/auth";
+import { formatRelative } from "../../utils/time";
 import UiButton from "../ui/UiButton.vue";
 
 const props = defineProps<{ projectId: string; canManage: boolean }>();
 
 const repositories = ref<ProjectRepository[]>([]);
+
+/** Relative, not absolute. "3 分鐘前" answers "is sync alive"; a timestamp makes the
+ *  reader do the subtraction, and the question here is always about the gap. */
+const relative = (iso: string | null): string => formatRelative(iso);
 const available = ref(true);
 const error = ref<string | null>(null);
 const adding = ref(false);
@@ -115,11 +120,52 @@ async function remove(repository: ProjectRepository): Promise<void> {
     </p>
     <ul v-else class="repos">
       <li v-for="repository in repositories" :key="repository.id">
-        <code>{{ repository.url }}</code>
-        <span class="muted">預設分支 {{ repository.default_branch }}</span>
-        <button v-if="canManage" class="link" @click="remove(repository)">
-          移除
-        </button>
+        <div class="row">
+          <code>{{ repository.url }}</code>
+          <span class="muted">預設分支 {{ repository.default_branch }}</span>
+          <button v-if="canManage" class="link" @click="remove(repository)">
+            移除
+          </button>
+        </div>
+        <!-- **Provider sync's state, and it is here rather than on a dashboard for one
+             reason**: a repository that stopped being read looks exactly like one where
+             nothing has been merged. This is the only place that difference is visible,
+             which is why `provider_sync_error` is a stored column at all (ADR 0043 §5). -->
+        <p
+          v-if="repository.provider_sync_stopped"
+          class="sync stopped"
+          :data-repo-sync="repository.id"
+        >
+          <strong>已停止同步</strong>
+          連續三次讀取失敗。{{ repository.provider_sync_error }}
+          修正憑證之後會在下一輪重新開始。
+        </p>
+        <p
+          v-else-if="repository.provider_sync_error"
+          class="sync failing"
+          :data-repo-sync="repository.id"
+        >
+          最近一次同步失敗：{{ repository.provider_sync_error }}
+        </p>
+        <p
+          v-else-if="repository.provider_synced_at"
+          class="sync ok"
+          :data-repo-sync="repository.id"
+        >
+          上次同步
+          <time :datetime="repository.provider_synced_at">{{
+            relative(repository.provider_synced_at)
+          }}</time>
+          <template v-if="repository.next_provider_sync_at">
+            ・下次
+            <time :datetime="repository.next_provider_sync_at">{{
+              relative(repository.next_provider_sync_at)
+            }}</time>
+          </template>
+        </p>
+        <p v-else class="sync muted" :data-repo-sync="repository.id">
+          尚未同步過
+        </p>
       </li>
     </ul>
 
@@ -183,6 +229,20 @@ async function remove(repository: ProjectRepository): Promise<void> {
   line-height: 1.55;
 }
 .error {
+  color: var(--status-error);
+}
+/* Three states, three treatments, and **none of them is colour alone** (`research/style.md`
+   §顏色以外的辨識線索): each carries its own words, and the stopped one leads with a bold
+   label rather than relying on the red. */
+.sync {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sync.failing {
+  color: var(--status-busy);
+}
+.sync.stopped {
   color: var(--status-error);
 }
 .repos {

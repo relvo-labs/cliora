@@ -92,6 +92,23 @@ await expect(page).toHaveScreenshot("active-board.png", {
 八張 baseline 全部要重拍。所以 **`HD-05` 排在 `HD-04` 之後**，
 而它們在同一個波次——因為它們共用同一組畫面清單與同一次 stack 啟動。
 
+## 6b. ★ baseline 的第一版釘的是一堆豆腐字
+
+第一次拍完八張 baseline 之後才發現：**這個容器只有 DejaVu，沒有 CJK 字型**。
+而這個 UI 的文字幾乎全是繁體中文，所以那八張 baseline 釘的是
+一整頁的 `□□□□`——版面對，字全是方框。
+
+**那比沒有 baseline 更糟**：它在這台機器上永遠會過，
+在任何有中文字型的機器上永遠會失敗，而失敗訊息會說「版面變了」。
+一套只在一種環境下有意義的 baseline，是一套會教人加 `--update-snapshots` 的 baseline。
+
+處置：裝 `NotoSansCJK-Regular.ttc` 到 `~/.local/share/fonts/` 之後重拍。
+
+**而這一條真正的結論不是「裝了字型」**，是 §5 那句「跑不起來就不要建這套」
+比原本寫的時候更嚴格：**視覺 baseline 綁定的不只是瀏覽器，是整個字型環境**。
+CI 必須用一個明確的 image，而那個 image 要有 CJK 字型——
+否則第一次在 CI 上跑就是八張全紅。這一條進 known limitations。
+
 ## 7. 出口條件（本節）
 
 | ☐ | 條件 | 證據 |
