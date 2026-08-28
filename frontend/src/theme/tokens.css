@@ -19,10 +19,10 @@
   --action-primary: #35575d;
   --action-primary-hover: #2c464b;
   --action-disabled: #b5bdc8;
-  --status-online: #2f9b63;
+  --status-online: #377c60;
   --status-offline: #727b87;
-  --status-busy: #c68c37;
-  --status-error: #d25454;
+  --status-busy: #93692f;
+  --status-error: #be4b4b;
 
   /* V2 work vocabulary. Session activity keeps --status-online (green), while task
    * activity is blue and run activity is amber so the three meanings remain distinct
@@ -40,10 +40,10 @@
   /* Run states. --run-waiting belongs only to the human-action-required treatment;
    * reusing it elsewhere would weaken the one state that waits on a person (D24). */
   --run-queued: #8892a0;
-  --run-running: #c68c37;
-  --run-waiting: #d2691e;
-  --run-succeeded: #2f9b63;
-  --run-failed: #d25454;
+  --run-running: #93692f;
+  --run-waiting: #a85517;
+  --run-succeeded: #377c60;
+  --run-failed: #be4b4b;
   --run-lost: #a0673f;
 
   /* Attention (V2-P1, PX-17). Eight attention levels, five colours: the levels a
@@ -76,7 +76,7 @@
   --work-done: var(--stage-done);
 
   --risk-low: #6b7684;
-  --risk-medium: #c68c37;
+  --risk-medium: #93692f;
   --risk-high: #c45c5c;
 
   /* Evidence confidence is structural: solid machine fact, outlined platform

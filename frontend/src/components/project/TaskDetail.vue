@@ -415,8 +415,13 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           <dd>{{ task.assigned_runner_id ?? "任一 Agent" }}</dd>
           <dt>來源</dt>
           <dd>
+            <!-- `aria-label` because the `<dt>` beside it is a *visual* label only:
+                 a definition list associates nothing programmatically, so a screen
+                 reader announced this as an unnamed combobox. Unlike the `<p>` case in
+                 `MetricCard`, `aria-label` **is** permitted on `<select>`. -->
             <select
               v-if="canEdit"
+              aria-label="來源"
               :value="task.source"
               @change="
                 setExecution({
@@ -436,6 +441,7 @@ async function toggleGate(key: string, approved: boolean): Promise<void> {
           <dd>
             <select
               v-if="canEdit"
+              aria-label="交付"
               :value="task.delivery"
               @change="
                 setExecution({

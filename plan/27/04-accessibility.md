@@ -66,11 +66,18 @@ $ # 空
 
 寫這份計畫時看程式碼推測的，**未實測**：
 
-| 位置 | 疑慮 | 為什麼懷疑 |
-|---|---|---|
-| `tokens.css` 的 `--attention-*` 五個顏色 | 對比可能不足 AA（4.5:1） | `plan/26` 的 `PX-17` 加這五個 token 時的出口條件是「零 undefined token」，**不是對比** |
-| 看板的四欄橫向佈局 | 200% 縮放下大概會產生橫向捲軸 | 四個等寬欄 ＋ 固定卡片寬度是這個結果的典型成因 |
-| Drawer 的 focus trap | `plan/26` 有測試，但測的是 trap 存不存在 | trap 存在 ≠ 順序正確；第 1 項要驗的是後者 |
+> **☑ 三項推測，2026-08-28 實測結果：第一項對了但範圍更大，第二項錯了，第三項沒測到。**
+
+| 位置 | 疑慮 | 為什麼懷疑 | 實測 |
+|---|---|---|---|
+| `tokens.css` 的 `--attention-*` 五個顏色 | 對比可能不足 AA（4.5:1） | `plan/26` 的 `PX-17` 加這五個 token 時的出口條件是「零 undefined token」，**不是對比** | **對，而且更糟**：不是 `--attention-*`，是它們指向的 `research/style.md` 四個**語意色**，Warning 只有 3.00。六期以來沒有一個能當小字用 |
+| 看板的四欄橫向佈局 | 200% 縮放下大概會產生橫向捲軸 | 四個等寬欄 ＋ 固定卡片寬度是這個結果的典型成因 | **未測**（§3 第 4 項未執行）。但 axe 找到相關的一項：`.lanes` 會橫向捲動而**不可聚焦**，鍵盤使用者根本捲不到第四欄 |
+| Drawer 的 focus trap | `plan/26` 有測試，但測的是 trap 存不存在 | trap 存在 ≠ 順序正確；第 1 項要驗的是後者 | **未測**（§3 第 1 項未執行） |
+
+**沒有推測到的、而且是本期最嚴重的一項**：Drawer 裡三個 `<select>` **完全沒有標籤**
+（`critical`）。它們有 `<dt>` 在旁邊，看起來是有標籤的——而 `<dt>` 不建立任何程式關聯。
+**這一項在 a11y 套組第一次「全綠」的時候就在那裡**，因為那三個畫面當時根本沒被掃到
+（[`11`](./11-implementation-status.md) §2.5）。
 
 **若對比不足**：改的是既有 token 的**值**，不是加新 token（[`00`](./00-execution-plan.md) §4）。
 改動要記進 [`11`](./11-implementation-status.md)，因為一個 token 的值變了，
@@ -82,10 +89,10 @@ $ # 空
 | ☐ | 條件 | 證據 |
 |---|---|---|
 | ☐ | `@axe-core/playwright` 已加入，`GATE-HD-TOUCH-LIST` 的前端依賴檢查改為「與基線相差恰好這一個」 | `package.json` diff ＋ gate |
-| ☐ | 八個畫面 axe **0 critical／0 serious** | `artifacts/hd/local/w1/axe-after.json` |
-| ☐ | audit **前**的報告也存下來 | `artifacts/hd/local/w1/axe-before.json` |
+| ☑ | 八個畫面 axe **0 critical／0 serious** | `artifacts/hd/local/w1/axe-after.json`（2026-08-28） |
+| ☑ | audit **前**的報告也存下來 | `artifacts/hd/local/w1/axe-before.json`。**引用它之前先讀 audit §1**：那一份是在三個 Drawer 畫面靜靜變成看板的情況下抓的，所以它**少算了八個 `critical`** |
 | ☐ | `moderate`／`minor` 的數字進 release note | release note |
-| ☐ | 六項人工 checklist 全部完成 ＋ **具名簽核** | `docs/a11y-audit-v2e1.md` |
+| ☐ | 六項人工 checklist 全部完成 ＋ **具名簽核** | `docs/a11y-audit-v2e1.md` §3——**六項全部「未執行」，不是「執行後通過」**。六項都需要一個人在瀏覽器前面：螢幕閱讀器（第 2 項）、鍵盤（第 1、3 項）、作業系統的減少動態設定（第 5 項）、以及眼睛（第 6 項） |
 | ☐ | 第 2 項的證據含**實際聽到的字** | 同上 |
 | ☐ | 第 6 項的灰階截圖八張 | `artifacts/hd/local/w1/grayscale/` |
 | ☐ | 全鍵盤走完 J2（Backlog 建卡 → 送到 Ready）的錄影 | `artifacts/hd/local/w1/keyboard-j2.mp4` |

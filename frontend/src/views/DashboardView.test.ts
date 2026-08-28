@@ -117,11 +117,22 @@ describe("DashboardView", () => {
 
   it("gives each big number an accessible name", async () => {
     // A screen reader reaching a bare "2" out of its visual context learns nothing.
+    //
+    // **Asserted as rendered text, not as an `aria-label` attribute.** This test used to
+    // look for `[aria-label]` and passed for months while the feature did not work: the
+    // label sat on a `<p>`, ARIA prohibits `aria-label` on a `<p>` with no role, and the
+    // accessibility tree discarded it — so the reader heard "2". `HD-04`'s axe scan
+    // reported it eight times on this page.
+    //
+    // The lesson is about the assertion, not the markup: **checking that an attribute is
+    // present is not checking that it does anything.** The text is now in a `.sr-only`
+    // span, which is in the tree by construction, and this reads the span.
     const { wrapper } = await render();
-    const labels = wrapper
-      .findAll("[aria-label]")
-      .map((element) => element.attributes("aria-label"));
-    expect(labels.some((label) => label?.includes("線上 Node：2"))).toBe(true);
+    expect(wrapper.text()).toContain("線上 Node：2");
+    // And the visual number stays hidden from the tree, or the reader hears it twice.
+    expect(
+      wrapper.findAll('.value span[aria-hidden="true"]').length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows each block's age relative to when the server fetched it", async () => {

@@ -113,7 +113,7 @@ function bytes(value: number): string {
     <p v-if="notice" class="notice">{{ notice }}</p>
 
     <div v-if="canDispatchNow" class="dispatch">
-      <select v-model="chosenAgent">
+      <select v-model="chosenAgent" aria-label="指派給哪一個 Agent">
         <option value="">任一符合資格的 Agent</option>
         <option v-for="agent in agents" :key="agent.id" :value="agent.id">
           {{ agent.name }}{{ agent.online ? "" : "（離線）" }}

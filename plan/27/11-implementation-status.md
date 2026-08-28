@@ -2,7 +2,7 @@
 
 > **本檔在實作期間逐步回填。與計畫不同時以這裡為準，並回寫計畫。**
 >
-> **目前狀態（2026-08-28）：波次 0 完成。** `HD-00`／`HD-07`／`HD-13` 三張 ticket 完成，
+> **目前狀態（2026-08-28）：波次 0、1 完成。** `HD-00`／`HD-07`／`HD-13` 三張 ticket 完成，
 > 十七個 `GATE-HD-*`／繼承 gate 全部 PASS 或 SKIP（零 FAIL），
 > backend **2,120 passed**、frontend **847 passed**、lint／typecheck／format 全綠。
 > 已知一個真實的紅燈：`GATE-PX-JOURNEY-COVERAGE` 因為我改了 `work.py` 而要求
@@ -183,7 +183,7 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 | 波次 | ticket | 狀態 |
 |---|---|---|
 | 0 | `HD-00`、`HD-07`、`HD-13` | ☑ **完成**（2026-08-28）。基準線、`/board` 整組刪除、九處回寫、四處死碼。詳見 §4 |
-| 1 | `HD-04`、`HD-05` | ☐ 未開工，**無阻礙** |
+| 1 | `HD-04`、`HD-05` | ☑ **實作完成**（2026-08-28）。axe 0/0×8、八張 baseline ＋ 反向測試。**六項人工 checklist 未執行**，見 §6 |
 | 2 | `HD-01` | ☐ 未開工（**擋於 Railway `pg_trgm` 量測 ＋ `alpha.3` tag**；SR-2 已簽） |
 | 3 | `HD-02`、`HD-03`、`HD-15` | ☐ 未開工（同波次 2） |
 | 4 | `HD-06` | ☐ 未開工（**擋於 `beta.1` tag ＋ go／no-go**；SR-3 與 PR #45 已關） |
@@ -195,6 +195,76 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 
 [`00`](./00-execution-plan.md) §4b 的八列，逐波次回填。
 **「這個波次沒有可看的東西」是一個要寫在這裡的事實**，不是一個可以略過的欄位。
+
+### 2.8 兩個同時跑的 `pytest` 會互相污染，而症狀讀起來像回歸
+
+一次背景 run 還沒結束就啟了第二個，兩個都跑 `tests/db/`——
+而那個套組共用一個 PostgreSQL 資料庫，沒有 per-worker 命名空間。
+
+結果：**同一份程式碼，一次 73 failed，一次 54 failed。**
+73 這個數字讀起來像一次大回歸；真正的線索是**它不穩定**。
+單獨跑一次就回到全綠。
+
+寫進 `scripts/hd/env.sh`：報了幾十個失敗時，
+**先看 `pgrep -af pytest`，再看 traceback**。
+
+### 波次 1（2026-08-28）
+
+| 產出 | 證據 |
+|---|---|
+| 一份 axe 報告從紅到綠 | `artifacts/hd/local/w1/axe-before.json`（12 serious）→ `axe-after.json`（0／0，八畫面） |
+| **八張視覺 baseline** | `frontend/tests/hd/__screenshots__/`，`GATE-HD-VISUAL-BASELINE (8 screens)` PASS |
+| **反向測試**：改一個 padding → 兩個畫面紅 → 還原 → 綠 | `artifacts/hd/local/w1/visual-negative.md` |
+| 四個語意色從「不能當小字」變成 AA | `research/style.md` §Success/Warning/Error/Info ＋ `tokens.css` |
+
+**這是本期第一個使用者看得到的變化**，而它排在波次 1 是 [D138](./01-decisions-and-governance.md#d138) 的規則。
+
+### ★★ 2.5 a11y 套組第一次跑是綠的，而它只掃了八個畫面裡的五個
+
+**這一條是本期目前最重要的一條，而它是實跑找到的。**
+
+三個 Drawer 畫面的 URL 由執行期解析出來的 task id 組成。
+`page.request` 不帶 Authorization header（token 在 `localStorage`，ADR 0006/0007），
+解析回傳空字串，於是字面的 `?task=__WAITING__` 進了 router——
+router 靜靜丟掉它，畫面就是那個**沒有 Drawer 的看板**。
+
+**八個畫面裡三個是同一個看板，而整個套組是綠的。**
+沒有任何一項檢查失敗，因為每一項檢查都真的通過了。
+
+修法有兩半，而第二半才是重點：
+
+1. 解析改成從 `localStorage` 讀 token（外加 `limit=100`，`MAX_LIMIT` 是 100，200 是 422）。
+2. **`assertResolved`：URL 裡還留著 `__PLACEHOLDER__` 就是 failure，不是 skip。**
+   skip 會把剛剛拿掉的沉默原封不動裝回去。
+
+**加上守衛之後立刻找到八個 `critical`**——Drawer 裡三個沒有標籤的 `<select>`
+（卡片的來源、交付、指派 Agent）。螢幕閱讀器使用者無法知道那三個控制項在設定什麼。
+**那八個在第一次「綠」的時候就在那裡了。**
+
+`screens.ts` 自己的註解早就警告過這一類的鄰居（截到 skeleton 的圖），
+而這次踩到的是另一個版本。**寫下警告不等於防住它。**
+
+### ★ 2.6 `research/style.md` 的語意色六期以來沒有一個能當小字用
+
+十六個 `color-contrast` 全部追回到四個值，而四個都在 `style.md` 自己的調色盤裡：
+Success 4.07、**Warning 3.00**、Error 4.17、Info 4.18——AA 小字要 4.5。
+
+而同一份文件的〈顏色以外的辨識線索〉寫著
+「一個只靠顏色區分的狀態，對色覺缺陷使用者……不存在」。
+**規範要求不要只靠顏色，而它給的顏色連看得見都不保證。**
+
+處置：只降明度、不動色相與飽和度（[`00`](./00-execution-plan.md) §4 說改既有 token 的值）。
+原值仍可用於大字、填色與邊框（門檻 3:1，四個都過）。
+**Warning 變化最大**（`#C08B3E` → `#93692F`，明顯偏褐），那是必要的代價——
+3.00 距離 4.5 太遠，任何保住明度的做法都到不了。
+若要換一個更亮而仍達標的暖色，那是一次**配色決定**，要連同 `style.md` 那張表一起改。
+
+### 2.7 一個單元測試斷言了「屬性存在」，而那個屬性從來沒有生效
+
+`DashboardView.test.ts` 的 `gives each big number an accessible name`
+找的是 `[aria-label]` 這個選擇器。它綠了好幾個月，
+而那個 `aria-label` 掛在 `<p>` 上——ARIA 禁止，accessibility tree 直接丟掉。
+**斷言一個屬性在，不等於斷言它有作用。**
 
 ### 波次 0（2026-08-28）
 

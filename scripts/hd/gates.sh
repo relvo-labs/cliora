@@ -138,16 +138,20 @@ else
 fi
 
 # --- the visual baseline (D124) ----------------------------------------------
-if [ -d frontend/tests/visual ]; then
-  declared="$(grep -c 'toHaveScreenshot(' frontend/tests/visual/*.spec.ts 2>/dev/null | awk -F: '{s+=$2} END {print s+0}')"
-  stored="$(find frontend/tests/visual -name '*.png' 2>/dev/null | wc -l)"
+if [ -d frontend/tests/hd/__screenshots__ ]; then
+  # **Screens declared, not `toHaveScreenshot(` call sites.** The spec has one call inside
+  # a `for` over `SCREENS`, so counting calls gives 1 against 8 stored and the gate fails
+  # for being written against the wrong shape. The declaration is the array in
+  # `screens.ts`, and that is what a missing baseline would be missing from.
+  declared="$(grep -c '^    id: "' frontend/tests/hd/screens.ts 2>/dev/null || echo 0)"
+  stored="$(find frontend/tests/hd/__screenshots__ -name '*.png' 2>/dev/null | wc -l)"
   if [ "$declared" -gt 0 ] && [ "$declared" = "$stored" ]; then
     pass "GATE-HD-VISUAL-BASELINE ($stored screens)"
   else
     fail "GATE-HD-VISUAL-BASELINE" "$declared declared, $stored stored — a missing baseline is a screen nobody compares"
   fi
 else
-  skip "GATE-HD-VISUAL-BASELINE" "frontend/tests/visual does not exist yet (wave 1)"
+  skip "GATE-HD-VISUAL-BASELINE" "frontend/tests/hd/__screenshots__ does not exist yet (wave 1)"
 fi
 
 # --- GATE-HD-TOUCH-LIST ------------------------------------------------------

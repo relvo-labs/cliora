@@ -81,7 +81,7 @@ await expect(page).toHaveScreenshot("active-board.png", {
 
 | 問題 | 答案 |
 |---|---|
-| 存哪 | `frontend/tests/visual/__screenshots__/`（進 git） |
+| 存哪 | `frontend/tests/hd/__screenshots__/`（進 git），由 `playwright.config.ts` 的 `snapshotPathTemplate` 釘成一層平的目錄——預設會按 spec 與平台分層，那會讓「八個宣告、八個存檔」變成一個對目錄走訪的斷言而不是對涵蓋率的 |
 | 幾個平台 | **只 chromium**。三個瀏覽器 × 八個畫面 = 24 張 baseline，而 firefox／webkit 的字型渲染差異會讓其中 16 張永遠在容忍邊緣 |
 | 誰能更新 | 改版面的那個 PR。`--update-snapshots` 的 diff **必須出現在 code review 裡**——那正是這套機制的價值：**版面變化變成一個要被看過的 diff** |
 | CI 上跑不跑 | 跑。**跑不起來就不要建這套**——一個只在本機跑的視覺回歸與 `artifacts/` 的人工截圖沒有差別 |
@@ -96,12 +96,12 @@ await expect(page).toHaveScreenshot("active-board.png", {
 
 | ☐ | 條件 | 證據 |
 |---|---|---|
-| ☐ | 八張 baseline 在 repo 裡 | `frontend/tests/visual/__screenshots__/` |
-| ☐ | `GATE-HD-VISUAL-BASELINE` 綠（檔數 == 宣告數） | `scripts/hd/gates.sh` |
-| ☐ | 在 CI 上跑過一次並綠 | CI run 連結 |
-| ☐ | 故意改一個 padding → 套組紅 → 還原 → 綠 | **反向測試**，`artifacts/hd/local/w1/visual-negative.log` |
-| ☐ | 誤報次數記錄在 [`11`](./11-implementation-status.md)，若 > 0 則門檻已調並附理由 | [`11`](./11-implementation-status.md) |
-| ☐ | 沒有新增任何套件 | `GATE-HD-TOUCH-LIST` |
+| ☑ | 八張 baseline 在 repo 裡 | `frontend/tests/hd/__screenshots__/`（**路徑是 `tests/hd/`，不是 `tests/visual/`**——與 a11y 共用同一份 `screens.ts`，兩份清單會漂移） |
+| ☑ | `GATE-HD-VISUAL-BASELINE` 綠（檔數 == 宣告數） | `PASS (8 screens)`。**gate 原本數 `toHaveScreenshot(` 的呼叫點，那是錯的**——spec 只有一個呼叫寫在 `for` 裡面，數出來是 1 對 8。改成數 `screens.ts` 的 `id:` |
+| ☐ | 在 CI 上跑過一次並綠 | **未做**。本機跑過（8 passed，兩次）。一個只在本機跑的視覺回歸與 `artifacts/` 的人工截圖沒有差別（§5），所以這一格開著 |
+| ☑ | 故意改一個 padding → 套組紅 → 還原 → 綠 | **反向測試已跑**：`artifacts/hd/local/w1/visual-negative.md`。改 `.lanes` 的 gap 與 padding → **兩個用到它的畫面紅、其餘六個綠** → 還原 → 八個全綠 |
+| ☐ | 誤報次數記錄在 [`11`](./11-implementation-status.md)，若 > 0 則門檻已調並附理由 | **目前 0 次誤報／2 次連續重跑**——樣本太小，本期結束再數一次 |
+| ☑ | 沒有新增任何套件 | `GATE-HD-TOUCH-LIST (frontend deps — one permitted addition: @axe-core/playwright)`——那一個是 `HD-04` 的，視覺這一半用 Playwright 內建的 |
 
 **第四項（反向測試）是這一節最重要的一格。**
 一套從沒紅過的回歸套組，與一套壞掉的回歸套組在儀表板上長得一樣。
