@@ -353,3 +353,77 @@ extractor, a confidence model and a review workflow — three separate problems)
 not build a symbol map (that needs a language-aware parser, and `pg_trgm` already
 covers symbol names). It does not answer natural-language questions about a project:
 that needs an LLM call, and Central makes none.
+
+---
+
+# Amendment (V2-E1, 2026-08-29) — what retrieval costs at 20,000 chunks
+
+**Status: accepted.** This amends the Consequences of ADR 0038; the Decision is unchanged.
+
+`alpha.3` measured knowledge search at 110ms P95 and context pack build at 78.8ms P95, on
+**1,000 chunks**, and both were read as comfortable. `HD-09` re-weighed them on 22,000 and
+one of the two is now over budget.
+
+| | 1,000 chunks | 22,000 chunks | Budget |
+|---|---:|---:|---|
+| knowledge search P95 | 110.70ms | 162.44ms | 1000ms — **PASS** |
+| context pack build P95 | 78.80ms | **3167.62ms** | 2000ms — **FAIL** |
+
+The two disagree because they ask different questions. A human search is short. Layer 4's
+query is **the card's own title, objective and scope**, and that difference is the whole
+of the 40×.
+
+## The cost model
+
+Measured, in `artifacts/hd/local/w6/perf-2000.md` §3:
+
+```text
+ts_rank_cd cost  ~=  0.018 ms  x  matched_rows  x  query_terms
+```
+
+Both factors are inflated by decisions this ADR made, each correct on its own terms:
+
+- **`_tsquery` joins lexemes with `|`.** Its docstring defends this at length and the
+  argument holds — an `AND` over CJK bigrams is a phrase match in disguise and would make
+  layer 4 almost always empty, *silently*. But `|` maximises `matched_rows`.
+- **The CJK bigram tokenizer makes `query_terms` large.** A 20-character Chinese title is
+  19 lexemes where an English one is three or four words.
+
+Neither is wrong. **What was never noticed is that they multiply**, and that nothing in the
+module bounds either factor. `CANDIDATES = 50` does not help: PostgreSQL must rank the
+whole matched set to find a top 50.
+
+Rearranged into the number an operator can use:
+
+```text
+matched-row ceiling at the 2s budget  =  2000 / (0.018 x terms)
+
+   7-lexeme query (an 8-character title)   ~= 15,800 chunks
+  19-lexeme query (a 20-character title)   ~=  5,800 chunks
+```
+
+## What the measurement's own corpus does not prove
+
+The 3167ms was measured on a seeded corpus whose vocabulary is templated: two of the seven
+bigrams appear in 99% of chunks, so the disjunction swept all 22,220 rows and the GIN index
+was correctly bypassed for a sequential scan. **Real prose will not do that**, and
+"the context pack takes three seconds in production" is not what this measures.
+
+What does not depend on the corpus is the shape. Cost is the product of two unbounded
+factors, and a project whose knowledge is 20,000 chunks *about one subject* — which is what
+a project's knowledge is — reproduces it with no templating at all.
+
+## Why this is recorded rather than fixed
+
+Every available fix changes what layer 4 returns:
+
+- An inner `LIMIT` before ranking makes the top 50 an arbitrary 50 of the matches, silently
+  — the same class of failure as the `%`/`<%` defect this milestone fixed.
+- `|` to `&` is precisely the failure `_tsquery` exists to prevent.
+- "at least *k* of *n* lexemes" is the right shape, has no `tsquery` operator, and needs a
+  rewrite of the channel with a relevance evaluation beside it.
+
+Choosing between those on evidence from a corpus this measurement has itself shown to be
+unrepresentative would trade a measured number for an unmeasured one. **The next phase owns
+the fix and needs a heterogeneous corpus before it starts** — which is now the first item
+of work, not an afterthought to it.

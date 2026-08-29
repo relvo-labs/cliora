@@ -59,6 +59,19 @@ BASELINES="$(find frontend/tests/hd/__screenshots__ -name '*.png' 2>/dev/null | 
 step 8/9 "scale (HD-10)"
 artifact artifacts/hd/local/w5/explain/summary.tsv "scripts/hd/seed-large.py then scripts/hd/explain.sh"
 artifact artifacts/hd/local/w5/README.md "written by hand from the measurements"
+# **`HD-09`'s second half, which the first pass of this script did not ask for.** Seven
+# `EXPLAIN` plans made the scale work look finished; they are query plans, not budgets,
+# and exit conditions 38 and 39 want budgets. The gap survived because nothing checked.
+artifact artifacts/hd/local/w6/perf-2000.json "scripts/hd/measure-2000.py"
+artifact artifacts/hd/local/w6/concurrency-2000.json "scripts/hd/measure-concurrency.py"
+artifact artifacts/hd/local/w6/perf-2000.md "written by hand from the two above"
+# The two budgets that are missed are recorded rather than green, so this asserts the
+# *disposition* exists — a measurement that found nothing to say would not have one.
+if grep -q "## 4. Disposition" artifacts/hd/local/w6/perf-2000.md 2>/dev/null; then
+  pass "over-budget items carry a disposition"
+else
+  fail "artifacts/hd/local/w6/perf-2000.md" "two budgets are missed and no disposition is written"
+fi
 
 step 9/9 "journeys and sign-offs"
 # **The three that are people, reported as open rather than omitted.** A release script

@@ -84,6 +84,22 @@ Eight screens pinned with Playwright's built-in screenshot comparison, threshold
 `maxDiffPixelRatio: 0.01`, chromium only, baselines in the repository. A reverse test
 proves the suite can fail.
 
+### Two budgets are missed, and this release says so
+
+`HD-09` re-weighed all thirteen performance budgets on 2000 cards and 22,000 knowledge
+chunks. Eleven hold. **Two do not**, and both had been comfortable at the 200-card and
+1000-chunk datasets they were set on:
+
+| | 200 cards / 1000 chunks | 2000 cards / 22000 chunks | Budget |
+|---|---:|---:|---|
+| context pack build P95 | 78.80ms | **3236.24ms** | 2000ms |
+| `work-counts` P95, concurrency 10 | — | **895ms** | 200ms |
+
+Neither is a regression introduced here. Both are the shape the code has had since the
+milestone that wrote it, measured for the first time against data of a realistic size.
+Causes, cost models and dispositions are in `artifacts/hd/local/w6/perf-2000.md`; the
+retrieval one is also an amendment to ADR 0038.
+
 ### `/board` is deleted
 
 The V1 board endpoint, its three DTOs, its repository method and the frontend client
@@ -147,10 +163,14 @@ preserves a person's saved views. `scripts/hd/rollback-drill.sh` step 2 is that 
 | 10 | **Three of the eighteen journeys were run; fifteen were not.** J1 (32/32), J4 (13/13) and J15 (8/8) passed against a real `agentd` 0.14.1 on this release's code. The rest are browser or multi-actor journeys `plan/26` ran and this phase did not re-run. **And J1's added assertion did not run** — see §11 | Release |
 | 11 | **No call was ever made to a real provider.** Every test injects a fake reader — which is also why J1's added step ("the agent cited a merged pull request") did not run. **J1 proves this release did not break the main journey; it does not prove the release extended it.** Two different sentences | Release |
 | 12 | **`pg_trgm` on Railway itself is still unverified** — closed by argument and three local role shapes, with a one-line `psql` predicate to answer it on a real deployment | Operations |
+| 13 | **Context pack build is 3168ms at 22,000 chunks, against a 2000ms budget.** Layer 4's retrieval is the whole of it; cost is `matched_rows x query_terms` and neither is bounded. Partly an artifact of the seeded corpus, and partly not | Whoever runs a project past ~6,000 chunks. ADR 0038's amendment has the ceiling formula |
+| 14 | **`work-counts` P95 is 895ms at concurrency 10 on 2000 cards**, against D95's 200ms. It hydrates every card in the project to return a set of counts, on the event loop. Four workers bring it to 398ms — still over | Operations, and the next phase |
+| 15 | **No worker count is configured anywhere.** Every launch in the repository uses uvicorn's single-worker default. One worker sheds load (115 x 503) at concurrency 100 on a 2000-card project | Operations. `docs/deployment-railway.md` now has the numbers |
 
-**A short known-limitations list is not good news.** This one is twelve items, four of
+**A short known-limitations list is not good news.** This one is fifteen items, four of
 which (10, 11, 12, 5) are things this environment could not do rather than things the
-design chose.
+design chose — **and three of which (13, 14, 15) exist because `HD-09` was run.** They were
+all true of `beta.1`; nothing had put 2000 cards in front of the code and looked.
 
 ---
 
@@ -182,6 +202,21 @@ the sections to read before signing.
 - Measured: **~7.5 KB of database per knowledge chunk**, of which 2.5 KB is index. 20,000
   chunks is ~150 MB and **none of it is ever reclaimed**.
 
+Measured on the `HD-10` dataset — 20,011 cards across ten projects, 22,000 chunks
+(`artifacts/hd/local/w5/volumes.txt`):
+
+| Relation | Size | Per unit |
+|---|---:|---|
+| `knowledge_chunks` | 150 MB | ~6.8 KB per chunk, of which the two indexes below are 2.3 KB |
+| ├ `ix_knowledge_chunks_fts` | 22 MB | the CJK bigram tsvector — 3.5x the text it indexes |
+| ├ `ix_knowledge_chunks_trgm` | 28 MB | GIN over content; the largest single index in the database |
+| `knowledge_sources` | 10 MB | ~2 KB per source |
+| `tasks` | 35 MB | ~1.8 KB per card, nine indexes included |
+| **total** | **207 MB** | for a deployment ten projects deep |
+
+**The two knowledge indexes are 50 MB of the 207.** Retrieval is what this data costs, and
+ADR 0038's "knowledge has no clock" means the row only ever grows.
+
 ---
 
 ## Feature flag matrix
@@ -212,6 +247,9 @@ artifacts/hd/local/w3/provider-sync-states.png  four sync states on a real scree
 artifacts/hd/local/w5/README.md         seven EXPLAIN plans, volumes, cost
 artifacts/hd/local/w6/rehearsal-compose.log     five steps, seven checks each
 artifacts/hd/local/w6/rollback/drill.log        six steps
+artifacts/hd/local/w6/perf-2000.md              thirteen budgets, and the two that fail
+artifacts/hd/local/w6/concurrency-2000.json     one worker; 384/500 at concurrency 100
+artifacts/hd/local/w6/concurrency-2000-4workers.json   four workers, for comparison
 artifacts/hd/local/journeys/summary.json        J1 32/32, J4 13/13, J15 8/8, and what did not run
 artifacts/hd/local/evidence.log                 all nine steps in one run
 ```
@@ -224,7 +262,9 @@ artifacts/hd/local/evidence.log                 all nine steps in one run
 |---|---|---|
 | ☐ | **SR-4 signed**, including §4's inheritance argument and §7's third row | A person |
 | ☐ | **The a11y audit's six manual checks** — focus order, announcements, keyboard drag, 200% zoom, reduced motion, greyscale. All six say *not performed*, not *performed and passed* | A person at a browser |
-| ☑ | ~~The eighteen journeys~~ → **three ran and passed** (J1 32/32, J4 13/13, J15 8/8) against a real daemon on this code. Fifteen did not | Done / partial |
+| ◐ | ~~The eighteen journeys~~ → **three ran and passed** (J1 32/32, J4 13/13, J15 8/8) against a real daemon on this code. Fifteen did not | Partial |
+| ☐ | **The visual suite has never run on CI.** Eight baselines are green locally, and they bind the font environment (limitation 5) — so the first CI run is eight failures until the image matches | CI |
+| ◐ | **`HD-08`'s second deployment path.** The compose rehearsal ran, five steps and seven checks each, and found a real `0046` defect on its first run. The Railway path did not | Same gap as the row above it |
 | ☐ | **J1's added assertion** — that the cited knowledge includes a merged pull request | Needs a real provider |
 | ☐ | **The Railway `psql` predicate**, on a real Railway deployment | One command |
 | ☐ | **`v2.0.0-alpha.3` and `v2.0.0-beta.1` tags** — both have all exit conditions green and neither exists | A person |
@@ -232,3 +272,9 @@ artifacts/hd/local/evidence.log                 all nine steps in one run
 
 **The last row is always last, and it is never automatic.** Every exit condition being
 green earns the right to propose a merge; it is not the merge.
+
+`plan/27/09` §8's forty-two exit conditions stand at **33 ☑ / 3 ◐ / 6 ☐**. Four of the six
+open ones are a person's action and appear above; the other two are CI. **That table read
+0 ☑ until the day this note was finished** — the work had been done and the scorecard had
+never been walked, which is how `HD-09`'s second half stayed missing long enough to be
+mistaken for complete.

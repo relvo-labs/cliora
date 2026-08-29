@@ -295,3 +295,35 @@ region actually used, not inherited from the host measurements in `artifacts/p4/
 - **NFR-003** (500 concurrent terminal WebSockets): re-run `scripts/p4/load/capacity.py`
   against the deployment. If the instance cannot reach 500, record the measured number and the
   size that would, and take a release decision — do not restate the threshold.
+
+## Worker count
+
+**Nothing in this repository sets one, so every deployment gets uvicorn's default of one.**
+That default has never been chosen; it has only never been questioned.
+
+`HD-09` measured `work-counts` on a 2000-card project (`artifacts/hd/local/w6/perf-2000.md`):
+
+| Workers | Concurrency 10 P95 | Concurrency 100 | Throughput |
+|---:|---:|---|---:|
+| 1 | 895ms | **384 of 500 answered** — 115 x 503 | 11 rps |
+| 4 | 398ms | 500 of 500 | 27 rps |
+
+The endpoint costs ~89ms of CPU per request at that size and it runs on the event loop, so
+one worker serialises: **adding concurrency adds latency and nothing else.** Throughput per
+worker is `1 / (cost per request)`, and 11 rps is exactly that.
+
+**Pick a worker count from the burst, not the average.** D95 polls `work-counts` every 20
+seconds per open board tab, so a fifty-person team in steady state is 2.5 rps, which one
+worker serves comfortably. What the table above measures is fifty tabs refreshing together
+— a deploy, or nine in the morning.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers "${WEB_CONCURRENCY:-4}"
+```
+
+Two constraints on the number:
+
+- **Each worker holds its own connection pool.** `workers x pool_size` must stay under
+  PostgreSQL's `max_connections`, which on a managed instance is often 100 or lower.
+- **Scaling is sublinear.** Four workers measured 2.4x one worker, not 4x — they share
+  cores and one database.
