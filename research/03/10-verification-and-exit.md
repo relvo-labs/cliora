@@ -135,13 +135,24 @@ context preview 的 pin／exclude／budget 揭露。
 
 ### SR-4（`beta.2` 前）— Provider ingestion 的信任邊界
 
-| 審查項 | 通過標準 |
-|---|---|
-| webhook signature 驗證 | 偽造簽章被拒 |
-| delivery id 去重 | 重送同一 delivery → 一次 ingest |
-| webhook 不在請求內同步抓 repo 或算 embedding | 程式碼審查 ＋ 回應時間 |
-| provider token 的保存、範圍與輪替 | 沿用既有 secret 機制 |
-| merge 前的 PR 內容不自動成為 policy | authority transition 測試 |
+> **2026-08-28 更新（`plan/27` 的 `HD-00`）**：★ D120 裁決 `beta.2` **只做 pull**，
+> 所以下表的前兩項**不存在**（沒有 webhook 就沒有簽章、沒有 delivery id），
+> 第三項改寫，並新增三項 pull 特有的。**八項的全文在
+> [`plan/27/02`](../../plan/27/02-provider-ingestion.md) §8。**
+>
+> 原表保留在下面。少掉兩項而不說明為什麼，下一個讀者會以為它們被漏掉了
+> ——而簽核文字必須寫明這件事。
+
+| 審查項（原表） | 通過標準 | pull 模型下 |
+|---|---|---|
+| webhook signature 驗證 | 偽造簽章被拒 | ~~不存在~~ |
+| delivery id 去重 | 重送同一 delivery → 一次 ingest | ~~不存在~~——reconcile 每輪重讀 entity 當前狀態，重複是免費的 |
+| webhook 不在請求內同步抓 repo 或算 embedding | 程式碼審查 ＋ 回應時間 | **改寫**為 `GATE-HD-NO-PROVIDER-IN-REQUEST`：`api/http/` 下不得 import `provider_reads`。**精神相同而且更強**——原版審查一個行為，這個斷言一個依賴 |
+| provider token 的保存、範圍與輪替 | 沿用既有 secret 機制 | **保留** |
+| merge 前的 PR 內容不自動成為 policy | authority transition 測試 | **保留**，且變成一個**值域限制**而不是一個流程（D122） |
+| — | — | **新增**：撤權 token 不會讓 reconcile 無限重試（J18） |
+| — | — | **新增**：`provider_reads.py` 只發 GET（兩個 gate） |
+| — | — | **新增**：錯誤 body 不含 token、不進 log／metric label |
 
 ## 5. 效能預算
 

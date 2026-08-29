@@ -426,8 +426,25 @@ def test_scope_013_central_does_not_proxy_to_a_node_http_service() -> None:
     # influence. Widening the allowlist to a node's address would still be a proxy —
     # which is why the allowlist's default is a single public host and lives in
     # settings rather than in data.
+    # **Two modules from `beta.2`, and the rule narrows again rather than loosening.**
+    #
+    # V2.4 changed this from "no HTTP client anywhere" to "one module", for the reason
+    # above. `beta.2` adds a second — `provider_reads.py`, which reads pull requests and
+    # published versions (ADR 0043) — and the same argument applies: reading somebody's
+    # public API is not proxying and is not aimed at a node.
+    #
+    # The two are **separate files on purpose**, not one file with more functions.
+    # `providers.py` may act (create, comment) and `provider_reads.py` may only read, and
+    # each keeps a property a grep can state: `GATE-HD-READS-ARE-GETS` asserts the reader
+    # contains no HTTP method literal but `"GET"`. Merged, that assertion would have to
+    # know which function a string sits in.
+    #
+    # An allowlist of names rather than a count: "exactly two" would be satisfied by any
+    # two, and the next module to want a client will be a reasonable-looking diff.
     HTTP_CLIENTS = {"httpx", "requests", "aiohttp", "urllib3"}
     PROVIDER_MODULE = "services/providers.py"
+    PROVIDER_READ_MODULE = "services/provider_reads.py"
+    PERMITTED = (PROVIDER_MODULE, PROVIDER_READ_MODULE)
     offenders: dict[str, set[str]] = {}
     for path, text in sources.items():
         imported: set[str] = set()
@@ -438,22 +455,41 @@ def test_scope_013_central_does_not_proxy_to_a_node_http_service() -> None:
             elif isinstance(node, ast.ImportFrom) and node.module:
                 imported.add(node.module.split(".")[0])
         hit = imported & HTTP_CLIENTS
-        if hit and not str(path).endswith(PROVIDER_MODULE):
+        if hit and not str(path).endswith(PERMITTED):
             offenders[str(path.relative_to(app_root))] = hit
     assert offenders == {}, (
-        "an HTTP client appeared outside the provider adapter: "
+        "an HTTP client appeared outside the two permitted provider modules: "
         f"{offenders}. Central reaches a node over the WebSocket and nothing else; the "
-        f"one permitted client lives in {PROVIDER_MODULE} and may only call hosts on "
-        "the deployment's provider allowlist."
+        f"permitted clients live in {PROVIDER_MODULE} and {PROVIDER_READ_MODULE}, and "
+        "may only call hosts on the deployment's provider allowlist."
     )
 
-    # And that module cannot be pointed at a node: the base URL is a setting, never a
-    # column, so no repository row decides where Central connects.
+    # **Both modules, and the check is what makes the allowlist a rule rather than a
+    # convention.** Widening the allowlist to a node's address would still be a proxy,
+    # which is why it lives in settings and not in a column — and why each module has to
+    # consult it rather than inheriting a checked client from the other.
+    for module in PERMITTED:
+        module_source = next(
+            (text for path, text in sources.items() if str(path).endswith(module)), None
+        )
+        assert module_source is not None, f"{module} is missing"
+        assert "provider_api_host_list" in module_source, (
+            f"{module} must check the deployment's host allowlist before it makes a request"
+        )
+
+    # The reader may only read. Asserted here as well as in `scripts/hd/gates.sh` so that
+    # it fails in a plain `pytest` run: a rule only CI enforces is one a contributor meets
+    # after the work is done.
+    reader_source = next(
+        text for path, text in sources.items() if str(path).endswith(PROVIDER_READ_MODULE)
+    )
+    for method in ('"POST"', '"PUT"', '"PATCH"', '"DELETE"'):
+        assert method not in reader_source, (
+            f"{method} appeared in {PROVIDER_READ_MODULE}; the read module reads."
+        )
+
     provider_source = next(
         text for path, text in sources.items() if str(path).endswith(PROVIDER_MODULE)
-    )
-    assert "provider_api_host_list" in provider_source, (
-        "the provider adapter must check the deployment's host allowlist before it makes a request"
     )
     for column in ("repository.host", "row.host", "repository.scheme"):
         assert f"{column}}}" not in provider_source, (

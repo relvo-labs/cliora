@@ -15,7 +15,6 @@ import type {
   AttachTicket,
   AuditPage,
   AuditQuery,
-  Board,
   WorkCounts,
   WorkItemsPage,
   TaskAttention,
@@ -344,13 +343,6 @@ export class ApiClient {
   //
   // Same 404-while-disabled rule as the project routes above: the browser knows from
   // `User.features` rather than by probing.
-
-  getBoard(projectId: string): Promise<Board> {
-    return this.request(
-      "GET",
-      `/api/projects/${encodeURIComponent(projectId)}/board`,
-    );
-  }
 
   getWorkItems(
     projectId: string,

@@ -1507,7 +1507,13 @@ class RunService:
             return None
 
         if run.attempt >= self._settings.run_max_attempts:
-            task.stage = "blocked"
+            # `is_blocked`, not the stage (`0045`/`0046`, ADR 0040's amendment). The third
+            # and last of the writers that made `tasks.is_blocked` unreadable — and the
+            # one `GATE-DV-SINGLE-DONE-PATH` was closest to seeing, since it scans this
+            # very file. It watches for `'done'`, so this line sat beside it for three
+            # phases; `GATE-HD-NO-LEGACY-BLOCKED` scans the whole tree for that reason.
+            task.is_blocked = True
+            task.blocking_reason = "run_failed"
             runner_name = None
             if run.assigned_runner_id is not None:
                 assigned = await self._session.get(AgentRunner, run.assigned_runner_id)

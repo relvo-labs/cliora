@@ -85,6 +85,39 @@ KNOWLEDGE_JOBS_TOTAL = "knowledge_jobs_total"
 KNOWLEDGE_JOB_DURATION = "knowledge_job_duration_seconds"
 KNOWLEDGE_INGEST_LAG_SECONDS = "knowledge_ingest_lag_seconds"
 
+# Provider ingestion (`beta.2`, ADR 0043 §6). Labelled by host and the existing `status`
+# key rather than a new `outcome` one — the allowlist refused `outcome` at the call site
+# and it was right to: two label names for one idea is how a dashboard ends up with two
+# series that should have been one. Labelled by host and a coarse status —
+# never by repository, project or path, all of which are identifying and none of which a
+# dashboard needs to answer "is sync still alive".
+#
+# **`PROVIDER_RECONCILE_LAG_SECONDS` is the only evidence for the phase's one product
+# promise.** ADR 0043 §2 gives up freshness deliberately and puts a number on it: a merge
+# is visible within one reconcile interval. Without this histogram that sentence is a
+# claim; with it, it is a measurement somebody can disagree with.
+PROVIDER_READ_TOTAL = "provider_read_total"
+PROVIDER_RECONCILE_LAG_SECONDS = "provider_reconcile_lag_seconds"
+
+# Queue depth, by state. The symptom of a backed-up knowledge queue is "search results are
+# a bit old", which is invisible on screen — this is the only thing that says so.
+KNOWLEDGE_QUEUE_DEPTH_TOTAL = "knowledge_queue_depth_total"
+
+# Which authority levels actually get cited (`plan/27` D134). **Metadata only**: the label
+# is the level's name and nothing else. A level that is never cited across a release
+# window is the evidence for merging it, which is the measurement ADR 0038 §2 said it
+# would need before anybody argued about ten being too many.
+CONTEXT_CITATION_TOTAL = "context_citation_total"
+
+# `LEGACY_ROUTE_HIT_TOTAL` was planned here for the `?tab=` sunset (`plan/27` D126) and
+# **deliberately not added**. The redirect runs in vue-router, and the SPA is served by
+# nginx (`deploy/nginx/nginx.conf`, `location /`) — the FastAPI app never sees the query
+# string, so nothing here could increment it.
+#
+# A metric with no writer is the same defect as a machine code with no raise point
+# (`plan/26` D97): it reads as instrumentation and measures nothing. The `?tab=` deletion
+# condition was rewritten instead — see ADR 0044 §4.
+
 # --- tech §18.1: the control-plane series (P4-09) ---
 # Relay generalized from the P3 filesystem-only pair: every Central→daemon request
 # is timed and counted by message type, so a slow or unanswered `session.start` is as
@@ -168,6 +201,11 @@ ALLOWED_LABELS: frozenset[str] = frozenset(
         "status",
         "status_class",
         "type",
+        # `beta.2`. `host` is the provider's API host from the deployment allowlist — a
+        # closed, tiny set, never a repository address. `authority` is one of ten fixed
+        # level names.
+        "host",
+        "authority",
     }
 )
 

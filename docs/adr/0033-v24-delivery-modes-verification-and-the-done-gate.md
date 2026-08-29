@@ -1,9 +1,8 @@
 # ADR 0033 — Five ways a result leaves a run, two stores that may name a verification command, and the gate a card passes to be done
 
-- Status: **proposed** (2026-08-14) — waiting on gate two, which is a person's
-  approval. Until it is accepted, `DV-02` onward may not touch `backend/`,
-  `frontend/`, `daemon/` or `contracts/` (`plan/21/00-…md` §4). A document that
-  marks itself accepted would make that gate meaningless.
+- Status: **accepted** (2026-08-27) — gate two closed by the repository owner, recorded
+  from their instruction of 2026-08-27. Same note as ADR 0032: the code this gate guarded
+  shipped before the gate was closed.
 - Date: 2026-08-14
 - Amends: nothing. Three neighbouring ADRs gain amendments in their own files —
   ADR 0029 (amendment C, the `features` declaration), ADR 0031 (amendment B,

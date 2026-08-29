@@ -91,6 +91,37 @@ async def test_pg_trgm_is_installed(session):
     assert installed == 1
 
 
+async def test_pg_trgm_is_a_trusted_extension(session):
+    """Which is what decides whether a managed database can run `0041` at all.
+
+    `plan/25` carried "Railway usually gives a non-superuser, **必須實測**" as an open exit
+    condition for six weeks, on the assumption that `CREATE EXTENSION` needs a superuser.
+    **It does not, for this extension.** `pg_trgm` is marked `trusted` in its control file,
+    and since PostgreSQL 13 a trusted extension may be installed by any role holding
+    `CREATE` **on the database** — superuser is not the predicate.
+
+    Measured on 2026-08-28 (`plan/27` `HD-00`) against three roles: the database owner,
+    who is not a superuser, installs it successfully; a role without `CREATE` on the
+    database gets `0041`'s second refusal and the documented one-line remedy fixes it
+    (`docs/deployment-railway.md`).
+
+    Asserted here rather than left in prose because it is the sentence a future reader
+    would otherwise re-derive under deployment pressure. If a PostgreSQL upgrade ever
+    un-trusts it, the deployment guide's advice becomes wrong and this is what says so.
+    """
+    # `pg_available_extension_versions`, not `pg_available_extensions` — only the former
+    # carries `trusted`, and the latter is the one whose name suggests it would.
+    trusted = (
+        await session.execute(
+            sa.text(
+                "SELECT bool_and(trusted) FROM pg_catalog.pg_available_extension_versions "
+                "WHERE name = 'pg_trgm'"
+            )
+        )
+    ).scalar()
+    assert trusted is True
+
+
 async def test_knowledge_is_off_by_default(session):
     _user, project_id = await _project(session)
     project = await session.get(Project, project_id)

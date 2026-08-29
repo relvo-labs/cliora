@@ -353,7 +353,9 @@ quota. Whether to keep them is a person's call.
 
 # Amendment (V2.3, 2026-08-13) — the send-back half of git
 
-- Status: **proposed**, waiting on the same gate two as ADR 0032.
+- Status: **accepted** (2026-08-27) — gate two closed by the repository owner, recorded
+  from their instruction of 2026-08-27, together with ADR 0029's amendment and
+  ADR 0032/0033/0034.
 - Scope: this amendment adds **push** and the branch namespace. It does not
   restate the six directory rules or the fetch half; those are unchanged above.
 - Requirements: `FR-RUNENV-007`, `FR-RUNENV-009`

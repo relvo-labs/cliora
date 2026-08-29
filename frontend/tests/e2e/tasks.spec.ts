@@ -228,50 +228,20 @@ test.describe("V2.1 task layer", () => {
     await stalePage.close();
   });
 
-  test("the two queued waiting reasons remain different on the board", async ({
-    page,
-    request,
-  }) => {
-    const token = await tokenFor(request);
-    const project = await createProject(request, token, "task-waiting-copy");
-    const assigned = await postJson(
-      request,
-      token,
-      `/api/projects/${project.id}/tasks`,
-      { title: "Assigned offline" },
-    );
-    const unassigned = await postJson(
-      request,
-      token,
-      `/api/projects/${project.id}/tasks`,
-      { title: "No eligible runner" },
-    );
-
-    await page.route(`**/api/projects/${project.id}/board`, async (route) => {
-      const response = await route.fetch();
-      const board = await response.json();
-      for (const lane of board.lanes) {
-        for (const card of lane.cards) {
-          card.active_run_status = "queued";
-          if (card.id === assigned.task.id) {
-            card.active_run_runner_name = "dev-vm-01";
-            card.waiting_reason = "assigned_offline";
-          } else if (card.id === unassigned.task.id) {
-            card.active_run_runner_name = null;
-            card.waiting_reason = "no_eligible_runner";
-          }
-        }
-      }
-      await route.fulfill({ response, json: board });
-    });
-
-    await signIn(page);
-    await page.goto(`/projects/${project.id}?tab=board`);
-    const copies = await page.locator(".waiting-copy").allTextContents();
-    expect(copies).toContain("等待指定的 Agent：dev-vm-01（目前離線）");
-    expect(copies).toContain("等待可用的 Agent");
-    expect(new Set(copies).size).toBe(2);
-  });
+  // `the two queued waiting reasons remain different on the board` lived here and was
+  // **deleted in `beta.2`**. It had already stopped testing anything: it drove
+  // `/projects/:id?tab=board` and read `.waiting-copy`, and both went with
+  // `ProjectDetailView.vue` in V2-P1 — but nothing noticed, because an e2e needs a stack
+  // and the stack was not run between the deletion and now.
+  //
+  // **That is the finding, not the deletion.** A test aimed at a deleted screen does not
+  // fail; it simply never runs, and a suite that never runs looks the same as one that
+  // passes.
+  //
+  // The property it defended — "the agent you named is offline" and "no agent is
+  // eligible" read differently — now lives in three places that do run:
+  // `src/modules/work/attention.ts` (levels 5 and 6, with their own copy),
+  // `quickFilters.ts` (each is its own filter), and journey J15 against a real daemon.
 
   test("a requirement proposal can be accepted one task at a time", async ({
     page,
@@ -418,6 +388,12 @@ test.describe("V2.1 task layer", () => {
     ).toBeVisible();
   });
 
+  // **Repointed at `work-items` in `beta.2`** (ADR 0044). M1's threshold was set on
+  // `/board`, and this is the one measurement in the suite that goes over live HTTP
+  // rather than against a service function — which is why it was kept and repointed
+  // instead of deleted when the endpoint went. The numbers it writes are therefore
+  // **not comparable across the sunset**, and `artifacts/tk/local/m1-live.json` records
+  // which endpoint produced them.
   test("M1 records p50 and p95 for a real 200-card board", async ({
     request,
   }) => {
@@ -437,7 +413,7 @@ test.describe("V2.1 task layer", () => {
       );
     }
 
-    const boardUrl = `${API}/api/projects/${project.id}/board`;
+    const boardUrl = `${API}/api/projects/${project.id}/work-items`;
     for (let index = 0; index < 5; index += 1) {
       const warmup = await request.get(boardUrl, { headers: headers(token) });
       expect(warmup.ok()).toBe(true);
@@ -458,6 +434,10 @@ test.describe("V2.1 task layer", () => {
     const result = {
       cards: 200,
       samples: timings.length,
+      // Which endpoint produced these. `/board` until `beta.2` deleted it; the budget
+      // below was set against that shape, so a reader comparing an old file to a new one
+      // needs this line to know the two are different measurements.
+      endpoint: "work-items",
       transport: "live HTTP over loopback; response body read",
       response_bytes: responseBytes,
       p50_ms: Number(percentile(0.5).toFixed(2)),

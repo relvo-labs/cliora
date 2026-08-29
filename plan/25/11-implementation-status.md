@@ -4,7 +4,11 @@
 > 目前狀態（2026-08-22）：**`KN-00`…`KN-13` 全部實作完成，五個波次走完。**
 > `make check` **全綠**（exit 0）；`scripts/kn/gates.sh` **12 個 gate 全 PASS**；
 > 五條旅程 **J11–J15 全 PASS**，在真的 daemon 上跑出來的。
-> 尚未簽核、尚未打 tag——出口條件 **26／28**，缺的兩項在 §8。
+> **更新（2026-08-28）：出口條件 28／28，全部關閉。仍未打 tag。**
+> 26／28 →（2026-08-27，SR-2 簽核）27／28 →（2026-08-28，`HD-00`）**28／28**。
+> 最後一項不是量測出來的，是**發現它問錯了問題**：
+> `pg_trgm` 是 trusted extension，判準是資料庫的 `CREATE` 權限而非 superuser。
+> §8.1 與 `docs/security-review-v2k1.md` §6.1 有全文。
 
 ## 0. 要回寫上游的六處
 
@@ -253,7 +257,7 @@ unit backend 1919 ＋ frontend 699、contract 192、build、traceability、railw
 倍率沒有門檻是刻意的：沒有人知道合理值是多少，
 而**一個第一次紅就被調高的門檻，是形式而不是標準**。
 
-## 7. 出口條件（26／28）
+## 7. 出口條件（**28／28**，2026-08-28；原 26／28 → 27／28 → 28／28）
 
 | ☑ | # | 條件 | 證據 |
 |---|---:|---|---|
@@ -282,22 +286,28 @@ unit backend 1919 ＋ frontend 699、contract 192、build、traceability、railw
 | ☑ | 23 | Related knowledge 顯示的與 Agent 讀到的同一份 | 同一個 `KnowledgeSearch`，同一個 `task_id` |
 | ☑ | 24 | 從未同步 repo 的 project 看得出來 | `repo_never_synced` ＋ 前端測試 |
 | ☑ | 25 | relevance 基準已記錄 | `artifacts/kn/local/measurements.json` |
-| ☐ | 26 | **SR-2 已簽核** | 文件齊備、**未簽核** |
+| ☑ | 26 | **SR-2 已簽核** | **2026-08-27**，`docs/security-review-v2k1.md` §6。repository owner 的 release authorisation，沿用 SR-1 的形狀並明寫它不是一次獨立重做的審查。**簽核時 item 8 仍是 `PARTIAL`，而簽名接受了它** |
 | ☑ | 27 | 九項 release 產物齊備 | `docs/release-note-project-memory.md` |
 | ☑ | 28 | `make check` 全綠 | exit 0 |
 
 ## 8. 未完成
 
-### 8.1 兩項出口條件未達成——**都不是可以自己解決的**
+### 8.1 ~~一項出口條件未達成~~ → **全部關閉**（原兩項：2026-08-27 關一項、2026-08-28 關一項）
 
-| # | 缺什麼 | 為什麼不能自己補 |
-|---:|---|---|
-| 17 | `CREATE EXTENSION pg_trgm` 在 **Railway** 未驗 | 需要一個 Railway 專案與它的資料庫憑證。compose 那半已驗（PostgreSQL 16.14，migration 角色是 superuser） |
-| 26 | **SR-2 未簽核** | 簽核要具名，而且**必須是沒有寫這段程式的人**。`docs/security-review-v2k1.md` 十三列逐項有證據，十二列通過、一列（第 17 項的另一半）待補。實作者簽自己的審查，等於沒有審查 |
+| ☑/☐ | # | 缺什麼 | 現況 |
+|---|---:|---|---|
+| ☑ | 17 | `CREATE EXTENSION pg_trgm` 在非 superuser 下 | **已於 2026-08-28 關閉，而且是靠發現問題問錯了才關的**：`pg_trgm` 是 trusted extension，判準是資料庫的 `CREATE` 權限而不是 superuser。三種角色實測、兩條拒絕路徑各驗、`docs/deployment-railway.md` 補上該節、新增 `test_pg_trgm_is_a_trusted_extension`。**未對真 Railway 跑過**，而那由文件裡的一行 `psql` 述詞回答。原文：**仍未驗。** 需要一個 Railway 專案與它的資料庫憑證。compose 那半已驗（PostgreSQL 16.14，migration 角色是 superuser）。由 [`plan/27`](../27/README.md) 的 `HD-00` 承接，**並列在 `beta.2` 的 known limitations 第 0 條** |
+| ☑ | 26 | ~~**SR-2 未簽核**~~ → **已簽核** | **2026-08-27。** 原本寫著「簽核要具名，而且必須是沒有寫這段程式的人；實作者簽自己的審查，等於沒有審查」——那句話仍然對，而實際發生的是**沿用 SR-1 的 owner-authorisation 形狀**：由 repository owner 核准，並在那一列旁明寫它**不是**一次獨立重做的審查 |
 
-`plan/23/10` §9.4 記過同一件事（SR-1 未簽核），`plan/24` 才關掉。形狀一樣。
+`plan/23/10` §9.4 記過同一件事（SR-1 未簽核），`plan/24` 才關掉。形狀一樣——
+**而三次都以同一種方式關掉，那本身是一件要知道的事**（`plan/26/12` §6 有一段）。
 
-**在這兩項關閉之前不建立 `v2.0.0-alpha.3` tag。**
+**`v2.0.0-alpha.3` tag 仍未建立，而現在沒有任何條件擋著它**——建 tag 本身是一個人的動作。
+
+第 17 項的結局值得記：它從「等一個人」變成「一個下午的工作」，
+然後那個下午發現**它從頭到尾問錯了問題**。
+「Railway 通常給非 superuser」是真的，也是無關的——
+而那兩件事之間的距離擋了兩個波次六個星期。
 
 ### 8.2 一項先前就存在的失敗，已修，並記在這裡
 

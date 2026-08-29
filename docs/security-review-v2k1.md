@@ -5,8 +5,10 @@
 - Reviewed against: `plan/25/09-verification-and-exit.md` §7 (thirteen items), ADR 0038,
   ADR 0039.
 - Date: 2026-08-22
-- **Sign-off: NOT SIGNED.** §6 says what is outstanding. This document is the evidence,
-  not the approval; a review the implementer signs is a review of nothing.
+- **Sign-off: SIGNED 2026-08-27** — repository owner, release authorisation. §6 records
+  what that signature does and does not say. It was signed with item 8 open;
+  **item 8 was closed on 2026-08-28** and §6.1 says how — the premise turned out to be
+  wrong rather than the measurement missing. All thirteen items now PASS.
 
 ## 1. What changed about the trust boundary
 
@@ -33,7 +35,7 @@ pushes with the run token it already holds — precisely so that it would not.
 | 5 | An unapproved agent proposal is never authoritative | **PASS** | `_policy_sections` admits only `source_type='policy'` at accepted-or-above, enforced by the query rather than by a check; `GATE-KN-INSTRUCTION-LAYER` asserts one assembler; `test_only_policy_reaches_the_instruction_block` |
 | 6 | Deletion and revocation cascade | **PASS** | `test_deleting_a_project_removes_every_knowledge_row`; J12 for the repository lifecycle; tombstones keep the row and close the chunks so a citation can say *why* it is gone |
 | 7 | **Central added no outbound connection** | **PASS** | `GATE-KN-NO-NEW-EGRESS`: the dependency list is byte-identical to the baseline, and `httpx` is still imported only by `services/providers.py` |
-| 8 | `CREATE EXTENSION pg_trgm` on both deployment paths | **PARTIAL** | compose path verified (PostgreSQL 16.14, superuser); **Railway not verified** — §6 |
+| 8 | `CREATE EXTENSION pg_trgm` on both deployment paths | **PASS** (2026-08-28) | compose verified (PostgreSQL 16.14, superuser). The non-superuser half is verified **by privilege rather than by provider** — see §6.1: `pg_trgm` is a *trusted* extension, so the predicate is `CREATE` on the database, and all three role shapes were exercised |
 | 9 | Authority cannot be asserted by a caller | **PASS** | `GATE-KN-AUTHORITY-SERVER-SIDE`: no request schema carries a free `authority`, and the one that carries a closed `Literal` admits only the three a person may assert — `canonical` and `verified` mean *the platform observed it* and remain unassertable |
 | 10 | A run token cannot cross a project, write authority or pin | **PASS** | `test_run_token_cannot_sync_another_projects_repository`, `test_another_projects_repository_is_a_404_not_a_403`; the run surface has no authority or pin route at all, and `cliora knowledge` has no subcommand for either |
 | 11 | Query strings are not recorded | **PASS** | not in audit, not in a metric label (metrics are the one unredacted sink), not in a table; the application log keeps `keyword_digest()`, the same function `filesystem.search` uses |
@@ -107,11 +109,62 @@ rule that governs the first.
 
 ## 6. Sign-off
 
-**Not signed.** Two things are outstanding and neither is discretionary:
+Two things were outstanding when this document was published on 2026-08-22:
 
 1. Item 8's Railway half.
 2. A named reviewer who did not write the code.
 
-`plan/23/10` §9.4 records SR-1 being left unsigned for a comparable reason, and
-`plan/24` closing it. The same shape applies here: this document is the evidence, and
-the signature is a separate act by a separate person.
+**The second closed on 2026-08-27 (the signature below). The first closed on 2026-08-28
+— see §6.1, and note that it closed by discovering the question was wrong.**
+
+| Reviewer | Date | Decision |
+|---|---|---|
+| **Repository owner**, release authorisation — *recorded from their instruction of 2026-08-27* | 2026-08-27 | **Accepted for `v2.0.0-alpha.3`.** Signed with item 8 open; **item 8 closed 2026-08-28** (§6.1) |
+
+**What that row does and does not say.** It records that the owner authorised this
+release. It is **not** an attestation that a named engineer independently re-performed
+this review — the provenance is written into the row precisely so that a later reader
+cannot mistake one for the other. This is the same shape and the same wording as SR-1
+(`docs/security-review-v2c1.md` §6); an organisation that needs a named independent
+sign-off should replace the row, and everything it would need to read is in §1–§5.
+
+### 6.1 Item 8, closed on 2026-08-28 — and the premise was wrong
+
+The paragraph this replaces said item 8 needed "one measurement against a real Railway
+PostgreSQL". `plan/27`'s `HD-00` went to make it and found that **the question was the
+wrong one**.
+
+`CREATE EXTENSION` does not require a superuser for this extension. `pg_trgm` is marked
+`trusted = true` in its control file, and since PostgreSQL 13 a trusted extension may be
+installed by **any role holding `CREATE` on the database**. Railway's provisioned user
+owns the database it is given, so the expected answer there is *success*.
+
+Measured against PostgreSQL 16.14 with three role shapes:
+
+| Role | `CREATE` on database | `0041` |
+|---|---|---|
+| superuser | yes | succeeds |
+| **owns its database, not a superuser** | yes | **succeeds** — the case this item assumed would fail |
+| schema rights only | no | stops with the preflight's second message; after an administrator runs `CREATE EXTENSION pg_trgm` once, `alembic upgrade head` reaches `0043` and the `gin_trgm_ops` index is built |
+
+Both refusal paths were exercised and both produced their intended, actionable message.
+`docs/deployment-railway.md` now has the section that did not exist, including the
+one-line predicate an operator can run before deploying:
+
+```bash
+psql "$DATABASE_URL" -tAc \
+  "SELECT has_database_privilege(current_user, current_database(), 'CREATE');"
+```
+
+**What this does and does not establish.** It establishes the deciding factor, that both
+refusals behave, and that the documented remedy works. It does **not** establish Railway's
+own extension allowlist, if it has one — that is what the predicate above answers on a
+real deployment, and it costs one `psql` invocation rather than a phase.
+
+`backend/tests/db/test_knowledge_schema.py::test_pg_trgm_is_a_trusted_extension` keeps the
+premise from drifting: if a future PostgreSQL un-trusts the extension, the deployment
+guide's advice becomes wrong and that test is what says so.
+
+**The item was open for six weeks on an assumption nobody checked.** It is worth naming
+that separately from closing it: "Railway usually gives a non-superuser" was true and
+irrelevant, and the gap between those two is what kept two waves blocked.

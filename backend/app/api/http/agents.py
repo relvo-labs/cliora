@@ -21,7 +21,7 @@ which one it received is an agent doing something a person was meant to do.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated
 from urllib.parse import quote
 
@@ -114,8 +114,20 @@ from app.services.conversation import (
 )
 from app.services.evidence import EvidenceService, PlanService, VerificationService
 from app.services.knowledge.context import ContextBuilder, omitted_summary
+
+# The policy constant and the reconcile cadence, both from modules with no network in
+# them. The module that *can* reach a provider is **not** imported here and must not be:
+# `GATE-HD-NO-PROVIDER-IN-REQUEST` asserts its absence, because a route that can reach a
+# reader is one call away from reading inside somebody's request.
+#
+# The gate greps this file's whole text, prose included — which is why this comment names
+# the rule rather than the module. That is not the gate being awkward: a rule enforced by
+# absence stops being enforceable the moment comments are exempted from it, and the same
+# constraint shaped `provider_sources.py`'s docstring an hour earlier.
+from app.services.knowledge.provider_sources import MAX_CONSECUTIVE_FAILURES
 from app.services.knowledge.repo import ManifestEntry, RepoSyncService
 from app.services.knowledge.search import KnowledgeSearch
+from app.services.knowledge.worker import RECONCILE_INTERVAL_SECONDS
 from app.services.patches import PatchProposalService
 from app.services.projects import ProjectService
 from app.services.rbac import (
@@ -188,6 +200,17 @@ def _repository_dto(row: ProjectRepository) -> ProjectRepositoryDTO:
         label=row.label,
         url=clone_url(row),
         created_at=row.created_at,
+        provider_synced_at=row.provider_synced_at,
+        # Derived here rather than stored: "when will it next run" is the reconcile
+        # cadence applied to the last success, and a stored copy would go stale the moment
+        # the interval changes — the same argument `metrics.py` makes about gauges.
+        next_provider_sync_at=(
+            row.provider_synced_at + timedelta(seconds=RECONCILE_INTERVAL_SECONDS)
+            if row.provider_synced_at is not None
+            else None
+        ),
+        provider_sync_error=row.provider_sync_error,
+        provider_sync_stopped=(row.provider_sync_failures >= MAX_CONSECUTIVE_FAILURES),
     )
 
 

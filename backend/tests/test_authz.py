@@ -270,7 +270,7 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("POST", "/api/tasks/{task_id}/verification"): rbac.TASK_UPDATE,
     ("GET", "/api/tasks/{task_id}/evidence"): rbac.PROJECT_VIEW,
     ("POST", "/api/tasks/{task_id}/evidence"): rbac.TASK_UPDATE,
-    ("GET", "/api/projects/{project_id}/board"): rbac.PROJECT_VIEW,
+    # `/board` was here until `beta.2` deleted it (ADR 0044).
     # V2-P1 read model. All `project.view`: these answer questions about cards the
     # caller can already read, so a second action would only create a role that can see
     # a board but not why anything on it is stuck (D53 — the count stays at 27).

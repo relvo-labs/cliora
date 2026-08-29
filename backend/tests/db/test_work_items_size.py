@@ -26,8 +26,11 @@ number turned out to be almost exactly right and **the derivation was wrong twic
 74 KB has not been the board's size since `plan/19`, and the 89,251 bytes that replaced it
 in `repositories/tasks.py`'s docstring is not `BoardCardDTO` at all — it comes from
 `scripts/tk/measure_board_payload.py`, a synthetic generator with a hand-written summary
-dict that predates the DTO. The real board card is 75,952 bytes on this fixture. A budget
+dict that predates the DTO. The real board card was 75,952 bytes on this fixture. A budget
 that happens to be right for reasons that are wrong is a budget nobody can adjust.
+
+`BoardCardDTO` was deleted in `beta.2` (ADR 0044) and the assertion on it went too; the
+75,952 stays below as a record, because it is the number this budget was compared against.
 
 Top five fields by bytes at 200 cards:
 
@@ -55,11 +58,9 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.http.schemas import BoardCardDTO
 from app.api.http.work import WorkItemCardDTO, _card
 from app.db.models import Project, Role, Task, User
 from app.security.passwords import hash_password
-from app.services.tasks import TaskService
 from app.services.work.attention import derive_attention
 from app.services.work.items import DerivedItem
 from app.services.work.rows import WorkRowReader
@@ -70,9 +71,11 @@ CARDS = 200
 # The measurement, and the pin at +15 %.
 WORK_ITEM_MEASURED = 169_518
 WORK_ITEM_BUDGET = int(WORK_ITEM_MEASURED * 1.15)
-# The board card on the *same* fixture. Not 89,251 — see the module docstring.
-BOARD_CARD_MEASURED = 75_952
-BOARD_CARD_TOLERANCE = 0.02
+# The board card on the *same* fixture, kept as a **record** after `beta.2` deleted the
+# type it measured (ADR 0044). Nothing asserts it any more; it is here so the module
+# docstring's arithmetic — 169,518 against 75,952, not against 89,251 — stays checkable
+# by a reader who wants to know where "twice the board" came from.
+BOARD_CARD_MEASURED_HISTORICAL = 75_952
 
 
 async def _fixture(session: AsyncSession) -> Project:
@@ -98,8 +101,15 @@ async def _fixture(session: AsyncSession) -> Project:
     )
     session.add(project)
     await session.flush()
+    # **The same 80/40/20/20/40 split, in the representation `0046` left behind.**
+    #
+    # The twenty that were `stage='blocked'` are now `ready` with `is_blocked=true` — which
+    # is exactly what `0045` did to real rows, and is why the card *count* and the
+    # proportions are untouched. That matters: this fixture is what `alpha.2`, `alpha.3`
+    # and `beta.1` measured against, and a fixture whose population changed would make
+    # those three phases' numbers incomparable. Only the encoding of "blocked" moved.
     stages = (
-        ["backlog"] * 80 + ["ready"] * 40 + ["implementing"] * 20 + ["blocked"] * 20 + ["done"] * 40
+        ["backlog"] * 80 + ["ready"] * 40 + ["implementing"] * 20 + ["ready"] * 20 + ["done"] * 40
     )
     for index in range(CARDS):
         session.add(
@@ -109,6 +119,9 @@ async def _fixture(session: AsyncSession) -> Project:
                 card_ref=f"DS-{index + 1}",
                 title=f"資料集卡片 {index + 1}",
                 stage=stages[index],
+                # Indices 140–159 are the former `blocked` twenty.
+                is_blocked=140 <= index < 160,
+                blocking_reason="unknown" if 140 <= index < 160 else None,
                 source="none",
                 delivery="none",
                 risk=("low", "medium", "high")[index % 3],
@@ -145,47 +158,16 @@ async def test_the_work_item_card_stays_within_its_measured_budget(
     assert len(WorkItemCardDTO.model_fields) == 35
 
 
-async def test_the_board_card_did_not_grow(session: AsyncSession) -> None:
-    """D48 asserted on **bytes**, not only on shape.
-
-    The read model shares `active_runs()` and `blocking_counts()` with the V1 board, so
-    somebody widening one of those queries for a new card makes the old card bigger while
-    the OpenAPI diff stays empty. This is the test that notices.
-    """
-    project = await _fixture(session)
-    cards = await TaskService(session).board(project.id, is_online=lambda _: False)
-    payloads = [
-        json.loads(
-            BoardCardDTO(
-                id=card.task.id,
-                card_ref=card.task.card_ref,
-                title=card.task.title,
-                stage=card.task.stage,
-                risk=card.task.risk,
-                priority=card.task.priority,
-                owner_user_id=card.task.owner_user_id,
-                owner_name=card.owner_name,
-                delivery=card.task.delivery,
-                blocking_count=card.blocking_count,
-                gates_approved_count=card.gates_approved_count,
-                active_run_status=card.active_run_status,
-                active_run_runner_name=card.active_run_runner_name,
-                waiting_reason=card.waiting_reason,
-                version=card.task.version,
-                updated_at=card.task.updated_at,
-            ).model_dump_json()
-        )
-        for card in cards
-    ]
-    body = json.dumps(payloads, ensure_ascii=False, separators=(",", ":"))
-    measured = len(body.encode("utf-8"))
-    lower = BOARD_CARD_MEASURED * (1 - BOARD_CARD_TOLERANCE)
-    upper = BOARD_CARD_MEASURED * (1 + BOARD_CARD_TOLERANCE)
-    assert lower <= measured <= upper, (
-        f"BoardCardDTO is {measured} bytes for {CARDS} cards; it was "
-        f"{BOARD_CARD_MEASURED}. D48 says this payload does not move."
-    )
-    assert len(BoardCardDTO.model_fields) == 16
+# `test_the_board_card_did_not_grow` lived here and was **deleted in `beta.2`** with
+# `BoardCardDTO` (ADR 0044, D126). It pinned the V1 board at 75,952 bytes for 200 cards
+# and asserted its 16 fields, because the read model shares `active_runs()` and
+# `blocking_counts()` with it — so widening one of those queries used to make the old
+# card bigger while the OpenAPI diff stayed empty.
+#
+# **That coupling is gone with the endpoint**: nothing renders the V1 shape any more, and
+# `test_the_work_item_card_stays_within_its_measured_budget` above is the only budget
+# left to defend. The constants it used are kept below only for the docstring's arithmetic
+# to stay checkable.
 
 
 async def test_the_work_item_card_carries_the_primary_attention_and_not_the_set(

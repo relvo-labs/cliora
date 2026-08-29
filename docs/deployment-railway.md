@@ -114,6 +114,89 @@ daemon can still tell "no update" from "no endpoint", but **do not publish the o
 command while it holds**; enroll nodes by installing `agentd` manually and running
 `agentd install`.
 
+## `pg_trgm`, and the one migration that can be refused
+
+Migration `0041` runs `CREATE EXTENSION pg_trgm`. It is **the only line in the V2 series
+that a database can refuse**, and this section exists because "it worked on compose" says
+nothing about a managed database.
+
+### What actually decides it
+
+**Not superuser.** `pg_trgm` is a *trusted* extension (`trusted = true` in
+`pg_trgm.control`), and since PostgreSQL 13 a trusted extension can be installed by any
+role holding **`CREATE` on the database** — no superuser needed. The extension ends up
+owned by the installing role.
+
+So the predicate is one query, and it is worth running before the first deploy:
+
+```bash
+psql "$DATABASE_URL" -tAc \
+  "SELECT has_database_privilege(current_user, current_database(), 'CREATE');"
+#   t → 0041 will succeed
+#   f → 0041 will stop, with the message below
+```
+
+Railway's default database user owns the database it provisions, so **`t` is the expected
+answer**. `f` happens when a deployment was given a scoped role instead — a reasonable
+thing for an operator to have done, and the reason this section is not "it will be fine".
+
+### What the refusal looks like
+
+`0041` checks availability and permission **separately**, because they need different
+actions from whoever reads the log:
+
+```text
+RuntimeError: pg_trgm is not available on this PostgreSQL server. It is a contrib
+extension and ships with postgres:16-alpine; a managed database may need it enabled by
+the provider first. Install it, then re-run `alembic upgrade head`. Nothing has been
+changed.
+```
+
+```text
+RuntimeError: CREATE EXTENSION pg_trgm was refused. The migration role usually needs to
+be a superuser, or pg_trgm has to be on the provider's extension allowlist. Ask an
+administrator to run `CREATE EXTENSION pg_trgm;` once against this database, then re-run
+`alembic upgrade head`.
+```
+
+**Nothing has been changed** in either case: `0041` is a revision of its own precisely so
+that the failure is atomic and the log line names the right file, rather than reporting
+"0042 failed" three hundred lines of `create_table` later.
+
+### The remedy, once, by an administrator
+
+```bash
+psql "$ADMIN_DATABASE_URL" -c "CREATE EXTENSION pg_trgm;"   # against the app's database
+# then re-run the deploy, or:
+cd backend && alembic upgrade head
+```
+
+The extension only has to be created once per database. `0041` uses
+`CREATE EXTENSION IF NOT EXISTS`, so re-running after an administrator has installed it
+is a no-op that proceeds to the two `projects` columns.
+
+### Downgrade order
+
+Dropping `pg_trgm` requires that nothing depends on it, and `0042` builds the
+`gin_trgm_ops` index that does. **`0042` down, then `0041` down** — the revision chain
+enforces this, so it is not something to remember.
+
+### Verified how
+
+Against PostgreSQL 16.14, three roles, on 2026-08-28 (`plan/27` `HD-00`):
+
+| Role | `CREATE` on database | Result |
+|---|---|---|
+| `cliora` (superuser) | yes | `0041`–`0043` succeed |
+| `cliora_limited` (owns its database, **not** superuser) | yes | **`0041`–`0043` succeed** — this is the case `plan/25` expected to fail |
+| `cliora_norights` (schema rights only) | no | `0041` stops with the second message; after an administrator runs `CREATE EXTENSION pg_trgm`, `alembic upgrade head` reaches `0043` and the `gin_trgm_ops` index is built |
+
+**This was not run against Railway itself.** What it establishes is that the deciding
+factor is `CREATE` on the database rather than superuser, that both refusal paths produce
+their intended message, and that the documented remedy works. What it does not establish
+is Railway's own extension allowlist, if it has one. The one-line predicate above is what
+closes that gap on a real deployment, and it costs a `psql` invocation.
+
 ## Upgrading
 
 `git push` → CI → deploy. `watchPatterns` keeps a backend change from restarting the console
@@ -212,3 +295,35 @@ region actually used, not inherited from the host measurements in `artifacts/p4/
 - **NFR-003** (500 concurrent terminal WebSockets): re-run `scripts/p4/load/capacity.py`
   against the deployment. If the instance cannot reach 500, record the measured number and the
   size that would, and take a release decision — do not restate the threshold.
+
+## Worker count
+
+**Nothing in this repository sets one, so every deployment gets uvicorn's default of one.**
+That default has never been chosen; it has only never been questioned.
+
+`HD-09` measured `work-counts` on a 2000-card project (`artifacts/hd/local/w6/perf-2000.md`):
+
+| Workers | Concurrency 10 P95 | Concurrency 100 | Throughput |
+|---:|---:|---|---:|
+| 1 | 895ms | **384 of 500 answered** — 115 x 503 | 11 rps |
+| 4 | 398ms | 500 of 500 | 27 rps |
+
+The endpoint costs ~89ms of CPU per request at that size and it runs on the event loop, so
+one worker serialises: **adding concurrency adds latency and nothing else.** Throughput per
+worker is `1 / (cost per request)`, and 11 rps is exactly that.
+
+**Pick a worker count from the burst, not the average.** D95 polls `work-counts` every 20
+seconds per open board tab, so a fifty-person team in steady state is 2.5 rps, which one
+worker serves comfortably. What the table above measures is fifty tabs refreshing together
+— a deploy, or nine in the morning.
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers "${WEB_CONCURRENCY:-4}"
+```
+
+Two constraints on the number:
+
+- **Each worker holds its own connection pool.** `workers x pool_size` must stay under
+  PostgreSQL's `max_connections`, which on a managed instance is often 100 or lower.
+- **Scaling is sublinear.** Four workers measured 2.4x one worker, not 4x — they share
+  cores and one database.

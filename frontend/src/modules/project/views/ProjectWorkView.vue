@@ -692,7 +692,19 @@ watch(fullScreen, (value) => writeFullScreen(value));
       <UiButton size="sm" variant="ghost" @click="work.load()">重試</UiButton>
     </AsyncState>
 
-    <div v-else-if="layout === 'board'" class="lanes">
+    <!-- `tabindex="0"` because this scrolls horizontally and its children are cards, not
+         focus stops in reading order: a keyboard user who cannot focus the container
+         cannot scroll to the fourth lane at all. WCAG 2.1.1, and axe reports it as
+         `scrollable-region-focusable`. The `role`/`aria-label` pair is what stops that
+         tab stop from being an unnamed one — landing on "group" tells a screen-reader
+         user nothing about where they are. -->
+    <div
+      v-else-if="layout === 'board'"
+      class="lanes"
+      tabindex="0"
+      role="group"
+      aria-label="工作看板，四個階段"
+    >
       <BoardColumn
         v-for="column in columns"
         :key="column.key"
@@ -807,6 +819,13 @@ watch(fullScreen, (value) => writeFullScreen(value));
   padding: 1px 1px var(--space-2);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+/* The tab stop added for WCAG 2.1.1 has to be **visible** when it is reached. A
+   focusable element with `outline: none` is worse than an unfocusable one: the keyboard
+   user is now somewhere, and nothing on screen says where. */
+.lanes:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 .rows {
   list-style: none;

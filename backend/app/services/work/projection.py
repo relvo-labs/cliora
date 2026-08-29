@@ -60,13 +60,20 @@ def project_lifecycle(stage: str) -> str:
 def project_is_blocked(stage: str, stored: bool | None) -> bool:
     """The blocked face, with the two rules D102 makes unconditional.
 
-    ``stage='blocked'`` is **always** blocked even when the column says otherwise, and
-    ``stage='done'`` is **never** blocked. Both exist because the platform still writes
-    the legacy stage from three places nobody is about to change in this phase —
-    ``run_reaper.py`` twice (lease expiry, retries exhausted) and ``runs.py`` once (a
-    question unanswered for 24 hours). Until `beta.2`'s `HD-06` moves those three, the
-    column and the stage can disagree, and the stage is the one that was written by the
-    thing that actually knows.
+    ``stage='done'`` is **never** blocked. That rule stands.
+
+    ``stage='blocked'`` is **still** treated as blocked, and after `beta.2` that branch is
+    unreachable rather than wrong: `0046` removed the value from the domain and
+    `GATE-HD-NO-LEGACY-BLOCKED` asserts no writer produces it. It is kept for one reason —
+    a deployment that **downgraded** past `0046` has the value back in its CHECK, and this
+    function must give the same answer there. Deleting the branch would make the read model
+    correct only on the schema it was written against.
+
+    Until `HD-06`, the branch was doing real work: three writers set the stage and not the
+    column (``run_reaper.py`` twice, ``runs.py`` once), so the two could disagree and the
+    stage was the one written by the thing that knew. **They now write the column**, which
+    is what makes ``stored`` trustworthy on its own — the property `beta.1` explicitly did
+    not have.
 
     ``stored`` is ``None`` before migration ``0043``: wave 0 runs on the existing
     backend, so the whole answer comes from the stage there (plan/26/05 §9 rule 2).
@@ -176,6 +183,17 @@ BLOCKING_REASONS = (
     "assigned_runner_offline",
     "verification_failed",
     "gate_unmet",
+    # `0045`/`0046`. Added when `runs.py`'s "this run has exhausted its attempts" writer
+    # stopped setting `stage='blocked'` and had to say *why* instead.
+    #
+    # **It is not `unknown`**, which was the tempting reading: `unknown` means the
+    # derivation could not tell, and this one can — a run failed its last attempt, which
+    # is a fact the writer holds. Collapsing a known reason into `unknown` makes the
+    # ambiguous report longer for a reason nothing states, which is the precise defect
+    # `plan/26/02` §5.2 removed two derivation rules to avoid.
+    #
+    # The name matches attention level 4, so the console already has copy for it.
+    "run_failed",
     "unknown",
 )
 

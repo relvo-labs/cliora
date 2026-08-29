@@ -327,7 +327,13 @@ async def test_the_last_attempt_blocks_the_card_and_names_the_agent(
     settings = Settings()
     assert await RunService(session, settings=settings).requeue_lost(run) is None
     await session.refresh(task)
-    assert task.stage == "blocked"
+    # `is_blocked` with a reason, not a lane (`HD-06`). The third of the three writers,
+    # and the only one in `runs.py` — the file `GATE-DV-SINGLE-DONE-PATH` already scans,
+    # which is why it was the one closest to being caught and still was not: that gate
+    # watches for `'done'`.
+    assert task.is_blocked is True
+    assert task.blocking_reason == "run_failed"
+    assert task.stage != "blocked"
     messages = (
         await session.execute(
             sa.select(sa.text("body"))

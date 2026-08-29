@@ -313,7 +313,7 @@
 | FR-KNOW-010 | [FR-KNOW-010.AC-02](../../research/prd.md#fr-know-010-ac-02) | 關閉時不收集、不建索引，查詢回應不揭露該專案是否曾經啟用。 | — | — | — |
 | FR-KNOW-010 | [FR-KNOW-010.AC-03](../../research/prd.md#fr-know-010-ac-03) | 關閉後既有來源標記為停用而不立即刪除；刪除是另一個需要二次確認的動作。 | — | — | — |
 | FR-KNOW-010 | [FR-KNOW-010.AC-04](../../research/prd.md#fr-know-010-ac-04) | 介面顯示每一類來源的筆數、最後收集時間、待處理量、失敗數與失敗佇列年齡； | — | — | — |
-| FR-KNOW-011 | [FR-KNOW-011.AC-01](../../research/prd.md#fr-know-011-ac-01) | 程式庫內容由 Agent 在自己的執行環境中推送；平台不主動連向任何程式庫代管服務。 | — | — | — |
+| FR-KNOW-011 | [FR-KNOW-011.AC-01](../../research/prd.md#fr-know-011-ac-01) | 程式庫的檔案內容由 Agent 在自己的執行環境中推送； | — | — | — |
 | FR-KNOW-011 | [FR-KNOW-011.AC-02](../../research/prd.md#fr-know-011-ac-02) | 版本以 commit 識別碼表示，且同一個 commit 重複推送不產生第二份內容。 | — | — | — |
 | FR-KNOW-011 | [FR-KNOW-011.AC-03](../../research/prd.md#fr-know-011-ac-03) | 排除規則同時來自程式庫自身的設定與專案設定；產生的內容、相依套件目錄與二進位檔案 | — | — | — |
 | FR-KNOW-011 | [FR-KNOW-011.AC-04](../../research/prd.md#fr-know-011-ac-04) | 單次推送有明確上限；超過時以可辨識的錯誤碼拒絕並指名是哪一項上限， | — | — | — |
@@ -394,6 +394,20 @@
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-03](../../research/prd.md#fr-project-005-ac-03) | 旗標關閉時，前端導覽與專案層導入前完全一致。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-04](../../research/prd.md#fr-project-005-ac-04) | 旗標的開關不得改變伺服器掛載的路由集合。 | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
 | FR-PROJECT-005 | [FR-PROJECT-005.AC-05](../../research/prd.md#fr-project-005-ac-05) | 既有 API 的請求與回應不得移除欄位、改名、變更型別或變更必填性； | plan:plan/16/04-session-association-and-feature-flag.md<br>source:research/prd.md | code:backend/app/api/http/deps.py | pytest:backend/tests/db/test_sessions_project_link.py |
+| FR-PROV-001 | [FR-PROV-001.AC-01](../../research/prd.md#fr-prov-001-ac-01) | 平台向程式庫代管服務發出的請求只有讀取；建立、合併、核准、關閉與版本標記 | — | — | — |
+| FR-PROV-001 | [FR-PROV-001.AC-02](../../research/prd.md#fr-prov-001-ac-02) | 對外讀取只發生在背景協調迴圈，不發生在任何使用者請求的處理過程中。 | — | — | — |
+| FR-PROV-001 | [FR-PROV-001.AC-03](../../research/prd.md#fr-prov-001-ac-03) | 同步為逐專案設定，預設關閉；關閉時不發出任何對外請求。 | — | — | — |
+| FR-PROV-001 | [FR-PROV-001.AC-04](../../research/prd.md#fr-prov-001-ac-04) | 關閉同步不刪除任何已取得的資料——它停止更新，不清除記憶。 | — | — | — |
+| FR-PROV-002 | [FR-PROV-002.AC-01](../../research/prd.md#fr-prov-002-ac-01) | 未合併的 PR 取得最低的討論層級；已合併的 PR 與已發布的版本取得 | — | — | — |
+| FR-PROV-002 | [FR-PROV-002.AC-02](../../research/prd.md#fr-prov-002-ac-02) | provider 資料永遠無法取得「經平台核准」或「經平台驗證」等級的層級—— | — | — | — |
+| FR-PROV-002 | [FR-PROV-002.AC-03](../../research/prd.md#fr-prov-002-ac-03) | 草稿版本不被收集：草稿不是一個事實。 | — | — | — |
+| FR-PROV-002 | [FR-PROV-002.AC-04](../../research/prd.md#fr-prov-002-ac-04) | provider 內容進入情境包的引用區而非指令區； | — | — | — |
+| FR-PROV-003 | [FR-PROV-003.AC-01](../../research/prd.md#fr-prov-003-ac-01) | 每個程式庫每輪的讀取次數有上限；每小時的輪數由已同步時間戳推導， | — | — | — |
+| FR-PROV-003 | [FR-PROV-003.AC-02](../../research/prd.md#fr-prov-003-ac-02) | 連續失敗達上限後該程式庫停止同步，而不是無限重試。 | — | — | — |
+| FR-PROV-003 | [FR-PROV-003.AC-03](../../research/prd.md#fr-prov-003-ac-03) | 停止的原因在畫面上說得出來——「沒有新的 PR」與「我們已經不再問了」 | — | — | — |
+| FR-PROV-003 | [FR-PROV-003.AC-04](../../research/prd.md#fr-prov-003-ac-04) | 憑證沿用既有的專案機密機制，永不下放到節點；輪替後下一輪即使用新值。 | — | — | — |
+| FR-PROV-004 | [FR-PROV-004.AC-01](../../research/prd.md#fr-prov-004-ac-01) | 一個 PR 合併之後，在一個協調週期內出現在專案記憶中； | — | — | — |
+| FR-PROV-004 | [FR-PROV-004.AC-02](../../research/prd.md#fr-prov-004-ac-02) | 延遲可被量測：協調落後時間是一個匯出的指標， | — | — | — |
 | FR-RUNENV-001 | [FR-RUNENV-001.AC-01](../../research/prd.md#fr-runenv-001-ac-01) | 機密以加密形式保存；任何介面、任何回應都不得讀回它的值。 | — | — | — |
 | FR-RUNENV-001 | [FR-RUNENV-001.AC-02](../../research/prd.md#fr-runenv-001-ac-02) | 清單只呈現名稱、類型、建立者、建立與輪替時間、最後使用時間。 | — | — | — |
 | FR-RUNENV-001 | [FR-RUNENV-001.AC-03](../../research/prd.md#fr-runenv-001-ac-03) | 名稱在專案內唯一；軟刪除之後同名可以重新建立。 | — | — | — |

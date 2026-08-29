@@ -193,7 +193,15 @@ async def test_an_unanswered_question_blocks_the_card_and_says_why(api: tuple, d
         assert rows[0].error_code == "RUN_WAITING_TIMEOUT"
         async with maker() as session:
             card = await session.get(Task, task)
-            assert card is not None and card.stage == "blocked"
+            # **`is_blocked`, not the stage** (`HD-06`, `0045`/`0046`). This assertion
+            # named one of the three writers that made `tasks.is_blocked` unreadable —
+            # and it passed the whole time, because it was checking the wrong column
+            # against the wrong intent. The card keeps the lane it was working in: a run
+            # giving up does not move work backwards, it marks it as needing a person.
+            assert card is not None
+            assert card.is_blocked is True
+            assert card.blocking_reason == "human_input"
+            assert card.stage != "blocked", "blocked is not a lane any more"
             bodies = (
                 await session.execute(
                     sa.text("select body from task_messages where task_id = :task_id"),
@@ -230,7 +238,14 @@ async def test_the_last_attempt_blocks_the_card_instead_of_retrying_forever(
         assert rows[0].status == "lost"
         async with maker() as session:
             card = await session.get(Task, task)
-            assert card is not None and card.stage == "blocked"
+            assert card is not None
+            assert card.is_blocked is True
+            # **`run_failed`, and the difference from the test above is the point.**
+            # That one is "an agent asked and nobody answered"; this one is "the run
+            # exhausted its attempts". Both used to land on `stage='blocked'`, which
+            # said neither — the whole reason `HD-06` gives each writer a reason to
+            # supply rather than a lane to move to.
+            assert card.blocking_reason == "run_failed"
     finally:
         await _cleanup(maker, project)
 

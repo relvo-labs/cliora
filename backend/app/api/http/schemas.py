@@ -1028,49 +1028,13 @@ class ProcessDTO(BaseModel):
     overrides: dict[str, Any] = Field(default_factory=dict)
 
 
-class BoardCardDTO(BaseModel):
-    """One card as the board renders it.
-
-    **Deliberately without `acceptance_criteria` and without gate detail.** M1
-    measured the full shape at 439 KB for 200 cards and over a megabyte at 500, while
-    this shape is 74 KB and 180 KB (`plan/17/10-…md` §1). That measurement is what
-    replaced pagination, so `test_the_board_card_stays_a_summary` pins it: the day
-    someone adds one of those fields back "just for convenience", the board silently
-    becomes the thing the measurement ruled out.
-    """
-
-    id: uuid.UUID
-    card_ref: str
-    title: str
-    stage: str
-    risk: str
-    priority: str
-    owner_user_id: uuid.UUID | None
-    owner_name: str | None
-    delivery: str
-    blocking_count: int
-    gates_approved_count: int
-    active_run_status: str | None = None
-    active_run_runner_name: str | None = None
-    waiting_reason: str | None = None
-    version: int
-    updated_at: datetime
-
-
-class BoardLaneDTO(BaseModel):
-    stage: str
-    label: str
-    wip_suggested: int | None
-    count: int
-    cards: list[BoardCardDTO]
-
-
-class BoardDTO(BaseModel):
-    lanes: list[BoardLaneDTO]
-    # Always false in V2.1. Present from the first release anyway: a field added later
-    # forces every existing client to handle its absence, while one that is always
-    # there makes a future move to paging a server-side change only.
-    has_more: bool = False
+# `BoardCardDTO`, `BoardLaneDTO` and `BoardDTO` were **deleted in `beta.2`** with the
+# `/board` endpoint they served (ADR 0044, D126). `WorkItemCardDTO` replaced them.
+#
+# The measurement their docstring carried — 439 KB full vs 74 KB summary at 200 cards,
+# 89,251/90,000 after `plan/19` — is **in ADR 0044 §2**, because three live decisions
+# (`plan/26` D48, `plan/26` D94, `plan/27` D126) were argued from it and a number that
+# load-bearing must not live only in a deleted file.
 
 
 class TaskDependencyDTO(BaseModel):
@@ -1254,6 +1218,20 @@ class UpdateTaskRequest(BaseModel):
     existing_pr_ref: str | None = None
     required_secrets: list[str] | None = None
     assigned_runner_id: uuid.UUID | None = None
+    # **Being blocked, since `beta.2` removed the lane that used to mean it** (`HD-06`,
+    # ADR 0040's amendment). Until `0046` a person said "this is stuck" by moving the card
+    # to `stage='blocked'`, which is why these three were in `EDITABLE_FIELDS` from
+    # `beta.1` and not here: the read model wrote them and nobody else needed to.
+    #
+    # Removing the lane without exposing the replacement on the same endpoint would have
+    # removed a capability rather than moved it — a `PATCH` that used to work would return
+    # 422 with no alternative on the same surface.
+    #
+    # All three are in `AGENT_FORBIDDEN_FIELDS`: a card that can declare itself unblocked
+    # has made the dependency gate advisory.
+    is_blocked: bool | None = None
+    blocking_reason: str | None = None
+    blocking_message: str | None = None
     # The Done Gate's escape hatch (V2.4, ADR 0033 §5). Not a field on the card: the
     # two travel with the patch that moves the card, because forcing is a property of
     # *this move* rather than a state somebody sets beforehand.
@@ -1751,6 +1729,20 @@ class ProjectRepositoryDTO(BaseModel):
     # which is what makes a credential in one impossible rather than filtered.
     url: str
     created_at: datetime
+    # **Provider sync's whole visible surface** (`HD-15`, ADR 0043 §5).
+    #
+    # `provider_sync_error` is the field that exists so a stopped repository does not look
+    # like a quiet one. Without it, a revoked token and a week with no merges render
+    # identically — which is the failure the column was added for, and rendering it is
+    # what completes that argument.
+    #
+    # `provider_synced_at` is null before the first pass, and `next_sync_at` is derived
+    # rather than stored: it is the cadence applied to the last success, and storing it
+    # would be a second answer that goes stale the moment the interval changes.
+    provider_synced_at: datetime | None = None
+    next_provider_sync_at: datetime | None = None
+    provider_sync_error: str | None = None
+    provider_sync_stopped: bool = False
 
 
 class CreateRepositoryRequest(BaseModel):

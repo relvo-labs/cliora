@@ -15,7 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
-from sqlalchemy import Select, and_, delete, func, select, text
+from sqlalchemy import and_, delete, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -38,10 +38,10 @@ class ActiveRunProjection:
     """The newest active run of one card, as the board and the read model need it.
 
     ``run_id`` and ``started_at`` were added by V2-P1 for the work-item card's deep link
-    and its "running for 12m" line. They are **new columns on this projection, not on
-    `BoardCardDTO`**: `read_board` copies only `status` and `runner_name` into the board
-    card, so the board's payload does not move a byte — and `PX-28`'s byte test is what
-    proves that rather than this comment.
+    and its "running for 12m" line. They were then **new columns on this projection and
+    not on `BoardCardDTO`**, so that the deprecated board's payload did not move a byte.
+    That constraint is gone with `/board` itself (ADR 0044); the live pin is
+    `test_work_items_size.py` on `WorkItemCardDTO`.
     """
 
     task_id: uuid.UUID
@@ -54,24 +54,10 @@ class ActiveRunProjection:
     started_at: datetime | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class BoardCard:
-    """A card as the board renders it, plus its compact projections.
-
-    Not the ORM row: M1 measured a 200-card board at 439 KB with the full card and
-    74 KB with the original summary. Plan/19 adds only active status, runner name and
-    a fixed waiting-reason enum: the same 200-card fixture is 89,251 bytes against a
-    90,000-byte budget. Acceptance criteria and gate detail still belong to the card
-    detail view; widening this type is how that decision gets undone.
-    """
-
-    task: Task
-    owner_name: str | None
-    blocking_count: int
-    gates_approved_count: int
-    active_run_status: str | None
-    active_run_runner_name: str | None
-    waiting_reason: str | None
+# `BoardCard` was **deleted in `beta.2`** with `/board` (ADR 0044, D126). Its measurement
+# — 439 KB full vs 74 KB summary at 200 cards, 89,251/90,000 after `plan/19` — is in
+# ADR 0044 §2. `services/work/rows.py::WorkRow` is the shape that replaced it, and
+# `test_work_items_size.py` is the pin that replaced this one.
 
 
 class TaskRepository:
@@ -116,48 +102,6 @@ class TaskRepository:
 
     async def get_story(self, story_id: uuid.UUID) -> UserStory | None:
         return await self._session.get(UserStory, story_id)
-
-    def _board_select(self, project_id: uuid.UUID) -> Select[tuple[Task]]:
-        return select(Task).where(Task.project_id == project_id).order_by(Task.updated_at.desc())
-
-    async def board_cards(
-        self, project_id: uuid.UUID, *, is_online: Callable[[uuid.UUID], bool]
-    ) -> list[BoardCard]:
-        """Every card in a project, with compact board-only projections.
-
-        Task rows, blocking counts and active runs are each one query. Waiting reasons
-        add at most one runner-list query, then evaluate every queued run in memory.
-        The per-card version is the N+1 that turns a 200-card board into 200 trips.
-        """
-        from app.db.models import User
-
-        rows = (
-            await self._session.execute(
-                select(Task, User.display_name)
-                .join(User, User.id == Task.owner_user_id, isouter=True)
-                .where(Task.project_id == project_id)
-                .order_by(Task.updated_at.desc(), Task.id.desc())
-            )
-        ).all()
-        blocking = await self.blocking_counts(project_id)
-        active = await self.active_runs(project_id)
-        waiting = await self.waiting_reasons(list(active.values()), is_online=is_online)
-        cards = []
-        for task, owner_name in rows:
-            gates = task.gates or {}
-            run = active.get(task.id)
-            cards.append(
-                BoardCard(
-                    task=task,
-                    owner_name=owner_name,
-                    blocking_count=blocking.get(task.id, 0),
-                    gates_approved_count=sum(1 for value in gates.values() if value),
-                    active_run_status=run.status if run else None,
-                    active_run_runner_name=run.runner_name if run else None,
-                    waiting_reason=waiting.get(task.id),
-                )
-            )
-        return cards
 
     async def active_runs(self, project_id: uuid.UUID) -> dict[uuid.UUID, ActiveRunProjection]:
         """Return the newest active run per card in one query.
@@ -469,7 +413,18 @@ class TaskRepository:
         return list(rows)
 
     async def tasks(self, project_id: uuid.UUID) -> list[Task]:
-        rows = (await self._session.execute(self._board_select(project_id))).scalars()
+        """Every card in a project, newest first — the roadmap's third query.
+
+        The select is written out here rather than shared with the deleted
+        `_board_select` helper (ADR 0044): this ordering is the roadmap's, and the two
+        happened to agree. Keeping a helper whose only remaining caller is this one would
+        have made a coincidence look like a contract.
+        """
+        rows = (
+            await self._session.execute(
+                select(Task).where(Task.project_id == project_id).order_by(Task.updated_at.desc())
+            )
+        ).scalars()
         return list(rows)
 
     async def tasks_for_refs(self, project_id: uuid.UUID, refs: list[str]) -> list[Task]:

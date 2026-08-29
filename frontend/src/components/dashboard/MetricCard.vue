@@ -72,7 +72,14 @@ const accessibleName = computed(() => {
       </p>
     </template>
     <template v-else>
-      <p class="value" :aria-label="accessibleName">
+      <!-- The accessible name is a **sibling span**, not an `aria-label` on the `<p>`.
+           ARIA prohibits `aria-label` on a `<p>` with no role, so the previous form was
+           discarded by the accessibility tree and the reader heard the bare number — the
+           opposite of what it was written for. `HD-04`'s axe scan reported it eight times
+           on Home (one per fleet metric); it had been silent since the card was built,
+           because a dropped label reads exactly like a card that never had one. -->
+      <p class="value">
+        <span class="sr-only">{{ accessibleName }}</span>
         <span aria-hidden="true"
           >{{ shown
           }}<small v-if="unit && value !== null">{{ unit }}</small></span
@@ -121,6 +128,19 @@ h3 {
 }
 .icon {
   font-size: 13px;
+}
+/* Same nine lines as `AuditView` and `ProjectWorkView`. Repeated rather than shared:
+   these are scoped styles, and a fourth copy is cheaper than introducing a global
+   utility sheet this codebase does not otherwise have. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .value {
   margin: 0;

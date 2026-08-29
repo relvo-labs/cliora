@@ -979,36 +979,10 @@ export type TaskStage =
   | "verify"
   | "done";
 
-/** A card as the *board* renders it. Deliberately without acceptance criteria and
- *  without gate detail: M1 measured the full card at 439 KB for 200 cards against
- *  74 KB for this shape, and that measurement is what replaced pagination
- *  (`plan/17/10-…md` §1). Widening this type is how that decision gets undone. */
-export interface BoardCard {
-  id: string;
-  card_ref: string;
-  title: string;
-  stage: TaskStage;
-  risk: string;
-  priority: string;
-  owner_user_id: string | null;
-  owner_name: string | null;
-  delivery: string;
-  blocking_count: number;
-  gates_approved_count: number;
-  active_run_status: RunStatus | null;
-  active_run_runner_name: string | null;
-  waiting_reason: string | null;
-  version: number;
-  updated_at: string;
-}
-
-export interface BoardLane {
-  stage: TaskStage;
-  label: string;
-  wip_suggested: number | null;
-  count: number;
-  cards: BoardCard[];
-}
+/* `BoardCard`, `BoardLane` and `Board` were **deleted in `beta.2`** with the `/board`
+ * endpoint they typed (ADR 0044). `WorkItemCard` below is the shape that replaced them.
+ * The measurement their comment carried — 439 KB full vs 74 KB summary at 200 cards —
+ * is in ADR 0044 §2, because three live decisions were argued from it. */
 
 /** One card as the V2-P1 read model sends it (`FR-WORK-001`, ADR 0040).
  *
@@ -1118,13 +1092,6 @@ export interface WorkView {
   is_default: boolean;
   position: number;
   version: number;
-}
-
-export interface Board {
-  lanes: BoardLane[];
-  /** Always false in V2.1, and present anyway: a field added later would force
-   *  every existing client to handle its absence. */
-  has_more: boolean;
 }
 
 export interface ProcessGate {
@@ -1483,6 +1450,18 @@ export interface ProjectRepository {
   // anywhere, which is what makes a credential in one impossible rather than filtered.
   url: string;
   created_at: string;
+  /** Provider sync's whole visible surface (`HD-15`, ADR 0043 §5).
+   *
+   *  `provider_sync_error` is the one that earns its place. Without it a revoked token and
+   *  a week with nothing merged render identically — and that is the failure the column
+   *  was added for, so rendering it is what finishes the argument rather than an extra. */
+  provider_synced_at: string | null;
+  /** Derived by the server from the last success and the reconcile cadence, never stored:
+   *  a stored "next run" goes stale the moment the interval changes. */
+  next_provider_sync_at: string | null;
+  provider_sync_error: string | null;
+  /** Three consecutive failures and this repository is no longer read at all. */
+  provider_sync_stopped: boolean;
 }
 
 export interface DispatchResult {
