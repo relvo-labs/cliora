@@ -8,6 +8,11 @@
 
 UNIT="${CLIORA_DRILL_UNIT:-agentd}"
 
+if ! systemctl cat "${UNIT}" >/dev/null 2>&1; then
+  echo "-- skipped: ${UNIT}.service is not installed on this host"
+  exit 77
+fi
+
 confirm "This stops the '${UNIT}' service on THIS machine. Terminal streaming will break;
 running CLI sessions will NOT be affected."
 

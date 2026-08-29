@@ -102,9 +102,13 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # marked covered since P1 while tmux's default of 2000 lines quietly failed it, so
     # this phase treats "a number in a config file" and "the behaviour on a node" as
     # different things on purpose.
+    # 2026-08-26: +26 for image drop and general workspace file upload
+    # (FR-FILE-007/008 and related scope/security criteria). Twenty-four are
+    # verifiable; FR-FILE-008.AC-04/AC-05 remain non-blocking verification gaps
+    # reported by the coverage command above.
     assert result["summary"] == {
-        "total": 414,
-        "verifiable": 283,
+        "total": 440,
+        "verifiable": 307,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

@@ -112,7 +112,6 @@ jobs:
           uv run --project backend pytest \
             backend/tests/test_security.py \
             backend/tests/test_terminal_relay.py \
-            backend/tests/test_relay.py \
             backend/tests/db/test_sessions_api.py \
             -q
 

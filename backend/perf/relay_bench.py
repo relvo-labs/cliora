@@ -112,8 +112,15 @@ async def _fan_out(settings: Settings, subscribers: int, frames: int, frame_size
 
     consumers = [asyncio.create_task(consume(ch)) for ch in channels]
     started = time.perf_counter()
+    # ``route_output`` only touches in-memory queues, so awaiting it need not yield
+    # to the consumers. A real daemon receives separate WebSocket frames and returns
+    # to the event loop between them; mirror that here. Otherwise this scenario
+    # measures one synthetic producer monopolising the loop as if every active
+    # browser were stalled (the separate backpressure scenario deliberately does
+    # measure a stalled browser).
     for _ in range(frames):
         await relay.route_output(session_id, _payload(frame_size))
+        await asyncio.sleep(0)
     await asyncio.wait_for(asyncio.gather(*consumers), timeout=60)
     wall = time.perf_counter() - started
 
