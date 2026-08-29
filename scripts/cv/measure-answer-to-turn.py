@@ -110,7 +110,6 @@ async def _card(
             "title": "釐清：這一輪的驗收標準",
             "source": "none",
             "delivery": "none",
-            "card_kind": "clarification",
         },
         headers=headers,
     )

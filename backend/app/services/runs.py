@@ -24,9 +24,10 @@ again, and `GATE-AR-NO-WORKSPACE-IN-RUNS` keeps this module free of the other on
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
 from fastapi import status
 from sqlalchemy import and_, cast, func, or_, select, text, update
@@ -159,7 +160,21 @@ def tag_match_clause(runner: AgentRunner):  # noqa: ANN201 - a SQLAlchemy clause
     return and_(subset, declared > 0)
 
 
-def tag_match(runner: AgentRunner, task: Task) -> bool:
+class DispatchTaskLike(Protocol):
+    """The task declarations used by runner eligibility.
+
+    The board count projection intentionally does not hydrate a complete ``Task`` ORM
+    instance, but it must use these exact eligibility functions for phase-B attention.
+    """
+
+    @property
+    def required_labels(self) -> Sequence[str]: ...
+
+    @property
+    def required_secrets(self) -> Sequence[str]: ...
+
+
+def tag_match(runner: AgentRunner, task: DispatchTaskLike) -> bool:
     """Eligibility condition 4, as Python. Used by the waiting reason and by dispatch.
 
     **Two implementations exist on purpose and are pinned together by one parameterised
@@ -175,7 +190,7 @@ def tag_match(runner: AgentRunner, task: Task) -> bool:
     return required <= set(runner.labels or [])
 
 
-def accepts_secrets(runner: AgentRunner, task: Task) -> bool:
+def accepts_secrets(runner: AgentRunner, task: DispatchTaskLike) -> bool:
     """The node's veto, in the same family as condition 4 rather than a sixth condition.
 
     Five conditions are the public vocabulary — the ADR, the PRD and the console all use

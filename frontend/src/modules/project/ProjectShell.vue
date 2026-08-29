@@ -182,6 +182,7 @@ async function saveBinding(): Promise<void> {
     <div
       v-if="resource.state.value === 'loading'"
       class="skeleton"
+      role="status"
       aria-label="Loading project"
     >
       <span /><span /><span />
@@ -205,7 +206,7 @@ async function saveBinding(): Promise<void> {
         <template #subtitle>
           <span class="slug">{{ project.slug }}</span>
           · owned by {{ project.owner_name }} · created
-          {{ formatInstant(project.created_at) }}
+          <span data-visual-mask>{{ formatInstant(project.created_at) }}</span>
         </template>
         <template #actions>
           <BaseBadge variant="outline" :tone="projectStatusTone">

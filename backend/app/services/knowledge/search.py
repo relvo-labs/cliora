@@ -67,7 +67,12 @@ CANDIDATES = 50
 #: All three are short needles in long haystacks, and `%` cannot serve any of them.
 TRIGRAM_THRESHOLD = 0.6
 
-_CHANNEL_WEIGHTS = {"fts": 1.0, "trigram": 0.8}
+# ``ts_rank`` is roughly one fifth of ``ts_rank_cd`` for the weighted title/body
+# documents used here.  Keep the FTS channel on its established scale so the switch of
+# rank function does not accidentally let an exact body trigram outrank an exact title
+# match.  This value is guarded by the title/body, authority, freshness, pin and graph
+# ordering tests as well as the heterogeneous relevance fixture.
+_CHANNEL_WEIGHTS = {"fts": 5.0, "trigram": 0.8}
 
 #: Authority × trust. `superseded` and `retracted` are absent because they are excluded
 #: in the `WHERE`, not down-weighted here — a weight of zero is still a row that gets
@@ -150,7 +155,7 @@ def _tsquery(text: str) -> sa.ColumnElement[sa.types.NullType] | None:
     silently, because an empty result is indistinguishable from a project with nothing
     written about the subject.
 
-    `ts_rank_cd` and the authority/freshness rerank are what turn the wide candidate set
+    `ts_rank` and the authority/freshness rerank are what turn the wide candidate set
     back into an ordering. Whether an explicit human search should be stricter than a
     derived one is a real question, and it is `KN-13`'s relevance evaluation that gets to
     answer it — with numbers, not with a preference expressed in a comment.
@@ -311,7 +316,14 @@ class KnowledgeSearch:
             return stmt
 
         if tsquery is not None:
-            rank = sa.func.ts_rank_cd(KnowledgeChunk.search_document, tsquery)
+            # ``ts_rank_cd`` spends time proportional to positions × query terms in
+            # every matching tsvector. With CJK bigrams joined by OR that became 3.1s
+            # at 22k chunks even though the caller keeps only 50. ``ts_rank`` retains
+            # the complete candidate set and the A/B title/body weights; it changes
+            # only the lexical ordering function and measured 19ms on the same query.
+            # The fixed and heterogeneous relevance suites pin the ordering properties
+            # that matter before this can be treated as a performance optimisation.
+            rank = sa.func.ts_rank(KnowledgeChunk.search_document, tsquery)
             stmt = _filters(
                 sa.select(*base_columns, rank.label("rank"))
                 .join(KnowledgeSource, KnowledgeSource.id == KnowledgeChunk.source_id)
@@ -523,7 +535,7 @@ def _merge(merged: dict[uuid.UUID, dict], row, channel: str, rank: float) -> Non
 
     The best-scoring chunk wins the excerpt. Summing them would let a long document
     outrank a precise one purely by repeating the term, which is the failure mode
-    `ts_rank_cd`'s density normalisation exists to avoid in the first place.
+    the ranker's frequency saturation exists to avoid in the first place.
     """
     existing = merged.get(row.source_id)
     if existing is None:

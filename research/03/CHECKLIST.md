@@ -1,5 +1,16 @@
 # 執行清單
 
+> **狀態校正（2026-08-29）**：本檔是跨期總表，下面仍保留若干歷史方框，不能拿空格
+> 直接判斷 `plan/23`–`plan/27` 是否實作完成。五期 ticket 均已實作；最新封版權威是
+> [`plan/27/09`](../../plan/27/09-verification-and-exit.md) §8：**35 ☑／1 ◐／6 ☐**。
+> 舊十六條旅程本體已重跑全綠、a11y／visual 本地同 CI 形狀 9／9、
+> `work-counts` 2000-card 併發 10 P95 **132.18ms**；context pack 的 scale miss 也已由
+> 3236.24ms 修到 **102.76ms**（異質 relevance control 7／7）。真 GitHub GET reconcile 與
+> J1 merged-PR Agent citation **36／36**、J12 release lifecycle **9／9**、J16 disabled
+> zero-GET trap、J17/J18 controlled event＋Chromium journey 已通過；production worker
+> 300 秒 cadence 的12輪／24 event P95 **291.013 秒**亦通過。仍缺 Railway、人工 a11y、
+> SR-4 簽核、CI 遠端綠燈與上游核准仍不得勾成完成。
+
 13 份文件裡有 **76 張 ticket、9 份 ADR、5 項待裁決、9 個未量測項**散在各處。
 這一份把它們攤平成可以逐條打勾的清單。
 

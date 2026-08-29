@@ -35,7 +35,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import sys
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +45,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import sqlalchemy as sa  # noqa: E402
 from px_harness import Journey, ReadModelStack, use_agent_script  # noqa: E402
+
+from app.db.models import (  # noqa: E402
+    KnowledgeSource,
+    Project,
+    ProjectRepository,
+)
+from app.services.knowledge import provider_sync  # noqa: E402
+from app.services.secrets import SecretService  # noqa: E402
+from app.settings import Settings  # noqa: E402
 
 #: The sentence somebody actually types. Vague on purpose: it names a complaint and no
 #: solution, which is what makes the three rounds necessary rather than decorative.
@@ -164,6 +175,20 @@ fi
 cited="$(cliora knowledge cite "$label" 2>&1)" || cited="(cite failed: $cited)"
 cliora task say "依 $label 開工。引用摘要：$(printf '%s' "$cited" | head -3 | tr '\n' ' ')"
 
+# beta.2's non-degradable extension. A pinned provider source has its own label; find it
+# from the rendered metadata rather than assuming an order shared with the accepted spec.
+provider_label="$(printf '%s' "$pack" | awk '
+  /^## \[S[0-9]+\]/ { label=$2 }
+  /來源類型：pull_request/ { print label; exit }
+')"
+if [ -n "$provider_label" ]; then
+  provider_cited="$(cliora knowledge cite "$provider_label" 2>&1)" || {
+    cliora task say "真 provider 引用失敗：$provider_cited"
+    exit 3
+  }
+  cliora task say "真 provider $provider_label 已引用：$(printf '%s' "$provider_cited" | head -3 | tr '\n' ' ')"
+fi
+
 cat > /tmp/j1-report.json <<'JSON'
 {
   "result": "passed",
@@ -184,6 +209,64 @@ def _spec_text(spec: dict[str, Any]) -> str:
     return json.dumps(spec, ensure_ascii=False)
 
 
+async def _real_provider_source(
+    stack: ReadModelStack, project_id: str, token: str
+) -> tuple[uuid.UUID, dict[str, int]]:
+    """GET a real merged PR into this journey's project without mutating the provider."""
+    settings = Settings()
+    async with stack.maker() as session:
+        project = await session.get(Project, uuid.UUID(project_id))
+        assert project is not None
+        project.provider_sync_enabled = True
+        secret = await SecretService(session, settings=settings).create(
+            project=project,
+            name="GITHUB_PROVIDER_TOKEN",
+            kind="provider_token",
+            value=token,
+            actor_id=project.owner_user_id,
+        )
+        repository = ProjectRepository(
+            id=uuid.uuid4(),
+            project_id=project.id,
+            scheme="https",
+            host="github.com",
+            path="Lei-k/cliora",
+            default_branch="dev",
+            auth_kind="ambient",
+            provider_token_secret_id=secret.id,
+            created_by=project.owner_user_id,
+        )
+        session.add(repository)
+        await session.flush()
+        outcome = await provider_sync.sync_project(
+            session, project_id=project.id, settings=settings
+        )
+        merged = (
+            await session.execute(
+                sa.select(KnowledgeSource)
+                .where(
+                    KnowledgeSource.project_id == project.id,
+                    KnowledgeSource.source_type == "pull_request",
+                    KnowledgeSource.authority == "reviewed",
+                    KnowledgeSource.active.is_(True),
+                    KnowledgeSource.deleted_at.is_(None),
+                )
+                .order_by(KnowledgeSource.occurred_at.desc())
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if merged is None:
+            raise RuntimeError(
+                "real provider returned no merged PR in the bounded first page"
+            )
+        await session.commit()
+        return merged.id, {
+            "repositories": outcome.repositories,
+            "sources": outcome.sources,
+            "failures": outcome.failures,
+        }
+
+
 async def main() -> int:  # noqa: PLR0915 - the journey *is* the length; splitting it hides the order
     journey = Journey("j1", "一句模糊需求 → Done，全程不進 Terminal")
     async with ReadModelStack() as stack:
@@ -195,6 +278,20 @@ async def main() -> int:  # noqa: PLR0915 - the journey *is* the length; splitti
         project_id = await stack.project("px-j1")
         await stack.enable_knowledge(project_id)
         await stack.drain_ingestion(project_id)
+        provider_token = os.environ.get("CLIORA_PROVIDER_EVIDENCE_TOKEN", "")
+        provider_source_id: uuid.UUID | None = None
+        if provider_token:
+            provider_source_id, provider_outcome = await _real_provider_source(
+                stack, project_id, provider_token
+            )
+            journey.note("real_provider", provider_outcome)
+            journey.check(
+                provider_outcome["repositories"] == 1
+                and provider_outcome["sources"] > 0
+                and provider_outcome["failures"] == 0,
+                "真 provider GET 把 merged PR 帶進這條主旅程",
+                provider_outcome,
+            )
         requirement = await stack.requirement(project_id, VAGUE)
         journey.check(
             requirement["status"] == "intake" and requirement["spec_count"] == 0,
@@ -355,6 +452,25 @@ async def main() -> int:  # noqa: PLR0915 - the journey *is* the length; splitti
             return journey.finish()
         work = created[0]
 
+        if provider_source_id is not None:
+            # A human pin is the product mechanism that says this card must read a
+            # source. It avoids making J1's report-export wording accidentally depend on
+            # the current PR title while still exercising the real context builder.
+            pinned = await stack.client.post(
+                f"/api/projects/{project_id}/knowledge/pins",
+                json={
+                    "task_id": work["id"],
+                    "source_id": str(provider_source_id),
+                    "mode": "pin",
+                },
+                headers=stack.headers,
+            )
+            journey.check(
+                pinned.status_code == 204,
+                "人の操作面から merged PR をこのカードに pin",
+                pinned.text,
+            )
+
         # ------------------------------------------------- the Ready transition
         journey.step("移到就緒，缺什麼要說出來")
         moved = await stack.client.patch(
@@ -400,11 +516,18 @@ async def main() -> int:  # noqa: PLR0915 - the journey *is* the length; splitti
             "**Agent 的訊息帶著引用標籤** —— 它真的讀了專案記憶",
             said,
         )
+        if provider_source_id is not None:
+            journey.check(
+                any("真 provider [S" in body for body in said),
+                "**Agent 另外引用了 merged PR** —— beta.2 的新增段沒有降級",
+                said,
+            )
         async with stack.maker() as session:
             packs = (
                 await session.execute(
                     sa.text(
-                        "SELECT total_bytes FROM context_packs WHERE task_id = :tid"
+                        "SELECT total_bytes, source_manifest FROM context_packs "
+                        "WHERE task_id = :tid"
                     ),
                     {"tid": work["id"]},
                 )
@@ -414,6 +537,18 @@ async def main() -> int:  # noqa: PLR0915 - the journey *is* the length; splitti
             "而且平台有一列 `context_packs` 可以證明它抓了",
             [row.total_bytes for row in packs],
         )
+        if provider_source_id is not None:
+            journey.check(
+                any(
+                    any(
+                        item.get("source_id") == str(provider_source_id)
+                        for item in row.source_manifest
+                    )
+                    for row in packs
+                ),
+                "context_packs manifest 也記下那則真 provider source",
+                [row.source_manifest for row in packs],
+            )
         reports = await stack.verification_reports(work["id"])
         journey.check(
             any(report["result"] == "passed" for report in reports),

@@ -250,6 +250,93 @@ async def test_a_semantically_close_query_with_different_wording_misses(session)
     assert await _titles(session, project, "怎麼處理逾時") == []
 
 
+async def test_heterogeneous_corpus_keeps_the_human_judged_top_result(session):
+    """A rank-function change must survive mixed prose, not only one-row fixtures.
+
+    The earlier scale corpus repeats one template 22,000 times, so it can measure query
+    cost but cannot judge relevance.  These gold labels were chosen by reading a small
+    corpus that deliberately mixes Chinese and English, titles and bodies, source types,
+    authority levels, age, exact identifiers and near-topic distractors.  This is the
+    relevance control required by ADR 0038's scale amendment.
+    """
+    project = await _project(session)
+    documents = [
+        {
+            "external_id": "task:resume",
+            "title": "Continuation transaction",
+            "text": "CV-05 defines the answer-to-resume hand-off and idempotency boundary.",
+            "source_type": "ticket",
+            "authority": "discussion",
+            "age_days": 2,
+        },
+        {
+            "external_id": "decision:lease",
+            "title": "租約過期的處理",
+            "text": "lease_expires_at 到期後，sweeper 將 run 標成 lost 並重新排隊。",
+            "source_type": "decision",
+            "authority": "accepted",
+            "age_days": 90,
+        },
+        {
+            "external_id": "repo:adr",
+            "title": "docs/adr/0035.md",
+            "text": "The lease sweep landed in commit 139f143 and is guarded by a lock.",
+            "source_type": "repo_doc",
+            "authority": "canonical",
+            "age_days": 180,
+        },
+        {
+            "external_id": "policy:delivery",
+            "title": "交付與回滾政策",
+            "text": "交付一律走 PR；發佈失敗時執行資料庫回滾演練。",
+            "source_type": "policy",
+            "authority": "authoritative",
+            "age_days": 500,
+        },
+        {
+            "external_id": "verification:release",
+            "title": "Beta verification report",
+            "text": "The release rehearsal passed visual, accessibility, and rollback checks.",
+            "source_type": "verification",
+            "authority": "verified",
+            "age_days": 1,
+        },
+        {
+            "external_id": "conversation:noise",
+            "title": "今天的執行討論",
+            "text": ("這則對話順帶提到租約、發佈、交付、驗證與回滾，但沒有定義任何一項操作。" * 4),
+            "source_type": "conversation",
+            "authority": "discussion",
+            "age_days": 0,
+        },
+        {
+            "external_id": "artifact:unrelated",
+            "title": "Frontend bundle profile",
+            "text": "Chunk size, source maps, CSS tokens, and browser cache measurements.",
+            "source_type": "artifact",
+            "authority": "generated",
+            "age_days": 0,
+        },
+    ]
+    for document in documents:
+        await _put(session, project, **document)
+
+    gold = {
+        "CV-05": "Continuation transaction",
+        "lease_expires_at": "租約過期的處理",
+        "lease_expire_at": "租約過期的處理",  # one-character typo, trigram channel
+        "139f143": "docs/adr/0035.md",
+        "租約過期": "租約過期的處理",
+        "資料庫回滾演練": "交付與回滾政策",
+        "visual accessibility checks": "Beta verification report",
+    }
+    observed = {}
+    for query, expected in gold.items():
+        titles = await _titles(session, project, query)
+        observed[query] = titles[0] if titles else None
+        assert observed[query] == expected, observed
+
+
 async def test_accepted_outranks_generated_for_the_same_words(session):
     project = await _project(session)
     await _put(

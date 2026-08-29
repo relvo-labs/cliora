@@ -1,5 +1,8 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const frontendPort = process.env.E2E_FRONTEND_PORT ?? "5173";
+const frontendBase = `http://127.0.0.1:${frontendPort}`;
+
 // Its own config, for the same reason `tests/px/` has one: this suite runs against a
 // stack that is already up, and folding it into `../../playwright.config.ts` would put a
 // screenshot job on CI's critical path for the browser e2e suite.
@@ -10,7 +13,13 @@ import { defineConfig, devices } from "@playwright/test";
 // directory walk rather than about coverage.
 export default defineConfig({
   testDir: ".",
-  use: { baseURL: process.env.E2E_BASE_URL ?? "http://127.0.0.1:5173" },
+  use: { baseURL: process.env.E2E_BASE_URL ?? frontendBase },
+  webServer: {
+    command: `npm run dev -- --host 127.0.0.1 --port ${frontendPort}`,
+    url: frontendBase,
+    reuseExistingServer: true,
+    timeout: 120_000,
+  },
   reporter: [["list"]],
   snapshotPathTemplate: "{testDir}/__screenshots__/{arg}{ext}",
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

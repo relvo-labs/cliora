@@ -301,21 +301,21 @@ region actually used, not inherited from the host measurements in `artifacts/p4/
 **Nothing in this repository sets one, so every deployment gets uvicorn's default of one.**
 That default has never been chosen; it has only never been questioned.
 
-`HD-09` measured `work-counts` on a 2000-card project (`artifacts/hd/local/w6/perf-2000.md`):
+`HD-09` re-measured `work-counts` after narrowing its row projection and coalescing
+identical in-flight polls on a 2000-card project (`artifacts/hd/local/w6/perf-2000.md`):
 
-| Workers | Concurrency 10 P95 | Concurrency 100 | Throughput |
-|---:|---:|---|---:|
-| 1 | 895ms | **384 of 500 answered** — 115 x 503 | 11 rps |
-| 4 | 398ms | 500 of 500 | 27 rps |
+| Workers | Concurrency 10 P95 | Concurrency 50 P95 | Concurrency 100 |
+|---:|---:|---:|---|
+| 1 | **132.18ms** | **401.45ms** | 500 of 500, P95 **802.96ms** |
 
-The endpoint costs ~89ms of CPU per request at that size and it runs on the event loop, so
-one worker serialises: **adding concurrency adds latency and nothing else.** Throughput per
-worker is `1 / (cost per request)`, and 11 rps is exactly that.
+The coalescing is deliberately only for simultaneous identical requests. It is not a
+completed-result cache: the next poll recomputes, so task changes are not hidden for a TTL.
+Counts and items still use the same attention policy.
 
-**Pick a worker count from the burst, not the average.** D95 polls `work-counts` every 20
-seconds per open board tab, so a fifty-person team in steady state is 2.5 rps, which one
-worker serves comfortably. What the table above measures is fifty tabs refreshing together
-— a deploy, or nine in the morning.
+**Pick a worker count from the whole workload, not this one endpoint.** D95 polls
+`work-counts` every 20 seconds per open board tab and the measured single worker now meets
+both the 10- and 50-concurrency budgets. Other CPU-bound endpoints and WebSocket capacity
+still need the deployment-specific measurements above.
 
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port "$PORT" --workers "${WEB_CONCURRENCY:-4}"
@@ -325,5 +325,5 @@ Two constraints on the number:
 
 - **Each worker holds its own connection pool.** `workers x pool_size` must stay under
   PostgreSQL's `max_connections`, which on a managed instance is often 100 or lower.
-- **Scaling is sublinear.** Four workers measured 2.4x one worker, not 4x — they share
-  cores and one database.
+- **Scaling is sublinear.** Workers share cores and one database; do not assume a linear
+  multiplier without measuring the deployed instance.

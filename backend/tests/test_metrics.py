@@ -47,6 +47,17 @@ def test_histogram_records_count_sum_and_buckets() -> None:
     assert entry["inf"] == 1
 
 
+def test_provider_reconcile_lag_has_a_300_second_bucket() -> None:
+    """A 300-second SLO cannot be computed from request-duration buckets ending at 10."""
+    bounds = metrics.buckets_for(metrics.PROVIDER_RECONCILE_LAG_SECONDS)
+    assert 300.0 in bounds
+    metrics.observe(metrics.PROVIDER_RECONCILE_LAG_SECONDS, 240.0)
+    entry = metrics.histogram_value(metrics.PROVIDER_RECONCILE_LAG_SECONDS)
+    assert entry is not None
+    assert entry["buckets"][300.0] == 1
+    assert entry["inf"] == 0
+
+
 def test_snapshot_exposes_every_series_and_reset_clears_them() -> None:
     metrics.increment(metrics.FILESYSTEM_RELAY_TIMEOUT_TOTAL, op="search")
     metrics.observe(metrics.FILESYSTEM_REQUEST_DURATION, 0.4, op="read")

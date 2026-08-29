@@ -58,6 +58,12 @@ are N" and "we did not look" stay distinguishable. Here N is 0.
 Evidence: `artifacts/hd/local/w1/axe-before.json` (round 1, under-counted — read §1
 before quoting it) and `axe-after.json` (round 3).
 
+Revalidated 2026-08-29 in the same fresh-DB/Noto CJK/Chromium shape now wired into CI:
+all eight axe screens and the visual reverse test passed (**9/9**). The rerun also fixed
+the Home activity scroller's keyboard focus and the queued-run badge's white-text contrast.
+This is local CI-equivalent evidence, not a GitHub Actions run; the remote CI exit row
+remains open until a pushed run is green.
+
 ### 2.1 What was fixed
 
 | Violation | Where | Fix |

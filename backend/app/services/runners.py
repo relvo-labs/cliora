@@ -33,6 +33,7 @@ from app.clock import now_utc
 from app.db.models import AgentRunner, Node, Project, ProjectRepository, Task, TaskRun
 from app.services import audit as audit_actions
 from app.services.audit import AuditService
+from app.services.knowledge.store import KnowledgeStore
 from app.settings import Settings, get_settings
 
 # RFC 1123 host label, joined by dots. Deliberately not a URL parser: this service
@@ -511,6 +512,14 @@ class RepositoryService:
                 "repository_id": str(repository.id),
                 "removed": True,
             },
+        )
+        # The repository row is the original for all three derived source families.
+        # Keep their content and ids for old context manifests, but mark the original as
+        # gone before the UUID that prefixes every external id disappears (D132).
+        await KnowledgeStore(self._session).tombstone_prefix(
+            project_id=repository.project_id,
+            source_types=("repo_doc", "pull_request", "release"),
+            external_id_prefix=f"{repository.id}:",
         )
         await self._session.delete(repository)
         await self._session.flush()

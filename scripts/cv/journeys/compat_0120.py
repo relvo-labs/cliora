@@ -178,12 +178,12 @@ async def main() -> int:
 
     async with Stack() as stack:
         await stack.require_runner()
-        # **No quiet-database guard here**, and that is a considered difference from the
-        # other journeys. This one measures *compatibility*, not latency: it asserts which
-        # runner claimed each round, and the old node has its own capacity, so a run left
-        # in flight by an earlier step starves nothing it cares about. Recorded rather
-        # than refused, because refusing would make this the one step that can only run
-        # first — and it has to run last (`_stack-evidence-inner.sh`).
+        # This runs last because the old node deliberately leaves work behind. A browser
+        # journey immediately before it may still be finishing its successful retry,
+        # though, and that process shares the mutable fake-agent script and current-node
+        # capacity with the control leg below. Wait for *prior* execution to drain before
+        # starting the old node's subject; otherwise a compatibility result is really a
+        # measurement of the preceding journey's teardown race.
         async with stack.maker() as session:
             in_flight = (
                 await session.execute(
@@ -193,6 +193,27 @@ async def main() -> int:
                 )
             ).scalar_one()
         journey.note("runs_in_flight_at_start", in_flight)
+        if in_flight:
+            deadline = asyncio.get_running_loop().time() + 120.0
+            remaining = in_flight
+            while remaining and asyncio.get_running_loop().time() < deadline:
+                await asyncio.sleep(0.25)
+                async with stack.maker() as session:
+                    remaining = (
+                        await session.execute(
+                            sa.select(sa.func.count())
+                            .select_from(TaskRun)
+                            .where(TaskRun.status.in_(Stack.CONTENDING))
+                        )
+                    ).scalar_one()
+            journey.note("runs_in_flight_after_drain", remaining)
+            journey.check(
+                remaining == 0,
+                "prior journeys released execution capacity before compatibility",
+                remaining,
+            )
+            if remaining:
+                return journey.finish()
         project_id = await stack.project("cv-compat")
 
         journey.step("the subject: the 0.12.0 node")

@@ -39,7 +39,7 @@
 
   /* Run states. --run-waiting belongs only to the human-action-required treatment;
    * reusing it elsewhere would weaken the one state that waits on a person (D24). */
-  --run-queued: #8892a0;
+  --run-queued: #667085;
   --run-running: #93692f;
   --run-waiting: #a85517;
   --run-succeeded: #377c60;

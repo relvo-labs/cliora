@@ -16,6 +16,7 @@ cost is stated in :func:`work_items`.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
@@ -35,7 +36,7 @@ from app.services.work.filters import (
     matches,
 )
 from app.services.work.projection import WorkRow
-from app.services.work.rows import WorkRowReader
+from app.services.work.rows import CountRow, WorkRowReader
 from app.services.work.scope import ProjectScope
 
 DEFAULT_LIMIT = 50
@@ -333,7 +334,79 @@ class Counts:
     runtime_signals_available: bool
 
 
+_CountFlightKey = tuple[object, ...]
+_COUNT_FLIGHTS: dict[_CountFlightKey, asyncio.Task[Counts]] = {}
+
+
+def _count_flight_key(
+    scope: ProjectScope, compiled: CompiledFilter, project_id: uuid.UUID | None
+) -> _CountFlightKey | None:
+    """Identify equal project polls without retaining a completed answer.
+
+    ``work-counts`` is polled on a twenty-second cadence, so a team viewing one project
+    produces bursts of identical requests. Sharing only an *in-flight* computation keeps
+    every later poll fresh while preventing one event-loop process from decoding the same
+    2,000 rows fifty times in succession. The scope and literal filter are part of the
+    key: coalescing must never widen either authorization or the requested predicate.
+    """
+    if project_id is None:
+        return None
+    literal_sql = str(compiled.sql.compile(compile_kwargs={"literal_binds": True}))
+    derived = tuple(
+        (term.field, term.op, tuple(sorted(term.values))) for term in compiled.derived_terms
+    )
+    return (
+        project_id,
+        scope.all_projects,
+        tuple(sorted(str(value) for value in scope.project_ids)),
+        literal_sql,
+        derived,
+    )
+
+
 async def work_counts(
+    session: AsyncSession,
+    *,
+    scope: ProjectScope,
+    compiled: CompiledFilter,
+    project_id: uuid.UUID | None = None,
+    is_online: Callable[[uuid.UUID], bool] | None = None,
+) -> Counts:
+    """Coalesce an identical polling burst, then discard the shared computation."""
+    key = _count_flight_key(scope, compiled, project_id)
+    if key is None:
+        return await _work_counts_once(
+            session,
+            scope=scope,
+            compiled=compiled,
+            project_id=project_id,
+            is_online=is_online,
+        )
+
+    existing = _COUNT_FLIGHTS.get(key)
+    if existing is not None:
+        return await asyncio.shield(existing)
+
+    flight = asyncio.create_task(
+        _work_counts_once(
+            session,
+            scope=scope,
+            compiled=compiled,
+            project_id=project_id,
+            is_online=is_online,
+        )
+    )
+    _COUNT_FLIGHTS[key] = flight
+
+    def clear(done: asyncio.Task[Counts]) -> None:
+        if _COUNT_FLIGHTS.get(key) is done:
+            _COUNT_FLIGHTS.pop(key, None)
+
+    flight.add_done_callback(clear)
+    return await asyncio.shield(flight)
+
+
+async def _work_counts_once(
     session: AsyncSession,
     *,
     scope: ProjectScope,
@@ -344,26 +417,63 @@ async def work_counts(
     """The two count breakdowns the board polls, over the same scope and filter.
 
     **The hottest endpoint in the phase** (D95): every open board tab asks every 20
-    seconds. Its budget is P95 < 200 ms, which is why the no-derived-filter path below is
-    a single `GROUP BY` and does not derive anything at all.
-
-    `by_attention` always needs the derived rows — attention is not a column — so it is
-    computed from one page's worth of derivation. That is the price of `derive_attention`
-    being the single answer; the alternative is a second, cheaper, disagreeing one.
+    seconds. Its budget is P95 < 200 ms. Attention is not a column, so the endpoint uses
+    a narrow projection and still calls the same ``derive_attention`` policy as items.
+    Keeping one policy costs more than a lifecycle-only ``GROUP BY`` but prevents the
+    polling badges and the visible cards from disagreeing.
     """
-    items, runtime_available = await _derived(
-        session, scope=scope, compiled=compiled, project_id=project_id, is_online=is_online
+    ids = set((await session.execute(_scoped_select(scope, compiled, project_id))).scalars())
+    if not ids:
+        return Counts(
+            by_lifecycle={},
+            by_attention={},
+            total=0,
+            runtime_signals_available=is_online is not None,
+        )
+
+    projects = (
+        [project_id]
+        if project_id is not None
+        else list(
+            (
+                await session.execute(
+                    select(Project.id).where(scope.predicate(Project.id)).order_by(Project.id)
+                )
+            ).scalars()
+        )
     )
+    reader = WorkRowReader(session)
+    counted: list[tuple[CountRow, AttentionDTO]] = []
+    runtime_available = is_online is not None
+    for candidate in projects:
+        project = await session.get(Project, candidate)
+        if project is None:  # pragma: no cover - selected from this database
+            continue
+        rows, runtime = await reader.for_project_counts(project, task_ids=ids, is_online=is_online)
+        if runtime is None:
+            runtime_available = False
+        for row in rows:
+            attention = derive_attention(row, runtime)
+            if not matches(
+                compiled,
+                lifecycle=row.lifecycle,
+                readiness=row.readiness,
+                execution=row.execution,
+                attention_signals=attention.signals,
+            ):
+                continue
+            counted.append((row, attention))
+
     by_lifecycle: dict[str, int] = {}
     by_attention: dict[str, int] = {}
-    for item in items:
-        by_lifecycle[item.row.lifecycle] = by_lifecycle.get(item.row.lifecycle, 0) + 1
-        for signal in item.attention.signals:
+    for row, attention in counted:
+        by_lifecycle[row.lifecycle] = by_lifecycle.get(row.lifecycle, 0) + 1
+        for signal in attention.signals:
             by_attention[signal] = by_attention.get(signal, 0) + 1
     return Counts(
         by_lifecycle=by_lifecycle,
         by_attention=by_attention,
-        total=len(items),
+        total=len(counted),
         runtime_signals_available=runtime_available,
     )
 

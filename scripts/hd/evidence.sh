@@ -65,12 +65,12 @@ artifact artifacts/hd/local/w5/README.md "written by hand from the measurements"
 artifact artifacts/hd/local/w6/perf-2000.json "scripts/hd/measure-2000.py"
 artifact artifacts/hd/local/w6/concurrency-2000.json "scripts/hd/measure-concurrency.py"
 artifact artifacts/hd/local/w6/perf-2000.md "written by hand from the two above"
-# The two budgets that are missed are recorded rather than green, so this asserts the
-# *disposition* exists — a measurement that found nothing to say would not have one.
-if grep -q "## 4. Disposition" artifacts/hd/local/w6/perf-2000.md 2>/dev/null; then
+# A missed budget is recorded rather than green, so this asserts the *current disposition*
+# exists — a historical disposition or a measurement that found nothing to say is not enough.
+if grep -q "^## Current disposition$" artifacts/hd/local/w6/perf-2000.md 2>/dev/null; then
   pass "over-budget items carry a disposition"
 else
-  fail "artifacts/hd/local/w6/perf-2000.md" "two budgets are missed and no disposition is written"
+  fail "artifacts/hd/local/w6/perf-2000.md" "an over-budget item has no current disposition"
 fi
 
 step 9/9 "journeys and sign-offs"
@@ -84,6 +84,9 @@ for doc in docs/security-review-v2e1.md docs/a11y-audit-v2e1.md; do
   fi
 done
 artifact artifacts/hd/local/journeys/summary.json "the eighteen journeys need a stack with a real daemon — scripts/e2e/run-stack.sh"
+artifact artifacts/hd/local/provider-real.json "run scripts/hd/real-provider-evidence.py against a disposable DB with a read-only provider token"
+artifact artifacts/hd/local/provider-event-journeys.json "run scripts/hd/provider-event-journeys.py inside scripts/e2e/run-stack.sh against a disposable DB"
+artifact artifacts/hd/local/provider-lag-hour.json "run scripts/hd/measure-provider-lag-hour.py against a migrated disposable DB for twelve production-cadence rounds"
 
 echo
 if [ "$FAILED" = "0" ]; then

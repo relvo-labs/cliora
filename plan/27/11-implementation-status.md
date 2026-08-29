@@ -2,26 +2,30 @@
 
 > **本檔在實作期間逐步回填。與計畫不同時以這裡為準，並回寫計畫。**
 >
-> **目前狀態（2026-08-28）：十六張 ticket 全部實作完成，八個波次走完。**
+> **目前狀態（2026-08-29）：十六張 ticket 全部實作完成，八個波次走完；
+> 42 項出口條件為 35 ☑／1 ◐／6 ☐。**
 >
 > `scripts/hd/evidence.sh` 九步一次跑完：**前八步全綠**——
-> 十七個 gate、七項靜態檢查、backend **2,144 passed**、frontend **852 passed**、
+> 十七個 gate、七項靜態檢查、backend **2,154 passed**、frontend **852 passed**、
 > traceability、兩次演練、a11y、視覺回歸、七個 `EXPLAIN`。
 > **第九步兩個 FAIL，兩個都是人的簽名**（SR-4、a11y 六項人工）。
 >
-> **三條需要真 daemon 的旅程在本期的程式碼上跑過**：J1 **32／32**、J4 13／13、J15 8／8。
-> J1 是不可降級的那一條，而本期動過 `tasks.stage` 的值域、三個寫入點、
-> `/board` 整組、以及檢索通道的運算子——**它一個斷言都沒有掉**。
+> **舊十六條旅程本體已在本期程式碼上重跑並全綠。** 真 daemon：J1 **36／36**、
+> J4 13／13、J15 8／8、J5/J6/J8/J9 39／39、J11–J14 擴充後 34／34；browser：
+> J1a/J3/J7 3／3、J2/J10/J16 flag on/off 全綠。provider 的 J13/J14 擴充也已在
+> real daemon stack 通過 9／9、11／11；J1 亦已用真 GitHub merged PR 完整通過；
+> J12 production-reader HTTP lifecycle 亦為 9／9、J16 disabled transport trap 為
+> reader 0／GET 0；J17/J18 controlled event＋Chromium journey 亦已通過。
 >
-> **本期找到並修好的三個既有缺陷**（都不是本期程式碼造成的）：
+> **本期實跑找到並修好的五個缺陷**：
 > `alpha.3` 的 trigram 通道對它宣稱要服務的查詢回傳零筆（§2.10）、
 > `style.md` 的四個語意色六期以來沒有一個能當小字用（§2.6）、
-> 以及 `MetricCard` 的 `aria-label` 從來沒有生效過（§2.5 的連帶）。
+> `MetricCard` 的 `aria-label` 從來沒有生效過（§2.5 的連帶），以及一小時
+> provider 觀測找到的假 lag metric 與 session advisory-lock 漏出（§2.21）。
 >
-> **剩下的六項，五項是人的動作**：
-> ① SR-4 簽名 ② a11y 六項人工 checklist ③ Railway 的 `psql` 述詞
-> ④ `alpha.3` 與 `beta.1` 兩個 tag ⑤ `beta.2` 的 tag ⑥ `v2` → 上游核准。
-> 第三項是一個指令；其餘五項是決定。
+> **出口仍有六項未達成**：人工 a11y 三項（checklist／實際聽到的字／J2 錄影）、
+> CI 視覺綠燈、SR-4 具名簽核、`v2` → 上游人工核准。另有一項部分達成：
+> Railway 演練。真 300 秒排程下的 provider event-to-reconcile P95 已關閉。
 
 ## 0. 要回寫上游的九處
 
@@ -124,6 +128,38 @@
 > 2. `knowledge_jobs` 的 `source_type` CHECK 被漏掉（**兩張表都有**，而只有一張會在測試裡被寫到）
 > 3. `0046` 的 downgrade 在**沒有** `legacy_blocked_at` 的卡上「成功」——因為它只改值域，不檢查資料
 
+### ★ 2.20 D132 寫進了計畫與 ADR，卻沒有一條寫入路徑實作它
+
+**計畫怎麼想**：closed-unmerged PR 留下但退出預設檢索、上游刪除 release 要
+tombstone、repository 移除時三種 derived source 一起 tombstone。
+
+**實際是什麼**：provider pass 只 upsert provider 回傳的列；不存在於 release list 的列
+完全不處理。PR handler 也沒有接 `state`，所以 closed-unmerged 仍以 `active=true` 寫入；
+repository delete 直接刪父列，三種 source 沒有 FK，因而全部留成「原始仍存在」。所有舊測試
+都是新增／成功／三次失敗，沒有一條走 retention 表的三個分支。
+
+**補齊**：`ExtractedSource.active` 讓 handler 宣告可逆的 inactive；release reconcile 只在
+provider page 足以證明缺席的時間窗內 tombstone，滿 50 筆時不誤刪 pagination 隱藏的歷史；
+repository delete 依 project＋三型＋UUID prefix tombstone，保留 source id／本文並關閉 chunk。
+五條新 DB 測試逐一證明 closed PR、release deletion、pagination 邊界與 repository removal。
+
+### ★★ 2.21 一小時觀測先量出假零，再讓 session lock 漏到第七輪
+
+**計畫怎麼想**：`provider_reconcile_lag_seconds` 能證明 event 到 ingest 的 300 秒承諾，
+既有 advisory lock 能讓多 replica 安全 single-flight。
+
+**實際是什麼**：第一版在同步寫回 `provider_synced_at=now` 後才量
+`now - provider_synced_at`，所以無論 provider event 多舊都接近零；histogram 的預設 bucket
+又只到 10 秒，根本無法計算 300 秒 SLO。修好量測後跑真 300 秒 cadence，舊的
+session-level `pg_try_advisory_lock` 在 `commit()` 後把持鎖連線還給 pool，再由可能不同的
+連線執行 unlock；第六輪後 PostgreSQL 報 `you don't own a lock`，第七輪永遠拿不到鎖。
+
+**補齊**：lag 只收 live cursor 後實際改變的 entity `updated_at → ingested_at`，首次
+backfill 不算；histogram 加 300／1800／7200 秒 bucket。reconciler 改用
+`pg_try_advisory_xact_lock`，由 commit／rollback／connection close 釋放，並加實 PostgreSQL
+同時執行與 commit 後再取得測試。重新從零觀測 **3613.071 秒、12 輪、24 event**，P95
+**291.013 秒／300 秒**，24／24 落在 300 秒 bucket；前次 failure point 後再完成六輪。
+
 ### ★ 2.1 `legacy_route_hit_total` 做不出來，而照計畫加下去會比不加更糟
 
 **計畫怎麼想**（[D126](./01-decisions-and-governance.md#d126)）：`/board` 的消費者是程式碼、
@@ -186,7 +222,7 @@ grep 得到零就刪；`?tab=` 的消費者是連結、grep 不到，所以**加
 | 0 | `HD-00`、`HD-07`、`HD-13` | ☑ **完成**（2026-08-28）。基準線、`/board` 整組刪除、九處回寫、四處死碼。詳見 §4 |
 | 1 | `HD-04`、`HD-05` | ☑ **實作完成**（2026-08-28）。axe 0/0×8、八張 baseline ＋ 反向測試。**六項人工 checklist 未執行**，見 §6 |
 | 2 | `HD-01` | ☑ **實作完成**（2026-08-28）。ADR 0043、`provider_reads.py`、migration `0044`、FR-PROV 四條 |
-| 3 | `HD-02`、`HD-03`、`HD-15` | ☑ **實作完成**（2026-08-28）。handler、reconcile pass、五個 metric、15 支後端測試 ＋ **`HD-15` 的四種同步狀態在真的畫面上跑過**（`artifacts/hd/local/w3/provider-sync-states.png`）|
+| 3 | `HD-02`、`HD-03`、`HD-15` | ☑ **實作完成**（2026-08-29 再稽核）。handler、reconcile pass、五個 metric、20 支 provider 後端測試 ＋ **`HD-15` 的四種同步狀態在真的畫面上跑過**（`artifacts/hd/local/w3/provider-sync-states.png`）；D132 lifecycle 見 §2.20 |
 | 4 | `HD-06` | ☑ **實作完成**（2026-08-28）。`0045`／`0046`、三個寫入點、ADR 0040 修訂。在 3800 張真實形狀的卡上演練過 roundtrip |
 | 5 | `HD-10` | ☑ **實作完成**（2026-08-28）。2000 卡 seed、七個 `EXPLAIN`、體積與成本。**找到一個 `alpha.3` 的檢索缺陷**，見 §2.10。provider queue 的那一半等波次 3 |
 | 6 | `HD-08`、`HD-09` | ☑ **實作完成**（2026-08-28）。演練五步全綠（含 `pg_trgm` 邊界與 dump/restore）、rollback drill 六步全綠。**演練找到一個 `0046` 的真缺陷**，見 §2.18 |
@@ -515,46 +551,67 @@ requirements ≤208），並把回寫**移到封版**（`HD-12`）而不是開�
 十三項效能（2000 卡 vs 200 卡並列）、三個並發、六個 `EXPLAIN`、
 六個 metric、retention 五列、provider 配額佔比。
 
-*（待回填）*
+**十三項效能預算全部達標**：context pack build 原先為 3236.24ms／2000ms；
+補上異質語料七項人工 gold relevance control 後，FTS 改用候選集合不變的
+`ts_rank`，同一 22,240-chunk DB 重量為 **102.76ms**。
+`work-counts` 修正後三個 HTTP 並發場景為 132.18ms／401.45ms／802.96ms，
+500／500 全部成功（第三項只記錄）。真 GitHub transport＋ingest 有一次 1.63 秒實測；
+production worker 未改 300 秒 cadence 的一小時觀測為 12 輪／24 event、P95
+**291.013 秒**；完整輸出在 `artifacts/hd/local/provider-lag-hour.json`。
+完整數字與成本模型在 `artifacts/hd/local/w6/perf-2000.md`。
 
 ## 6. 出口條件
 
 [`09`](./09-verification-and-exit.md) §8 的 42 項，逐項回填。
 
-*（待回填）*
+**35 ☑／1 ◐／6 ☐**（2026-08-29）。六項未達與一項部分達成均在該節逐項列出；
+不得用「16／16 ticket 完成」代替封版結論。
 
 ## 7. 旅程
 
-**三條需要真 daemon 的旅程在 `beta.2` 的程式碼上跑過，全綠**（2026-08-28）：
+**舊十六條旅程本體在 `beta.2` 的程式碼上重跑，全綠**（2026-08-29）：
 
 | # | 結果 | 說明 |
 |---|---|---|
-| **J1** | **32／32 PASS** | **不可降級的那一條。** 一句模糊需求走到 done，全程沒開過一個 terminal session |
+| **J1** | **36／36 PASS** | **不可降級且已擴充。** 真 GitHub merged PR 經管理 API pin、context pack 與 Agent citation；一句模糊需求走到 done，全程沒開過 terminal session |
 | J4 | 13／13 PASS | My Work → 回答 → continuation |
 | J15 | 8／8 PASS | No eligible runner → 指名缺的 tag → 修正 → 認領 |
+
+其餘結果：J5/J6/J8/J9 **39／39**、J11–J14 擴充後 **34／34**；browser
+J1a/J3/J7 **3／3**、J2/J10/J16（flag on/off）全綠。所有 stack 都使用 fresh database；
+臨時資料庫在收證後刪除。
+
+`scripts/cv/stack-evidence.sh` 的整組路徑也在 dedicated ports 上全綠；前段 J7 曾留下
+一個仍在收尾的執行，讓 0.12 相容性控制組吃到共享 agent-script 狀態。相容性 harness
+現在先等前段 execution capacity 歸零，再開始 subject/control；同一路徑重跑 **20／20**。
 
 `artifacts/hd/local/journeys/`。**這是本期最重要的一項回歸**：
 `0046` 動了 `tasks.stage` 的值域、三個寫入點改了、`/board` 整組刪了、
 `search.py` 的檢索通道換了運算子——而主旅程一個斷言都沒有掉。
 
-### J1 通過了，但它**還沒有**斷言計畫替它加的那一段
+### J1 計畫新增的 merged-PR 引用也已通過
 
-[`09`](./09-verification-and-exit.md) §4 給 J1 多加了一句：
-「Agent 引用的 knowledge 裡至少一則來自 merged PR」。**那一句沒有跑。**
-它需要一個真的、真的被合併過的 PR，而本期**從來沒有對真的 provider 發過一次請求**。
+[`09`](./09-verification-and-exit.md) §4 給 J1 多加的
+「Agent 引用的 knowledge 裡至少一則來自 merged PR」已在 fresh database 與 real
+daemon stack 上通過：真 GitHub GET reconcile 寫入 48 sources、0 failures；merged PR #49
+以 `reviewed` 進入 knowledge，經具名使用者的管理 API pin，出現在實作 run 的
+`context_packs.source_manifest`，再由 Agent 透過 `cliora knowledge cite [S2]` 引用。
+整條主旅程最後仍為 Done、terminal session 仍為 0，合計 **36／36**。
 
-所以誠實的說法是：**J1 證明了 `beta.2` 沒有弄壞主旅程，
-而不是證明了 `beta.2` 擴充了它。** 兩者是不同的句子，
-而只寫第一句會讓人以為第二句也成立。
+### provider 增量也已全部跑完
 
-### 十五條沒跑
-
-J2／J3／J5–J14／J16 是瀏覽器或多角色旅程，`plan/26` 跑過而本期沒有重跑。
-J17／J18 是本期新增的，有通過的單元級對應物，但 end-to-end 版本沒跑。
-
-**而「沒跑」在這裡是誠實的字**——`plan/26` §6 花了一整段記
-把「沒有人去跑」寫成「這個環境做不到」的代價。
-這一次的 stack 從第一次就跑起來了，因為那一段被讀過。
+J13 的 PR-body injection 與 J14 的 provider 兩型已用 real daemon ＋ real handler/store
+補跑，分別 **9／9**、**11／11**；它們直接回答 post-ingestion 的 evidence boundary 與
+project isolation，不假裝回答 transport。之後以現有 GitHub credential 做了 **GET-only 真
+provider reconcile**：1.63 秒、48 sources、0 failures，merged PR #49 以 `reviewed` 進入 search
+且被 context pack 選中（`artifacts/hd/local/provider-real.json`）；J1 又把同一條讀取路徑接到
+真 run citation，36／36（`artifacts/px/local/journeys/j1.json`）。J12 以 production
+`GitHubReader` 對 controlled upstream 發出四次 HTTP GET，9／9 證明
+release deletion、原文保留、退出檢索與舊 citation 的 `no longer exists`。J16 的 disabled
+transport trap 證明 reader 0／GET 0／empty outcome。最後 J17/J18 讓 controlled upstream
+從 open→merged、再回 401：前者經 production reader、Central、Vue Drawer 與 Chromium
+重跑為 **2.260 秒／300 秒**；後者三輪各失敗一次、第四輪 read 0／skipped 1，設定畫面顯示
+`Bad credentials`。因此 [`09`](./09-verification-and-exit.md) 第 40 項已由 ◐ 改為 ☑。
 
 
 
@@ -571,28 +628,31 @@ ticket 與 wave 的狀態我在這份文件裡一路更新，
 **出口條件那張表一次都沒走過**。工作是做了的——但
 「工作做完了」與「計畫結清了」是兩句話，而我只講了第一句。
 
-### 走完之後：33 ☑ ／ 3 ◐ ／ 6 ☐
+### 走完之後：35 ☑ ／ 1 ◐ ／ 6 ☐
 
 而走的過程中發現 **38 與 39 整段被跳過了**：
 `HD-09` 的前半（rollback drill）做了，**後半（十三項效能重量、三個並發場景）沒做**。
 `w5` 的七個 `EXPLAIN` 讓它看起來像做過了——但 `EXPLAIN` 是查詢計畫，不是預算。
 
-補做的結果，是本期最後兩個發現：
+補做的第一輪找到兩個 miss；兩個都已在本次補齊中修回預算內：
 
 | | 200 卡／1000 chunk | 2000 卡／22000 chunk | 預算 |
 |---|---:|---:|---|
-| context pack build P95 | 78.80ms | **3236.24ms** | 2000ms |
-| `work-counts` P95（併發 10） | — | **895ms** | 200ms |
+| context pack build P95 | 78.80ms | ~~3236.24ms~~ → **102.76ms** | 2000ms |
+| `work-counts` P95（併發 10） | — | **132.18ms** | 200ms |
 
-**兩個都不是本期造成的迴歸。** 兩個都是寫它的那一期就有的形狀，
-只是從來沒有人拿真實大小的資料去量。
+**第一輪的兩個 miss 都不是本期造成的迴歸。** 它們都是寫它的那一期就有的形狀，
+只是從來沒有人拿真實大小的資料去量；下列處置已把兩項關閉。
 
 - **context pack**：全部成本在 layer 4，而且**不是** trigram 通道（那是本期修過的那個，
   8.8ms）。是 FTS：`ts_rank_cd` 成本 ≈ `0.018ms × 命中列數 × 查詢詞數`，
-  兩個因子都被 CJK 放大、兩個都沒有上界。進了 ADR 0038 修訂，含天花板公式。
-- **`work-counts`**：一次請求 hydrate 全專案 2001 列 ORM、解 70,020 個 jsonb，
-  在 event loop 上、只為了回一組計數。單 worker 吞吐 11 rps＝1／89ms，**完全沒有重疊**。
-  併發 100 時單 worker 掉了 115 個 503。四個 worker 不掉了，但併發 10 仍是 398ms。
+  兩個因子都被 CJK 放大、兩個都沒有上界。加入中英、title/body、source/authority、
+  age、identifier、typo 與 noise 的七項人工 gold relevance control 後，改用候選集合
+  不變的 `ts_rank`；43／43 search/context DB tests 通過，同一 scale DB P95 **102.76ms**。
+- **`work-counts`（已修回預算內）**：改為只投影 attention policy 真正需要的欄位，
+  並合併同一瞬間、完全相同的 poll；不快取已完成結果，下一輪仍重算。fresh 2000-card
+  HTTP 重量為併發 10 P95 **132.18ms**、50 **401.45ms**、100 **802.96ms**，
+  500／500 全部成功；counts/items 仍共用同一個 `derive_attention` policy。
 - 順帶量出來的第三件事：**repo 裡沒有任何地方設過 uvicorn worker 數**。
   每一條啟動指令都吃預設的 1。這不是被選過的預設值，只是沒被問過。
 
@@ -604,4 +664,5 @@ ticket 與 wave 的狀態我在這份文件裡一路更新，
 
 三份補的產物：`scripts/hd/measure-2000.py`、`scripts/hd/measure-concurrency.py`、
 `artifacts/hd/local/w6/perf-2000.md`。
-六項仍未達成，其中四項是人的動作——名單在 [`09`](./09-verification-and-exit.md) §8 結算區。
+六項仍未達成，其中五項要人操作或具名核准、一項要遠端 CI；另有一項部分達成——名單在
+[`09`](./09-verification-and-exit.md) §8 結算區。

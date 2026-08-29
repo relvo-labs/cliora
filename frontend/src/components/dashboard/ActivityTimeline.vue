@@ -47,7 +47,7 @@ const emit = defineEmits<{ retry: [] }>();
       <p v-if="activity.actors_hidden" class="hidden-note">
         只有 Admin 能看到執行者；以下僅顯示動作與時間。
       </p>
-      <ol>
+      <ol tabindex="0" aria-label="最近活動">
         <li v-for="item in activity.items" :key="item.id">
           <time :datetime="item.created_at" :title="item.created_at">
             {{ formatInstant(item.created_at) }}

@@ -28,10 +28,11 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
-from app.db.models import AgentRunner, Task
+from app.db.models import AgentRunner
 from app.repositories.tasks import ActiveRunProjection
-from app.services.work.projection import PENDING, REVIEW, WorkRow
+from app.services.work.projection import PENDING, REVIEW
 
 WAITING_FOR_YOUR_INPUT = "waiting_for_your_input"
 PENDING_HUMAN_APPROVAL = "pending_human_approval"
@@ -106,7 +107,55 @@ class AttentionDTO:
         return len(self.signals)
 
 
-def derive_attention(row: WorkRow, runtime: RuntimeSignals | None) -> AttentionDTO:
+class AttentionRow(Protocol):
+    """The facts the attention policy reads, independent of a response DTO.
+
+    ``WorkRow`` remains the rich board representation. The polling-only counts path
+    uses a narrow projection, but both call this one policy function.
+    """
+
+    @property
+    def task_id(self) -> uuid.UUID: ...
+
+    @property
+    def open_question_count(self) -> int: ...
+
+    @property
+    def waiting_for_actor(self) -> str | None: ...
+
+    @property
+    def lifecycle(self) -> str: ...
+
+    @property
+    def human_decision(self) -> str: ...
+
+    @property
+    def latest_verification_result(self) -> str | None: ...
+
+    @property
+    def latest_run_status(self) -> str | None: ...
+
+    @property
+    def blocking_count(self) -> int: ...
+
+    @property
+    def stale(self) -> bool: ...
+
+    @property
+    def over_wip(self) -> bool: ...
+
+
+class DispatchTask(Protocol):
+    """The two declarations phase-B runner eligibility reads."""
+
+    @property
+    def required_labels(self) -> Sequence[str]: ...
+
+    @property
+    def required_secrets(self) -> Sequence[str]: ...
+
+
+def derive_attention(row: AttentionRow, runtime: RuntimeSignals | None) -> AttentionDTO:
     """The single source of truth. Returns primary (highest) and the full signal set.
 
     ``runtime`` is None when the caller could not consult the node registry — a
@@ -181,7 +230,7 @@ def derive_attention(row: WorkRow, runtime: RuntimeSignals | None) -> AttentionD
 
 def resolve_runtime_signals(
     queued: Sequence[ActiveRunProjection],
-    tasks: Mapping[uuid.UUID, Task],
+    tasks: Mapping[uuid.UUID, DispatchTask],
     runners: Iterable[AgentRunner],
     *,
     is_online: Callable[[uuid.UUID], bool],

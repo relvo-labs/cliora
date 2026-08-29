@@ -178,7 +178,7 @@
 | ☐ | 19 | 第 2 項的證據含**實際聽到的字** | 同上 |
 | ☐ | 20 | 全鍵盤走完 J2 的錄影 | 同上 |
 | ☑ | 21 | 八張視覺 baseline ＋ **反向測試** | [`05`](./05-visual-regression.md) |
-| ☐ | 22 | 視覺套組在 **CI 上**跑過並綠 | 同上 |
+| ☐ | 22 | 視覺套組在 **CI 上**跑過並綠 | `v2-projects.yml` 已新增 `hardening-browser`，本地以同一個 fresh-DB／Noto CJK／Chromium 形狀跑 **9／9**；尚未 push，所以沒有 GitHub Actions 綠燈，不能把「可在 CI 跑」寫成「已在 CI 跑過」 |
 | ☑ | 23 | `/board` 六處全刪，OpenAPI diff 恰好少一條 | [`08`](./08-sunset-and-cleanup.md) |
 | ☑ | 24 | `?tab=` **未刪**，刪除條件進 release note。**改為宣告式**（`rc.1` 移除，不論使用量）——`HD-07` 實作時發現 FastAPI 看不到 `?tab=`，計數式做不出來，ADR 0044 §4 | 同上 |
 | ☑ | 25 | `work.py` docstring 已改；`getBoard()` 已刪 | 同上 |
@@ -188,47 +188,47 @@
 | ☑ | 29 | 2000 卡 seed 可重跑；200 卡 seed 一行未改 | [`06`](./06-scale-and-observability.md) |
 | ☑ | 30 | 六個 `EXPLAIN` ＋ 每份一行結論 | 同上 |
 | ☑ | 31 | **五個**新 metric 在 `/metrics`，label 全在 allowlist（`legacy_route_hit_total` 不做——`HD-07` 實作時發現 FastAPI 看不到 `?tab=`） | 同上 |
-| ◐ | 32 | **`provider_reconcile_lag_seconds` P95 ≤ 300s** | metric 存在、label 在 allowlist、單元測試涵蓋。**但本期從未對真 provider 發過請求**，所以這個 P95 沒有一次真實觀測值。300s 是由 reconcile 週期推出來的，不是量出來的 |
+| ☑ | 32 | **`provider_reconcile_lag_seconds` P95 ≤ 300s** | `provider-lag-hour.json`：production `KnowledgeWorker` 未改 300 秒 cadence、12 輪／24 個 live-cursor event、實時間 3613.071 秒；DB 的 `ingested_at - source_updated_at` P95 **291.013 秒**，histogram 24／24 落在 300 秒 bucket。controlled loopback upstream，production `GitHubReader`，不改外部 provider object |
 | ☑ | 33 | retention 與體積五列有實測值，進 release note | 同上 |
 | ☑ | 34 | provider API 配額佔比進 release note | 同上 |
 | ◐ | 35 | `HD-08` 兩條部署路徑各一次五步演練 ＋ 七項驗證 | compose 那條做完了（`w6/rehearsal-compose.log`，五步各七項，**第一次跑就抓到 `0046` 的真缺陷**）。**Railway 那條沒做**——本環境沒有 Railway 部署，與第 12 項的 `psql` 判定是同一個缺口 |
 | ☑ | 36 | 七個 revision 的可逆性表完整 | 同上 |
 | ☑ | 37 | `HD-09` 六步全綠，`work_views` 已匯出 | 同上 |
-| ☑ | 38 | 十三項效能在 2000 卡上重量，與 200 卡**並列** | `w6/perf-2000.{json,md}`。八項量測、五項具名不重量並寫明理由。**十一項達標、兩項沒有**：context pack build 3236.24ms／2000ms，成因與成本模型進了 ADR 0038 修訂 |
-| ☑ | 39 | 三個並發場景各一次；超預算項逐項有處置 | `w6/concurrency-2000.json` ＋ 四 worker 對照。**三項處置逐項寫在 `perf-2000.md` §4**：`work-counts` 89ms 是 CPU-bound（每次要 hydrate 全專案 2001 列）、repo 裡沒有任何地方設過 worker 數、D95 的 200ms 在 2000 卡上任何 worker 數都不成立 |
-| ◐ | 40 | 十八條旅程 | **三條跑過全綠**（J1 32／32、J4 13／13、J15 8／8，對真 `agentd` 0.14.1）。十五條沒跑。**J1 多的那一段（引用一則 merged PR）沒跑**——它需要一個真的 provider，而本期從未對真 provider 發過請求。J1 證明的是本期沒弄壞主旅程，不是本期擴充了它 |
+| ☑ | 38 | 十三項效能在 2000 卡上重量，與 200 卡**並列** | `w6/perf-2000.{json,md}`。八項量測、五項具名不重量並寫明理由。context pack 的 `ts_rank_cd` 成本先量出 3236.24ms，加入異質語料七項人工 gold relevance control 後改用 `ts_rank`；同一 22,240-chunk DB 重量為 **102.76ms／2000ms，全部達標** |
+| ☑ | 39 | 三個並發場景各一次；超預算項逐項有處置 | `w6/concurrency-2000.json`（2026-08-29 修正後）：併發 10 P95 **132.18ms**／200ms、併發 50 **401.45ms**／500ms、併發 100 **802.96ms**（500／500、只記錄）。narrow projection ＋ identical-poll single-flight，且 counts/items 仍共用 `derive_attention` |
+| ☑ | 40 | 十八條旅程 | **全數通過。** 舊十六條本體全綠；J1 真 GitHub merged-PR **36／36**、J12 production-reader HTTP release lifecycle **9／9**、J13 **9／9**、J14 **11／11**、J16 reader 0／GET 0。J17 controlled open→merged event 經 production reader、Central 與 Chromium Drawer 重跑為 **2.260 秒／300 秒**；J18 三輪各失敗一次、第四輪 read 0／skipped 1，設定畫面顯示 `Bad credentials` |
 | ☐ | 41 | **SR-4 八項具名簽核**，含「為什麼少兩項」與 membership 那句 | §5 |
 | ☐ | 42 | **`v2` → 上游由人工核准** | 治理 |
 
 **第 42 項永遠是最後一項，而它永遠不是自動的。**
 出口條件全綠只是取得提案資格。
 
-### 結算：33 ☑ ／ 3 ◐ ／ 6 ☐（2026-08-29）
+### 結算：35 ☑ ／ 1 ◐ ／ 6 ☐（2026-08-29）
 
 **這張表在十六張 ticket 都做完之後，仍然一格都沒勾過。**
 勾選是封版的動作，不是實作的副產品——而本期把它漏掉了，
 直到有人問「計畫都做完了嗎」才發現。記在這裡，因為
 「工作做完了」與「計畫結清了」是兩句話，而下一期會再犯一次。
 
-**六項未達成，其中四項是人的動作，兩項不是：**
+**六項未達成，其中五項要人操作或具名核准，一項要遠端 CI：**
 
 | # | 未達成 | 誰能做 |
 |---:|---|---|
 | 18 | 六項人工 a11y checklist ＋ 具名簽核 | 一個人，在瀏覽器前。六項全部記錄為**未執行**，不是「執行過且通過」 |
 | 19 | 第 2 項的證據含實際聽到的字 | 同上——需要真的開一次螢幕閱讀器 |
 | 20 | 全鍵盤走完 J2 的錄影 | 同上 |
-| 22 | 視覺套組在 **CI 上**跑過並綠 | CI。本地八張全綠，但基線綁的是字型環境（已知限制 5），**沒在 CI 上跑過的視覺套組，第一次跑就是八個失敗** |
+| 22 | 視覺套組在 **CI 上**跑過並綠 | CI job 已接好且同形狀本地 9／9；需要 push 後取得一次 GitHub Actions 綠燈 |
 | 41 | SR-4 八項具名簽核 | 一個沒寫過 V2-E1 程式的人 |
 | 42 | `v2` → 上游核准 | 一個人，且永遠不是自動化 |
 
-**三項部分達成（◐）**，理由寫在各自那一列：32 沒有真實觀測值、
-35 少了 Railway 那條路徑、40 十八條旅程只跑了三條。
+**一項部分達成（◐）**：35 少了 Railway 路徑。第 32 項已用真 300 秒排程下的
+12 輪／24 event 關閉，P95 **291.013 秒**。
 
 **本次結算過程中補做了 38 與 39**（`HD-09` 的第二半，先前整段跳過），
-而補做的結果是**兩個效能預算沒過**——
-context pack build 41× 於 200 卡值、`work-counts` 在併發 10 就超 D95 的預算 4.5 倍。
-兩者都不是本期造成的迴歸，是本期第一次拿 2000 卡去量才看見。
-**如果這張表當初照著勾下去，這兩個數字不會出現。**
+補做時有**兩個效能預算沒過**；本次補齊已把兩個都修回預算內：
+`work-counts` 以窄投影與 identical-poll single-flight 關閉，context pack 則先加入
+異質語料七項人工 gold relevance control，再把 `ts_rank_cd` 改為候選集合不變的
+`ts_rank`。同一 22,240-chunk DB 的 context P95 由 3236.24ms 降到 **102.76ms**。
 
 ## 9. 每個 prerelease 的必要產物（`HD-12`）
 

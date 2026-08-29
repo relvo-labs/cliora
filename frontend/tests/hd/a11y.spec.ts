@@ -117,7 +117,7 @@ test.describe("accessibility — WCAG 2.2 AA", () => {
     // says what to fix. A suite whose evidence only appears when it passes is a suite
     // nobody can use to get to green.
     writeFileSync(
-      resolve(OUT, "axe.json"),
+      resolve(OUT, "axe-after.json"),
       `${JSON.stringify({ screens: rows }, null, 2)}\n`,
     );
 

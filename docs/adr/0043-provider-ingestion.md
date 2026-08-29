@@ -152,6 +152,14 @@ At 50 repositories this is **1800 GET/hour, 36 % of GitHub's authenticated quota
 Around 140 repositories a deployment reaches the ceiling; that number belongs in the
 release note, because an operator adding repositories has no other way to learn it.
 
+The cadence promise is measured from a changed provider entity's event timestamp to its
+ingest timestamp, only after the repository has a live cursor; initial history is not a
+reconcile-lag sample. A 3613.071-second production-worker observation over twelve
+unchanged 300-second rounds produced 24 samples and P95 **291.013 seconds**
+(`provider-lag-hour.json`). That observation also replaced the reconciler's session lock
+with the transaction-scoped lock above: the old `commit(); unlock()` could return the
+owning connection to the pool and attempt the unlock on another connection.
+
 ## 7. Retention
 
 Provider sources follow ADR 0038 §6 — knowledge has no clock of its own — with two rules
