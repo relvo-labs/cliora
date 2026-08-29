@@ -12,17 +12,29 @@ content call may be cut short by a byte ceiling, and a repository whose deletion
 land when the upload happens to fit is one where "I deleted that document" is sometimes
 true.
 
-    E2E_RUNNER=1 scripts/e2e/run-stack.sh \
+    CLIORA_GIT_ALLOWED_HOSTS='["github.com"]' E2E_RUNNER=1 scripts/e2e/run-stack.sh \
       uv run --project backend python scripts/kn/journeys/j12_repo_lifecycle.py
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import sys
+import threading
 import uuid
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlsplit
+
+import sqlalchemy as sa
 
 from kn_harness import Journey, KnowledgeStack, use_agent_script
+
+from app.db.models import KnowledgeChunk, KnowledgeSource, Project, ProjectRepository
+from app.services.knowledge import provider_sync
+from app.services.secrets import SecretService
+from app.settings import Settings
 
 AGENT = r"""#!/usr/bin/env bash
 # The J12 agent: a repository's life, compressed into one run.
@@ -58,6 +70,219 @@ cliora task say "sync3=$third"
 exit 0
 """
 
+PROVIDER_AGENT = r"""#!/usr/bin/env bash
+set -uo pipefail
+pack="$(cliora knowledge context 2>&1)" || {
+  cliora task say "release context failed: $pack"
+  exit 3
+}
+label="$(printf '%s' "$pack" | awk '
+  /^## \[S[0-9]+\]/ { label=$2 }
+  /來源類型：release/ { print label; exit }
+')"
+[ -n "$label" ] || { cliora task say "release label missing"; exit 3; }
+cliora task say "release-ready $label"
+
+# The journey removes the release from its controlled provider while this run sleeps.
+sleep 6
+# Labels are deliberately pack-local and the ready message above becomes new knowledge,
+# so use the source id retained from that original manifest for the later citation.
+cited="$(cliora knowledge cite "__SOURCE_ID__" 2>&1)"
+status=$?
+cliora task say "release-cite-status=$status $cited"
+[ "$status" -ne 0 ] && printf '%s' "$cited" | grep -q 'no longer exists'
+"""
+
+
+class _ProviderFixture(ThreadingHTTPServer):
+    """A controlled upstream reached through the production GitHub HTTP reader."""
+
+    releases: list[dict[str, object]]
+    calls: list[str]
+
+    def __init__(self) -> None:
+        super().__init__(("127.0.0.1", 0), _ProviderHandler)
+        self.releases = []
+        self.calls = []
+
+
+class _ProviderHandler(BaseHTTPRequestHandler):
+    server: _ProviderFixture
+
+    def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+        path = urlsplit(self.path).path
+        self.server.calls.append(path)
+        payload = self.server.releases if path.endswith("/releases") else []
+        encoded = json.dumps(payload).encode()
+        self.send_response(200)
+        self.send_header("content-type", "application/json")
+        self.send_header("content-length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+
+async def _provider_release_lifecycle(
+    stack: KnowledgeStack,
+    journey: Journey,
+    *,
+    project_id: str,
+    repository_id: str,
+) -> None:
+    fixture = _ProviderFixture()
+    thread = threading.Thread(target=fixture.serve_forever, daemon=True)
+    thread.start()
+    try:
+        port = fixture.server_address[1]
+        settings = Settings(
+            provider_api_base=f"http://127.0.0.1:{port}",
+            provider_api_hosts=["127.0.0.1"],
+        )
+        published_at = datetime.now(UTC).replace(microsecond=0)
+        fixture.releases = [
+            {
+                "tag_name": "v2.0.0-beta.2-fixture",
+                "name": "Provider lifecycle fixture",
+                "body": "這份 release 曾經發布，之後被撤下；引用文字必須保留。",
+                "draft": False,
+                "prerelease": True,
+                "published_at": published_at.isoformat().replace("+00:00", "Z"),
+                "html_url": "https://example.invalid/releases/v2.0.0-beta.2-fixture",
+            }
+        ]
+
+        async with stack.maker() as session:
+            project = await session.get(Project, uuid.UUID(project_id))
+            repository = await session.get(ProjectRepository, uuid.UUID(repository_id))
+            assert project is not None and repository is not None
+            project.provider_sync_enabled = True
+            secret = await SecretService(session, settings=settings).create(
+                project=project,
+                name="J12_PROVIDER_TOKEN",
+                kind="provider_token",
+                value="fixture-token-never-leaves-localhost",
+                actor_id=project.owner_user_id,
+            )
+            repository.provider_token_secret_id = secret.id
+            first = await provider_sync.sync_project(
+                session, project_id=project.id, settings=settings
+            )
+            source = (
+                await session.execute(
+                    sa.select(KnowledgeSource).where(
+                        KnowledgeSource.project_id == project.id,
+                        KnowledgeSource.source_type == "release",
+                        KnowledgeSource.source_external_id.endswith(
+                            ":ver:v2.0.0-beta.2-fixture"
+                        ),
+                    )
+                )
+            ).scalar_one()
+            original = (
+                await session.execute(
+                    sa.select(KnowledgeChunk.content).where(
+                        KnowledgeChunk.source_id == source.id
+                    )
+                )
+            ).scalar_one()
+            await session.commit()
+            source_id = source.id
+
+        journey.check(
+            first.sources == 1 and fixture.calls,
+            "release 經本番 GitHubReader 的 HTTP GET 進入 knowledge",
+            {"sources": first.sources, "calls": fixture.calls.copy()},
+        )
+
+        use_agent_script(PROVIDER_AGENT.replace("__SOURCE_ID__", str(source_id)))
+        task = await stack.card(project_id, title="引用即將撤下的 release")
+        pinned = await stack.client.post(
+            f"/api/projects/{project_id}/knowledge/pins",
+            json={
+                "task_id": task["id"],
+                "source_id": str(source_id),
+                "mode": "pin",
+            },
+            headers=stack.headers,
+        )
+        pinned.raise_for_status()
+        run_id = (await stack.dispatch(task["id"]))["run_id"]
+
+        async def release_is_cited() -> bool:
+            return any(
+                "release-ready [S" in message["body"]
+                for message in await stack.messages(task["id"])
+                if message["author_kind"] == "agent"
+            )
+
+        ready = await stack.wait_for(
+            release_is_cited, 30.0, "the agent to capture the release citation"
+        )
+        journey.check(bool(ready), "Agent 在刪除前取得 release citation label")
+
+        fixture.releases = []
+        async with stack.maker() as session:
+            repository = await session.get(ProjectRepository, uuid.UUID(repository_id))
+            assert repository is not None
+            repository.provider_synced_at = None
+            second = await provider_sync.sync_project(
+                session, project_id=uuid.UUID(project_id), settings=settings
+            )
+            await session.commit()
+        finished = await stack.wait_for_terminal_run(run_id)
+        said = [
+            message["body"]
+            for message in await stack.messages(task["id"])
+            if message["author_kind"] == "agent"
+        ]
+        journey.check(
+            finished is not None
+            and any(
+                "release-cite-status=" in body and "no longer exists" in body
+                for body in said
+            ),
+            "同一個 citation 在 upstream 刪除後明說 no longer exists",
+            said,
+        )
+
+        async with stack.maker() as session:
+            source = await session.get(KnowledgeSource, source_id)
+            chunks = (
+                (
+                    await session.execute(
+                        sa.select(KnowledgeChunk).where(
+                            KnowledgeChunk.source_id == source_id
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            assert source is not None
+            journey.check(
+                second.repositories == 1
+                and source.deleted_at is not None
+                and not source.active
+                and chunks
+                and all(chunk.valid_to is not None for chunk in chunks)
+                and any(chunk.content == original for chunk in chunks),
+                "release tombstone 保留原文，但退出預設檢索",
+                {
+                    "deleted_at": source.deleted_at.isoformat()
+                    if source.deleted_at
+                    else None,
+                    "active": source.active,
+                    "chunks": len(chunks),
+                    "provider_gets": len(fixture.calls),
+                },
+            )
+    finally:
+        fixture.shutdown()
+        fixture.server_close()
+        thread.join(timeout=2)
+
 
 async def main() -> int:
     journey = Journey("J12", "repo 文件更新與刪除之後，舊內容不再被檢索命中")
@@ -90,7 +315,11 @@ async def main() -> int:
         await stack.wait_for_terminal_run(run_id)
         journey.step("run finished")
 
-        said = [m["body"] for m in await stack.messages(task["id"]) if m["author_kind"] == "agent"]
+        said = [
+            m["body"]
+            for m in await stack.messages(task["id"])
+            if m["author_kind"] == "agent"
+        ]
         journey.note("agent_said", said)
         joined = " ".join(said)
         journey.check(
@@ -118,9 +347,13 @@ async def main() -> int:
         journey.note("after_delete_lease", lease)
         journey.note("after_delete_lifecycle", life)
         journey.check(
-            "docs/lease.md" not in lease, "the deleted document is gone from search", lease
+            "docs/lease.md" not in lease,
+            "the deleted document is gone from search",
+            lease,
         )
-        journey.check("docs/lifecycle.md" in life, "the kept document is still findable", life)
+        journey.check(
+            "docs/lifecycle.md" in life, "the kept document is still findable", life
+        )
 
         rows = await stack.client.get(
             f"/api/projects/{project_id}/knowledge/sources",
@@ -133,6 +366,13 @@ async def main() -> int:
         journey.check(
             "docs/lease.md" not in by_title or not by_title["docs/lease.md"]["active"],
             "the tombstoned source is kept but inactive",
+        )
+        journey.step("provider release lifecycle")
+        await _provider_release_lifecycle(
+            stack,
+            journey,
+            project_id=project_id,
+            repository_id=repository_id,
         )
     return journey.finish()
 

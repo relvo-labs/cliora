@@ -1,10 +1,10 @@
 # Cliora `v2.0.0-beta.2` — V2-E1 Ecosystem and Hardening
 
 > **狀態（2026-08-28）：十六張 ticket 全部實作完成，八個波次走完。**
-> `scripts/hd/evidence.sh` 前八步全綠（十七 gate、backend 2,144、frontend 852、
+> `scripts/hd/evidence.sh` 前八步全綠（十七 gate、backend 2,154、frontend 852、
 > 兩次演練、a11y 0/0、七個 `EXPLAIN`）；**第九步兩個 FAIL，兩個都是人的簽名**。
-> J1 **32／32** 對真 daemon 通過——本期動過 stage 值域、三個寫入點、`/board` 與檢索通道，
-> 而不可降級的那一條一個斷言都沒掉。
+> J1 **36／36** 對真 daemon 通過——真 GitHub merged PR 經管理 API pin、context pack
+> 與 Agent citation，且不可降級的原主旅程仍一個斷言都沒掉。
 > 逐項與二十條「與計畫的差異」在 [`11`](./11-implementation-status.md)。
 > 上游規劃：[`research/03/12`](../../research/03/12-migration-and-rollout.md) §6 的十二張 `HD-` ticket。
 > 前一期：[`plan/26`](../26/README.md)（P1 已實作，出口條件 **40／40 全綠**

@@ -72,17 +72,16 @@ async function signIn(page: Page): Promise<void> {
   await page.locator('input[name="username"]').fill(adminUser);
   await page.locator('input[name="password"]').fill(adminPass);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/(dashboard|nodes|sessions)/);
+  await expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
 }
 
 /**
  * A card an agent needs no repository for, already in `ready`.
  *
- * `source: none`, `delivery: none`, and **deliberately not `card_kind: clarification`**:
- * `CreateTaskRequest` has no such field, so passing it was silently ignored and the card
- * was an ordinary implementation card all along. A real clarification card needs a
- * requirement (`TASK_CLARIFICATION_NEEDS_REQUIREMENT`), which is V2.5's flow and not what
- * these journeys are about.
+ * `source: none`, `delivery: none`, and **deliberately no `card_kind: clarification`**.
+ * The API now accepts that field and correctly requires a requirement for clarification
+ * cards (`TASK_CLARIFICATION_NEEDS_REQUIREMENT`); these conversation journeys need an
+ * ordinary implementation card.
  */
 async function bareCard(
   request: APIRequestContext,
@@ -96,17 +95,15 @@ async function bareCard(
       data: { name, slug: name },
     })
   ).json();
-  const created = await (
-    await request.post(`${API}/api/projects/${project.id}/tasks`, {
+  const createResponse = await request.post(
+    `${API}/api/projects/${project.id}/tasks`,
+    {
       headers: headers(token),
-      data: {
-        title,
-        source: "none",
-        delivery: "none",
-        card_kind: "clarification",
-      },
-    })
-  ).json();
+      data: { title, source: "none", delivery: "none" },
+    },
+  );
+  expect(createResponse.ok(), await createResponse.text()).toBe(true);
+  const created = await createResponse.json();
   let task = created.task;
   if (task.stage !== "ready") {
     const moved = await (

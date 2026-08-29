@@ -63,7 +63,7 @@
 | Metric | 型別 | label | 為什麼需要 |
 |---|---|---|---|
 | `provider_read_total` | counter | `host`、`outcome`（ok／refused／unreachable） | pull 模型下唯一能看出「同步還活著嗎」的東西 |
-| `provider_reconcile_lag_seconds` | histogram | — | `provider_synced_at` 到現在的距離。**300 秒的承諾就是靠它證明的** |
+| `provider_reconcile_lag_seconds` | histogram | — | live cursor 後真正變更的 provider entity，其 `updated_at` 到 ingest 的距離；首次 backfill 不計。**300 秒的承諾就是靠它證明的** |
 | `knowledge_queue_depth_total` | counter | `state`（pending／failed） | queue 積起來的表現是「knowledge 有點舊」，而那在畫面上看不出來 |
 | `context_citation_total` | counter | `authority`（十級） | [D134](./01-decisions-and-governance.md#d134) 的量測。**只記 metadata** |
 | ~~`legacy_route_hit_total`~~ | — | — | **☒ 不做**（`HD-07`，2026-08-28）：redirect 在 vue-router 裡、SPA 由 nginx 送，FastAPI 看不到 `?tab=`。一個永遠是 0 的指標會被讀成「沒人在用」。改為宣告式日落，見 ADR 0044 §4 |
@@ -73,7 +73,8 @@
 `metrics.py:14` 已經寫過原因：「metrics 是唯一沒有 redaction 的 sink」。
 
 **`provider_reconcile_lag_seconds` 是六個裡最重要的一個**：
-它是 pull 模型的那個 300 秒承諾唯一的證據。
+它是 pull 模型的那個 300 秒承諾唯一的證據。不可用剛寫回的
+`provider_synced_at` 算 `now - provider_synced_at`；那只會量出接近零的同步執行時間。
 沒有它，「一個 PR 合掉之後最多 300 秒出現」就是一句話而不是一個事實。
 
 ## 5. Retention 與體積
@@ -126,7 +127,7 @@
 | ☐ | `scripts/cv/seed-dataset.py` **一行未改** | diff |
 | ☐ | 六個 `EXPLAIN (ANALYZE, BUFFERS)` ＋ 每份一行結論 | `artifacts/hd/local/w5/explain/` |
 | ☐ | **五個** metric 在 `/metrics` 上，label 全部在 allowlist 內（第六個 `legacy_route_hit_total` 已裁定不做，理由在 §4） | 截圖 ＋ `metrics.py` 的 allowlist diff |
-| ☐ | `provider_reconcile_lag_seconds` 的 P95 ≤ 300 秒 | 一小時的觀測 |
+| ☑ | `provider_reconcile_lag_seconds` 的 P95 ≤ 300 秒 | `provider-lag-hour.json`：production worker 300 秒 cadence、12 輪／24 event、3613.071 秒，P95 **291.013 秒** |
 | ☐ | retention 與體積的五列全部有實測值 | 表 ＋ release note |
 | ☐ | provider API 配額佔比（50 repository = 36%）進 release note | release note |
 | ☐ | virtualization 的**決定**（做或不做 ＋ 理由）已寫下 | [`11`](./11-implementation-status.md) |

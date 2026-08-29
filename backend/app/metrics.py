@@ -175,10 +175,13 @@ _SIZE_BUCKETS: tuple[float, ...] = (
 # Histograms whose values are counts or bytes rather than seconds.
 _SIZE_HISTOGRAMS: frozenset[str] = frozenset({TERMINAL_QUEUE_BYTES, TERMINAL_QUEUE_FRAMES})
 
-# Ingest freshness spans a wider range than a request does: the budget is 10s, and the
-# interesting question above it is "minutes or hours", which `_BUCKETS` cannot express.
+# Ingest freshness spans a wider range than a request does: knowledge jobs budget 10s and
+# provider reconciliation budgets 300s. The interesting range is therefore minutes or
+# hours, which `_BUCKETS` ending at 10s cannot express.
 _LAG_BUCKETS: tuple[float, ...] = (1.0, 2.5, 5.0, 10.0, 30.0, 60.0, 300.0, 1800.0, 7200.0)
-_LAG_HISTOGRAMS: frozenset[str] = frozenset({KNOWLEDGE_INGEST_LAG_SECONDS})
+_LAG_HISTOGRAMS: frozenset[str] = frozenset(
+    {KNOWLEDGE_INGEST_LAG_SECONDS, PROVIDER_RECONCILE_LAG_SECONDS}
+)
 
 # The closed label allowlist (ADR 0018). Adding a key here is a deliberate decision
 # that it is low-cardinality *and* carries no identifying information.

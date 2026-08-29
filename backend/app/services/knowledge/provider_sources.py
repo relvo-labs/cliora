@@ -96,6 +96,7 @@ def pull_request_source(
     number: int,
     title: str,
     body: str,
+    state: str,
     merged: bool,
     merged_at: datetime | None,
     head_ref: str,
@@ -115,7 +116,12 @@ def pull_request_source(
     — which is exactly what `store.upsert` already does with `source_updated_at`.
     """
     authority = _assert_ceiling(_MERGED if merged else _UNMERGED)
-    state_line = f"已於 {merged_at:%Y-%m-%d %H:%M} 合併" if merged and merged_at else "尚未合併"
+    if merged and merged_at:
+        state_line = f"已於 {merged_at:%Y-%m-%d %H:%M} 合併"
+    elif state == "closed":
+        state_line = "已關閉，未合併"
+    else:
+        state_line = "尚未合併"
     return ExtractedSource(
         external_id=f"{repository.id}:pr:{number}",
         version=updated_at.isoformat(),
@@ -128,6 +134,9 @@ def pull_request_source(
         uri=url,
         occurred_at=merged_at or updated_at,
         source_updated_at=updated_at,
+        # A rejected proposal remains as history but is not evidence for the default
+        # context.  This is deliberately not a tombstone: the PR still exists upstream.
+        active=merged or state != "closed",
     )
 
 

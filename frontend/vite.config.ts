@@ -10,6 +10,10 @@ const DEFAULT_PRODUCT_NAME = "Cliora";
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "VITE_");
   const productName = env.VITE_PRODUCT_NAME || DEFAULT_PRODUCT_NAME;
+  const devProxyTarget =
+    process.env.CLIORA_DEV_PROXY_TARGET ||
+    process.env.E2E_BASE_URL ||
+    "http://127.0.0.1:8000";
   const allowedHosts = (env.VITE_ALLOWED_HOSTS || "")
     .split(",")
     .map((host) => host.trim())
@@ -31,8 +35,8 @@ export default defineConfig(({ mode }) => {
       // Same-origin API/WS in dev: the typed client uses relative URLs, so proxy
       // them to the local Central. Override the backend target with VITE_API_BASE_URL.
       proxy: {
-        "/api": { target: "http://127.0.0.1:8000", changeOrigin: true },
-        "/ws": { target: "ws://127.0.0.1:8000", ws: true, changeOrigin: true },
+        "/api": { target: devProxyTarget, changeOrigin: true },
+        "/ws": { target: devProxyTarget, ws: true, changeOrigin: true },
       },
     },
   };

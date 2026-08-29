@@ -157,6 +157,7 @@ async function create(): Promise<void> {
     <div
       v-if="displayState === 'loading'"
       class="skeleton"
+      role="status"
       aria-label="Loading projects"
     >
       <span /><span /><span /><span />

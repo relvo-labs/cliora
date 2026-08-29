@@ -158,9 +158,10 @@ The bug class "the payload in the job was stale by the time it ran" does not exi
 Claiming uses `SELECT … FOR UPDATE SKIP LOCKED`, so there is **no cursor** and
 therefore none of fact 3's problem. It also makes multiple Central replicas correct by
 construction; the reconciler, whose cost is per-replica and whose benefit is not, is
-single-flighted with `pg_try_advisory_lock`. An advisory lock rather than a leader
-table because it is released when the connection dies, and a Central killed with
-`SIGKILL` must not leave a permanent leader row behind.
+single-flighted with transaction-scoped `pg_try_advisory_xact_lock`. A transaction lock
+rather than a leader table or session lock because commit, rollback, connection death,
+and a Central killed with `SIGKILL` all release it without a separate unlock on what may
+be a different pooled connection.
 
 #### 3.3 Idempotence is an upsert, not a read-then-write
 
@@ -413,7 +414,7 @@ What does not depend on the corpus is the shape. Cost is the product of two unbo
 factors, and a project whose knowledge is 20,000 chunks *about one subject* — which is what
 a project's knowledge is — reproduces it with no templating at all.
 
-## Why this is recorded rather than fixed
+## Why this was initially recorded rather than fixed
 
 Every available fix changes what layer 4 returns:
 
@@ -424,6 +425,36 @@ Every available fix changes what layer 4 returns:
   rewrite of the channel with a relevance evaluation beside it.
 
 Choosing between those on evidence from a corpus this measurement has itself shown to be
-unrepresentative would trade a measured number for an unmeasured one. **The next phase owns
-the fix and needs a heterogeneous corpus before it starts** — which is now the first item
-of work, not an afterthought to it.
+unrepresentative would trade a measured number for an unmeasured one. **A remediation
+therefore needed a heterogeneous corpus before it started** — the control added below,
+not an afterthought to it.
+
+## Remediation (2026-08-29)
+
+The FTS channel now uses `ts_rank` in place of `ts_rank_cd`. The `@@` predicate, complete
+matching candidate set, title/body A/B weights, top-50 candidate bound, trigram channel,
+and authority/freshness/graph/pin rerank are unchanged. On the 22,240-chunk scale query,
+direct SQL measured **3091.98ms** for `ts_rank_cd` and **18.94ms** for `ts_rank`; the two
+returned the same ordered top-50 source set.
+
+Because `ts_rank` produces scores at roughly one fifth the former scale for the weighted
+documents used here, the FTS channel weight is 5.0. That preserves its established
+boundary against the trigram channel: in particular, an exact title match still outranks
+a body that repeats the phrase and receives an exact trigram score.
+
+This change was admitted only with a human-labelled heterogeneous relevance control. It
+mixes Chinese and English, title and body matches, seven source/authority shapes, fresh
+and old material, exact references, symbols, SHAs, typos and repeated near-topic noise;
+all seven expected top results pass. The full knowledge search/context DB set is **43/43**,
+and the independent KN-13 fixed query set remains **8/8**, including its expected semantic
+miss.
+
+The same 2,000-card / 22,240-chunk database, with 20 warm iterations, now measures:
+
+| | Before | After | Budget |
+|---|---:|---:|---:|
+| knowledge search P95 | 165.29ms | **9.08ms** | 1000ms — **PASS** |
+| context pack build P95 | 3236.24ms | **102.76ms** | 2000ms — **PASS** |
+
+The cost model above remains part of the decision record: restoring `ts_rank_cd` requires
+re-running the scale gate, not merely the small-corpus relevance tests.

@@ -28,14 +28,14 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app import metrics
 from app.clock import now_utc
-from app.db.models import Project, ProjectRepository
+from app.db.models import KnowledgeSource, Project, ProjectRepository
 from app.logging import get_logger
 from app.services import provider_reads
 from app.services.knowledge import provider_sources
@@ -58,6 +58,10 @@ class SyncOutcome:
     sources: int = 0
     failures: int = 0
     skipped: int = 0
+    # Event-to-ingestion observations from a live cursor only. First-pass backfill is
+    # deliberately absent: the age of an old PR is not reconcile lag, and mixing the two
+    # would make a healthy deployment report months of latency on the day it is enabled.
+    reconcile_lags_seconds: tuple[float, ...] = ()
 
 
 async def sync_project(
@@ -110,7 +114,7 @@ async def sync_project(
             continue
 
         try:
-            written = await _sync_repository(
+            written, lags = await _sync_repository(
                 session, store=store, repository=repository, token=token, settings=settings
             )
         except provider_reads.ProviderReadError as exc:
@@ -134,7 +138,12 @@ async def sync_project(
         repository.provider_sync_error = None
         repository.provider_synced_at = now_utc()
         metrics.increment(metrics.PROVIDER_READ_TOTAL, host=repository.host, status="ok")
-        outcome = _with(outcome, repositories=1, sources=written)
+        outcome = _with(
+            outcome,
+            repositories=1,
+            sources=written,
+            reconcile_lags_seconds=lags,
+        )
 
     return outcome
 
@@ -146,14 +155,15 @@ async def _sync_repository(
     repository: ProjectRepository,
     token: str,
     settings: Settings,
-) -> int:
+) -> tuple[int, tuple[float, ...]]:
     """The ≤3 reads, and whatever they turn out to be worth."""
     reader = provider_reads.reader_for(repository.host, settings)
     if reader is None:  # pragma: no cover - guarded by `supports_host` above
-        return 0
+        return 0, ()
 
+    live_cursor = repository.provider_synced_at is not None
     since = repository.provider_synced_at or (now_utc() - FIRST_PASS_WINDOW)
-    extracted: list[tuple[str, ExtractedSource]] = []
+    extracted: list[tuple[str, ExtractedSource, datetime | None]] = []
 
     for state in await reader.list_pull_requests(
         repo_path=repository.path, token=token, since=since
@@ -166,6 +176,7 @@ async def _sync_repository(
                     number=state.number,
                     title=state.title,
                     body=state.body,
+                    state=state.state,
                     merged=state.merged,
                     merged_at=state.merged_at,
                     head_ref=state.head_ref,
@@ -173,10 +184,12 @@ async def _sync_repository(
                     url=state.url,
                     updated_at=state.updated_at,
                 ),
+                state.updated_at,
             )
         )
 
-    for version in await reader.list_published_versions(repo_path=repository.path, token=token):
+    versions = await reader.list_published_versions(repo_path=repository.path, token=token)
+    for version in versions:
         # **Drafts are filtered here, not in the handler.** "A draft is not a fact" is an
         # ingestion rule; a handler that silently returned nothing for one would look like
         # a handler that found nothing.
@@ -196,17 +209,75 @@ async def _sync_repository(
                     prerelease=version.prerelease,
                     url=version.url,
                 ),
+                version.published_at,
             )
         )
 
     written = 0
-    for source_type, source in extracted:
+    observed_at = now_utc()
+    lags: list[float] = []
+    for source_type, source, event_at in extracted:
         result = await store.upsert(
             project_id=repository.project_id, source_type=source_type, source=source
         )
         if result is not None and result.inserted:
             written += 1
-    return written
+            if live_cursor and event_at is not None:
+                lags.append(max(0.0, (observed_at - event_at).total_seconds()))
+    await _tombstone_missing_versions(
+        session,
+        store=store,
+        repository=repository,
+        listed=versions,
+    )
+    return written, tuple(lags)
+
+
+async def _tombstone_missing_versions(
+    session: AsyncSession,
+    *,
+    store: KnowledgeStore,
+    repository: ProjectRepository,
+    listed: list[provider_reads.ReleaseState],
+) -> int:
+    """Mark published versions that disappeared from the provider as deleted.
+
+    A short page is exhaustive.  A full page is only proof about its own time window, so
+    older known versions are retained: absence beyond the provider's bounded newest page
+    is not evidence of deletion.  A recently deleted version is still detected because
+    it falls on or after the oldest timestamp in that page.  This prevents a repository
+    with more than ``PAGE_SIZE`` versions from falsely tombstoning its older history.
+    """
+    prefix = f"{repository.id}:ver:"
+    present = {f"{prefix}{version.tag}" for version in listed if not version.draft}
+
+    stmt = sa.select(
+        KnowledgeSource.source_external_id,
+        KnowledgeSource.source_updated_at,
+    ).where(
+        KnowledgeSource.project_id == repository.project_id,
+        KnowledgeSource.source_type == "release",
+        KnowledgeSource.source_external_id.startswith(prefix),
+        KnowledgeSource.deleted_at.is_(None),
+    )
+    if len(listed) >= provider_reads.PAGE_SIZE:
+        timestamps = [
+            version.published_at for version in listed if version.published_at is not None
+        ]
+        if not timestamps:
+            return 0
+        # The list endpoint is newest-first. Restricting by the oldest visible instant is
+        # sound even if a provider changes the order: it may retain too much, never delete
+        # a source merely because pagination hid it.
+        stmt = stmt.where(KnowledgeSource.source_updated_at >= min(timestamps))
+
+    known = (await session.execute(stmt)).all()
+    missing = sorted({row.source_external_id for row in known} - present)
+    return await store.tombstone(
+        project_id=repository.project_id,
+        source_type="release",
+        external_ids=missing,
+    )
 
 
 async def _within_rate_ceiling(session: AsyncSession, repository: ProjectRepository) -> bool:
@@ -241,10 +312,19 @@ async def _token(
     return await secrets.provider_token(project.id, repository.provider_token_secret_id)
 
 
-def _with(outcome: SyncOutcome, **delta: int) -> SyncOutcome:
+def _with(
+    outcome: SyncOutcome,
+    *,
+    repositories: int = 0,
+    sources: int = 0,
+    failures: int = 0,
+    skipped: int = 0,
+    reconcile_lags_seconds: tuple[float, ...] = (),
+) -> SyncOutcome:
     return SyncOutcome(
-        repositories=outcome.repositories + delta.get("repositories", 0),
-        sources=outcome.sources + delta.get("sources", 0),
-        failures=outcome.failures + delta.get("failures", 0),
-        skipped=outcome.skipped + delta.get("skipped", 0),
+        repositories=outcome.repositories + repositories,
+        sources=outcome.sources + sources,
+        failures=outcome.failures + failures,
+        skipped=outcome.skipped + skipped,
+        reconcile_lags_seconds=(outcome.reconcile_lags_seconds + reconcile_lags_seconds),
     )

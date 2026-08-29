@@ -14,9 +14,10 @@ Two things are different here and both are consequences of ADR 0038:
 
 * **Claiming is `FOR UPDATE SKIP LOCKED`, so several replicas are correct by
   construction** and more of them is simply faster. The reconciler is the opposite —
-  its cost is per replica and its benefit is not — so it takes an advisory lock. An
-  advisory lock rather than a leader row because it is released when the connection
-  dies, and a Central killed with `SIGKILL` must not leave a permanent leader behind.
+  its cost is per replica and its benefit is not — so it takes a transaction-scoped
+  advisory lock. A transaction lock rather than a leader row because commit, rollback or
+  connection death releases it, and a Central killed with `SIGKILL` must not leave a
+  permanent leader behind.
 * **A job is a hint, not content.** Processing one means re-reading the entity's current
   state, so a retry is free and a duplicate is free. Nothing here replays events.
 """
@@ -33,7 +34,7 @@ import sqlalchemy as sa
 from app import metrics
 from app.clock import now_utc
 from app.db.engine import get_database
-from app.db.models import KnowledgeJob, Project, ProjectRepository
+from app.db.models import KnowledgeJob, Project
 from app.logging import get_logger
 from app.services.knowledge import sources as source_handlers
 from app.services.knowledge.outbox import KnowledgeOutbox
@@ -284,38 +285,41 @@ class KnowledgeWorker:
         """
         enqueued = 0
         async with get_database().session() as session:
+            # Transaction-scoped is essential. A session-level lock followed by
+            # ``commit(); unlock()`` is unsound with a pool: commit returns the owning
+            # connection, then unlock may run on another connection and leave the first
+            # one locked forever. The one-hour provider-lag observation reproduced that
+            # exact failure after six rounds (PostgreSQL: "you don't own a lock").
             got_lock = await session.scalar(
-                sa.text("SELECT pg_try_advisory_lock(:key)"), {"key": _RECONCILE_LOCK}
+                sa.text("SELECT pg_try_advisory_xact_lock(:key)"),
+                {"key": _RECONCILE_LOCK},
             )
             if not got_lock:
                 return 0
-            try:
-                projects = (
-                    (
-                        await session.execute(
-                            sa.select(Project.id).where(Project.knowledge_enabled.is_(True))
-                        )
+            projects = (
+                (
+                    await session.execute(
+                        sa.select(Project.id).where(Project.knowledge_enabled.is_(True))
                     )
-                    .scalars()
-                    .all()
                 )
-                outbox = KnowledgeOutbox(session)
-                for project_id in projects:
-                    enqueued += await self._reconcile_project(session, outbox, project_id)
-                # **Provider reads happen here, in the pass that already exists** (ADR 0043
-                # §2). Not a second loop: this one already holds the advisory lock, already
-                # runs at the 300-second cadence the freshness promise is stated in, and is
-                # already safe to run twice or to miss. A loop of its own would need its
-                # own copy of each of those and its own way of getting them wrong.
-                #
-                # Failures are absorbed per repository and stored as a reason, so an
-                # unwell provider cannot abort reconciliation for the other projects.
-                enqueued += await self._sync_providers(session)
-                await session.commit()
-            finally:
-                await session.execute(
-                    sa.text("SELECT pg_advisory_unlock(:key)"), {"key": _RECONCILE_LOCK}
-                )
+                .scalars()
+                .all()
+            )
+            outbox = KnowledgeOutbox(session)
+            for project_id in projects:
+                enqueued += await self._reconcile_project(session, outbox, project_id)
+            # **Provider reads happen here, in the pass that already exists** (ADR 0043
+            # §2). Not a second loop: this one already holds the advisory lock, already
+            # runs at the 300-second cadence the freshness promise is stated in, and is
+            # already safe to run twice or to miss. A loop of its own would need its
+            # own copy of each of those and its own way of getting them wrong.
+            #
+            # Failures are absorbed per repository and stored as a reason, so an
+            # unwell provider cannot abort reconciliation for the other projects.
+            enqueued += await self._sync_providers(session)
+            # Commit releases ``pg_try_advisory_xact_lock`` on the same transaction;
+            # rollback/session close does the same on every exceptional path.
+            await session.commit()
         if enqueued:
             log.info(
                 "knowledge_reconciled",
@@ -330,10 +334,10 @@ class KnowledgeWorker:
         talking to anybody else's server, and ADR 0043 §5 makes provider sync its own
         per-project switch for that reason.
 
-        Also where the freshness promise is measured. `provider_reconcile_lag_seconds` is
-        the gap between a repository's last successful read and now — the number ADR 0043
-        §2 gives up webhooks in exchange for, and without it "within 300 seconds" is a
-        sentence rather than a measurement.
+        Also where the freshness promise is recorded. `provider_sync` returns the gap
+        between each changed provider entity's event timestamp and this ingestion round;
+        first-pass history is excluded. Observing a just-written `provider_synced_at`
+        would always report roughly zero and could never prove the 300-second promise.
         """
         from app.services.knowledge import provider_sync
 
@@ -352,26 +356,8 @@ class KnowledgeWorker:
                 session, project_id=project_id, settings=self._settings
             )
             written += outcome.sources
-
-        lags = (
-            (
-                await session.execute(
-                    sa.select(ProjectRepository.provider_synced_at)
-                    .join(Project, Project.id == ProjectRepository.project_id)
-                    .where(
-                        Project.provider_sync_enabled.is_(True),
-                        ProjectRepository.provider_synced_at.is_not(None),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        now = now_utc()
-        for synced_at in lags:
-            metrics.observe(
-                metrics.PROVIDER_RECONCILE_LAG_SECONDS, (now - synced_at).total_seconds()
-            )
+            for lag in outcome.reconcile_lags_seconds:
+                metrics.observe(metrics.PROVIDER_RECONCILE_LAG_SECONDS, lag)
         return written
 
     async def _reconcile_project(

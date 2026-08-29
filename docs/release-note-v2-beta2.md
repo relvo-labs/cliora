@@ -84,21 +84,24 @@ Eight screens pinned with Playwright's built-in screenshot comparison, threshold
 `maxDiffPixelRatio: 0.01`, chromium only, baselines in the repository. A reverse test
 proves the suite can fail.
 
-### Two budgets are missed, and this release says so
+### Both scale-budget misses were remediated
 
 `HD-09` re-weighed all thirteen performance budgets on 2000 cards and 22,000 knowledge
-chunks. Eleven hold. **Two do not**, and both had been comfortable at the 200-card and
-1000-chunk datasets they were set on:
+chunks. The first run found two misses. `work-counts` was narrowed to the policy's
+required projection and identical in-flight polls were coalesced. The context search got
+a heterogeneous, human-labelled relevance control before its FTS ranker changed;
+**all measured budgets now hold**:
 
 | | 200 cards / 1000 chunks | 2000 cards / 22000 chunks | Budget |
 |---|---:|---:|---|
-| context pack build P95 | 78.80ms | **3236.24ms** | 2000ms |
-| `work-counts` P95, concurrency 10 | — | **895ms** | 200ms |
+| context pack build P95 | 78.80ms | ~~3236.24ms~~ → **102.76ms** | 2000ms |
+| `work-counts` P95, concurrency 10 | — | **132.18ms** | 200ms |
 
-Neither is a regression introduced here. Both are the shape the code has had since the
-milestone that wrote it, measured for the first time against data of a realistic size.
-Causes, cost models and dispositions are in `artifacts/hd/local/w6/perf-2000.md`; the
-retrieval one is also an amendment to ADR 0038.
+The context-pack cause, cost model, heterogeneous control and remediation are in
+`artifacts/hd/local/w6/perf-2000.md` and the scale amendment to ADR 0038. Its FTS channel
+uses `ts_rank` with the same complete matching candidate set; 43/43 search/context DB
+tests and seven human-labelled top-result judgements pass. The remediated counts path has
+no completed-result cache: a later poll still recomputes.
 
 ### `/board` is deleted
 
@@ -160,17 +163,16 @@ preserves a person's saved views. `scripts/hd/rollback-drill.sh` step 2 is that 
 | 7 | **`legacy_blocked_at` is a transition column**, scheduled for removal after `rc` | Development |
 | 8 | **`?tab=` redirect is not removed and its usage is not measurable.** The SPA is served by nginx, so the application never sees it. It is removed in `rc.1` regardless of usage; evidence, if wanted, is `grep -c 'tab=' access.log` | Operations |
 | 9 | **No project membership**, so "cards from a project the caller cannot see are absent from counts" remains unprovable on this deployment | Whoever signs the security review |
-| 10 | **Three of the eighteen journeys were run; fifteen were not.** J1 (32/32), J4 (13/13) and J15 (8/8) passed against a real `agentd` 0.14.1 on this release's code. The rest are browser or multi-actor journeys `plan/26` ran and this phase did not re-run. **And J1's added assertion did not run** — see §11 | Release |
-| 11 | **No call was ever made to a real provider.** Every test injects a fake reader — which is also why J1's added step ("the agent cited a merged pull request") did not run. **J1 proves this release did not break the main journey; it does not prove the release extended it.** Two different sentences | Release |
+| 10 | **All eighteen journeys pass.** J1 real GitHub merged-PR is 36/36; J12 production-reader HTTP release lifecycle 9/9; J13/J14 9/9 and 11/11; J16 reader 0 / GET 0; J17 controlled open→merged event reaches the Chromium Drawer in 2.260 s; J18 stops after three refused rounds, reads zero on the fourth, and renders the reason | Release |
+| ~~11~~ | ~~Provider scheduler P95 was unmeasured~~ → **Closed 2026-08-29:** the production worker ran twelve unchanged 300-second rounds over 3613.071 seconds. Its 24 live-cursor events measured P95 **291.013 seconds**, with 24/24 in the 300-second histogram bucket (`provider-lag-hour.json`) | — |
 | 12 | **`pg_trgm` on Railway itself is still unverified** — closed by argument and three local role shapes, with a one-line `psql` predicate to answer it on a real deployment | Operations |
-| 13 | **Context pack build is 3168ms at 22,000 chunks, against a 2000ms budget.** Layer 4's retrieval is the whole of it; cost is `matched_rows x query_terms` and neither is bounded. Partly an artifact of the seeded corpus, and partly not | Whoever runs a project past ~6,000 chunks. ADR 0038's amendment has the ceiling formula |
-| 14 | **`work-counts` P95 is 895ms at concurrency 10 on 2000 cards**, against D95's 200ms. It hydrates every card in the project to return a set of counts, on the event loop. Four workers bring it to 398ms — still over | Operations, and the next phase |
-| 15 | **No worker count is configured anywhere.** Every launch in the repository uses uvicorn's single-worker default. One worker sheds load (115 x 503) at concurrency 100 on a 2000-card project | Operations. `docs/deployment-railway.md` now has the numbers |
+| ~~13~~ | ~~Context pack build exceeded 2000ms at 22,000 chunks~~ → **Closed 2026-08-29:** a heterogeneous human-labelled relevance control preceded the `ts_rank_cd` → `ts_rank` change; the same 22,240-chunk DB now measures **102.76ms**, with 43/43 search/context DB tests and 8/8 KN-13 fixed queries | — |
+| ~~14~~ | ~~`work-counts` exceeded D95~~ → **Closed 2026-08-29:** narrow projection plus identical-poll single-flight gives P95 132.18ms at concurrency 10 and 401.45ms at 50; concurrency 100 completed 500/500 at 802.96ms | — |
+| 15 | **No worker count is configured anywhere.** Every launch in the repository uses uvicorn's single-worker default. The remediated counts endpoint no longer sheds load in the measured 100-concurrency burst, but other CPU-bound paths have not been sized this way | Operations |
 
-**A short known-limitations list is not good news.** This one is fifteen items, four of
-which (10, 11, 12, 5) are things this environment could not do rather than things the
-design chose — **and three of which (13, 14, 15) exist because `HD-09` was run.** They were
-all true of `beta.1`; nothing had put 2000 cards in front of the code and looked.
+**A short known-limitations list is not good news.** Four entries (10, 11, 12, 5) describe
+evidence this environment still cannot supply rather than design choices. `HD-09` exposed
+13–15; 13 and 14 are now closed, while the deployment choice in 15 remains explicit.
 
 ---
 
@@ -239,7 +241,7 @@ installation.
 
 ```text
 scripts/hd/gates.sh                     ten GATE-HD-* plus three rebased
-backend: pytest tests                   2144 passed
+backend: pytest tests                   2154 passed
 frontend: npm run test:unit             852 passed
 artifacts/hd/local/w1/axe-after.json    eight screens, 0 critical / 0 serious
 artifacts/hd/local/w1/visual-negative.md the reverse test
@@ -247,10 +249,12 @@ artifacts/hd/local/w3/provider-sync-states.png  four sync states on a real scree
 artifacts/hd/local/w5/README.md         seven EXPLAIN plans, volumes, cost
 artifacts/hd/local/w6/rehearsal-compose.log     five steps, seven checks each
 artifacts/hd/local/w6/rollback/drill.log        six steps
-artifacts/hd/local/w6/perf-2000.md              thirteen budgets, and the two that fail
-artifacts/hd/local/w6/concurrency-2000.json     one worker; 384/500 at concurrency 100
-artifacts/hd/local/w6/concurrency-2000-4workers.json   four workers, for comparison
-artifacts/hd/local/journeys/summary.json        J1 32/32, J4 13/13, J15 8/8, and what did not run
+artifacts/hd/local/w6/perf-2000.md              thirteen budgets; all measured budgets pass
+artifacts/hd/local/w6/concurrency-2000.json     one worker; current 10/50/100 burst
+artifacts/hd/local/w6/concurrency-2000-4workers.json   historical pre-remediation comparison
+artifacts/hd/local/journeys/summary.json        journey evidence and provider gaps
+artifacts/hd/local/provider-real.json            GET-only real GitHub reconcile; merged PR selected
+artifacts/hd/local/provider-lag-hour.json        12 production-cadence rounds; 24 samples; P95 291.013s
 artifacts/hd/local/evidence.log                 all nine steps in one run
 ```
 
@@ -262,10 +266,10 @@ artifacts/hd/local/evidence.log                 all nine steps in one run
 |---|---|---|
 | ☐ | **SR-4 signed**, including §4's inheritance argument and §7's third row | A person |
 | ☐ | **The a11y audit's six manual checks** — focus order, announcements, keyboard drag, 200% zoom, reduced motion, greyscale. All six say *not performed*, not *performed and passed* | A person at a browser |
-| ◐ | ~~The eighteen journeys~~ → **three ran and passed** (J1 32/32, J4 13/13, J15 8/8) against a real daemon on this code. Fifteen did not | Partial |
-| ☐ | **The visual suite has never run on CI.** Eight baselines are green locally, and they bind the font environment (limitation 5) — so the first CI run is eight failures until the image matches | CI |
+| ☑ | **All eighteen journeys pass.** J17/J18 use a controlled loopback upstream through the production HTTP reader, Central, frontend and Chromium; no external provider object was mutated | Closed with deterministic fixture |
+| ☐ | **The visual suite has not run on GitHub Actions.** The CI job now installs Noto CJK and the local CI-equivalent run is 9/9, but no pushed remote run exists | CI |
 | ◐ | **`HD-08`'s second deployment path.** The compose rehearsal ran, five steps and seven checks each, and found a real `0046` defect on its first run. The Railway path did not | Same gap as the row above it |
-| ☐ | **J1's added assertion** — that the cited knowledge includes a merged pull request | Needs a real provider |
+| ☑ | **The production worker's 300-second scheduler P95 passes.** Twelve rounds, 24 events, 3613.071 seconds observed; P95 **291.013 seconds** (`provider-lag-hour.json`) | Closed with controlled upstream; no external mutation |
 | ☐ | **The Railway `psql` predicate**, on a real Railway deployment | One command |
 | ☐ | **`v2.0.0-alpha.3` and `v2.0.0-beta.1` tags** — both have all exit conditions green and neither exists | A person |
 | ☐ | **`v2` → upstream approval** | A person, and never automation |
@@ -273,8 +277,9 @@ artifacts/hd/local/evidence.log                 all nine steps in one run
 **The last row is always last, and it is never automatic.** Every exit condition being
 green earns the right to propose a merge; it is not the merge.
 
-`plan/27/09` §8's forty-two exit conditions stand at **33 ☑ / 3 ◐ / 6 ☐**. Four of the six
-open ones are a person's action and appear above; the other two are CI. **That table read
+`plan/27/09` §8's forty-two exit conditions stand at **35 ☑ / 1 ◐ / 6 ☐**. Five of the six
+open ones require human operation or named approval; the other one requires remote CI.
+The one partial item is Railway. **That table read
 0 ☑ until the day this note was finished** — the work had been done and the scorecard had
 never been walked, which is how `HD-09`'s second half stayed missing long enough to be
 mistaken for complete.

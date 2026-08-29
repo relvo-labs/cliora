@@ -39,7 +39,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version-file: ".python-version" }
       - uses: actions/setup-go@v6
-        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+        with:
+          {
+            go-version-file: ".go-version",
+            cache-dependency-path: "daemon/go.sum",
+          }
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
@@ -105,7 +109,11 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version-file: ".python-version" }
       - uses: actions/setup-go@v6
-        with: { go-version-file: ".go-version", cache-dependency-path: "daemon/go.sum" }
+        with:
+          {
+            go-version-file: ".go-version",
+            cache-dependency-path: "daemon/go.sum",
+          }
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
@@ -133,4 +141,65 @@ jobs:
         with:
           name: alpha2-evidence
           path: artifacts/cv/local/
+          retention-days: 14
+
+  # HD-04/HD-05 are executable release evidence, not laptop-only screenshots. The
+  # fixture gives all eight attention states stable identities; Playwright starts Vite
+  # while run-stack supplies the real Central API and daemon boundary.
+  hardening-browser:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: cliora
+          POSTGRES_PASSWORD: cliora
+          POSTGRES_DB: cliora_hd_browser
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U cliora -d cliora_hd_browser"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_hd_browser
+      CLIORA_TEST_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_hd_browser
+      CLIORA_PROJECTS_ENABLED: "true"
+      CLIORA_AGENT_RUNS_ENABLED: "true"
+      CLIORA_SECRET_MASTER_KEY: Y2xpb3JhLWUyZS1zdGFjay1tYXN0ZXIta2V5LTMyISE=
+      CLIORA_JWT_SECRET: hd-e1-ci-browser-jwt-secret-not-for-production
+      E2E_ADMIN_USER: e2e-admin
+      E2E_ADMIN_PASSWORD: e2e-admin-pw
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with: { version: "0.11.31" }
+      - uses: actions/setup-python@v5
+        with: { python-version-file: ".python-version" }
+      - uses: actions/setup-go@v6
+        with:
+          {
+            go-version-file: ".go-version",
+            cache-dependency-path: "daemon/go.sum",
+          }
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: sudo apt-get update && sudo apt-get install -y tmux fonts-noto-cjk
+      - run: uv sync --project backend --locked
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: axe and eight-screen visual regression
+        run: scripts/e2e/run-stack.sh scripts/hd/ci-browser.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beta2-browser-evidence
+          path: |
+            artifacts/hd/local/w1/
+            frontend/test-results/
           retention-days: 14

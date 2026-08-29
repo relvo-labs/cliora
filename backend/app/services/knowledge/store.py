@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -111,6 +112,12 @@ class ExtractedSource:
     authored_by_type: str | None = None
     authored_by_id: uuid.UUID | None = None
     links: tuple[tuple[str, str], ...] = ()
+    # Most source handlers describe a current fact. Provider pull requests are the one
+    # exception: a proposal closed without merge remains useful history but must leave
+    # default retrieval (ADR 0043 §7). Keeping this on the extracted value lets the
+    # handler state that fact instead of making the polling worker patch the row after
+    # the common write path has run.
+    active: bool = True
     # Overrides the derived checksum. Set only by `repo_doc`, where the file's own
     # sha256 **is** the identity the client negotiated with: the manifest compares this
     # column against the digest the agent computed, so deriving a different one here
@@ -161,7 +168,7 @@ class KnowledgeStore:
             source_updated_at=source.source_updated_at,
             ingested_at=now,
             chunk_count=len(chunks),
-            active=True,
+            active=source.active,
         )
         upsert: Any = stmt.on_conflict_do_update(
             constraint="uq_knowledge_sources_identity",
@@ -174,7 +181,7 @@ class KnowledgeStore:
                 "occurred_at": stmt.excluded.occurred_at,
                 "ingested_at": stmt.excluded.ingested_at,
                 "chunk_count": stmt.excluded.chunk_count,
-                "active": sa.true(),
+                "active": stmt.excluded.active,
                 "deleted_at": sa.null(),
             },
             where=KnowledgeSource.source_updated_at < stmt.excluded.source_updated_at,
@@ -404,7 +411,6 @@ class KnowledgeStore:
         """
         if not external_ids:
             return 0
-        now = now_utc()
         table = KnowledgeSource.__table__
         ids = (
             (
@@ -422,6 +428,48 @@ class KnowledgeStore:
         )
         if not ids:
             return 0
+        await self._mark_tombstoned(ids)
+        return len(ids)
+
+    async def tombstone_prefix(
+        self,
+        *,
+        project_id: uuid.UUID,
+        source_types: tuple[str, ...],
+        external_id_prefix: str,
+    ) -> int:
+        """Tombstone every source owned by one removed parent entity.
+
+        Repository-derived external ids all begin with the repository UUID.  The
+        repository row itself is about to disappear, so selecting by that stable prefix
+        is the only way to retain the derived rows while marking their original gone.
+        Project and type predicates remain explicit: a prefix alone is not an isolation
+        boundary.
+        """
+        assert source_types and set(source_types).issubset(SOURCE_TYPES), source_types
+        table = KnowledgeSource.__table__
+        ids = (
+            (
+                await self._session.execute(
+                    sa.select(table.c.id).where(
+                        table.c.project_id == project_id,
+                        table.c.source_type.in_(source_types),
+                        table.c.source_external_id.startswith(external_id_prefix),
+                        table.c.deleted_at.is_(None),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not ids:
+            return 0
+        await self._mark_tombstoned(ids)
+        return len(ids)
+
+    async def _mark_tombstoned(self, ids: Sequence[uuid.UUID]) -> None:
+        """Apply the two halves of a tombstone to already-scoped source ids."""
+        now = now_utc()
         await self._session.execute(
             sa.update(KnowledgeSource)
             .where(KnowledgeSource.id.in_(ids))
@@ -432,4 +480,3 @@ class KnowledgeStore:
             .where(KnowledgeChunk.source_id.in_(ids), KnowledgeChunk.valid_to.is_(None))
             .values(valid_to=now)
         )
-        return len(ids)

@@ -38,6 +38,16 @@ test.describe("visual regression", () => {
       await page.goto(url);
       await screen.ready(page);
 
+      const mask = [page.locator("[data-visual-mask]"), page.locator("time")];
+      if (screen.id === "home") {
+        // Fleet telemetry, node health and audit rows change while the layout does not.
+        // Mask the values, not the cards: a changed grid or panel size still fails.
+        mask.push(
+          page.locator(".grid .value"),
+          page.locator(".grid .caption"),
+          page.locator(".panels .panel"),
+        );
+      }
       await expect(page).toHaveScreenshot(`${screen.id}.png`, {
         maxDiffPixelRatio: 0.01,
         animations: "disabled",
@@ -45,7 +55,7 @@ test.describe("visual regression", () => {
         // Relative times ("running for 12m") and absolute timestamps change between
         // runs by design. Masked rather than frozen: freezing the clock would also
         // freeze the attention derivation, and level 8 is *about* elapsed time.
-        mask: [page.locator("[data-visual-mask]"), page.locator("time")],
+        mask,
         fullPage: false,
       });
     });

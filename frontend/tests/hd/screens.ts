@@ -27,54 +27,70 @@ export interface Screen {
 const railVisible = (page: Page) =>
   expect(page.locator('nav[aria-label="Primary"]')).toBeVisible();
 
+const projectReady = async (page: Page) => {
+  await railVisible(page);
+  await expect(page.locator(".skeleton")).toHaveCount(0);
+};
+
+const homeReady = async (page: Page) => {
+  await railVisible(page);
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.locator(".grid")).toBeVisible();
+};
+
+const myWorkReady = async (page: Page) => {
+  await railVisible(page);
+  await expect(page.getByRole("heading", { name: "My Work" })).toBeVisible();
+};
+
 export const SCREENS: readonly Screen[] = [
   {
     id: "active-board",
     title: "Active Board",
     path: (p) => `/projects/${p}/work`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "backlog",
     title: "Backlog",
     path: (p) => `/projects/${p}/work?layout=list`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "drawer-waiting",
     title: "Drawer — waiting for input",
     path: (p) => `/projects/${p}/work?task=__WAITING__`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "drawer-no-runner",
     title: "Drawer — no eligible runner",
     path: (p) => `/projects/${p}/work?task=__NO_RUNNER__`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "drawer-blocked",
     title: "Drawer — blocked by dependency",
     path: (p) => `/projects/${p}/work?task=__BLOCKED__`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "my-work",
     title: "My Work",
     path: () => "/my-work",
-    ready: railVisible,
+    ready: myWorkReady,
   },
   {
     id: "project-overview",
     title: "Project Overview",
     path: (p) => `/projects/${p}/overview`,
-    ready: railVisible,
+    ready: projectReady,
   },
   {
     id: "home",
     title: "Home (fleet health)",
     path: () => "/",
-    ready: railVisible,
+    ready: homeReady,
   },
 ];
 

@@ -23,9 +23,10 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.clock import now_utc
@@ -45,6 +46,26 @@ from app.services.work.projection import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class CountRow:
+    """The narrow structural input shared by filtering and ``derive_attention``."""
+
+    task_id: uuid.UUID
+    lifecycle: str
+    readiness: str
+    execution: str
+    human_decision: str
+    latest_run_status: str | None
+    latest_verification_result: str | None
+    open_question_count: int
+    waiting_for_actor: str | None
+    blocking_count: int
+    over_wip: bool
+    stale: bool
+    required_labels: tuple[str, ...]
+    required_secrets: tuple[str, ...]
+
+
 class WorkRowReader:
     """Reads the cards of one project as the read model sees them.
 
@@ -58,6 +79,99 @@ class WorkRowReader:
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
         self._repository = TaskRepository(session)
+
+    async def for_project_counts(
+        self,
+        project: Project,
+        *,
+        task_ids: set[uuid.UUID],
+        is_online: Callable[[uuid.UUID], bool] | None = None,
+    ) -> tuple[list[CountRow], RuntimeSignals | None]:
+        """Read only the facts needed by ``work-counts``.
+
+        The board row carries every field a card or Drawer may render. Counts render
+        none of them. Loading complete ``Task`` ORM instances here decoded fourteen
+        JSONB values per card and made the twenty-second polling endpoint CPU-bound at
+        2,000 cards. This projection keeps the same effective process, repository
+        projections, runtime resolver and attention policy while selecting only the
+        four JSONB columns that can affect a count.
+
+        ``task_ids`` is the SQL-admitted set from the shared compiled predicate. WIP is
+        still calculated across the entire project because it is a lane property, not
+        a filtered-page property.
+        """
+        if not task_ids:
+            return [], RuntimeSignals({}) if is_online is not None else None
+
+        process = await ProcessService(self._session).effective(project=project)
+        rows = (
+            await self._session.execute(
+                select(
+                    Task.id,
+                    Task.stage,
+                    Task.readiness,
+                    Task.gates,
+                    Task.required_labels,
+                    Task.required_secrets,
+                    Task.open_question_count,
+                    Task.waiting_for_actor,
+                    Task.updated_at,
+                ).where(Task.project_id == project.id, Task.id.in_(task_ids))
+            )
+        ).all()
+        stage_counts = Counter(
+            {
+                str(stage): int(count)
+                for stage, count in (
+                    await self._session.execute(
+                        select(Task.stage, func.count())
+                        .where(Task.project_id == project.id)
+                        .group_by(Task.stage)
+                    )
+                ).all()
+            }
+        )
+        blocking = await self._repository.blocking_counts(project.id)
+        active = await self._repository.active_runs(project.id)
+        latest_runs = await self._repository.latest_run_statuses(project.id)
+        latest_reports = await self._repository.latest_verification_results(project.id)
+
+        over_wip = self._over_wip_stages(stage_counts, process=process)
+        readiness_keys = process.readiness_keys()
+        gate_keys = [gate.key for gate in process.gates if gate.enabled]
+        now = now_utc()
+        count_rows: list[CountRow] = []
+        for row in rows:
+            lifecycle = project_lifecycle(row.stage)
+            missing = missing_readiness(row.readiness, readiness_keys)
+            gates = row.gates or {}
+            count_rows.append(
+                CountRow(
+                    task_id=row.id,
+                    lifecycle=lifecycle,
+                    readiness=project_readiness(missing, len(readiness_keys)),
+                    execution=project_execution(active.get(row.id), latest_runs.get(row.id)),
+                    human_decision=project_human_decision(gates, required_gate_keys=gate_keys),
+                    latest_run_status=latest_runs.get(row.id),
+                    latest_verification_result=latest_reports.get(row.id),
+                    open_question_count=row.open_question_count,
+                    waiting_for_actor=row.waiting_for_actor,
+                    blocking_count=blocking.get(row.id, 0),
+                    over_wip=row.stage in over_wip,
+                    stale=is_stale(lifecycle, row.updated_at, now=now),
+                    required_labels=tuple(row.required_labels or ()),
+                    required_secrets=tuple(row.required_secrets or ()),
+                )
+            )
+
+        runtime = None
+        if is_online is not None:
+            runtime = await self.runtime_signals(
+                [run for run in active.values() if run.status == "queued"],
+                {row.task_id: row for row in count_rows},
+                is_online=is_online,
+            )
+        return count_rows, runtime
 
     async def for_project(
         self,
@@ -157,7 +271,7 @@ class WorkRowReader:
     async def runtime_signals(
         self,
         queued: Sequence[ActiveRunProjection],
-        tasks: dict[uuid.UUID, Task],
+        tasks: Mapping[uuid.UUID, Task | CountRow],
         *,
         is_online: Callable[[uuid.UUID], bool],
     ) -> RuntimeSignals:

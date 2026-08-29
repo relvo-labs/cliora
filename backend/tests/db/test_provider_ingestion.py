@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import inspect
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 import sqlalchemy as sa
@@ -52,6 +52,7 @@ async def test_an_unmerged_pull_request_is_only_discussion() -> None:
         number=12,
         title="加一個 provider reader",
         body="草案",
+        state="open",
         merged=False,
         merged_at=None,
         head_ref="cliora/HD-01",
@@ -69,6 +70,7 @@ async def test_a_merged_pull_request_reaches_reviewed_and_stops_there() -> None:
         number=12,
         title="加一個 provider reader",
         body="已合併",
+        state="closed",
         merged=True,
         merged_at=NOW,
         head_ref="cliora/HD-01",
@@ -78,6 +80,25 @@ async def test_a_merged_pull_request_reaches_reviewed_and_stops_there() -> None:
     )
     assert source.authority == "reviewed"
     assert source.occurred_at == NOW
+
+
+async def test_a_closed_unmerged_pull_request_is_retained_but_inactive() -> None:
+    source = pull_request_source(
+        repository=_Repo(),
+        number=13,
+        title="沒有採用的提案",
+        body="保留討論脈絡",
+        state="closed",
+        merged=False,
+        merged_at=None,
+        head_ref="proposal",
+        base_ref="main",
+        url="https://github.com/x/y/pull/13",
+        updated_at=NOW,
+    )
+    assert source.authority == "discussion"
+    assert source.active is False
+    assert "已關閉，未合併" in source.text
 
 
 async def test_a_published_version_is_reviewed() -> None:
@@ -359,6 +380,276 @@ async def test_three_consecutive_failures_stop_the_repository(session, monkeypat
     assert outcome.skipped == 1
     assert failing.calls == calls_before, "a stopped repository was read again"
     assert "Bad credentials" in (repository.provider_sync_error or "")
+
+
+async def test_a_live_cursor_reports_event_to_ingestion_lag(session, monkeypatch) -> None:
+    """The freshness metric measures the provider event, never the just-written cursor."""
+    from app.services.knowledge import provider_sync
+
+    project, repository = await _repo_project(session)
+    repository.provider_synced_at = NOW - timedelta(seconds=60)
+    pull = provider_reads.PullRequestState(
+        number=72,
+        title="Merged on the live cursor",
+        body="This event should produce exactly one reconcile-lag observation.",
+        state="closed",
+        merged=True,
+        merged_at=NOW,
+        head_ref="feature/lag",
+        base_ref="main",
+        url="https://github.com/cliora/demo/pull/72",
+        updated_at=NOW,
+    )
+    reader = _FakeReader(pulls=[pull])
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+    monkeypatch.setattr(
+        provider_sync, "_token", lambda secrets, project, repository: _resolved("t")
+    )
+    monkeypatch.setattr(provider_sync, "now_utc", lambda: NOW + timedelta(seconds=42))
+
+    outcome = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+
+    assert outcome.sources == 1
+    assert outcome.reconcile_lags_seconds == (42.0,)
+
+
+async def test_a_deleted_published_version_is_tombstoned_but_retained(session, monkeypatch) -> None:
+    """D132/J12: absence from an exhaustive provider page means deleted, not erased."""
+    from app.db.models import KnowledgeChunk, KnowledgeSource
+    from app.services.knowledge import provider_sync
+
+    project, repository = await _repo_project(session)
+    version = provider_reads.ReleaseState(
+        tag="v2.0.0-beta.2",
+        name="Ecosystem and Hardening",
+        body="這份 release 曾經發布，之後被撤下。",
+        draft=False,
+        prerelease=True,
+        published_at=NOW,
+        url="https://github.com/cliora/demo/releases/tag/v2.0.0-beta.2",
+    )
+    reader = _FakeReader(versions=[version])
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+    monkeypatch.setattr(
+        provider_sync, "_token", lambda secrets, project, repository: _resolved("t")
+    )
+
+    first = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    assert first.sources == 1
+    assert first.reconcile_lags_seconds == (), "first-pass history is not live reconcile lag"
+    source = (
+        await session.execute(
+            sa.select(KnowledgeSource).where(
+                KnowledgeSource.project_id == project.id,
+                KnowledgeSource.source_type == "release",
+            )
+        )
+    ).scalar_one()
+    source_id = source.id
+    chunk = (
+        await session.execute(
+            sa.select(KnowledgeChunk).where(KnowledgeChunk.source_id == source_id)
+        )
+    ).scalar_one()
+    original_content = chunk.content
+
+    # A successful round advances the rate cursor. This test represents the next
+    # scheduled round rather than waiting ten minutes in real time.
+    repository.provider_synced_at = None
+    reader._versions = []
+    second = await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    assert second.repositories == 1
+
+    await session.refresh(source)
+    await session.refresh(chunk)
+    assert source.id == source_id, "a deletion keeps the cited source id"
+    assert source.active is False
+    assert source.deleted_at is not None
+    assert chunk.content == original_content, "the cited text is retained"
+    assert chunk.valid_to is not None, "deleted content leaves default retrieval"
+
+
+async def test_a_closed_unmerged_pull_is_written_inactive_without_a_tombstone(
+    session, monkeypatch
+) -> None:
+    from app.db.models import KnowledgeChunk, KnowledgeSource
+    from app.services.knowledge import provider_sync
+
+    project, repository = await _repo_project(session)
+    pull = provider_reads.PullRequestState(
+        number=71,
+        title="Rejected proposal",
+        body="The discussion remains useful even though the proposal was rejected.",
+        state="closed",
+        merged=False,
+        merged_at=None,
+        head_ref="proposal",
+        base_ref="main",
+        url="https://github.com/cliora/demo/pull/71",
+        updated_at=NOW,
+    )
+    reader = _FakeReader(pulls=[pull])
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+    monkeypatch.setattr(
+        provider_sync, "_token", lambda secrets, project, repository: _resolved("t")
+    )
+
+    await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    source = (
+        await session.execute(
+            sa.select(KnowledgeSource).where(
+                KnowledgeSource.project_id == project.id,
+                KnowledgeSource.source_type == "pull_request",
+            )
+        )
+    ).scalar_one()
+    chunk = (
+        await session.execute(
+            sa.select(KnowledgeChunk).where(KnowledgeChunk.source_id == source.id)
+        )
+    ).scalar_one()
+    assert source.authority == "discussion"
+    assert source.active is False
+    assert source.deleted_at is None, "the upstream PR still exists"
+    assert chunk.valid_to is None, "inactive history remains readable explicitly"
+
+
+async def test_a_full_provider_page_does_not_tombstone_history_hidden_by_pagination(
+    session, monkeypatch
+) -> None:
+    """An absent item older than a full newest page is unknown, not deleted."""
+    from app.db.models import KnowledgeSource
+    from app.services.knowledge import provider_sync
+    from app.services.knowledge.store import KnowledgeStore
+
+    project, repository = await _repo_project(session)
+    old = published_version_source(
+        repository=repository,
+        tag="v1.0.0",
+        name="Old but still published",
+        body="Older than the provider's bounded newest page.",
+        published_at=NOW - timedelta(days=365),
+        prerelease=False,
+        url="https://github.com/cliora/demo/releases/tag/v1.0.0",
+    )
+    result = await KnowledgeStore(session).upsert(
+        project_id=project.id, source_type="release", source=old
+    )
+    page = [
+        provider_reads.ReleaseState(
+            tag=f"v2.0.{index}",
+            name=f"Recent {index}",
+            body="recent",
+            draft=False,
+            prerelease=False,
+            published_at=NOW - timedelta(minutes=index),
+            url=f"https://github.com/cliora/demo/releases/tag/v2.0.{index}",
+        )
+        for index in range(provider_reads.PAGE_SIZE)
+    ]
+    reader = _FakeReader(versions=page)
+    monkeypatch.setattr(provider_reads, "reader_for", lambda host, settings: reader)
+    monkeypatch.setattr(
+        provider_sync, "_token", lambda secrets, project, repository: _resolved("t")
+    )
+
+    await provider_sync.sync_project(session, project_id=project.id, settings=Settings())
+    retained = await session.get(KnowledgeSource, result.source_id)
+    assert retained is not None
+    assert retained.deleted_at is None
+    assert retained.active is True
+
+
+async def test_removing_a_repository_tombstones_all_three_derived_source_families(
+    session,
+) -> None:
+    """D132: the parent goes away; cited source rows and text do not."""
+    from app.db.models import KnowledgeChunk, KnowledgeSource, ProjectRepository
+    from app.services.knowledge.store import ExtractedSource, KnowledgeStore
+    from app.services.runners import RepositoryService
+
+    project, repository = await _repo_project(session)
+    store = KnowledgeStore(session)
+    sources = [
+        (
+            "repo_doc",
+            ExtractedSource(
+                external_id=f"{repository.id}:docs/runbook.md",
+                version="abc123",
+                authority="canonical",
+                title="docs/runbook.md",
+                text="Repository documentation retained after removal.",
+                occurred_at=NOW,
+                source_updated_at=NOW,
+            ),
+        ),
+        (
+            "pull_request",
+            pull_request_source(
+                repository=repository,
+                number=9,
+                title="Delivery",
+                body="Merged delivery context.",
+                state="closed",
+                merged=True,
+                merged_at=NOW,
+                head_ref="feature",
+                base_ref="main",
+                url="https://github.com/cliora/demo/pull/9",
+                updated_at=NOW,
+            ),
+        ),
+        (
+            "release",
+            published_version_source(
+                repository=repository,
+                tag="v2.0.0",
+                name="V2",
+                body="Published version context.",
+                published_at=NOW,
+                prerelease=False,
+                url="https://github.com/cliora/demo/releases/tag/v2.0.0",
+            ),
+        ),
+    ]
+    ids = []
+    for source_type, extracted in sources:
+        result = await store.upsert(
+            project_id=project.id, source_type=source_type, source=extracted
+        )
+        ids.append(result.source_id)
+
+    before = {
+        row.id: row.content
+        for row in (
+            await session.execute(
+                sa.select(KnowledgeChunk).where(KnowledgeChunk.source_id.in_(ids))
+            )
+        )
+        .scalars()
+        .all()
+    }
+    await RepositoryService(session, settings=Settings()).delete(
+        repository=repository,
+        actor_id=project.owner_user_id,
+    )
+
+    assert await session.get(ProjectRepository, repository.id) is None
+    retained = (
+        (await session.execute(sa.select(KnowledgeSource).where(KnowledgeSource.id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    assert {row.source_type for row in retained} == {"repo_doc", "pull_request", "release"}
+    assert all(not row.active and row.deleted_at is not None for row in retained)
+    chunks = (
+        (await session.execute(sa.select(KnowledgeChunk).where(KnowledgeChunk.source_id.in_(ids))))
+        .scalars()
+        .all()
+    )
+    assert chunks
+    assert all(chunk.valid_to is not None for chunk in chunks)
+    assert {chunk.id: chunk.content for chunk in chunks} == before
 
 
 def _resolved(value):

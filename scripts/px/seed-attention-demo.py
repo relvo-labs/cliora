@@ -109,6 +109,10 @@ async def main() -> int:
                 stage=stage,
                 source="none",
                 delivery="none",
+                # The visual fixture must have a stable order. A null rank falls back to
+                # UUID and shuffles the cards on every re-seed, turning every intended
+                # screenshot comparison into a layout diff.
+                rank=chr(ord("a") + seq - 1),
                 **fields,  # type: ignore[arg-type]
             )
             session.add(task)
