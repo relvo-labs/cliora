@@ -3095,6 +3095,18 @@
           "source_anchor": "fr-term-001-ac-14",
           "verification_profile": "automated",
           "risk": "medium"
+        },
+        {
+          "id": "FR-TERM-001.AC-15",
+          "source_anchor": "fr-term-001-ac-15",
+          "verification_profile": "measurement",
+          "risk": "high"
+        },
+        {
+          "id": "FR-TERM-001.AC-16",
+          "source_anchor": "fr-term-001-ac-16",
+          "verification_profile": "measurement",
+          "risk": "medium"
         }
       ]
     },
@@ -3314,6 +3326,12 @@
             "rationale": "Member of the status enum displayed by AC-01.",
             "approved": false
           }
+        },
+        {
+          "id": "FR-TERM-005.AC-06",
+          "source_anchor": "fr-term-005-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
         }
       ]
     },
@@ -4498,6 +4516,71 @@
           "source_anchor": "nfr-005-ac-10",
           "verification_profile": "measurement",
           "risk": "medium"
+        }
+      ]
+    },
+    {
+      "id": "NFR-006",
+      "kind": "non_functional",
+      "title": "介面可及性與視覺主題",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-006"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "NFR-006.AC-01",
+          "source_anchor": "nfr-006-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "NFR-006.AC-02",
+          "source_anchor": "nfr-006-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-006.AC-03",
+          "source_anchor": "nfr-006-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-006.AC-04",
+          "source_anchor": "nfr-006-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-006.AC-05",
+          "source_anchor": "nfr-006-ac-05",
+          "verification_profile": "automated",
+          "risk": "low"
+        },
+        {
+          "id": "NFR-006.AC-06",
+          "source_anchor": "nfr-006-ac-06",
+          "verification_profile": "measurement",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-006.AC-07",
+          "source_anchor": "nfr-006-ac-07",
+          "verification_profile": "measurement",
+          "risk": "high"
+        },
+        {
+          "id": "NFR-006.AC-08",
+          "source_anchor": "nfr-006-ac-08",
+          "verification_profile": "automated",
+          "risk": "low"
         }
       ]
     },

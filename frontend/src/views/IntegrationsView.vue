@@ -26,7 +26,8 @@ import {
   type TunnelSummary,
   type UpdateTunnelIntegrationInput,
 } from "../api/dto";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
@@ -248,15 +249,17 @@ async function saveDefaults(): Promise<void> {
       </div>
     </header>
 
-    <AsyncState v-if="resource.state.value === 'loading'" state="loading">
-      正在載入整合設定…
-    </AsyncState>
-    <AsyncState
+    <UiLoadingState
+      v-if="resource.state.value === 'loading'"
+      label="正在載入整合設定"
+    />
+    <UiInlineNotice
       v-else-if="resource.state.value === 'forbidden'"
-      state="forbidden"
+      tone="error"
+      title="無法存取"
+      >只有具備 integration.manage
+      的管理者可以檢視或變更整合設定。</UiInlineNotice
     >
-      只有具備 integration.manage 的管理者可以檢視或變更整合設定。
-    </AsyncState>
     <ErrorNotice
       v-else-if="resource.state.value === 'error' || !settings"
       :error="resource.error.value"
@@ -277,11 +280,15 @@ async function saveDefaults(): Promise<void> {
 
         <!-- The whole form is replaced, not disabled: filling in a credential that cannot be
              stored is worse than being told the environment cannot store one. -->
-        <AsyncState v-if="!settings.secret_key_available" state="error">
-          此環境未設定憑證加密金鑰，因此無法保存服務商憑證，埠轉發整合無法啟用。
+        <UiInlineNotice
+          v-if="!settings.secret_key_available"
+          tone="error"
+          title="載入失敗"
+          >此環境未設定憑證加密金鑰，因此無法保存服務商憑證，埠轉發整合無法啟用。
           請部署管理員設定 <code>CLIORA_SECRET_ENCRYPTION_KEY</code>（例如
-          <code>openssl rand -base64 32</code>），重啟 Central 後再回到此頁。
-        </AsyncState>
+          <code>openssl rand -base64 32</code>），重啟 Central
+          後再回到此頁。</UiInlineNotice
+        >
 
         <template v-else>
           <dl class="status">
@@ -541,15 +548,15 @@ async function saveDefaults(): Promise<void> {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .panel {
   margin-bottom: 16px;
   padding: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .panel h2 {
   margin: 0 0 12px;
@@ -566,7 +573,7 @@ dl.status div {
   gap: 12px;
 }
 dt {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 dd {
@@ -580,19 +587,19 @@ dd {
   font-weight: 600;
 }
 .pill.on {
-  background: #e6f4ea;
-  color: #1e7b34;
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
 }
 .pill.off {
-  background: var(--surface-default);
-  color: var(--text-muted);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
 }
 .enable {
   display: grid;
   gap: 10px;
   justify-items: start;
   padding-top: 14px;
-  border-top: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-control);
 }
 .ack-title {
   margin: 0;
@@ -605,7 +612,7 @@ ul.ack {
   display: grid;
   gap: 6px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .check {
   display: flex;
@@ -616,8 +623,8 @@ ul.ack {
 .leftovers {
   margin-top: 14px;
   padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
   display: grid;
   gap: 10px;
   justify-items: start;
@@ -635,10 +642,10 @@ ul.results {
   font-size: 13px;
 }
 ul.results .ok {
-  color: #1e7b34;
+  color: var(--status-success-fg);
 }
 ul.results .bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .row {
   display: flex;
@@ -656,14 +663,14 @@ ul.results .bad {
   flex: 1 1 320px;
 }
 .row label span {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 input,
 select {
   padding: 6px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-size: 13px;
 }
@@ -674,28 +681,28 @@ input[type="password"] {
 .primary {
   padding: 8px 14px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  border-radius: var(--radius-control);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
   font-weight: 600;
 }
 .ghost,
 .danger {
   padding: 8px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .danger {
-  border-color: var(--border-danger);
-  color: var(--status-error);
+  border-color: var(--danger-bg);
+  color: var(--status-error-fg);
 }
 .hint {
   margin: 0;
   max-width: 62ch;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -707,21 +714,21 @@ input[type="password"] {
   font-size: 13px;
 }
 .credential-state.muted {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .inline-error {
   margin: 8px 0 0;
   max-width: 62ch;
-  color: var(--status-error);
+  color: var(--status-error-fg);
   font-size: 12px;
   line-height: 1.6;
 }
 .notice-line {
   margin: 0 0 16px;
   padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: #e6f4ea;
-  color: #1e7b34;
+  border-radius: var(--radius-panel);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
   font-size: 13px;
 }
 </style>

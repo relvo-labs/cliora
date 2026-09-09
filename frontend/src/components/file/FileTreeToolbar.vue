@@ -94,11 +94,11 @@ function onPicked(event: Event): void {
   gap: 4px;
   flex: none;
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .scope {
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -109,15 +109,15 @@ function onPicked(event: Event): void {
   gap: 4px;
   flex: none;
   padding: 3px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 600;
 }
 .action:disabled {
-  color: var(--action-disabled);
+  color: var(--text-disabled);
 }
 /* Visually hidden but still reachable by the button's click(). Not display:none —
  * some browsers refuse to open a picker for a fully hidden input. */

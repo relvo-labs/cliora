@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+    <!-- Before any stylesheet, and an external file rather than inline: the CSP
+         is `script-src 'self'` with no 'unsafe-inline' (ADR 0017), so an inline
+         bootstrap would be blocked and the symptom would be "the theme
+         sometimes doesn't apply". Not in main.ts either — that is a deferred
+         module and runs after the stylesheet has already painted, which is one
+         visible flash for anyone whose chosen theme differs from their OS.
+         In public/ so Vite does not hash the name and this path can be fixed. -->
+    <script src="/theme-boot.js"></script>
     <!-- Placeholder, replaced at build time by vite.config.ts from
          VITE_PRODUCT_NAME — the same variable AppLayout renders, so the tab title
          and the in-app brand cannot disagree. -->

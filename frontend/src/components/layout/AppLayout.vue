@@ -1,14 +1,38 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+// The app shell. It owns the window's height, and it is the *only* place that
+// does (plan/09 D1) — that part is unchanged and load-bearing.
+//
+// What plan/28 adds:
+//
+//   * The rail collapses. Manually at any width, and automatically below
+//     1440px. Automatic collapse existed before at 900px; the difference is
+//     that the user can now override it, and the choice persists.
+//   * A skip link, as the shell's first focusable element. Without it the
+//     keyboard route from the address bar to the terminal runs through six nav
+//     items and the account menu, every single time.
+//   * Below 768px the rail becomes a menu overlay rather than a 64px column,
+//     because at that width a 64px column plus a terminal is not a layout.
+//
+// The status bar is deliberately NOT a third row here. Its content — session
+// state, browser connection, control — only means anything on the session
+// workspace; the other ten pages have no session to report on. As a shell row
+// it would either render an empty 28px on ten pages or require the shell to
+// know which route is current, and a shell that knows about routes has started
+// to know about the business. It belongs to the workspace page (style.md §9 was
+// revised to say so).
 
-import {
-  ACTION_AUDIT_VIEW,
-  ACTION_ENROLLMENT_MANAGE,
-  ACTION_INTEGRATION_MANAGE,
-} from "../../api/dto";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useRouter } from "vue-router";
+import { Menu, X } from "lucide-vue-next";
+
+import { useFocusTrap } from "../../composables/useFocusTrap";
 import { useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
+import { usePreferencesStore } from "../../stores/preferences";
+import UiIconButton from "../ui/UiIconButton.vue";
+import UiToastHost from "../ui/UiToastHost.vue";
+import AccountMenu from "./AccountMenu.vue";
+import PrimaryNav from "./PrimaryNav.vue";
 
 // `fill`: this view *is* a fixed layout that owns the viewport (the Session
 // Workspace), so main must not scroll and must not spend the generous padding a
@@ -17,21 +41,38 @@ defineProps<{ fill?: boolean }>();
 
 const auth = useAuthStore();
 const favorites = useFavoritesStore();
+const preferences = usePreferencesStore();
 const router = useRouter();
 
 const productName =
   (import.meta.env.VITE_PRODUCT_NAME as string | undefined) ?? "Cliora";
-const canManageEnrollment = computed(() =>
-  auth.hasPermission(ACTION_ENROLLMENT_MANAGE),
+
+// Three layout modes rather than two. `narrow` is not "collapsed but smaller":
+// a 64px rail beside a terminal at 390px leaves the terminal 326px, so the rail
+// goes away entirely and comes back as an overlay.
+const width = ref(typeof window === "undefined" ? 1440 : window.innerWidth);
+function onResize(): void {
+  width.value = window.innerWidth;
+}
+onMounted(() => window.addEventListener("resize", onResize));
+onBeforeUnmount(() => window.removeEventListener("resize", onResize));
+
+const isNarrow = computed(() => width.value < 768);
+// Automatic below 1440, and the user's choice above it. Not the other way
+// round: at 1024 an expanded rail costs the terminal 144px of width, and that
+// is a measurement rather than a preference.
+const collapsed = computed(
+  () => preferences.navCollapsed || width.value < 1440,
 );
-// Hiding the entry is a courtesy for roles that cannot use it; the server refuses
-// the request regardless (ADR 0016).
-const canViewAudit = computed(() => auth.hasPermission(ACTION_AUDIT_VIEW));
-// Platform-level third-party settings: Admin only, and hidden for everyone else so the rail
-// does not offer a page that answers 403 (ADR 0022).
-const canManageIntegrations = computed(() =>
-  auth.hasPermission(ACTION_INTEGRATION_MANAGE),
-);
+
+const menuOpen = ref(false);
+const menuPanel = ref<HTMLElement>();
+
+// The narrow-viewport menu is an overlay, so it owes the same three things a
+// dialog does: contain focus while it is open, close on Escape, and hand focus
+// back to the button that opened it. Same composable as the file drawer —
+// writing this twice is how one of the two ends up missing a piece.
+useFocusTrap(menuPanel, menuOpen, { onEscape: () => (menuOpen.value = false) });
 
 async function logout(): Promise<void> {
   await auth.logout();
@@ -44,39 +85,69 @@ async function logout(): Promise<void> {
 </script>
 
 <template>
-  <div class="shell">
+  <div
+    class="shell"
+    :data-collapsed="collapsed ? '' : undefined"
+    :data-narrow="isNarrow ? '' : undefined"
+  >
+    <!-- First focusable element in the document. -->
+    <a class="skip-link" href="#main">跳至主要內容</a>
     <header>
-      <div class="brand">
-        <span aria-hidden="true">◫</span>{{ productName }}
-      </div>
+      <UiIconButton
+        v-if="isNarrow"
+        class="menu-toggle"
+        :label="menuOpen ? '關閉主導覽' : '開啟主導覽'"
+        :expanded="menuOpen"
+        controls="primary-nav"
+        @click="menuOpen = !menuOpen"
+      >
+        <X v-if="menuOpen" />
+        <Menu v-else />
+      </UiIconButton>
+      <span v-if="isNarrow" class="header-brand">{{ productName }}</span>
       <div class="spacer" />
-      <div v-if="auth.user" class="account">
-        <span class="who">{{ auth.user.display_name }}</span>
-        <span class="role">{{ auth.user.role }}</span>
-        <button type="button" class="logout" @click="logout">Sign out</button>
-      </div>
+      <!-- Personal settings live behind the account menu, not in the header.
+           A theme is a global preference; a permanent header control makes it
+           read as something that applies to the page you happen to be on, and
+           it left the other three preferences with nowhere to live. -->
+      <AccountMenu
+        v-if="auth.user"
+        :display-name="auth.user.display_name"
+        :role="auth.user.role"
+        @logout="logout"
+      />
     </header>
-    <aside>
-      <nav aria-label="Primary">
-        <RouterLink :to="{ name: 'dashboard' }"
-          >◈ <span>Dashboard</span></RouterLink
-        >
-        <RouterLink :to="{ name: 'nodes' }">▣ <span>Nodes</span></RouterLink>
-        <RouterLink :to="{ name: 'sessions' }"
-          >▷ <span>Sessions</span></RouterLink
-        >
-        <RouterLink v-if="canManageEnrollment" :to="{ name: 'enrollment' }">
-          ◉ <span>Enrollment</span>
-        </RouterLink>
-        <RouterLink v-if="canViewAudit" :to="{ name: 'audit' }">
-          ☰ <span>Audit</span>
-        </RouterLink>
-        <RouterLink v-if="canManageIntegrations" :to="{ name: 'integrations' }">
-          ⇄ <span>Integrations</span>
-        </RouterLink>
-      </nav>
-    </aside>
-    <main :data-fill="fill ? '' : undefined"><slot /></main>
+    <!-- Not `v-if` on the desktop rail: it stays in the grid so its column
+         width is what the collapse animates, and so nothing inside it is
+         unmounted by a resize. -->
+    <PrimaryNav
+      v-if="!isNarrow"
+      :collapsed="collapsed"
+      :product-name="productName"
+      @update:collapsed="preferences.setNavCollapsed($event)"
+    />
+    <main id="main" :data-fill="fill ? '' : undefined"><slot /></main>
+
+    <!-- Narrow-viewport navigation. `position: fixed; inset: 0` rather than any
+         viewport-unit height: plan/09 D1 keeps viewport height in the shell
+         alone, and an overlay that names 100dvh is a second source of it. -->
+    <div
+      v-if="isNarrow && menuOpen"
+      class="menu-scrim"
+      @click="menuOpen = false"
+    />
+    <div v-if="isNarrow && menuOpen" ref="menuPanel" class="menu-panel">
+      <!-- :collapsible="false" — the rail is already at full width here, so a
+           collapse control would be a button that does nothing. -->
+      <PrimaryNav
+        :collapsed="false"
+        :collapsible="false"
+        :product-name="productName"
+        @update:collapsed="() => {}"
+      />
+    </div>
+
+    <UiToastHost />
   </div>
 </template>
 
@@ -100,98 +171,57 @@ async function logout(): Promise<void> {
      height, so the row is 56px in the normal case. */
   grid-template-rows: auto minmax(0, 1fr);
   /* 100vh first as the fallback: dvh also tracks a collapsing mobile URL bar,
-     which style.md §24's read-only tablet mode will meet. */
+     which style.md §24's narrow breakpoints meet. */
   height: 100vh;
   height: 100dvh;
 }
+.shell[data-collapsed] {
+  grid-template-columns: var(--layout-sidebar-collapsed) minmax(0, 1fr);
+}
+/* Below 768px the rail is gone from the grid entirely, so main gets the width. */
+.shell[data-narrow] {
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .shell {
+    transition: grid-template-columns var(--motion-base) ease;
+  }
+}
+
 .shell > header {
   grid-column: 1 / -1;
   height: var(--layout-header);
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 0 20px;
-  background: var(--surface-elevated);
-  border-bottom: 1px solid var(--border-default);
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface-default);
+  border-bottom: 1px solid var(--border-subtle);
 }
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-}
-.brand span {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 7px;
-  color: var(--text-inverse);
-  background: var(--action-primary);
+.header-brand {
+  font-weight: 650;
+  font-size: 15px;
 }
 .spacer {
   flex: 1;
 }
-.account {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 13px;
-}
-.account .who {
-  font-weight: 600;
-}
-.account .role {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--surface-canvas);
-  color: var(--text-muted);
-  font-size: 11px;
-  text-transform: capitalize;
-}
-.logout {
-  padding: 6px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
-}
-.logout:hover {
-  border-color: var(--border-focus);
-}
-.shell > aside {
-  /* Width comes from the grid column; height from the grid row. `overflow-y`
-     keeps the nav reachable on a very short window. */
-  min-height: 0;
-  overflow-y: auto;
-  padding: 16px 12px;
-  background: var(--surface-elevated);
-  border-right: 1px solid var(--border-default);
-}
-nav {
-  display: grid;
-  gap: 5px;
-}
-nav a {
-  display: flex;
-  gap: 11px;
-  padding: 11px;
-  border-radius: 8px;
-  color: var(--text-secondary);
-  text-decoration: none;
-  font-size: 13px;
-}
-nav a.router-link-active {
-  background: var(--surface-canvas);
-  color: var(--action-primary);
-  font-weight: 600;
-}
+
 /* The one scrolling container in the app. The header and the rail no longer
  * scroll away with the content, and no view has to leave room for them. */
 .shell > main {
   min-height: 0;
   overflow: auto;
   padding: 24px 28px 40px;
+}
+@media (max-width: 1439px) {
+  .shell > main {
+    padding: 18px 20px 32px;
+  }
+}
+@media (max-width: 767px) {
+  .shell > main {
+    padding: 14px 14px 24px;
+  }
 }
 /* Fill mode. `hidden` rather than `auto` on purpose: a fill page has no page
  * scroll at all, so a panel that miscalculates its height shows up as visible
@@ -204,12 +234,21 @@ nav a.router-link-active {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
 }
-@media (max-width: 900px) {
-  .shell {
-    grid-template-columns: 64px minmax(0, 1fr);
-  }
-  .shell > aside span {
-    display: none;
-  }
+
+.menu-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background: var(--surface-scrim);
+}
+.menu-panel {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 26;
+  width: min(280px, 86vw);
+  box-shadow: var(--shadow-overlay);
+}
+.menu-panel :deep(.rail) {
+  height: 100%;
 }
 </style>

@@ -24,6 +24,13 @@
     "PingFang TC",
     "Microsoft JhengHei",
     sans-serif;
+  /* The monospace stack the terminal and every code-ish label share. Named here
+   * rather than repeated per component, and deliberately with no webfont name in
+   * it: useTerminalSession used to ask for "JetBrains Mono", which has never
+   * been bundled, so it was a font name that could only ever fall back
+   * (ADR 0027 §7). */
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
 }
 
 * {
@@ -32,10 +39,10 @@
 
 body {
   /* No min-width. The prototype pinned it to 1180px, which forced a page-level
-   * horizontal scrollbar on any narrower window. style §24 makes the desktop
-   * baseline 1440×900 and leaves each view to handle a narrower viewport itself —
-   * tables scroll inside their own container and AppLayout collapses the sidebar at
-   * 900px, so overflow is handled where it occurs rather than pushed to the page. */
+   * horizontal scrollbar on any narrower window. style §24 now defines four
+   * breakpoints and leaves each view to handle its own: tables scroll inside
+   * their own container and the file panel becomes a drawer, so overflow is
+   * handled where it occurs rather than pushed to the page. */
   margin: 0;
   color: var(--text-primary);
   background: var(--surface-canvas);
@@ -53,14 +60,63 @@ button {
 }
 
 /* Keyboard focus must always be visible: several flows (the file tree, the audit
- * filter, dialogs) are specified as completable by keyboard alone. */
+ * filter, dialogs) are specified as completable by keyboard alone. The ring is
+ * measured against every surface it can land on, including the terminal — the
+ * drop bar sits on it. The value it replaces measured 2.85:1 on a panel and
+ * 2.64:1 on the canvas, so the site-wide focus ring did not meet 3:1 at all. */
 :focus-visible {
-  outline: 2px solid var(--border-focus);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* Hidden until focused. The keyboard route from the address bar to the terminal
+ * otherwise runs through the whole nav rail and the account menu. */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 100;
+  padding: 10px 16px;
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transform: translateY(-200%);
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
+
+/* Long paths and long names truncate in the middle, not at the end: the tail of
+ * a path is the directory or file name, which is the part with the information
+ * in it. Used by SessionHeader and the file panel; the full value stays in
+ * `title` and behind a copy button. */
+.truncate-middle {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
 }
 
 @media (prefers-reduced-motion: no-preference) {
   button {
-    transition: background-color 0.18s ease;
+    transition:
+      background-color var(--motion-fast) ease,
+      border-color var(--motion-fast) ease,
+      color var(--motion-fast) ease;
   }
+}
+
+/* Terminal output is drawn by a remote process. Animating it means re-performing
+ * someone else's output, and on reconnect it would hide readable text behind a
+ * fade. Belt and braces alongside the component rule. */
+.xterm,
+.xterm * {
+  animation: none !important;
+  transition: none !important;
 }

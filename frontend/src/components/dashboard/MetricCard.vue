@@ -11,7 +11,7 @@
 //   * **no data** — for a measurement nothing has reported yet: "—" and a caption, never
 //     0%. "Nothing reported" and "zero" are different facts.
 
-import { computed } from "vue";
+import { computed, type Component } from "vue";
 
 import type { DashboardBlockStatus } from "../../api/dto";
 import FreshnessBadge from "./FreshnessBadge.vue";
@@ -23,7 +23,12 @@ const props = defineProps<{
   status: DashboardBlockStatus;
   generatedAt: string;
   now: number;
-  icon?: string;
+  // A Lucide component, not a character. The eight glyphs this replaces
+  // (● ○ ▷ ◆ ◇ ▮ ▩ ▤) render at different weights and widths depending on
+  // which font the platform substitutes, and two of them are substituted as
+  // emoji on some systems — so the same dashboard looked different on
+  // different machines for no reason anyone chose.
+  icon?: Component;
   caption?: string;
   errorCode?: string | null;
   // Suffix for the big number (e.g. "%"), kept out of `value` so the accessible name
@@ -58,8 +63,9 @@ const accessibleName = computed(() => {
   <section class="card" :data-tone="tone ?? 'neutral'" :data-status="status">
     <header>
       <h3>
-        <span v-if="icon" class="icon" aria-hidden="true">{{ icon }}</span
-        >{{ title }}
+        <component :is="icon" v-if="icon" class="icon" aria-hidden="true" />{{
+          title
+        }}
       </h3>
       <FreshnessBadge :status="status" :generated-at="generatedAt" :now="now" />
     </header>
@@ -94,15 +100,15 @@ const accessibleName = computed(() => {
   flex-direction: column;
   gap: 6px;
   padding: 16px 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .card[data-status="degraded"] {
-  border-color: var(--border-danger);
+  border-color: var(--danger-bg);
 }
 .card[data-status="stale"] {
-  border-color: var(--status-busy);
+  border-color: var(--status-warning-fg);
 }
 header {
   display: flex;
@@ -115,7 +121,7 @@ h3 {
   align-items: center;
   gap: 7px;
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -133,32 +139,32 @@ h3 {
   margin-left: 3px;
   font-size: 15px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .card[data-tone="good"] .value {
-  color: var(--status-online);
+  color: var(--status-success-fg);
 }
 .card[data-tone="warn"] .value {
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
 }
 .card[data-tone="bad"] .value {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .caption,
 .stale-note,
 .reason {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .stale-note {
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
 }
 .unavailable {
   margin: 0;
   font-size: 15px;
   font-weight: 600;
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .reason {
   display: flex;
@@ -169,7 +175,7 @@ h3 {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
   font-size: 11px;
 }

@@ -13,7 +13,7 @@ import type { FileEntry, FileSearchHit } from "../../api/dto";
 import { filesFromDrop } from "../../composables/useFileUpload";
 import { useFileTree, type TreeRow } from "../../composables/useFileTree";
 import { ROOT_PATH } from "../../stores/files";
-import AsyncState from "../common/AsyncState.vue";
+import UiInlineNotice from "../../components/ui/UiInlineNotice.vue";
 import FileSearchBar from "./FileSearchBar.vue";
 import FileTreeNode from "./FileTreeNode.vue";
 import FileTreeToolbar from "./FileTreeToolbar.vue";
@@ -176,12 +176,15 @@ function onPick(files: File[]): void {
   <section class="tree-panel" aria-labelledby="file-tree-heading">
     <h2 id="file-tree-heading">Files</h2>
 
-    <AsyncState v-if="!canBrowse" state="forbidden">
-      您的角色沒有 file.browse 權限，無法瀏覽工作區檔案。
-    </AsyncState>
-    <AsyncState v-else-if="disabledReason" state="offline">
-      {{ disabledReason }}
-    </AsyncState>
+    <UiInlineNotice v-if="!canBrowse" tone="error" title="無法存取"
+      >您的角色沒有 file.browse 權限，無法瀏覽工作區檔案。</UiInlineNotice
+    >
+    <UiInlineNotice
+      v-else-if="disabledReason"
+      tone="warning"
+      title="來源目前離線"
+      >{{ disabledReason }}</UiInlineNotice
+    >
 
     <template v-else>
       <FileSearchBar
@@ -200,19 +203,25 @@ function onPick(files: File[]): void {
         @pick="onPick"
       />
 
-      <AsyncState v-if="rootState === 'forbidden'" state="forbidden">
-        您沒有權限瀏覽此工作區的檔案。
-      </AsyncState>
-      <AsyncState v-else-if="rootState === 'offline'" state="offline">
-        Node 已離線，檔案樹暫時無法使用。
-      </AsyncState>
+      <UiInlineNotice
+        v-if="rootState === 'forbidden'"
+        tone="error"
+        title="無法存取"
+        >您沒有權限瀏覽此工作區的檔案。</UiInlineNotice
+      >
+      <UiInlineNotice
+        v-else-if="rootState === 'offline'"
+        tone="warning"
+        title="來源目前離線"
+        >Node 已離線，檔案樹暫時無法使用。</UiInlineNotice
+      >
       <template v-else-if="rootState === 'error'">
-        <AsyncState state="error">
-          {{ tree.rootMessage.value ?? "無法載入檔案樹。" }}
+        <UiInlineNotice tone="error" title="載入失敗"
+          >{{ tree.rootMessage.value ?? "無法載入檔案樹。" }}
           <button class="link" type="button" @click="tree.refresh(ROOT_PATH)">
             重試
-          </button>
-        </AsyncState>
+          </button></UiInlineNotice
+        >
       </template>
 
       <div
@@ -264,7 +273,7 @@ h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .tree {
   flex: 1 1 auto;
@@ -274,7 +283,7 @@ h2 {
 .link {
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 </style>

@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ArrowLeft } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
 import { ACTION_INTEGRATION_MANAGE, ACTION_NODE_MANAGE } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import StatusBadge from "../components/common/StatusBadge.vue";
 import {
@@ -30,8 +33,8 @@ const resource = useAsyncResource(() => nodes.fetchNode(props.id));
 const node = computed(() => nodes.current);
 
 // Derived UI-contract state (offline / stale / partial) layered on top of the
-// request lifecycle once the node is loaded, so those AsyncState affordances
-// actually surface. Null means the node is healthy (plain success).
+// request lifecycle once the node is loaded, so those states actually surface
+// as their own notices. Null means the node is healthy (plain success).
 const derived = computed(() =>
   node.value ? deriveNodeState(node.value.status, node.value.runtimes) : null,
 );
@@ -202,25 +205,28 @@ const confirmMessage = computed(() => {
 <template>
   <AppLayout>
     <button class="back" @click="router.push({ name: 'nodes' })">
-      ← Nodes
+      <ArrowLeft class="icon" aria-hidden="true" />Nodes
     </button>
 
-    <AsyncState v-if="resource.state.value === 'loading'" state="loading"
-      >Loading node…</AsyncState
-    >
-    <AsyncState
+    <UiLoadingState
+      v-if="resource.state.value === 'loading'"
+      label="Loading node"
+    />
+    <UiInlineNotice
       v-else-if="resource.state.value === 'forbidden'"
-      state="forbidden"
+      tone="error"
+      title="無法存取"
+      >You do not have permission to view this node.</UiInlineNotice
     >
-      You do not have permission to view this node.
-    </AsyncState>
-    <AsyncState
+    <UiInlineNotice
       v-else-if="resource.state.value === 'error' || !node"
-      state="error"
+      tone="error"
+      title="載入失敗"
+      >Could not load this node.
+      <button class="link" @click="resource.run()">
+        Retry
+      </button></UiInlineNotice
     >
-      Could not load this node.
-      <button class="link" @click="resource.run()">Retry</button>
-    </AsyncState>
 
     <template v-else>
       <header class="head">
@@ -244,23 +250,31 @@ const confirmMessage = computed(() => {
         </div>
       </header>
 
-      <p v-if="actionError" class="banner" role="alert">{{ actionError }}</p>
+      <UiInlineNotice v-if="actionError" tone="error" :message="actionError" />
 
-      <AsyncState v-if="derived === 'offline'" state="offline" class="derived">
-        節點目前離線，以下為最後一次 heartbeat 的資料，最後在線
-        {{ formatInstant(node.last_seen_at) }}。
-      </AsyncState>
-      <AsyncState v-else-if="derived === 'stale'" state="stale" class="derived">
-        節點為降級 (Degraded) 狀態，資料可能不是最新，最後在線
-        {{ formatInstant(node.last_seen_at) }}。
-      </AsyncState>
-      <AsyncState
-        v-else-if="derived === 'partial'"
-        state="partial"
+      <UiInlineNotice
+        v-if="derived === 'offline'"
         class="derived"
+        tone="warning"
+        title="來源目前離線"
+        >節點目前離線，以下為最後一次 heartbeat 的資料，最後在線
+        {{ formatInstant(node.last_seen_at) }}。</UiInlineNotice
       >
-        部分 runtime 偵測失敗，詳見下方 Runtimes 逐項狀態。
-      </AsyncState>
+      <UiInlineNotice
+        v-else-if="derived === 'stale'"
+        class="derived"
+        tone="stale"
+        title="資料可能不是最新"
+        >節點為降級 (Degraded) 狀態，資料可能不是最新，最後在線
+        {{ formatInstant(node.last_seen_at) }}。</UiInlineNotice
+      >
+      <UiInlineNotice
+        v-else-if="derived === 'partial'"
+        class="derived"
+        tone="stale"
+        title="部分資料無法取得"
+        >部分 runtime 偵測失敗，詳見下方 Runtimes 逐項狀態。</UiInlineNotice
+      >
 
       <div class="grid">
         <section class="panel">
@@ -340,7 +354,10 @@ const confirmMessage = computed(() => {
           <ul class="runtimes">
             <li v-for="rt in node.runtimes" :key="rt.runtime">
               <span class="rt-name">{{ rt.runtime }}</span>
-              <StatusBadge :status="rt.available ? 'online' : 'offline'" />
+              <StatusBadge
+                :status="rt.available ? 'available' : 'unavailable'"
+                kind="runtime"
+              />
               <span class="rt-ver">{{
                 rt.available ? (rt.version ?? "detected") : "unavailable"
               }}</span>
@@ -367,16 +384,25 @@ const confirmMessage = computed(() => {
 
         <section class="panel">
           <h2>系統資源</h2>
-          <AsyncState
-            v-if="!node.resources"
-            :state="node.status === 'offline' ? 'offline' : 'empty'"
-          >
-            {{
-              node.status === "offline"
-                ? "節點離線，暫無系統資源資料。"
-                : "尚未收到系統資源樣本。"
-            }}
-          </AsyncState>
+          <!-- Two different situations, and the difference is what the user
+               does next: an offline node needs its agentd looked at, a node
+               that has simply not reported yet needs waiting for. A single
+               component with a runtime-chosen state made them one thing.
+               Either way this says "no data" and never shows 0 — "CPU 0%" is a
+               claim an operator will act on (all five style documents state
+               this rule; there is a unit test for it). -->
+          <UiInlineNotice
+            v-if="!node.resources && node.status === 'offline'"
+            tone="warning"
+            title="無資料"
+            message="節點離線，暫無系統資源資料。"
+          />
+          <UiEmptyState
+            v-else-if="!node.resources"
+            variant="empty"
+            title="無資料"
+            detail="尚未收到系統資源樣本。"
+          />
           <dl v-else>
             <div>
               <dt>CPU</dt>
@@ -481,13 +507,16 @@ const confirmMessage = computed(() => {
             <p v-if="updateNotice" class="hint" role="status">
               {{ updateNotice }}
             </p>
-            <p v-if="updateError" class="banner" role="alert">
+            <UiInlineNotice v-if="updateError" tone="error">
               {{ updateError }}
+              <!-- The runbook link is the "what to do next" half of this
+                   failure and belongs with the message, not in a support
+                   conversation. -->
               <a
                 href="https://github.com/cliora/cliora/blob/main/docs/runbooks/update-failure.md"
                 >update-failure runbook</a
               >
-            </p>
+            </UiInlineNotice>
           </div>
         </section>
 
@@ -497,21 +526,24 @@ const confirmMessage = computed(() => {
              leave to a support conversation. -->
         <section class="panel">
           <h2>埠轉發</h2>
-          <AsyncState v-if="tunnelSummary === 'disabled'" state="empty">
-            埠轉發整合尚未啟用。
+          <UiEmptyState
+            v-if="tunnelSummary === 'disabled'"
+            variant="empty"
+            title="沒有資料"
+            >埠轉發整合尚未啟用。
             <RouterLink
               v-if="canManageIntegration"
               :to="{ name: 'integrations' }"
             >
               前往整合設定
-            </RouterLink>
-          </AsyncState>
-          <AsyncState
-            v-else-if="tunnelSummary === 'forbidden'"
-            state="forbidden"
+            </RouterLink></UiEmptyState
           >
-            你沒有檢視埠轉發的權限。
-          </AsyncState>
+          <UiInlineNotice
+            v-else-if="tunnelSummary === 'forbidden'"
+            tone="error"
+            title="無法存取"
+            >你沒有檢視埠轉發的權限。</UiInlineNotice
+          >
           <template v-else>
             <dl>
               <div>
@@ -530,9 +562,12 @@ const confirmMessage = computed(() => {
 
         <section class="panel">
           <h2>最近錯誤</h2>
-          <AsyncState v-if="node.recent_errors.length === 0" state="empty">
-            目前沒有回報的錯誤。
-          </AsyncState>
+          <UiEmptyState
+            v-if="node.recent_errors.length === 0"
+            variant="empty"
+            title="沒有資料"
+            >目前沒有回報的錯誤。</UiEmptyState
+          >
           <ul v-else class="errors">
             <li v-for="(err, i) in node.recent_errors" :key="i">
               <time :datetime="err.occurred_at" :title="err.occurred_at">
@@ -571,12 +606,19 @@ const confirmMessage = computed(() => {
 </template>
 
 <style scoped>
+.back .icon {
+  width: 15px;
+  height: 15px;
+}
 .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 16px;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 .head {
@@ -591,7 +633,7 @@ const confirmMessage = computed(() => {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .head .actions {
@@ -602,23 +644,15 @@ const confirmMessage = computed(() => {
 .ghost,
 .danger {
   padding: 8px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .danger {
-  border-color: var(--border-danger);
-  color: var(--status-error);
-}
-.banner {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: #f9eaea;
-  color: var(--status-error);
-  font-size: 13px;
+  border-color: var(--danger-bg);
+  color: var(--status-error-fg);
 }
 .update-actions {
   display: flex;
@@ -627,7 +661,7 @@ const confirmMessage = computed(() => {
   gap: 10px;
   margin-top: 14px;
   padding-top: 14px;
-  border-top: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-subtle);
 }
 .update-actions label {
   display: grid;
@@ -635,32 +669,38 @@ const confirmMessage = computed(() => {
   font-size: 12px;
 }
 .update-actions label span {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .update-actions select {
   padding: 6px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-size: 13px;
 }
 .update-actions .primary {
   padding: 8px 14px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  border-radius: var(--radius-control);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
   font-weight: 600;
 }
+/* A colour, not an opacity. Opacity dims the label along with everything
+   else, so a disabled control stops being able to say what it is or why it is
+   disabled — and "disabled keeps an understandable reason" is the rule
+   (--text-disabled is measured at >= 3:1 on all three surfaces for this). */
 .update-actions .primary:disabled {
-  opacity: 0.5;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-control);
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 .hint {
   flex-basis: 100%;
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .update-actions .banner {
@@ -674,9 +714,9 @@ const confirmMessage = computed(() => {
 }
 .panel {
   padding: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .panel h2 {
   margin: 0 0 12px;
@@ -694,7 +734,7 @@ dl div {
   font-size: 13px;
 }
 dt {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 dd {
   margin: 0;
@@ -702,19 +742,19 @@ dd {
 }
 .rt-sandbox {
   padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: #3a2f1b;
-  color: #f0d9a8;
+  border-radius: var(--radius-panel);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
   font-size: 11px;
 }
 /* 不是裝飾：使用者要能分辨自己在哪一種邊界裡（ADR 0023）。 */
 .posture-warn {
-  color: #f0d9a8;
+  color: var(--status-warning-fg);
   font-weight: 600;
 }
 .posture-note {
   margin: 8px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -738,10 +778,10 @@ dd {
   font-weight: 600;
 }
 .rt-ver {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .muted {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .derived {
   margin-bottom: 16px;
@@ -759,17 +799,17 @@ dd {
   gap: 2px;
 }
 .errors time {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .err-msg {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .link {
   padding: 0 6px;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 </style>

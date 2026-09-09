@@ -27753,6 +27753,668 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-01-SPECIFIED-BY",
+      "from": "NFR-006.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "The declared pair list and its measured ratios; the pair list comes from the component contracts, not the token table.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-01-MEASURED-BY",
+      "from": "NFR-006.AC-01",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/theme/theme.contrast.test.ts"
+      },
+      "role": "primary",
+      "assertion": "The declared pair list and its measured ratios; the pair list comes from the component contracts, not the token table.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-VR-THEME-CONTRACT"
+    },
+    {
+      "id": "LNK-NFR-006-AC-01-REFINED-BY",
+      "from": "NFR-006.AC-01",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "The declared pair list and its measured ratios; the pair list comes from the component contracts, not the token table.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-01-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/theme/contrast.ts"
+      },
+      "role": "supporting",
+      "assertion": "The declared pair list and its measured ratios; the pair list comes from the component contracts, not the token table.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-02-SPECIFIED-BY",
+      "from": "NFR-006.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "One global :focus-visible rule; the E2E focuses every focusable control and asserts a non-zero outline.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-02-MEASURED-BY",
+      "from": "NFR-006.AC-02",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "One global :focus-visible rule; the E2E focuses every focusable control and asserts a non-zero outline.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-02-REFINED-BY",
+      "from": "NFR-006.AC-02",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "One global :focus-visible rule; the E2E focuses every focusable control and asserts a non-zero outline.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-02-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/theme/base.css"
+      },
+      "role": "supporting",
+      "assertion": "One global :focus-visible rule; the E2E focuses every focusable control and asserts a non-zero outline.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-03-SPECIFIED-BY",
+      "from": "NFR-006.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Every badge renders a dot, text and a 1px outline; warning also carries a mark.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-03-MEASURED-BY",
+      "from": "NFR-006.AC-03",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/terminal.test.ts"
+      },
+      "role": "primary",
+      "assertion": "Every badge renders a dot, text and a 1px outline; warning also carries a mark.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-03-REFINED-BY",
+      "from": "NFR-006.AC-03",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Every badge renders a dot, text and a 1px outline; warning also carries a mark.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-03-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/common/StatusBadge.vue"
+      },
+      "role": "supporting",
+      "assertion": "Every badge renders a dot, text and a 1px outline; warning also carries a mark.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-04-SPECIFIED-BY",
+      "from": "NFR-006.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Focus containment, Escape and focus return, shared by the dialog and the file drawer.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-04-MEASURED-BY",
+      "from": "NFR-006.AC-04",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "Focus containment, Escape and focus return, shared by the dialog and the file drawer.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-04-REFINED-BY",
+      "from": "NFR-006.AC-04",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Focus containment, Escape and focus return, shared by the dialog and the file drawer.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-04-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useFocusTrap.ts"
+      },
+      "role": "supporting",
+      "assertion": "Focus containment, Escape and focus return, shared by the dialog and the file drawer.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-05-SPECIFIED-BY",
+      "from": "NFR-006.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "The label prop is required, so an unnamed icon button cannot be written; the gate blocks text glyphs used as icons.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-05-MEASURED-BY",
+      "from": "NFR-006.AC-05",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/components/layout/AppLayout.test.ts"
+      },
+      "role": "primary",
+      "assertion": "The label prop is required, so an unnamed icon button cannot be written; the gate blocks text glyphs used as icons.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-VR-NO-GLYPH-ICON"
+    },
+    {
+      "id": "LNK-NFR-006-AC-05-REFINED-BY",
+      "from": "NFR-006.AC-05",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "The label prop is required, so an unnamed icon button cannot be written; the gate blocks text glyphs used as icons.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-05-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/ui/UiIconButton.vue"
+      },
+      "role": "supporting",
+      "assertion": "The label prop is required, so an unnamed icon button cannot be written; the gate blocks text glyphs used as icons.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-06-SPECIFIED-BY",
+      "from": "NFR-006.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Four breakpoints; the E2E asserts no page-level horizontal overflow at 1440/1024/390 in both themes.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-06-MEASURED-BY",
+      "from": "NFR-006.AC-06",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "Four breakpoints; the E2E asserts no page-level horizontal overflow at 1440/1024/390 in both themes.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-06-REFINED-BY",
+      "from": "NFR-006.AC-06",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Four breakpoints; the E2E asserts no page-level horizontal overflow at 1440/1024/390 in both themes.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-06-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/layout/AppLayout.vue"
+      },
+      "role": "supporting",
+      "assertion": "Four breakpoints; the E2E asserts no page-level horizontal overflow at 1440/1024/390 in both themes.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-07-SPECIFIED-BY",
+      "from": "NFR-006.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "applyTheme assigns terminal.options.theme in place; the E2E asserts buffer, scroll position, unsent input and role are unchanged and that the socket did not reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-07-MEASURED-BY",
+      "from": "NFR-006.AC-07",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "applyTheme assigns terminal.options.theme in place; the E2E asserts buffer, scroll position, unsent input and role are unchanged and that the socket did not reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-07-REFINED-BY",
+      "from": "NFR-006.AC-07",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "applyTheme assigns terminal.options.theme in place; the E2E asserts buffer, scroll position, unsent input and role are unchanged and that the socket did not reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-07-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useTerminalSession.ts"
+      },
+      "role": "supporting",
+      "assertion": "applyTheme assigns terminal.options.theme in place; the E2E asserts buffer, scroll position, unsent input and role are unchanged and that the socket did not reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-08-SPECIFIED-BY",
+      "from": "NFR-006.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Motion is behind prefers-reduced-motion; terminal content is excluded from animation entirely.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-08-MEASURED-BY",
+      "from": "NFR-006.AC-08",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/theme/theme.contract.test.ts"
+      },
+      "role": "primary",
+      "assertion": "Motion is behind prefers-reduced-motion; terminal content is excluded from animation entirely.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-08-REFINED-BY",
+      "from": "NFR-006.AC-08",
+      "type": "refined_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/06-verification-and-exit.md"
+      },
+      "role": "supporting",
+      "assertion": "Motion is behind prefers-reduced-motion; terminal content is excluded from animation entirely.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-006-AC-08-IMPLEMENTED-BY",
+      "from": "NFR-006.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/theme/base.css"
+      },
+      "role": "supporting",
+      "assertion": "Motion is behind prefers-reduced-motion; terminal content is excluded from animation entirely.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-15-PLANNED-BY",
+      "from": "FR-TERM-001.AC-15",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "A theme switch assigns terminal.options.theme; it does not construct a new Terminal, so buffer, scroll position, unsent input and role all survive.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-15-SPECIFIED-BY",
+      "from": "FR-TERM-001.AC-15",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "A theme switch assigns terminal.options.theme; it does not construct a new Terminal, so buffer, scroll position, unsent input and role all survive.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-15-IMPLEMENTED-BY",
+      "from": "FR-TERM-001.AC-15",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useTerminalSession.ts"
+      },
+      "role": "primary",
+      "assertion": "A theme switch assigns terminal.options.theme; it does not construct a new Terminal, so buffer, scroll position, unsent input and role all survive.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-15-VERIFIED-BY",
+      "from": "FR-TERM-001.AC-15",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "A theme switch assigns terminal.options.theme; it does not construct a new Terminal, so buffer, scroll position, unsent input and role all survive.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-16-PLANNED-BY",
+      "from": "FR-TERM-001.AC-16",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Font size 12-20px, persisted, applied with options.fontSize plus a refit and no reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-16-SPECIFIED-BY",
+      "from": "FR-TERM-001.AC-16",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Font size 12-20px, persisted, applied with options.fontSize plus a refit and no reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-16-IMPLEMENTED-BY",
+      "from": "FR-TERM-001.AC-16",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/session/TerminalFontControl.vue"
+      },
+      "role": "primary",
+      "assertion": "Font size 12-20px, persisted, applied with options.fontSize plus a refit and no reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-001-AC-16-VERIFIED-BY",
+      "from": "FR-TERM-001.AC-16",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/theme.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "Font size 12-20px, persisted, applied with options.fontSize plus a refit and no reconnect.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-005-AC-06-PLANNED-BY",
+      "from": "FR-TERM-005.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/28/00-execution-plan.md"
+      },
+      "role": "primary",
+      "assertion": "Session state, browser connection and control are three separate cells; 'running + disconnected' must not look like 'ended'.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-005-AC-06-SPECIFIED-BY",
+      "from": "FR-TERM-005.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "Session state, browser connection and control are three separate cells; 'running + disconnected' must not look like 'ended'.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-005-AC-06-IMPLEMENTED-BY",
+      "from": "FR-TERM-005.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/session/StatusBar.vue"
+      },
+      "role": "primary",
+      "assertion": "Session state, browser connection and control are three separate cells; 'running + disconnected' must not look like 'ended'.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-TERM-005-AC-06-VERIFIED-BY",
+      "from": "FR-TERM-005.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/SessionWorkspaceView.test.ts"
+      },
+      "role": "primary",
+      "assertion": "Session state, browser connection and control are three separate cells; 'running + disconnected' must not look like 'ended'.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
     }
   ]
 }

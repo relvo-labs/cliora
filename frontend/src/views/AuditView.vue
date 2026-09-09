@@ -10,7 +10,10 @@ import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiDataTable from "../components/ui/UiDataTable.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
 import {
   defaultFilter,
@@ -205,119 +208,127 @@ watch(rows, () => {
          for the catalog's cause / next-step presentation, so a too-wide time range and
          an unreachable Central read differently and each says what to do about itself
          (P4-07). -->
-    <AsyncState v-if="audit.state === 'loading'" state="loading">
-      正在查詢 Audit Log…
-    </AsyncState>
-    <AsyncState v-else-if="audit.state === 'forbidden'" state="forbidden">
-      {{ audit.message }}
-      <RouterLink :to="{ name: 'nodes' }">返回 Nodes</RouterLink>
-    </AsyncState>
+    <UiLoadingState
+      v-if="audit.state === 'loading'"
+      label="正在查詢 Audit Log"
+    />
+    <UiInlineNotice
+      v-else-if="audit.state === 'forbidden'"
+      tone="error"
+      title="無法存取"
+      >{{ audit.message }}
+      <RouterLink :to="{ name: 'nodes' }"
+        >返回 Nodes</RouterLink
+      ></UiInlineNotice
+    >
     <ErrorNotice
       v-else-if="audit.state === 'error'"
       :error="audit.error"
       class="note"
       @retry="audit.search()"
     />
-    <AsyncState v-else-if="audit.state === 'empty'" state="empty">
-      此條件下沒有紀錄。可放寬時間範圍或移除部分 action 條件。
-    </AsyncState>
+    <UiEmptyState
+      v-else-if="audit.state === 'empty'"
+      variant="empty"
+      title="沒有資料"
+      >此條件下沒有紀錄。可放寬時間範圍或移除部分 action 條件。</UiEmptyState
+    >
 
-    <AsyncState v-if="audit.state === 'partial'" state="partial" class="note">
-      已顯示已載入的 {{ audit.loadedCount }} 筆，但載入下一頁時失敗：{{
+    <UiInlineNotice
+      v-if="audit.state === 'partial'"
+      class="note"
+      tone="stale"
+      title="部分資料無法取得"
+      >已顯示已載入的 {{ audit.loadedCount }} 筆，但載入下一頁時失敗：{{
         audit.message
-      }}
-    </AsyncState>
+      }}</UiInlineNotice
+    >
 
-    <div v-if="showTable" class="table-wrap">
-      <table>
-        <caption>
-          Audit entries, newest first. Times shown in
-          {{
-            timeZone
-          }}.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Time ({{ timeZone }})</th>
-            <th scope="col">Action</th>
-            <th scope="col">Actor</th>
-            <th scope="col">Resource</th>
-            <th scope="col">request_id</th>
-            <th scope="col">Metadata</th>
-          </tr>
-        </thead>
-        <tbody>
-          <template v-for="row in rows" :key="row.id">
-            <tr>
-              <td :title="row.created_at">
-                {{ formatInstant(row.created_at) }}
-              </td>
-              <td>
-                <span class="action">{{ actionLabel(row.action) }}</span>
-                <code>{{ row.action }}</code>
-              </td>
-              <td>
-                <template v-if="row.actor">
-                  {{
-                    row.actor.display_name ?? row.actor.username ?? "（已刪除）"
-                  }}
-                </template>
-                <template v-else>—</template>
-              </td>
-              <td>
-                <RouterLink
-                  v-if="row.node"
-                  :to="{ name: 'node-detail', params: { id: row.node.id } }"
-                >
-                  {{ row.node.name ?? "（已刪除的 Node）" }}
-                </RouterLink>
-                <RouterLink
-                  v-if="row.session_id"
-                  :to="{
-                    name: 'session-workspace',
-                    params: { id: row.session_id },
-                  }"
-                  class="session-link"
-                >
-                  session
-                </RouterLink>
-                <template v-if="!row.node && !row.session_id">—</template>
-              </td>
-              <td>
-                <template v-if="row.request_id">
-                  <code>{{ row.request_id }}</code>
-                  <button
-                    class="link"
-                    type="button"
-                    :aria-label="`複製 request_id ${row.request_id}`"
-                    @click="copyRequestId(row.request_id)"
-                  >
-                    {{ copied === row.request_id ? "已複製" : "複製" }}
-                  </button>
-                </template>
-                <template v-else>—</template>
-              </td>
-              <td>
-                <button
-                  class="link"
-                  type="button"
-                  :aria-expanded="expanded === row.id"
-                  :aria-controls="`meta-${row.id}`"
-                  @click="toggleRow(row.id)"
-                >
-                  {{ expanded === row.id ? "收合" : "展開" }}
-                </button>
-              </td>
-            </tr>
-            <tr v-if="expanded === row.id" class="meta-row">
-              <td :id="`meta-${row.id}`" colspan="6">
-                <pre>{{ JSON.stringify(row.metadata, null, 2) }}</pre>
-              </td>
-            </tr>
-          </template>
-        </tbody>
-      </table>
-    </div>
+    <!-- Kept visible rather than folded into the table's accessible name: the
+         time zone changes how every timestamp below should be read, so it is
+         information, not a label. -->
+    <p v-if="showTable" class="table-note">
+      Audit entries, newest first. Times shown in {{ timeZone }}.
+    </p>
+    <UiDataTable
+      v-if="showTable"
+      :label="`Audit entries, newest first, times in ${timeZone}`"
+      :columns="[
+        `Time (${timeZone})`,
+        'Action',
+        'Actor',
+        'Resource',
+        'request_id',
+        'Metadata',
+      ]"
+    >
+      <template v-for="row in rows" :key="row.id">
+        <tr>
+          <td :title="row.created_at">
+            {{ formatInstant(row.created_at) }}
+          </td>
+          <td>
+            <span class="action">{{ actionLabel(row.action) }}</span>
+            <code>{{ row.action }}</code>
+          </td>
+          <td>
+            <template v-if="row.actor">
+              {{ row.actor.display_name ?? row.actor.username ?? "（已刪除）" }}
+            </template>
+            <template v-else>—</template>
+          </td>
+          <td>
+            <RouterLink
+              v-if="row.node"
+              :to="{ name: 'node-detail', params: { id: row.node.id } }"
+            >
+              {{ row.node.name ?? "（已刪除的 Node）" }}
+            </RouterLink>
+            <RouterLink
+              v-if="row.session_id"
+              :to="{
+                name: 'session-workspace',
+                params: { id: row.session_id },
+              }"
+              class="session-link"
+            >
+              session
+            </RouterLink>
+            <template v-if="!row.node && !row.session_id">—</template>
+          </td>
+          <td>
+            <template v-if="row.request_id">
+              <code>{{ row.request_id }}</code>
+              <button
+                class="link"
+                type="button"
+                :aria-label="`複製 request_id ${row.request_id}`"
+                @click="copyRequestId(row.request_id)"
+              >
+                {{ copied === row.request_id ? "已複製" : "複製" }}
+              </button>
+            </template>
+            <template v-else>—</template>
+          </td>
+          <td>
+            <button
+              class="link"
+              type="button"
+              :aria-expanded="expanded === row.id"
+              :aria-controls="`meta-${row.id}`"
+              @click="toggleRow(row.id)"
+            >
+              {{ expanded === row.id ? "收合" : "展開" }}
+            </button>
+          </td>
+        </tr>
+        <tr v-if="expanded === row.id" class="meta-row">
+          <td :id="`meta-${row.id}`" colspan="6">
+            <pre>{{ JSON.stringify(row.metadata, null, 2) }}</pre>
+          </td>
+        </tr>
+      </template>
+    </UiDataTable>
 
     <div v-if="showTable" class="footer">
       <!-- Loaded count only: the server returns no total, and inventing one
@@ -350,7 +361,7 @@ watch(rows, () => {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .sr-only {
@@ -366,9 +377,9 @@ watch(rows, () => {
 .filters {
   margin-bottom: 18px;
   padding: 16px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 fieldset {
   margin: 0 0 14px;
@@ -377,7 +388,7 @@ fieldset {
 }
 legend {
   padding: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -391,7 +402,7 @@ legend {
 }
 .group-title {
   margin: 0 0 4px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -403,7 +414,7 @@ legend {
 }
 .check code,
 td code {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .fields {
@@ -417,14 +428,14 @@ td code {
   font-size: 12px;
 }
 .fields span {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .fields input,
 .fields select {
   padding: 6px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-size: 13px;
 }
@@ -436,53 +447,21 @@ td code {
 .primary,
 .ghost {
   padding: 8px 14px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 .primary {
   border: 0;
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
 }
 .ghost {
-  border: 1px solid var(--border-default);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 .note {
   margin-bottom: 14px;
-}
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-caption {
-  padding: 10px 14px;
-  color: var(--text-muted);
-  font-size: 12px;
-  text-align: left;
-}
-th,
-td {
-  padding: 10px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-default);
-  white-space: nowrap;
-  vertical-align: top;
-}
-th {
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 .action {
   display: block;
@@ -506,19 +485,24 @@ th {
   align-items: center;
   gap: 12px;
   margin-top: 14px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .link {
   padding: 0 4px;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 .rid {
   margin-left: 8px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
+}
+.table-note {
+  margin: 0 0 10px;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
 </style>

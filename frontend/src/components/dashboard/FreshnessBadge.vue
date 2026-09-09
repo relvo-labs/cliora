@@ -87,7 +87,7 @@ const exact = computed(
   align-items: center;
   gap: 5px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .freshness i {
@@ -95,9 +95,9 @@ const exact = computed(
   font-weight: 700;
 }
 .freshness[data-status="stale"] {
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
 }
 .freshness[data-status="degraded"] {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 </style>

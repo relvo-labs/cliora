@@ -11,6 +11,8 @@ import { computed, onMounted, ref, watch } from "vue";
 
 import { api } from "../../stores/auth";
 import { useMonacoModel } from "../../composables/useMonacoModel";
+import { setPreviewTheme } from "../../monaco/setup";
+import { usePreferencesStore } from "../../stores/preferences";
 import PreviewDenied from "./PreviewDenied.vue";
 
 const props = defineProps<{
@@ -21,6 +23,7 @@ const props = defineProps<{
 
 const host = ref<HTMLElement | null>(null);
 const copied = ref(false);
+const preferences = usePreferencesStore();
 
 const sessionId = computed(() => props.sessionId);
 
@@ -49,6 +52,20 @@ watch(
       preview.close();
     }
   },
+);
+
+// The theme reaction lives here rather than in the workspace view, because this
+// is the component that already has Monaco in its bundle — putting it upstairs
+// would drag the editor into the view that is careful not to load it.
+//
+// `monaco.editor.setTheme` is global and needs neither a new editor nor a new
+// model, so the scroll position, folding state and find matches all survive a
+// theme switch. Theming an editor is also not granting it a capability:
+// `readOnly` and the contribution list are untouched (ADR 0015).
+watch(
+  () => preferences.theme,
+  (id) => setPreviewTheme(id),
+  { immediate: true },
 );
 
 async function copy(): Promise<void> {
@@ -180,7 +197,7 @@ h2 {
   gap: 6px;
   margin: 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .file {
   font-family:
@@ -190,11 +207,11 @@ h2 {
 }
 .readonly {
   padding: 1px 6px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   border-radius: 999px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-transform: uppercase;
 }
 .tools {
@@ -203,24 +220,24 @@ h2 {
 }
 .tools button {
   padding: 3px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-size: 11px;
   font-weight: 600;
 }
 .tools button:disabled {
-  color: var(--action-disabled);
+  color: var(--text-disabled);
 }
 .tools button[aria-pressed="true"] {
-  border-color: var(--action-primary);
-  color: var(--action-primary);
+  border-color: var(--accent-strong);
+  color: var(--accent-strong);
 }
 .meta {
   margin: 0;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -229,7 +246,7 @@ h2 {
   flex: 1 1 auto;
   position: relative;
   min-height: 0;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-panel);
   overflow: hidden;
   background: var(--terminal-background);
 }
@@ -241,15 +258,15 @@ h2 {
   margin: 0;
   padding: 16px;
   font-size: 12px;
-  color: #9aa4b2;
+  color: var(--text-on-terminal-dim);
 }
 .hint.bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .link {
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 </style>

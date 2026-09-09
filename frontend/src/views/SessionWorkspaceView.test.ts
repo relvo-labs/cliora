@@ -290,8 +290,22 @@ describe("SessionWorkspaceView — terminal host lifecycle (WT-02)", () => {
       vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "no", 403, "req")),
     );
     expect(wrapper.find(".veil").exists()).toBe(true);
-    expect(wrapper.text()).toContain("You do not have permission");
+    // Wording changed in plan/28: the forbidden state is now a UiInlineNotice
+    // in the user's language, and it says the thing that matters — hiding a UI
+    // entry is not authorization, the server refuses either way.
+    expect(wrapper.text()).toContain("無法存取此 Session");
     expect(wrapper.find("#panel-cli").exists()).toBe(true);
+  });
+
+  it("still reports the three states in the status bar under the veil", async () => {
+    // A blank status bar behind a failure reads as "everything is fine back
+    // here". The session cell says so instead.
+    const wrapper = await render(
+      vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "no", 403, "req")),
+    );
+    const bar = wrapper.get(".status-bar");
+    expect(bar.text()).toContain("連線");
+    expect(bar.text()).toContain("控制權");
   });
 });
 

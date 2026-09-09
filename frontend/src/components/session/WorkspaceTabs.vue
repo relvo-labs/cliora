@@ -8,6 +8,9 @@
 // selecting one costs nothing.
 
 import { nextTick, ref } from "vue";
+import { X } from "lucide-vue-next";
+
+import UiIconButton from "../ui/UiIconButton.vue";
 
 export interface WorkspaceTab {
   id: string;
@@ -75,52 +78,82 @@ function onKeydown(event: KeyboardEvent): void {
       >
         {{ tab.label }}
       </button>
-      <button
+      <UiIconButton
         v-if="tab.closable"
-        type="button"
         class="close"
-        :aria-label="`關閉 ${tab.label}`"
-        :tabindex="tab.id === active ? 0 : -1"
+        variant="on-terminal"
+        :label="`關閉 ${tab.label}`"
         @click="emit('close', tab.id)"
       >
-        ×
-      </button>
+        <X />
+      </UiIconButton>
       <!-- Selection is marked by weight and an underline as well as colour
            (style.md §17: state is never colour alone). -->
       <span class="underline" aria-hidden="true" />
     </div>
+    <!-- Right-hand controls (the file drawer's open button). Outside the
+         tablist's roving tabindex on purpose: it is not a tab, so the arrow
+         keys must not reach it. -->
+    <div v-if="$slots.end" class="end"><slot name="end" /></div>
   </div>
 </template>
 
 <style scoped>
+/* Fixed height, and `flex-shrink: 0`. It used to be content-derived at about
+   33px, so anything that changed a tab's line box changed the height of the
+   terminal below it — the class of bug plan/09 spent a phase on. */
 .tabs {
   display: flex;
   align-items: stretch;
   gap: 2px;
-  border-bottom: 1px solid var(--border-default);
+  height: var(--layout-tabs);
+  flex-shrink: 0;
+  padding-right: 6px;
+  /* The strip sits on the terminal, not on a panel: in a light theme a panel
+     background here would put a white band above a dark terminal, and the panel
+     text colour would be near-black on it. */
+  background: var(--surface-default);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.end {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 .tab {
   position: relative;
   display: flex;
   align-items: center;
   gap: 2px;
-  padding: 0 4px 0 10px;
+  padding: 0 4px 0 12px;
+}
+/* The selected tab is the one cell that carries the terminal's background up
+   into the strip, so the panel below reads as continuous with it. Porcelain's
+   own style document names this: the active tab uses the dark terminal
+   background with light-theme-on-dark text, which is what --text-on-terminal
+   exists for. Doing it the other way round — a light tab over a dark terminal —
+   puts a hard edge exactly where the eye is trying to follow content. */
+.tab[data-active] {
+  background: var(--terminal-background);
 }
 .tab button[role="tab"] {
-  padding: 8px 2px;
+  padding: 0 2px;
   border: 0;
   background: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   letter-spacing: 0.02em;
   max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Four signals for the selected tab — colour, background, underline and
+   weight — not one. */
 .tab[data-active] button[role="tab"] {
-  color: var(--text-primary);
+  color: var(--text-on-terminal);
+  font-weight: 650;
 }
 .underline {
   position: absolute;
@@ -131,17 +164,16 @@ function onKeydown(event: KeyboardEvent): void {
   background: transparent;
 }
 .tab[data-active] .underline {
-  background: var(--action-primary);
+  /* accent-primary: a 2px fill that carries no text, which is exactly what that
+     token is for. */
+  background: var(--accent-primary);
 }
 .close {
-  padding: 0 4px;
-  border: 0;
-  background: none;
-  color: var(--text-muted);
-  font-size: 14px;
-  line-height: 1;
+  width: 22px;
+  height: 22px;
 }
-.close:hover {
-  color: var(--status-error);
+.close :deep(svg) {
+  width: 13px;
+  height: 13px;
 }
 </style>

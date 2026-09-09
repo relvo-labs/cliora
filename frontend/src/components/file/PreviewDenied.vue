@@ -123,11 +123,11 @@ const view = computed(() => {
   height: 100%;
   align-content: center;
   background: var(--terminal-background);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-control);
   color: var(--terminal-foreground);
 }
 .glyph {
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
 }
 h3 {
   margin: 0;
@@ -140,26 +140,26 @@ h3 {
     ui-monospace,
     monospace;
   font-size: 11px;
-  color: #9aa4b2;
+  color: var(--text-on-terminal-dim);
   overflow-wrap: anywhere;
 }
 .detail,
 .next {
   margin: 0;
   font-size: 12px;
-  color: #c3cbd6;
+  color: var(--text-on-terminal);
   max-width: 46ch;
 }
 .next {
-  color: #9aa4b2;
+  color: var(--text-on-terminal-dim);
 }
 .ghost {
   margin-top: 4px;
   padding: 4px 10px;
-  border: 1px solid #2a2f39;
-  border-radius: var(--radius-sm);
-  background: #171a20;
-  color: #d7dde4;
+  border: 1px solid var(--border-on-terminal-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-on-terminal);
+  color: var(--text-on-terminal);
   font-size: 11px;
   font-weight: 600;
 }

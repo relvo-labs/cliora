@@ -60,15 +60,15 @@ const emit = defineEmits<{ retry: [] }>();
 <style scoped>
 .panel {
   padding: 16px 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .panel[data-status="degraded"] {
-  border-color: var(--border-danger);
+  border-color: var(--danger-bg);
 }
 .panel[data-status="stale"] {
-  border-color: var(--status-busy);
+  border-color: var(--status-warning-fg);
 }
 header {
   display: flex;
@@ -79,7 +79,7 @@ header {
 }
 h3 {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -94,7 +94,7 @@ li {
   justify-content: space-between;
   gap: 12px;
   padding: 6px 0;
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-subtle);
 }
 li:last-child {
   border-bottom: 0;
@@ -105,7 +105,7 @@ li:last-child {
   text-transform: capitalize;
 }
 .counts {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .counts b {
@@ -113,13 +113,13 @@ li:last-child {
   font-variant-numeric: tabular-nums;
 }
 .good {
-  color: var(--status-online);
+  color: var(--status-success-fg);
 }
 .bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .unknown {
-  color: var(--status-offline);
+  color: var(--status-neutral-fg);
 }
 .empty,
 .stale-note,
@@ -129,30 +129,30 @@ li:last-child {
   font-size: 12px;
 }
 .empty {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .stale-note {
   margin-top: 8px;
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
   font-size: 11px;
 }
 .unavailable {
   font-weight: 600;
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .reason {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 4px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .retry {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
   font-size: 11px;
 }
