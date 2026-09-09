@@ -8,16 +8,23 @@ import {
   ref,
   watch,
 } from "vue";
-import { useRouter } from "vue-router";
+import { PanelRight } from "lucide-vue-next";
 
 import { ApiError } from "../api/client";
 import type { NodeDetail, SessionDetail } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
-import StatusBadge from "../components/common/StatusBadge.vue";
+import ErrorNotice from "../components/common/ErrorNotice.vue";
 import FileTree from "../components/file/FileTree.vue";
+import SessionHeader from "../components/session/SessionHeader.vue";
+import StatusBar from "../components/session/StatusBar.vue";
 import WorkspaceTabs from "../components/session/WorkspaceTabs.vue";
+import TerminalFontControl from "../components/session/TerminalFontControl.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiIconButton from "../components/ui/UiIconButton.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
+import UiToolbar from "../components/ui/UiToolbar.vue";
 
 // Monaco is a large dependency and only the preview needs it, so the pane (and
 // with it the whole editor bundle) loads on the first file the user opens.
@@ -27,19 +34,25 @@ const PreviewPane = defineAsyncComponent(
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
+import { useFocusTrap } from "../composables/useFocusTrap";
 import { useTerminalSession } from "../composables/useTerminalSession";
 import { api } from "../stores/auth";
+import {
+  INSPECTOR_MAX,
+  INSPECTOR_MIN,
+  usePreferencesStore,
+} from "../stores/preferences";
 import { useFilesStore } from "../stores/files";
 import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 
 const props = defineProps<{ id: string }>();
-const router = useRouter();
 const sessions = useSessionsStore();
 // Reached directly for one thing only: refreshing the directory an upload landed
 // in. The tree owns its own loading; this is the one event it cannot see.
 const filesStore = useFilesStore();
 const nodes = useNodesStore();
+const preferences = usePreferencesStore();
 
 // Capabilities come from the session payload, computed server-side from the role
 // *and* ownership (ADR 0016) — a Developer may see a colleague's session but not
@@ -263,10 +276,16 @@ const resource = useAsyncResource<SessionDetail>(async () => {
 
 // The composable owns the xterm + socket; it mints a fresh single-use ws-ticket
 // on every (re)connect via the API client.
-const terminal = useTerminalSession((sessionId) =>
-  api()
-    .attachSession(sessionId)
-    .then((res) => res.ticket),
+//
+// The theme and font size are passed in rather than read from a store inside
+// the composable, so it stays testable without Pinia — the same reason the
+// ticket provider is injected.
+const terminal = useTerminalSession(
+  (sessionId) =>
+    api()
+      .attachSession(sessionId)
+      .then((res) => res.ticket),
+  { themeId: preferences.theme, fontSize: preferences.terminalFontSize },
 );
 
 const session = computed(() => sessions.current);
@@ -275,6 +294,80 @@ const session = computed(() => sessions.current);
 // Node 詳情頁裡。額外一次請求、且失敗不影響工作區：拿不到姿態時什麼都不顯示，
 // 因為顯示一個猜的姿態比不顯示更糟。Viewer 也持有 node.view，所以每個能開這個工作區的
 // 人都拿得到。
+// 1024-1439px collapses the work header to one row. Measured, not preferred:
+// the CLI panel is 542px at 1024x768 and 14px/1.2 gives 28 rows there, under
+// plan/09's floor of 30. One row recovers 24px — about one row — and the
+// user-adjustable font size covers the rest (13px/1.2 gives 30 at that size).
+const viewportWidth = ref(
+  typeof window === "undefined" ? 1440 : window.innerWidth,
+);
+function trackWidth(): void {
+  viewportWidth.value = window.innerWidth;
+}
+onMounted(() => window.addEventListener("resize", trackWidth));
+onBeforeUnmount(() => window.removeEventListener("resize", trackWidth));
+const compactHeader = computed(
+  () => viewportWidth.value >= 768 && viewportWidth.value < 1440,
+);
+
+// The file column has three modes, not two. Below 1024px it is an overlay
+// drawer with a button on the tab strip; at 1024px and up it is a resizable
+// column. What this replaces was `display: none` below 1100px with no opening
+// control at all — the file tree simply ceased to exist, which is the shape the
+// shared design foundation names as forbidden ("不將功能直接隱藏").
+const filesAreDrawer = computed(() => viewportWidth.value < 1024);
+const filesOpen = ref(false);
+// Visible means "occupying space or overlaying": a closed drawer is neither.
+const filesVisible = computed(() => !filesAreDrawer.value || filesOpen.value);
+
+const filePanel = ref<HTMLElement>();
+const drawerButton = ref<{ $el: HTMLElement } | null>(null);
+
+// Escape closes the drawer and returns focus to the button that opened it —
+// the same contract the dialog has, from the same composable. A drawer that
+// traps focus and then loses it on close leaves the next Tab starting from the
+// top of the document.
+useFocusTrap(
+  filePanel,
+  computed(() => filesAreDrawer.value && filesOpen.value),
+  { onEscape: () => (filesOpen.value = false) },
+);
+
+// Pointer drag. The width is clamped and persisted by the store, so the bounds
+// live in one place rather than being repeated by every caller.
+let resizeFrom = 0;
+let resizeStart = 0;
+function onResizeMove(event: PointerEvent): void {
+  // Dragging left widens: the handle is on the panel's left edge.
+  preferences.setInspectorWidth(resizeStart + (resizeFrom - event.clientX));
+}
+function endResize(): void {
+  window.removeEventListener("pointermove", onResizeMove);
+  window.removeEventListener("pointerup", endResize);
+}
+function startResize(event: PointerEvent): void {
+  resizeFrom = event.clientX;
+  resizeStart = preferences.inspectorWidth;
+  window.addEventListener("pointermove", onResizeMove);
+  window.addEventListener("pointerup", endResize);
+}
+// Arrow keys move it too, in 16px steps, with Home/End for the bounds.
+function onResizeKey(event: KeyboardEvent): void {
+  const step = 16;
+  if (event.key === "ArrowLeft") {
+    preferences.setInspectorWidth(preferences.inspectorWidth + step);
+  } else if (event.key === "ArrowRight") {
+    preferences.setInspectorWidth(preferences.inspectorWidth - step);
+  } else if (event.key === "Home") {
+    preferences.setInspectorWidth(INSPECTOR_MIN);
+  } else if (event.key === "End") {
+    preferences.setInspectorWidth(INSPECTOR_MAX);
+  } else {
+    return;
+  }
+  event.preventDefault();
+}
+
 const nodePosture = ref<NodeDetail | null>(null);
 async function loadNodePosture(nodeId: string): Promise<void> {
   try {
@@ -447,6 +540,38 @@ watch(
   },
 );
 
+// Recolour in place when the theme changes. Three consumers, one source: the
+// CLI terminal, the system terminal and Monaco. `terminal.options.theme = ...`
+// repaints without touching the buffer, and `monaco.editor.setTheme` is global
+// and needs neither a new editor nor a new model, so the scroll position,
+// folding state and find matches all survive (`FR-TERM-001.AC-15`).
+//
+// Rebuilding either one here would break the promise this whole ticket rests
+// on: switching theme must not interrupt work.
+watch(
+  () => preferences.theme,
+  (id) => {
+    terminal.applyTheme(id);
+    shellTerminal.applyTheme(id);
+    // Monaco is deliberately absent from this list. Importing its setup here
+    // would pull the whole editor bundle into this view's module graph, which
+    // is exactly what the async PreviewPane exists to avoid — the workspace
+    // would load Monaco even for a user who never opens a file. PreviewPane
+    // owns Monaco, so it owns Monaco's theme.
+  },
+);
+
+// A font-size change alters the cell size, so rows and columns change and the
+// daemon has to be told. It goes through the composable's own fit path, which
+// still refuses to send a 0x0 from a hidden panel.
+watch(
+  () => preferences.terminalFontSize,
+  (size) => {
+    terminal.setFontSize(size);
+    shellTerminal.setFontSize(size);
+  },
+);
+
 async function confirmTerminate(): Promise<void> {
   busy.value = true;
   actionError.value = "";
@@ -471,216 +596,256 @@ async function confirmTerminate(): Promise<void> {
          Loading / forbidden / error therefore render as an overlay on top
          rather than instead of it (WT-02). -->
     <div class="workspace">
-      <header v-if="session" class="head">
-        <div class="meta">
-          <h1>{{ session.name }}</h1>
-          <span class="dim">{{ session.runtime }}</span>
-          <span class="dim" :title="session.workspace">{{
-            session.workspace
-          }}</span>
-          <StatusBadge :status="session.status" />
-          <StatusBadge :status="terminal.status.value" />
-          <span class="role" :data-role="terminal.role.value">{{
-            terminal.role.value === "writer" ? "Writer" : "Viewer (read-only)"
-          }}</span>
-          <!-- 姿態要在使用者按下 Enter 之前就在眼前（ADR 0023 D10）。只在確實取得
-               Node 回報時顯示：猜一個姿態比不顯示更糟。 -->
-          <span v-if="sandboxBypassed" class="posture" title="ADR 0023"
-            >沙箱：已停用</span
-          >
-          <span v-if="privilegedNode" class="posture" title="ADR 0023"
-            >此 Node 可提權（sudo）</span
-          >
-        </div>
-        <div class="actions">
-          <button
-            v-if="canTakeover && terminal.role.value === 'viewer'"
-            class="ghost"
-            @click="terminal.takeover()"
-          >
-            Request control
-          </button>
-          <button
-            v-if="terminal.canRetry.value"
-            class="ghost"
-            @click="terminal.retry()"
-          >
-            Reconnect
-          </button>
-          <button
-            v-if="canTerminate"
-            class="danger"
-            :disabled="busy"
-            @click="terminateOpen = true"
-          >
-            Terminate
-          </button>
-          <button class="ghost" @click="router.push({ name: 'sessions' })">
-            Back
-          </button>
-        </div>
-      </header>
+      <SessionHeader
+        v-if="session"
+        :name="session.name"
+        :node-name="nodePosture?.name"
+        :runtime="session.runtime"
+        :workspace="session.workspace"
+        :sandbox-bypassed="sandboxBypassed"
+        :privileged-node="privilegedNode"
+        :can-takeover="canTakeover"
+        :is-viewer="terminal.role.value === 'viewer'"
+        :can-retry="terminal.canRetry.value"
+        :can-terminate="canTerminate"
+        :busy="busy"
+        :compact="compactHeader"
+        @takeover="terminal.takeover()"
+        @reconnect="terminal.retry()"
+        @terminate="terminateOpen = true"
+      />
 
-      <p v-if="actionError" class="banner" role="alert">{{ actionError }}</p>
-      <p
-        v-if="terminal.gap.value"
-        class="banner gap"
-        role="status"
-        aria-live="polite"
+      <!-- Notices, not toasts. A failure that removes itself is a failure the
+           user may never have read, and the gap banner in particular is
+           explaining why output is missing — it has to stay while the gap
+           does. -->
+      <div v-if="actionError || terminal.gap.value" class="notices">
+        <UiInlineNotice
+          v-if="actionError"
+          tone="error"
+          :message="actionError"
+        />
+        <UiInlineNotice
+          v-if="terminal.gap.value"
+          tone="warning"
+          message="顯示最新輸出片段（先前歷史已截斷）。"
+        />
+      </div>
+
+      <div
+        class="grid"
+        :style="{ '--inspector-width': `${preferences.inspectorWidth}px` }"
+        :data-files-hidden="filesVisible ? undefined : ''"
+        :data-drawer="filesAreDrawer ? '' : undefined"
+        @dragover="swallowStrayDrop"
+        @drop="swallowStrayDrop"
       >
-        顯示最新輸出片段（先前歷史已截斷）。
-      </p>
-
-      <div class="grid" @dragover="swallowStrayDrop" @drop="swallowStrayDrop">
         <div class="center">
           <WorkspaceTabs
             :tabs="tabs"
             :active="activeTab"
             @select="(id) => (activeTab = id as CentreTab)"
             @close="closeTab"
-          />
-
-          <!-- The terminal panel is hidden, never unmounted: unmounting it
+          >
+            <template #end>
+              <!-- The drawer's opening control. What this replaces was a
+                   `display: none` on the tree below 1100px with no way at all
+                   to bring it back, which is the one shape the shared
+                   foundation names as forbidden. -->
+              <UiIconButton
+                v-if="filesAreDrawer && session"
+                ref="drawerButton"
+                variant="on-terminal"
+                :label="filesOpen ? '關閉檔案欄' : '開啟檔案欄'"
+                :expanded="filesOpen"
+                controls="file-panel"
+                @click="filesOpen = !filesOpen"
+              >
+                <PanelRight />
+              </UiIconButton>
+            </template>
+          </WorkspaceTabs>
+          <div class="panes">
+            <!-- The terminal panel is hidden, never unmounted: unmounting it
                would tear down a live WebSocket and an xterm buffer that the
                user expects to find unchanged when they come back (D4). -->
-          <section
-            v-show="activeTab === 'cli'"
-            id="panel-cli"
-            class="pane terminal-pane"
-            role="tabpanel"
-            aria-labelledby="tab-cli"
-            :data-drag="dragActive || undefined"
-            @dragover="onDragOver"
-            @dragleave="dragActive = false"
-            @drop="onTerminalDrop"
-          >
-            <!-- Image drop bar. Only rendered when the permission AND the node
+            <section
+              v-show="activeTab === 'cli'"
+              id="panel-cli"
+              class="pane terminal-pane"
+              role="tabpanel"
+              aria-labelledby="tab-cli"
+              :data-drag="dragActive || undefined"
+              @dragover="onDragOver"
+              @dragleave="dragActive = false"
+              @drop="onTerminalDrop"
+            >
+              <!-- Image drop bar. Only rendered when the permission AND the node
                  both allow it: a control that can never work is worse than no
                  control, because the user spends time guessing why (ADR 0024). -->
-            <div v-if="canUploadImages" class="drop-bar">
-              <button
-                type="button"
-                class="ghost"
-                :disabled="!isWriter || imageDrop.state.value === 'uploading'"
-                :title="
-                  isWriter
-                    ? '將 PNG／JPEG／GIF／WebP 圖片交給 CLI（也可直接貼上或拖放）'
-                    : '取得寫入權後可投放圖片'
-                "
-                @click="pickerInput?.click()"
+              <!-- Behaviour untouched (ADR 0024): the same display condition,
+                   the same accepted types, the same refusal text and the same
+                   writer gate. What changed is that it is a toolbar sitting on
+                   the terminal surface rather than a bare flex row, so its text
+                   uses --text-on-terminal instead of the panel text colour —
+                   which in a light theme would be near-black on a dark
+                   terminal. -->
+              <UiToolbar
+                v-if="canUploadImages"
+                class="drop-bar"
+                label="圖片投放"
+                on-terminal
               >
-                投放圖片
-              </button>
-              <input
-                ref="pickerInput"
-                type="file"
-                class="visually-hidden"
-                accept="image/png,image/jpeg,image/gif,image/webp"
-                @change="onPicked"
+                <UiButton
+                  variant="secondary"
+                  :disabled="!isWriter || imageDrop.state.value === 'uploading'"
+                  :disabled-reason="
+                    isWriter ? '上傳中…' : '取得寫入權後可投放圖片'
+                  "
+                  @click="pickerInput?.click()"
+                >
+                  投放圖片
+                </UiButton>
+                <input
+                  ref="pickerInput"
+                  type="file"
+                  class="visually-hidden"
+                  accept="image/png,image/jpeg,image/gif,image/webp"
+                  @change="onPicked"
+                />
+                <span
+                  v-if="imageDrop.state.value === 'uploading'"
+                  class="drop-status"
+                  role="status"
+                >
+                  上傳中 {{ Math.round(imageDrop.progress.value * 100) }}%
+                </span>
+                <template v-else-if="imageDrop.state.value === 'done'">
+                  <img
+                    v-if="imageDrop.current.value"
+                    :src="imageDrop.current.value.previewUrl"
+                    class="thumb"
+                    alt=""
+                  />
+                  <span class="drop-status" role="status">
+                    已加入 {{ imageDrop.current.value?.label }} →
+                    <code>{{ imageDrop.current.value?.storedPath }}</code>
+                  </span>
+                  <button type="button" class="link" @click="imageDrop.clear()">
+                    收起
+                  </button>
+                </template>
+                <span
+                  v-else-if="imageDrop.state.value === 'error'"
+                  class="drop-status bad"
+                  role="alert"
+                >
+                  {{ imageDrop.errorMessage.value }}
+                </span>
+                <span v-else class="drop-hint">
+                  可貼上（Ctrl+V）、拖放，或按上方按鈕選檔
+                </span>
+              </UiToolbar>
+              <div
+                ref="host"
+                class="terminal-host"
+                aria-label="Interactive CLI terminal"
+                @paste.capture="onTerminalPaste"
               />
-              <span
-                v-if="imageDrop.state.value === 'uploading'"
-                class="drop-status"
+            </section>
+
+            <!-- System terminal. Same hide-don't-unmount rule as the CLI panel: it
+               holds a live WebSocket to a session on the node. -->
+            <section
+              v-if="canOpenShell"
+              v-show="activeTab === 'terminal'"
+              id="panel-terminal"
+              class="pane terminal-pane"
+              role="tabpanel"
+              aria-labelledby="tab-terminal"
+            >
+              <p class="shell-notice" role="note">
+                系統終端機：直接操作此 Node 的 shell，<strong
+                  >不受 workspace 路徑限制</strong
+                >。指令內容不會被記錄。<template v-if="privilegedNode">
+                  此 Node <strong>可經 sudo 取得 root</strong>（ADR
+                  0023）。</template
+                >
+              </p>
+              <div
+                ref="shellHost"
+                class="terminal-host"
+                aria-label="System terminal"
+              />
+              <p class="terminal-hint">
+                滾輪可往上檢視先前輸出（按 <kbd>q</kbd> 回到即時輸出）·
+                選取文字請按住 <kbd>Shift</kbd> 拖曳
+              </p>
+              <p
+                v-if="shellState === 'starting'"
+                class="shell-status"
                 role="status"
               >
-                上傳中 {{ Math.round(imageDrop.progress.value * 100) }}%
-              </span>
-              <template v-else-if="imageDrop.state.value === 'done'">
-                <img
-                  v-if="imageDrop.current.value"
-                  :src="imageDrop.current.value.previewUrl"
-                  class="thumb"
-                  alt=""
-                />
-                <span class="drop-status" role="status">
-                  已加入 {{ imageDrop.current.value?.label }} →
-                  <code>{{ imageDrop.current.value?.storedPath }}</code>
-                </span>
-                <button type="button" class="link" @click="imageDrop.clear()">
-                  收起
-                </button>
-              </template>
-              <span
-                v-else-if="imageDrop.state.value === 'error'"
-                class="drop-status bad"
+                正在開啟系統終端機…
+              </p>
+              <p
+                v-else-if="shellState === 'error'"
+                class="shell-status bad"
                 role="alert"
               >
-                {{ imageDrop.errorMessage.value }}
-              </span>
-              <span v-else class="drop-hint">
-                可貼上（Ctrl+V）、拖放，或按上方按鈕選檔
-              </span>
-            </div>
-            <div
-              ref="host"
-              class="terminal-host"
-              aria-label="Interactive CLI terminal"
-              @paste.capture="onTerminalPaste"
-            />
-          </section>
+                {{ shellError }}
+                <button class="link" type="button" @click="openShellTab()">
+                  重試
+                </button>
+              </p>
+            </section>
 
-          <!-- System terminal. Same hide-don't-unmount rule as the CLI panel: it
-               holds a live WebSocket to a session on the node. -->
-          <section
-            v-if="canOpenShell"
-            v-show="activeTab === 'terminal'"
-            id="panel-terminal"
-            class="pane terminal-pane"
-            role="tabpanel"
-            aria-labelledby="tab-terminal"
-          >
-            <p class="shell-notice" role="note">
-              系統終端機：直接操作此 Node 的 shell，<strong
-                >不受 workspace 路徑限制</strong
-              >。指令內容不會被記錄。<template v-if="privilegedNode">
-                此 Node <strong>可經 sudo 取得 root</strong>（ADR
-                0023）。</template
-              >
-            </p>
-            <div
-              ref="shellHost"
-              class="terminal-host"
-              aria-label="System terminal"
-            />
-            <p class="terminal-hint">
-              滾輪可往上檢視先前輸出（按 <kbd>q</kbd> 回到即時輸出）·
-              選取文字請按住 <kbd>Shift</kbd> 拖曳
-            </p>
-            <p
-              v-if="shellState === 'starting'"
-              class="shell-status"
-              role="status"
-            >
-              正在開啟系統終端機…
-            </p>
-            <p
-              v-else-if="shellState === 'error'"
-              class="shell-status bad"
-              role="alert"
-            >
-              {{ shellError }}
-              <button class="link" type="button" @click="openShellTab()">
-                重試
-              </button>
-            </p>
-          </section>
-
-          <!-- The preview is mounted only while a file is open: closing it must
+            <!-- The preview is mounted only while a file is open: closing it must
                dispose Monaco and its models, and unmounting costs nothing here
                because there is no connection behind it. -->
-          <section
-            v-if="previewPath"
-            v-show="activeTab === 'preview'"
-            id="panel-preview"
-            class="pane"
-            role="tabpanel"
-            aria-labelledby="tab-preview"
-          >
-            <PreviewPane :session-id="filesSessionId" :rel-path="previewPath" />
-          </section>
+            <section
+              v-if="previewPath"
+              v-show="activeTab === 'preview'"
+              id="panel-preview"
+              class="pane"
+              role="tabpanel"
+              aria-labelledby="tab-preview"
+            >
+              <PreviewPane
+                :session-id="filesSessionId"
+                :rel-path="previewPath"
+              />
+            </section>
+          </div>
         </div>
 
-        <aside v-if="session" class="rail workspace-rail">
+        <!-- Keyboard-operable as well as draggable. A resize that only a mouse
+             can perform is a feature only a mouse user has. -->
+        <button
+          v-if="filesVisible && !filesAreDrawer"
+          type="button"
+          class="resizer"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="調整檔案欄寬度"
+          :aria-valuenow="preferences.inspectorWidth"
+          :aria-valuemin="INSPECTOR_MIN"
+          :aria-valuemax="INSPECTOR_MAX"
+          @pointerdown="startResize"
+          @keydown="onResizeKey"
+        />
+
+        <div
+          v-if="filesAreDrawer && filesOpen"
+          class="drawer-scrim"
+          @click="filesOpen = false"
+        />
+        <aside
+          v-if="session && filesVisible"
+          id="file-panel"
+          ref="filePanel"
+          class="rail workspace-rail"
+        >
           <FileTree
             :session-id="filesSessionId"
             :root-label="workspaceLabel"
@@ -752,20 +917,48 @@ async function confirmTerminate(): Promise<void> {
         </aside>
       </div>
 
+      <!-- The status bar is the workspace's last row, not a shell row: its
+           three facts only exist on a page that has a session (style.md §9 was
+           revised to say so). It renders even under the veil — a blank status
+           bar behind a failure reads as "everything is fine back here". -->
+      <StatusBar
+        :session-status="session?.status"
+        :connection="terminal.status.value"
+        :role="terminal.role.value"
+        :load-error="resource.state.value === 'error'"
+      >
+        <!-- Terminal font size only. The theme used to sit here too, but a
+             theme is a global preference and a copy of it beside a
+             terminal-specific control made it look page-scoped; it lives in
+             personal settings now. Font size stays because it is genuinely
+             about this terminal, and because at 1024x768 it is how the row
+             count is recovered. -->
+        <template #preferences>
+          <TerminalFontControl />
+        </template>
+      </StatusBar>
+
       <div v-if="!session || resource.state.value !== 'success'" class="veil">
-        <AsyncState v-if="resource.state.value === 'loading'" state="loading"
-          >Loading session…</AsyncState
-        >
-        <AsyncState
+        <!-- Three different situations, three different components. What was
+             here printed the state's internal name on screen for all three. -->
+        <UiLoadingState
+          v-if="resource.state.value === 'loading'"
+          label="正在載入 Session"
+        />
+        <UiInlineNotice
           v-else-if="resource.state.value === 'forbidden'"
-          state="forbidden"
-        >
-          You do not have permission to view this session.
-        </AsyncState>
-        <AsyncState v-else state="error">
-          Could not load this session.
-          <button class="link" @click="resource.run()">Retry</button>
-        </AsyncState>
+          tone="error"
+          title="無法存取此 Session"
+          message="你的角色沒有檢視這個 Session 的權限。UI 隱藏不能取代伺服器授權：即使入口可見，伺服器仍會拒絕。"
+        />
+        <!-- ErrorNotice keeps the four-part shape from the error catalogue:
+             what happened, why, what to do, and the request id that ties this
+             screen to the server log line. -->
+        <ErrorNotice
+          v-else
+          :error="resource.error.value"
+          @retry="resource.run()"
+        />
       </div>
     </div>
 
@@ -773,12 +966,19 @@ async function confirmTerminate(): Promise<void> {
       :open="terminateOpen"
       :busy="busy"
       danger
-      title="Terminate session"
-      :message="`Terminate ${session?.name}? The CLI process is stopped on the node.`"
-      confirm-label="Terminate"
+      title="終止此 Session？"
+      confirm-label="確認終止"
       @confirm="confirmTerminate"
       @cancel="terminateOpen = false"
-    />
+    >
+      <!-- The name is shown and marked up as a name. A `message: string` prop
+           could only concatenate it into prose, where it reads as part of the
+           sentence rather than as the thing about to be stopped. -->
+      <p>
+        將終止 <code>{{ session?.name }}</code
+        >，此 Node 上的 CLI 程序會被停止。已產生的輸出不會保留。
+      </p>
+    </ConfirmDialog>
   </AppLayout>
 </template>
 
@@ -794,107 +994,113 @@ async function confirmTerminate(): Promise<void> {
   height: 100%;
   min-height: 0;
 }
-.head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+.notices {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
 }
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.meta h1 {
-  margin: 0;
-  font-size: 18px;
-}
-.dim {
-  color: var(--text-muted);
-  font-size: 13px;
-}
-.small {
-  font-size: 12px;
-}
-.role {
-  font-size: 12px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border-default);
-}
-.role[data-role="writer"] {
-  color: var(--status-online);
-  border-color: var(--status-online);
-}
-.actions {
-  display: flex;
-  gap: 8px;
-}
-.ghost,
-.danger {
-  padding: 6px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-.danger {
-  color: var(--status-error);
-  border-color: var(--status-error);
-}
-.banner {
-  margin: 0 0 8px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: #f9eaea;
-  color: var(--status-error);
-  font-size: 13px;
-}
-.banner.gap {
-  background: #fbf3e3;
-  color: var(--status-busy);
-}
+/* The file column's width is a preference, clamped by the tokens rather than by
+   numbers repeated here (220-360px). It used to be a hard-coded 300px that
+   vanished entirely below 1100px — with no way to get it back, which is the
+   shape the shared foundation forbids. */
 .grid {
   display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto var(--inspector-width);
+  gap: 0;
   flex: 1;
   min-height: 0;
 }
+.grid[data-files-hidden] {
+  grid-template-columns: minmax(0, 1fr);
+}
 /* Tab bar plus exactly one visible panel. The selected panel gets the whole
    centre column: splitting it left both halves too small to work in (WT-03). */
+/* Tab bar plus exactly one visible panel, as a flex column rather than a row
+   template: the panels are conditional, and a two-row template hands the 1fr to
+   whichever child happens to land in it (plan/09 D3). The panels stack in one
+   flex slot via `.panes`. */
 .center {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid var(--border-subtle);
+  border-right: 0;
+  border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+  overflow: hidden;
+  background: var(--terminal-background);
+}
+.grid[data-files-hidden] .center {
+  border-right: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+}
+/* One flex slot holding every panel, so a hidden panel costs no space and no
+   panel is unmounted to hide it. */
+.panes {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   min-height: 0;
   min-width: 0;
 }
-/* Every panel occupies the same grid cell, so a hidden one costs no space. */
+/* No absolute positioning needed: only one panel is ever visible, and `v-show`
+   hides the others with an inline `display: none` that wins over this rule. So
+   the visible one is simply the flex child that grows. */
 .pane {
-  grid-row: 2;
-  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
   min-height: 0;
   min-width: 0;
 }
 .rail {
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-  padding: 12px;
+  border: 1px solid var(--border-subtle);
+  border-left: 0;
+  border-radius: 0 var(--radius-panel) var(--radius-panel) 0;
+  background: var(--surface-default);
+  padding: 10px;
   overflow: auto;
+  min-width: 0;
+}
+/* Drag handle. Keyboard-operable as well as draggable: `role="separator"` with
+   `aria-valuenow` and the arrow keys, because a mouse-only resize is a
+   mouse-only feature. */
+.resizer {
+  width: 6px;
+  cursor: col-resize;
+  border: 0;
+  padding: 0;
+  background: var(--border-subtle);
+}
+.resizer:hover,
+.resizer:focus-visible {
+  background: var(--accent-primary);
+}
+/* 768-1023px and below: an overlay drawer, and the toolbar has a button that
+   opens it. `position: fixed; inset` rather than any viewport height unit —
+   plan/09 D1 keeps viewport height in the app shell alone. */
+.grid[data-drawer] .rail {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 18;
+  width: min(320px, 88vw);
+  border-radius: 0;
+  border-left: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-overlay);
+}
+.drawer-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 17;
+  background: var(--surface-scrim);
 }
 .rail h2 {
   margin: 0 0 8px;
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 /* A column, not a row template. The template this replaces
  * (`auto minmax(0,1fr) auto`) assumed three children — true for the system
@@ -910,7 +1116,7 @@ async function confirmTerminate(): Promise<void> {
   display: flex;
   flex-direction: column;
   background: var(--terminal-background);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-panel);
   overflow: hidden;
 }
 /* All three are conditional or short: present or not, they must not affect who
@@ -929,21 +1135,21 @@ async function confirmTerminate(): Promise<void> {
 .terminal-hint {
   margin: 0;
   padding: 4px 10px 6px;
-  color: #7c8695;
+  color: var(--text-on-terminal-dim);
   font-size: 11px;
 }
 .terminal-hint kbd {
   padding: 0 3px;
-  border: 1px solid #333a45;
+  border: 1px solid var(--border-on-terminal);
   border-radius: 3px;
   font-family: inherit;
 }
 /* 不是裝飾：使用者要能分辨自己在哪一種邊界裡（ADR 0021 §4、ADR 0023 D10）。 */
 .posture {
   padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: #3a2f1b;
-  color: #f0d9a8;
+  border-radius: var(--radius-pill);
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
   font-size: 11px;
 }
 /* Not decoration: the user has to be able to tell which security boundary they
@@ -951,18 +1157,18 @@ async function confirmTerminate(): Promise<void> {
 .shell-notice {
   margin: 0;
   padding: 6px 10px;
-  background: #3a2f1b;
-  color: #f0d9a8;
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
   font-size: 11px;
 }
 .shell-status {
   margin: 0;
   padding: 6px 10px;
-  color: #9aa4b2;
+  color: var(--text-on-terminal-dim);
   font-size: 12px;
 }
 .shell-status.bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 /* Covers the workspace while it cannot be used, without unmounting it. */
 .veil {
@@ -970,7 +1176,7 @@ async function confirmTerminate(): Promise<void> {
   inset: 0;
   display: grid;
   place-items: center;
-  background: var(--surface-default);
+  background: var(--surface-raised);
 }
 /* No `height: 100%`: inside a flex column it feeds flex-basis, so the host would
  * ask for the whole pane while the notice asks for its own height, and shrinking
@@ -984,13 +1190,13 @@ async function confirmTerminate(): Promise<void> {
   flex: 0 0 auto;
   padding: 4px 6px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .drop-bar .thumb {
   height: 24px;
   width: auto;
   max-width: 48px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-panel);
   object-fit: cover;
 }
 .drop-status code {
@@ -1000,13 +1206,13 @@ async function confirmTerminate(): Promise<void> {
     monospace;
 }
 .drop-status.bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .drop-hint {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .terminal-pane[data-drag] {
-  outline: 2px dashed var(--action-primary);
+  outline: 2px dashed var(--accent-strong);
   outline-offset: -4px;
 }
 .visually-hidden {
@@ -1039,11 +1245,11 @@ async function confirmTerminate(): Promise<void> {
   align-items: baseline;
   gap: 6px;
   padding: 2px 4px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border-radius: var(--radius-panel);
+  background: var(--surface-raised);
 }
 .uploads li[data-state="error"] {
-  border: 1px solid var(--status-error);
+  border: 1px solid var(--status-error-fg);
 }
 .up-name {
   font-family:
@@ -1055,38 +1261,38 @@ async function confirmTerminate(): Promise<void> {
   white-space: nowrap;
 }
 .up-dir {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 .up-state {
   margin-inline-start: auto;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   white-space: nowrap;
 }
 .up-state.ok {
-  color: var(--status-success, var(--text-secondary));
+  color: var(--status-success-fg);
 }
 .up-state.bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
   white-space: normal;
 }
 .upload-refusal {
   flex: 0 0 auto;
   margin: 0;
   font-size: 11px;
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .upload-note {
   flex: 0 0 auto;
   margin: 0;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .link {
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 @media (max-width: 1100px) {

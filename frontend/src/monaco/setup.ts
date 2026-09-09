@@ -14,6 +14,13 @@
 import * as monaco from "monaco-editor/editor/editor.api";
 import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 
+import {
+  DEFAULT_THEME,
+  THEME_IDS,
+  monacoColors,
+  type ThemeId,
+} from "../theme/themes";
+
 // Core editor widget + the keybindings that make cursor movement work.
 import "monaco-editor/features/codeEditor/register";
 import "monaco-editor/editor/browser/coreCommands.js";
@@ -77,40 +84,55 @@ function installEnvironment(): void {
   };
 }
 
-// Preview theme: derived from the same semantic tokens as the terminal so the
-// workspace reads as one surface (style.md). Not the stock vs-dark palette.
-export const PREVIEW_THEME = "cliora-preview";
+// Preview themes: one per visual theme, all reading the same semantic table as
+// the terminal so the workspace is one surface and cannot drift out of step
+// (ADR 0027 §2). Previously ten hard-coded values here were the fourth
+// independent palette in the front end.
+export function previewThemeName(id: ThemeId): string {
+  return `cliora-preview-${id}`;
+}
 
-let themeDefined = false;
+// Retained under its old name because `useMonacoModel` and PreviewPane import
+// it; it is now the default theme's name rather than the only one.
+export const PREVIEW_THEME = previewThemeName(DEFAULT_THEME);
 
-function defineTheme(): void {
-  if (themeDefined) {
+let themesDefined = false;
+
+function defineThemes(): void {
+  if (themesDefined) {
     return;
   }
-  monaco.editor.defineTheme(PREVIEW_THEME, {
-    base: "vs-dark",
-    inherit: true,
-    rules: [],
-    colors: {
-      "editor.background": "#0f1115",
-      "editor.foreground": "#d7dde4",
-      "editorLineNumber.foreground": "#66707d",
-      "editorLineNumber.activeForeground": "#d7dde4",
-      "editor.selectionBackground": "#78aaff40",
-      "editor.lineHighlightBackground": "#171a20",
-      "editorCursor.foreground": "#ffffff",
-      "editorGutter.background": "#0f1115",
-      "editorWidget.background": "#171a20",
-      "editorWidget.border": "#2a2f39",
-    },
-  });
-  themeDefined = true;
+  for (const id of THEME_IDS) {
+    monaco.editor.defineTheme(previewThemeName(id), {
+      // `vs-dark` for every theme, including the light ones. style.md §19 has
+      // the preview share the terminal's dark surface, and the shared design
+      // foundation agrees: a light editor inside a light theme would put two
+      // different code backgrounds in one workspace, and the user is looking at
+      // the code.
+      base: "vs-dark",
+      inherit: true,
+      rules: [],
+      colors: monacoColors(id),
+    });
+  }
+  themesDefined = true;
+}
+
+// Switching is global and needs neither a new editor nor a new model, so the
+// scroll position, folding state and find matches all survive. That matters
+// because the preview is one of the panels a theme switch must not disturb.
+//
+// Theming an editor is not granting it a capability: `readOnly` and the
+// contribution list below are untouched (ADR 0015).
+export function setPreviewTheme(id: ThemeId): void {
+  defineThemes();
+  monaco.editor.setTheme(previewThemeName(id));
 }
 
 // Idempotent one-time setup; safe to call from every component mount.
 export function setupMonaco(): typeof monaco {
   installEnvironment();
-  defineTheme();
+  defineThemes();
   return monaco;
 }
 

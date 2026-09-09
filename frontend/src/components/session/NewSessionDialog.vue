@@ -358,7 +358,7 @@ function sessionErrorMessage(err: ApiError): string {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 17, 21, 0.5);
+  background: var(--surface-scrim);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -366,8 +366,8 @@ function sessionErrorMessage(err: ApiError): string {
 }
 .dialog {
   width: min(440px, 92vw);
-  background: var(--surface-elevated);
-  border-radius: var(--radius-lg);
+  background: var(--surface-default);
+  border-radius: var(--radius-dialog);
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -382,29 +382,29 @@ label {
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 select,
 input {
   height: 40px;
   padding: 0 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   font-size: 14px;
 }
 .hint {
   margin: 0;
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .shortcuts {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
 }
 .shortcuts h3 {
   margin: 0 0 6px;
@@ -412,7 +412,7 @@ input {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .shortcuts ul {
   margin: 0;
@@ -436,7 +436,7 @@ input {
   gap: 2px;
   padding: 6px 8px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-panel);
   background: transparent;
   text-align: left;
   font-size: 13px;
@@ -445,19 +445,19 @@ input {
 }
 .shortcut:hover:not(:disabled),
 .shortcut:focus-visible {
-  background: var(--surface-default);
+  background: var(--surface-raised);
 }
 .shortcut:disabled {
   cursor: not-allowed;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .shortcut .path {
   overflow-wrap: anywhere;
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
 }
 .shortcut .why {
   font-size: 11px;
-  color: var(--status-warning, var(--text-muted));
+  color: var(--status-warning-fg);
 }
 .field {
   display: flex;
@@ -470,18 +470,18 @@ input {
 }
 .star {
   width: 40px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   font-size: 16px;
   line-height: 1;
   cursor: pointer;
 }
 .star[aria-pressed="true"] {
-  color: var(--action-primary);
+  color: var(--accent-strong);
 }
 .star:disabled {
-  opacity: 0.5;
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 .link {
@@ -489,16 +489,16 @@ input {
   background: none;
   padding: 0;
   font-size: 12px;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   text-decoration: underline;
   cursor: pointer;
 }
 .error {
   margin: 0;
   padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  background: #f9eaea;
-  color: var(--status-error);
+  border-radius: var(--radius-panel);
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
   font-size: 13px;
 }
 .buttons {
@@ -510,21 +510,27 @@ input {
 .ghost,
 .primary {
   padding: 8px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   font-weight: 600;
 }
 .ghost {
-  border: 1px solid var(--border-default);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 .primary {
   border: 0;
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
 }
+/* A colour, not an opacity. Opacity dims the label along with everything
+   else, so a disabled control stops being able to say what it is or why it is
+   disabled — and "disabled keeps an understandable reason" is the rule
+   (--text-disabled is measured at >= 3:1 on all three surfaces for this). */
 .primary:disabled {
-  opacity: 0.5;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-control);
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 </style>

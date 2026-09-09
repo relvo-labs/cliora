@@ -206,9 +206,9 @@ const label = computed(() => {
   min-height: 24px;
   padding-block: 2px;
   padding-inline-end: 6px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-panel);
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   cursor: default;
   background: none;
   border: 0;
@@ -219,12 +219,12 @@ const label = computed(() => {
   cursor: pointer;
 }
 .row[data-selected] {
-  background: var(--surface-default);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-weight: 600;
 }
 .row[data-focused] {
-  outline: 2px solid var(--border-focus);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -2px;
 }
 .twisty {
@@ -236,14 +236,14 @@ const label = computed(() => {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .twisty.spacer {
   display: inline-block;
 }
 .icon {
   flex: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .name {
   overflow: hidden;
@@ -251,50 +251,50 @@ const label = computed(() => {
   white-space: nowrap;
 }
 .name[data-hidden] {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 /* Outline plus text, never colour alone (style.md state contract): a hovered row
  * gets a dashed outline AND a label naming where the file would land. */
 .row[data-drop-target] {
-  outline: 1px dashed var(--action-primary);
+  outline: 1px dashed var(--accent-strong);
   outline-offset: -1px;
-  background: var(--surface-raised, rgba(127, 127, 127, 0.12));
+  background: var(--surface-raised);
 }
 .drop-hint {
   margin-inline-start: auto;
   padding-inline: 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   white-space: nowrap;
 }
 .badge {
   flex: none;
   padding: 0 5px;
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--border-subtle);
   border-radius: 999px;
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .more {
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
   cursor: pointer;
 }
 .status {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .status[data-state="error"],
 .status[data-state="forbidden"] {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .status[data-state="offline"] {
-  color: var(--status-offline);
+  color: var(--status-neutral-fg);
 }
 .spin {
   animation: spin 1s linear infinite;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 @keyframes spin {
   to {

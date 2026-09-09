@@ -17,6 +17,7 @@
 //    offered one would be promising something it cannot deliver.
 
 import { computed, onMounted, onUnmounted, ref } from "vue";
+import { ArrowLeft } from "lucide-vue-next";
 import { useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
@@ -28,7 +29,9 @@ import {
   type TunnelProtection,
   type TunnelSummary,
 } from "../api/dto";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
 import AppLayout from "../components/layout/AppLayout.vue";
@@ -383,7 +386,7 @@ const capSource = computed(() => {
       class="back"
       @click="router.push({ name: 'node-detail', params: { id } })"
     >
-      ← 回到 Node
+      <ArrowLeft class="icon" aria-hidden="true" />回到 Node
     </button>
 
     <header class="head">
@@ -393,22 +396,28 @@ const capSource = computed(() => {
       </div>
     </header>
 
-    <AsyncState v-if="resource.state.value === 'loading'" state="loading">
-      正在載入埠轉發設定…
-    </AsyncState>
-    <AsyncState v-else-if="integrationDisabled" state="empty">
-      埠轉發整合尚未啟用，因此這台節點無法建立隧道。
+    <UiLoadingState
+      v-if="resource.state.value === 'loading'"
+      label="正在載入埠轉發設定"
+    />
+    <UiEmptyState
+      v-else-if="integrationDisabled"
+      variant="empty"
+      title="沒有資料"
+      >埠轉發整合尚未啟用，因此這台節點無法建立隧道。
       <RouterLink v-if="canManageIntegration" :to="{ name: 'integrations' }">
         前往整合設定啟用
       </RouterLink>
-      <span v-else>請聯繫管理員在「整合設定」啟用並填入服務商憑證。</span>
-    </AsyncState>
-    <AsyncState
-      v-else-if="resource.state.value === 'forbidden'"
-      state="forbidden"
+      <span v-else
+        >請聯繫管理員在「整合設定」啟用並填入服務商憑證。</span
+      ></UiEmptyState
     >
-      你沒有檢視埠轉發的權限（需要 tunnel.view）。
-    </AsyncState>
+    <UiInlineNotice
+      v-else-if="resource.state.value === 'forbidden'"
+      tone="error"
+      title="無法存取"
+      >你沒有檢視埠轉發的權限（需要 tunnel.view）。</UiInlineNotice
+    >
     <ErrorNotice
       v-else-if="resource.state.value === 'error' || !policy"
       :error="resource.error.value"
@@ -640,9 +649,12 @@ const capSource = computed(() => {
           </button>
         </form>
 
-        <AsyncState v-if="tunnels.length === 0" state="empty">
-          這台節點目前沒有隧道。
-        </AsyncState>
+        <UiEmptyState
+          v-if="tunnels.length === 0"
+          variant="empty"
+          title="沒有資料"
+          >這台節點目前沒有隧道。</UiEmptyState
+        >
         <table v-else>
           <thead>
             <tr>
@@ -824,12 +836,19 @@ const capSource = computed(() => {
 </template>
 
 <style scoped>
+.back .icon {
+  width: 15px;
+  height: 15px;
+}
 .back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   margin-bottom: 16px;
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
 }
 .head {
@@ -841,15 +860,15 @@ const capSource = computed(() => {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .panel {
   margin-bottom: 16px;
   padding: 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .panel h2 {
   margin: 0 0 12px;
@@ -874,11 +893,11 @@ ul.prereq {
   font-size: 13px;
 }
 ul.prereq .ok {
-  color: #1e7b34;
+  color: var(--status-success-fg);
   font-weight: 700;
 }
 ul.prereq .bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
   font-weight: 700;
 }
 dl {
@@ -892,7 +911,7 @@ dl div {
   gap: 12px;
 }
 dt {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 dd {
@@ -901,7 +920,7 @@ dd {
   text-align: right;
 }
 .source {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .row {
@@ -923,7 +942,7 @@ dd {
 }
 .row label span,
 .grow-label span {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .check {
   display: flex;
@@ -936,9 +955,9 @@ dd {
 input,
 select {
   padding: 6px 8px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
   color: var(--text-primary);
   font-size: 13px;
 }
@@ -948,17 +967,17 @@ input[type="text"] {
 .primary {
   padding: 8px 14px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  border-radius: var(--radius-control);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
   font-weight: 600;
 }
 .ghost {
   padding: 8px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .create {
@@ -966,16 +985,16 @@ input[type="text"] {
   gap: 12px;
   margin-bottom: 16px;
   padding: 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
   justify-items: start;
 }
 .warn {
   display: grid;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--border-danger);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--danger-bg);
+  border-radius: var(--radius-panel);
   font-size: 13px;
 }
 .warn p {
@@ -995,35 +1014,35 @@ table {
 th {
   text-align: left;
   padding: 8px;
-  border-bottom: 1px solid var(--border-default);
-  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
 td {
   padding: 10px 8px;
-  border-bottom: 1px solid var(--border-default);
+  border-bottom: 1px solid var(--border-subtle);
   vertical-align: top;
 }
 .muted {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 .pill {
   padding: 2px 8px;
   border-radius: 999px;
-  background: var(--surface-default);
+  background: var(--surface-raised);
   font-size: 12px;
   font-weight: 600;
 }
 .pill.running {
-  background: #e6f4ea;
-  color: #1e7b34;
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
 }
 .pill.failed,
 .pill.unavailable {
-  background: #f9eaea;
-  color: var(--status-error);
+  background: var(--status-error-bg);
+  color: var(--status-error-fg);
 }
 .ops {
   display: flex;
@@ -1035,33 +1054,33 @@ td {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-size: 12px;
   font-weight: 600;
 }
 .link.danger {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .hint {
   margin: 0;
   max-width: 72ch;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
 .inline-error {
   margin: 8px 0 0;
   max-width: 72ch;
-  color: var(--status-error);
+  color: var(--status-error-fg);
   font-size: 12px;
   line-height: 1.6;
 }
 .notice-line {
   margin: 0 0 16px;
   padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: #e6f4ea;
-  color: #1e7b34;
+  border-radius: var(--radius-panel);
+  background: var(--status-success-bg);
+  color: var(--status-success-fg);
   font-size: 13px;
 }
 .backdrop {
@@ -1070,14 +1089,14 @@ td {
   z-index: 10;
   display: grid;
   place-items: center;
-  background: rgb(15 20 25 / 45%);
+  background: var(--surface-scrim);
 }
 .dialog {
   width: min(560px, 92vw);
   padding: 24px;
-  border-radius: var(--radius-lg);
-  background: var(--surface-elevated);
-  box-shadow: 0 20px 60px rgb(15 20 25 / 25%);
+  border-radius: var(--radius-dialog);
+  background: var(--surface-default);
+  box-shadow: var(--shadow-overlay);
 }
 .dialog h2 {
   margin: 0 0 12px;

@@ -78,20 +78,20 @@ const showRetry = computed(() =>
 <style scoped>
 .notice {
   padding: 14px 16px;
-  border: 1px solid var(--border-danger);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--danger-bg);
+  border-radius: var(--radius-control);
+  background: var(--surface-default);
   font-size: 13px;
 }
 .headline {
   margin: 0 0 10px;
   font-weight: 600;
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .headline code,
 .rid code {
   margin-left: 6px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
   font-weight: 400;
 }
@@ -102,12 +102,12 @@ dl {
   margin: 0;
 }
 dt {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
 }
 dd {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 .foot {
   display: flex;
@@ -116,15 +116,15 @@ dd {
   margin: 12px 0 0;
 }
 .rid {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .retry {
   padding: 6px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-weight: 600;
 }
 </style>

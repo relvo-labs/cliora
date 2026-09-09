@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { SquareTerminal } from "lucide-vue-next";
 import { useRoute, useRouter } from "vue-router";
 
 import { ApiError } from "../api/client";
@@ -55,7 +56,9 @@ async function submit(): Promise<void> {
 <template>
   <div class="login">
     <form class="card" @submit.prevent="submit">
-      <div class="brand"><span aria-hidden="true">◫</span>Cliora</div>
+      <div class="brand">
+        <span class="mark" aria-hidden="true"><SquareTerminal /></span>Cliora
+      </div>
       <h1>Sign in</h1>
       <p class="sub">Access the node control plane.</p>
 
@@ -102,9 +105,9 @@ async function submit(): Promise<void> {
   display: grid;
   gap: 14px;
   padding: 32px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .brand {
   display: flex;
@@ -112,14 +115,14 @@ async function submit(): Promise<void> {
   gap: 10px;
   font-weight: 700;
 }
-.brand span {
+.brand .mark {
   display: grid;
   width: 30px;
   height: 30px;
   place-items: center;
   border-radius: 7px;
-  color: var(--text-inverse);
-  background: var(--action-primary);
+  color: var(--text-on-accent);
+  background: var(--accent-strong);
 }
 h1 {
   margin: 8px 0 0;
@@ -127,37 +130,43 @@ h1 {
 }
 .sub {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 label {
   display: grid;
   gap: 6px;
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 input {
   padding: 10px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
 }
 .error {
   margin: 0;
-  color: var(--status-error);
+  color: var(--status-error-fg);
   font-size: 13px;
 }
 .primary {
   margin-top: 4px;
   padding: 11px;
   border: 0;
-  border-radius: var(--radius-sm);
-  background: var(--action-primary);
-  color: var(--text-inverse);
+  border-radius: var(--radius-control);
+  background: var(--accent-strong);
+  color: var(--text-on-accent);
   font-weight: 600;
 }
+/* A colour, not an opacity. Opacity dims the label along with everything
+   else, so a disabled control stops being able to say what it is or why it is
+   disabled — and "disabled keeps an understandable reason" is the rule
+   (--text-disabled is measured at >= 3:1 on all three surfaces for this). */
 .primary:disabled {
-  opacity: 0.7;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-control);
+  color: var(--text-disabled);
   cursor: not-allowed;
 }
 </style>

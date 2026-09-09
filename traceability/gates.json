@@ -700,6 +700,94 @@
         "mvp",
         "security"
       ]
+    },
+    {
+      "id": "GATE-VR-NO-LITERAL-COLOR",
+      "owner": "frontend",
+      "layer": "static",
+      "command": [
+        "scripts/vr/vr-gates.sh",
+        "literal-color"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "nfr"
+      ]
+    },
+    {
+      "id": "GATE-VR-NO-LEGACY-TOKEN",
+      "owner": "frontend",
+      "layer": "static",
+      "command": [
+        "scripts/vr/vr-gates.sh",
+        "legacy-token"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "nfr"
+      ]
+    },
+    {
+      "id": "GATE-VR-NO-GLYPH-ICON",
+      "owner": "frontend",
+      "layer": "static",
+      "command": [
+        "scripts/vr/vr-gates.sh",
+        "glyph-icon"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "nfr"
+      ]
+    },
+    {
+      "id": "GATE-VR-THEME-CONTRACT",
+      "owner": "frontend",
+      "layer": "unit",
+      "command": [
+        "scripts/vr/vr-gates.sh",
+        "theme-contract"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 300,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "mvp",
+        "nfr"
+      ]
     }
   ]
 }

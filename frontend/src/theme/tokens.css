@@ -1,43 +1,505 @@
-/* Semantic design tokens (style.md §3). The single source of every colour, radius
- * and layout dimension in the app; components reference these and never a literal.
+/* Semantic design tokens — the only source of colour in the front end.
  *
- * Custom properties only — the element reset and form defaults live in base.css
- * (split in P4-07), so "what a colour is" and "how an element behaves" are separate
- * files. */
+ * GENERATED SHAPE, HAND-MAINTAINED VALUES. Every value here also exists in
+ * theme/themes.ts, and theme.contract.test.ts parses this file's text and
+ * compares it key-by-key against that one. Two sources is a deliberate cost
+ * (ADR 0027 §2): CSS needs a custom property so a theme switch does not
+ * remount components, and xterm's `terminal.options.theme` plus Monaco's
+ * `defineTheme()` need resolved colour strings — neither accepts `var()`.
+ * Resolving at runtime through getComputedStyle was rejected because it returns
+ * the previous theme's value during the switch frame and an empty string inside
+ * a `display: none` subtree, which is exactly how the CLI panel is hidden.
+ *
+ * Four rules cover the four cases, and none of them guesses by inheritance:
+ *
+ *   never chose, OS dark    ->  :root                                (Graphite)
+ *   never chose, OS light   ->  @media light + :root:not([data-theme])(Porcelain)
+ *   chose graphite          ->  :root[data-theme="graphite"]
+ *   chose porcelain         ->  :root[data-theme="porcelain"]
+ *
+ * EVERY theme defines EVERY colour token. Chained `var(--x, fallback)` is
+ * forbidden as a way to cover a gap: a token missing from one theme shows up as
+ * "that area kept the previous theme's colour", which reads as merely odd in a
+ * screenshot review and is therefore the failure most likely to ship.
+ * themes.test.ts asserts key-set equality, not containment.
+ *
+ * No literal colour may appear anywhere else under frontend/src
+ * (GATE-VR-NO-LITERAL-COLOR). This file and themes.ts are the two exceptions.
+ */
 
 :root {
-  --surface-canvas: #f4f6f8;
-  --surface-default: #fafbfc;
-  --surface-elevated: #fff;
-  --text-primary: #1a1f24;
-  --text-secondary: #48505a;
-  --text-muted: #66707d;
-  --text-inverse: #fff;
-  --border-default: #d7dde4;
-  --border-focus: #67a2ae;
-  --border-danger: #c45c5c;
-  --action-primary: #35575d;
-  --action-primary-hover: #2c464b;
-  --action-disabled: #b5bdc8;
-  --status-online: #2f9b63;
-  --status-offline: #727b87;
-  --status-busy: #c68c37;
-  --status-error: #d25454;
-  --terminal-background: #0f1115;
-  --terminal-foreground: #d7dde4;
+  color-scheme: dark;
+  /* Surfaces and boundaries */
+  --surface-canvas: #111518;
+  --surface-default: #191e22;
+  --surface-raised: #20272c;
+  --surface-scrim: #00000099;
+  --border-subtle: #2b3339;
+  --border-control: #647784;
+  --focus-ring: #81c9b9;
+  /* Text */
+  --text-primary: #e4e9eb;
+  --text-secondary: #8e9aa3;
+  --text-on-accent: #111518;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #6d767d;
+  /* Accent and actions */
+  --accent-primary: #81c9b9;
+  --accent-strong: #81c9b9;
+  --accent-subtle: #233a36;
+  --accent-hover: #93d3c4;
+  --danger-bg: #f08c8c;
+  --danger-fg: #111518;
+  --danger-hover: #f5a3a3;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #6fc79b;
+  --status-success-bg: #17302a;
+  --status-success-border: #2e5648;
+  --status-warning-fg: #e0ae5e;
+  --status-warning-bg: #332918;
+  --status-warning-border: #5a4a2b;
+  --status-error-fg: #f08c8c;
+  --status-error-bg: #3a2020;
+  --status-error-border: #603a3a;
+  --status-info-fg: #8cb6e8;
+  --status-info-bg: #182b3d;
+  --status-info-border: #31485f;
+  --status-neutral-fg: #a6b0b8;
+  --status-neutral-bg: #262b30;
+  --status-neutral-border: #434a50;
+  /* Terminal and editor */
+  --terminal-background: #101416;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
   --terminal-selection: #78aaff40;
-  --terminal-cursor: #fff;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 12px 32px #00000066;
+
+  /* Theme-independent scale. No theme block may redefine any of these:
+   * a theme that quietly changed a row height or a radius would be a
+   * layout change wearing a colour change's clothes, and
+   * theme.contract.test.ts fails on it. */
+  /* Layout */
+  /* style.md §9. Unchanged. */
   --layout-header: 56px;
-  /* 208px, narrowed from style.md's original 280px in plan/09 LY-05 and synced
-   * back into style.md §9/§22. Five nav items of 13px text need ~144px including
-   * the icon and the rail's own padding; the remaining ~136px was empty space
-   * taken from the centre workspace, which style.md §12 says the terminal should
-   * have the largest share of. */
+  /* plan/09 LY-05 measured this; Graphite's 216px was revised to it in the document rather than the other way round (plan/28 D4). */
   --layout-sidebar: 208px;
-  /* Not in use: the Status Bar in style.md §9/§12 has never been implemented.
-   * Kept so the spec's layout list still maps onto a token (plan/09 D7). */
+  --layout-sidebar-collapsed: 64px;
+  /* Single 48px row at 1024-1439px. */
+  --layout-workhead: 72px;
+  /* 1024-1439px: recovers 24px, which is one terminal row plus change at 14px/1.2 (plan/28 08-…md §1.1). */
+  --layout-workhead-compact: 48px;
+  /* Was content-derived, about 33px. */
+  --layout-tabs: 44px;
+  /* Specified since P0 and never implemented; implemented in plan/28. It costs the terminal ~1.7 rows and that is in the row-count budget. */
   --layout-status: 28px;
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
+  /* Was a hard-coded 300px. */
+  --layout-inspector: 258px;
+  --layout-inspector-min: 220px;
+  --layout-inspector-max: 360px;
+  /* Density: standard, one set (plan/28 D3) */
+  /* Table row. */
+  --density-row: 48px;
+  /* Form control. */
+  --density-control: 36px;
+  /* Touch-target floor. A control may look smaller as long as its hit area reaches this. */
+  --density-touch: 44px;
+  /* Radius: semantic, not an sm/md/lg scale */
+  /* Buttons, inputs. */
+  --radius-control: 8px;
+  /* Panels, cards. */
+  --radius-panel: 8px;
+  --radius-dialog: 12px;
+  /* Status badges. */
+  --radius-pill: 999px;
+  /* Motion */
+  /* State changes: hover, selection, focus. */
+  --motion-fast: 120ms;
+  /* Enter/leave. */
+  --motion-base: 180ms;
+
+  /* ANSI 16, one set shared by every theme. Consumed only by xterm, so
+   * these are here for inspectability and parity with the token table;
+   * the values xterm actually receives come from themes.ts.
+   *
+   * xterm's own defaults were not kept: against the terminal background
+   * `blue` #3465A4 measures 3.13:1 and `magenta` #75507B 2.81:1, and
+   * blue is what `ls` colours a directory while magenta is what many
+   * CLIs use for prompts and diff headers.
+   *
+   * `black` and `brBlack` are deliberately NOT pushed to 4.5:1 — their
+   * whole meaning is de-emphasised content (comments, --dim), and
+   * raising them to body-text strength cancels that meaning. brBlack is
+   * held at >= 3:1 (measures 3.88) and black is only used as a
+   * background. This is a recorded reduction, not an oversight. */
+  --terminal-ansi-black: #3a4145;
+  --terminal-ansi-red: #e8807f;
+  --terminal-ansi-green: #8fcb9b;
+  --terminal-ansi-yellow: #dfbe72;
+  --terminal-ansi-blue: #8fb6e8;
+  --terminal-ansi-magenta: #c3a0dc;
+  --terminal-ansi-cyan: #79c6c9;
+  --terminal-ansi-white: #c9d3d8;
+  --terminal-ansi-brBlack: #6b7478;
+  --terminal-ansi-brRed: #f09b9a;
+  --terminal-ansi-brGreen: #a8dcb2;
+  --terminal-ansi-brYellow: #edd08c;
+  --terminal-ansi-brBlue: #a9caf2;
+  --terminal-ansi-brMagenta: #d5b8e8;
+  --terminal-ansi-brCyan: #96dadc;
+  --terminal-ansi-brWhite: #e8eef0;
+}
+
+/* An explicit choice of the default theme still needs its own block: it
+ * has to win over the prefers-color-scheme rule below, which is what
+ * makes "I chose dark on a light OS" hold. */
+:root[data-theme="graphite"] {
+  color-scheme: dark;
+  /* Surfaces and boundaries */
+  --surface-canvas: #111518;
+  --surface-default: #191e22;
+  --surface-raised: #20272c;
+  --surface-scrim: #00000099;
+  --border-subtle: #2b3339;
+  --border-control: #647784;
+  --focus-ring: #81c9b9;
+  /* Text */
+  --text-primary: #e4e9eb;
+  --text-secondary: #8e9aa3;
+  --text-on-accent: #111518;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #6d767d;
+  /* Accent and actions */
+  --accent-primary: #81c9b9;
+  --accent-strong: #81c9b9;
+  --accent-subtle: #233a36;
+  --accent-hover: #93d3c4;
+  --danger-bg: #f08c8c;
+  --danger-fg: #111518;
+  --danger-hover: #f5a3a3;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #6fc79b;
+  --status-success-bg: #17302a;
+  --status-success-border: #2e5648;
+  --status-warning-fg: #e0ae5e;
+  --status-warning-bg: #332918;
+  --status-warning-border: #5a4a2b;
+  --status-error-fg: #f08c8c;
+  --status-error-bg: #3a2020;
+  --status-error-border: #603a3a;
+  --status-info-fg: #8cb6e8;
+  --status-info-bg: #182b3d;
+  --status-info-border: #31485f;
+  --status-neutral-fg: #a6b0b8;
+  --status-neutral-bg: #262b30;
+  --status-neutral-border: #434a50;
+  /* Terminal and editor */
+  --terminal-background: #101416;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #78aaff40;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 12px 32px #00000066;
+}
+
+/* Never chose, and the OS prefers light. `:not([data-theme])` is what
+ * keeps this from overriding an explicit choice. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    /* Surfaces and boundaries */
+    --surface-canvas: #f9fafc;
+    --surface-default: #ffffff;
+    --surface-raised: #eef2f7;
+    --surface-scrim: #25313c73;
+    --border-subtle: #e0e5eb;
+    --border-control: #838689;
+    --focus-ring: #286bf0;
+    /* Text */
+    --text-primary: #25313c;
+    --text-secondary: #5e6b78;
+    --text-on-accent: #ffffff;
+    --text-on-terminal: #c9d3d8;
+    --text-disabled: #78899a;
+    /* Accent and actions */
+    --accent-primary: #286bf0;
+    --accent-strong: #1b54c4;
+    --accent-subtle: #e9f0ff;
+    --accent-hover: #1b54c4;
+    --danger-bg: #b03434;
+    --danger-fg: #ffffff;
+    --danger-hover: #8e2727;
+    /* Status: five semantics, three values each */
+    --status-success-fg: #1f7a54;
+    --status-success-bg: #e4f3ea;
+    --status-success-border: #b8dcc8;
+    --status-warning-fg: #7e5712;
+    --status-warning-bg: #faf0dc;
+    --status-warning-border: #e0c68c;
+    --status-error-fg: #b03434;
+    --status-error-bg: #fbe9e9;
+    --status-error-border: #e8b8b8;
+    --status-info-fg: #1f5c96;
+    --status-info-bg: #e8f0fa;
+    --status-info-border: #b6cde6;
+    --status-neutral-fg: #5e6b78;
+    --status-neutral-bg: #eef1f4;
+    --status-neutral-border: #cbd3da;
+    /* Terminal and editor */
+    --terminal-background: #101416;
+    --terminal-foreground: #c9d3d8;
+    --terminal-input: #e4eeeb;
+    --terminal-cursor: #ffffff;
+    --terminal-selection: #78aaff40;
+    --text-on-terminal-dim: #a2acb8;
+    --border-on-terminal: #3a424d;
+    --border-on-terminal-control: #68727e;
+    --surface-on-terminal: #1c2027;
+    /* Elevation */
+    --shadow-overlay: 0 8px 28px #25313c1f;
+  }
+}
+
+:root[data-theme="porcelain"] {
+  color-scheme: light;
+  /* Surfaces and boundaries */
+  --surface-canvas: #f9fafc;
+  --surface-default: #ffffff;
+  --surface-raised: #eef2f7;
+  --surface-scrim: #25313c73;
+  --border-subtle: #e0e5eb;
+  --border-control: #838689;
+  --focus-ring: #286bf0;
+  /* Text */
+  --text-primary: #25313c;
+  --text-secondary: #5e6b78;
+  --text-on-accent: #ffffff;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #78899a;
+  /* Accent and actions */
+  --accent-primary: #286bf0;
+  --accent-strong: #1b54c4;
+  --accent-subtle: #e9f0ff;
+  --accent-hover: #1b54c4;
+  --danger-bg: #b03434;
+  --danger-fg: #ffffff;
+  --danger-hover: #8e2727;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #1f7a54;
+  --status-success-bg: #e4f3ea;
+  --status-success-border: #b8dcc8;
+  --status-warning-fg: #7e5712;
+  --status-warning-bg: #faf0dc;
+  --status-warning-border: #e0c68c;
+  --status-error-fg: #b03434;
+  --status-error-bg: #fbe9e9;
+  --status-error-border: #e8b8b8;
+  --status-info-fg: #1f5c96;
+  --status-info-bg: #e8f0fa;
+  --status-info-border: #b6cde6;
+  --status-neutral-fg: #5e6b78;
+  --status-neutral-bg: #eef1f4;
+  --status-neutral-border: #cbd3da;
+  /* Terminal and editor */
+  --terminal-background: #101416;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #78aaff40;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 8px 28px #25313c1f;
+}
+
+/* Midnight is specified but NOT shipped in plan/28: its values
+ * are here and pass the completeness and contrast tests, but it is
+ * not offered in the switcher, its layout variant is not built, and
+ * it has no browser acceptance screens (ADR 0027 §5). Keeping the
+ * values costs almost nothing; keeping a layout variant would cost
+ * a third responsive acceptance pass. */
+:root[data-theme="midnight"] {
+  color-scheme: dark;
+  /* Surfaces and boundaries */
+  --surface-canvas: #0b1322;
+  --surface-default: #111e32;
+  --surface-raised: #1a2d48;
+  --surface-scrim: #00000099;
+  --border-subtle: #243752;
+  --border-control: #517bb8;
+  --focus-ring: #94bff5;
+  /* Text */
+  --text-primary: #e0eafa;
+  --text-secondary: #8b9fb9;
+  --text-on-accent: #111518;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #6c7b90;
+  /* Accent and actions */
+  --accent-primary: #94bff5;
+  --accent-strong: #94bff5;
+  --accent-subtle: #213552;
+  --accent-hover: #a2cbff;
+  --danger-bg: #f08c8c;
+  --danger-fg: #111518;
+  --danger-hover: #f5a3a3;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #6fc79b;
+  --status-success-bg: #17302a;
+  --status-success-border: #2e5648;
+  --status-warning-fg: #e0ae5e;
+  --status-warning-bg: #332918;
+  --status-warning-border: #5a4a2b;
+  --status-error-fg: #f08c8c;
+  --status-error-bg: #3a2020;
+  --status-error-border: #603a3a;
+  --status-info-fg: #8cb6e8;
+  --status-info-bg: #182b3d;
+  --status-info-border: #31485f;
+  --status-neutral-fg: #a6b0b8;
+  --status-neutral-bg: #262b30;
+  --status-neutral-border: #434a50;
+  /* Terminal and editor */
+  --terminal-background: #0a1323;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #78aaff40;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 12px 32px #00000066;
+}
+
+/* Studio is specified but NOT shipped in plan/28: its values
+ * are here and pass the completeness and contrast tests, but it is
+ * not offered in the switcher, its layout variant is not built, and
+ * it has no browser acceptance screens (ADR 0027 §5). Keeping the
+ * values costs almost nothing; keeping a layout variant would cost
+ * a third responsive acceptance pass. */
+:root[data-theme="studio"] {
+  color-scheme: light;
+  /* Surfaces and boundaries */
+  --surface-canvas: #f4f1eb;
+  --surface-default: #faf8f3;
+  --surface-raised: #eae5dd;
+  --surface-scrim: #25313c73;
+  --border-subtle: #ded8ce;
+  --border-control: #807d77;
+  --focus-ring: #b6653f;
+  /* Text */
+  --text-primary: #35332e;
+  --text-secondary: #6c6256;
+  --text-on-accent: #ffffff;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #897c6d;
+  /* Accent and actions */
+  --accent-primary: #b6653f;
+  --accent-strong: #984d2e;
+  --accent-subtle: #f1e2d7;
+  --accent-hover: #7d3f26;
+  --danger-bg: #b03434;
+  --danger-fg: #ffffff;
+  --danger-hover: #8e2727;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #1f7048;
+  --status-success-bg: #e6f0e4;
+  --status-success-border: #bad6b6;
+  --status-warning-fg: #7a5310;
+  --status-warning-bg: #f7ebd5;
+  --status-warning-border: #dec188;
+  --status-error-fg: #a93430;
+  --status-error-bg: #f8e7e3;
+  --status-error-border: #e5b6af;
+  --status-info-fg: #1d5580;
+  --status-info-bg: #e5eef4;
+  --status-info-border: #b4ccdd;
+  --status-neutral-fg: #615a4e;
+  --status-neutral-bg: #ede9e1;
+  --status-neutral-border: #cfc7b9;
+  /* Terminal and editor */
+  --terminal-background: #252420;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #78aaff40;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 8px 28px #25313c1f;
+}
+
+/* Industrial is specified but NOT shipped in plan/28: its values
+ * are here and pass the completeness and contrast tests, but it is
+ * not offered in the switcher, its layout variant is not built, and
+ * it has no browser acceptance screens (ADR 0027 §5). Keeping the
+ * values costs almost nothing; keeping a layout variant would cost
+ * a third responsive acceptance pass. */
+:root[data-theme="industrial"] {
+  color-scheme: dark;
+  /* Surfaces and boundaries */
+  --surface-canvas: #121416;
+  --surface-default: #191b1d;
+  --surface-raised: #25282a;
+  --surface-scrim: #00000099;
+  --border-subtle: #363a3d;
+  --border-control: #6e767c;
+  --focus-ring: #e9bb44;
+  /* Text */
+  --text-primary: #e7e7e4;
+  --text-secondary: #9b9c95;
+  --text-on-accent: #111518;
+  --text-on-terminal: #c9d3d8;
+  --text-disabled: #757670;
+  /* Accent and actions */
+  --accent-primary: #e9bb44;
+  --accent-strong: #e9bb44;
+  --accent-subtle: #393323;
+  --accent-hover: #fed059;
+  --danger-bg: #f08c8c;
+  --danger-fg: #111518;
+  --danger-hover: #f5a3a3;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #6fc79b;
+  --status-success-bg: #17302a;
+  --status-success-border: #2e5648;
+  --status-warning-fg: #e0ae5e;
+  --status-warning-bg: #332918;
+  --status-warning-border: #5a4a2b;
+  --status-error-fg: #f08c8c;
+  --status-error-bg: #3a2020;
+  --status-error-border: #603a3a;
+  --status-info-fg: #8cb6e8;
+  --status-info-bg: #182b3d;
+  --status-info-border: #31485f;
+  --status-neutral-fg: #a6b0b8;
+  --status-neutral-bg: #262b30;
+  --status-neutral-border: #434a50;
+  /* Terminal and editor */
+  --terminal-background: #101214;
+  --terminal-foreground: #c9d3d8;
+  --terminal-input: #e4eeeb;
+  --terminal-cursor: #ffffff;
+  --terminal-selection: #78aaff40;
+  --text-on-terminal-dim: #a2acb8;
+  --border-on-terminal: #3a424d;
+  --border-on-terminal-control: #68727e;
+  --surface-on-terminal: #1c2027;
+  /* Elevation */
+  --shadow-overlay: 0 12px 32px #00000066;
 }

@@ -16,10 +16,22 @@
 
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import {
+  Boxes,
+  Circle,
+  CircleDot,
+  Cpu,
+  HardDrive,
+  Layers,
+  MemoryStick,
+  TerminalSquare,
+} from "lucide-vue-next";
 
 import { ACTION_AUDIT_VIEW, ACTION_ENROLLMENT_MANAGE } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
 import ActivityTimeline from "../components/dashboard/ActivityTimeline.vue";
 import HealthCard from "../components/dashboard/HealthCard.vue";
@@ -147,12 +159,16 @@ function reportingCaption(name: string): string | undefined {
 
     <p class="sr-only" role="status" aria-live="polite">{{ announcement }}</p>
 
-    <AsyncState v-if="dashboard.state === 'loading'" state="loading">
-      正在載入 Dashboard…
-    </AsyncState>
-    <AsyncState v-else-if="dashboard.state === 'forbidden'" state="forbidden">
-      你沒有檢視 Dashboard 的權限。
-    </AsyncState>
+    <UiLoadingState
+      v-if="dashboard.state === 'loading'"
+      label="正在載入 Dashboard"
+    />
+    <UiInlineNotice
+      v-else-if="dashboard.state === 'forbidden'"
+      tone="error"
+      title="無法存取"
+      >你沒有檢視 Dashboard 的權限。</UiInlineNotice
+    >
     <ErrorNotice
       v-else-if="dashboard.state === 'error'"
       :error="dashboard.error"
@@ -162,44 +178,48 @@ function reportingCaption(name: string): string | undefined {
     <template v-else-if="blocks">
       <!-- A refresh that failed keeps the numbers on screen and says so, rather than
            discarding readable data because one poll did not land. -->
-      <AsyncState v-if="dashboard.error" state="stale" class="notice">
-        最近一次更新失敗，以下為上次成功取得的資料。
-      </AsyncState>
+      <UiInlineNotice
+        v-if="dashboard.error"
+        class="notice"
+        tone="stale"
+        title="資料可能不是最新"
+        >最近一次更新失敗，以下為上次成功取得的資料。</UiInlineNotice
+      >
 
-      <AsyncState
+      <UiInlineNotice
         v-if="dashboard.degradedBlocks.length"
-        state="partial"
         class="notice"
-      >
-        有
+        tone="stale"
+        title="部分資料無法取得"
+        >有
         {{ dashboard.degradedBlocks.length }}
-        個區塊暫時無法取得；其餘數字仍為真實資料。
-      </AsyncState>
-
-      <AsyncState
-        v-if="dashboard.isEmptyDeployment"
-        state="empty"
-        class="notice"
+        個區塊暫時無法取得；其餘數字仍為真實資料。</UiInlineNotice
       >
-        尚未安裝任何 Node。
+
+      <UiEmptyState
+        v-if="dashboard.isEmptyDeployment"
+        class="notice"
+        variant="empty"
+        title="沒有資料"
+        >尚未安裝任何 Node。
         <RouterLink v-if="canManageEnrollment" :to="{ name: 'enrollment' }">
           建立安裝 Token 以加入第一個 Node
         </RouterLink>
-        <span v-else>請聯繫 Admin 建立安裝 Token。</span>
-      </AsyncState>
-      <AsyncState
-        v-else-if="dashboard.isFleetOffline"
-        state="offline"
-        class="notice"
+        <span v-else>請聯繫 Admin 建立安裝 Token。</span></UiEmptyState
       >
-        所有 Node 都不在線。請依 heartbeat-loss runbook 檢查網路與各節點的
-        agentd 服務。
-      </AsyncState>
+      <UiInlineNotice
+        v-else-if="dashboard.isFleetOffline"
+        class="notice"
+        tone="warning"
+        title="來源目前離線"
+        >所有 Node 都不在線。請依 heartbeat-loss runbook 檢查網路與各節點的
+        agentd 服務。</UiInlineNotice
+      >
 
       <div class="grid" :data-reduced-motion="reducedMotion">
         <MetricCard
           title="線上 Node"
-          icon="●"
+          :icon="CircleDot"
           :value="blocks.nodes.data?.online ?? null"
           :status="blocks.nodes.status"
           :generated-at="blocks.nodes.generated_at"
@@ -215,7 +235,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="離線 Node"
-          icon="○"
+          :icon="Circle"
           :value="blocks.nodes.data?.offline ?? null"
           :status="blocks.nodes.status"
           :generated-at="blocks.nodes.generated_at"
@@ -231,7 +251,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="執行中 Session"
-          icon="▷"
+          :icon="TerminalSquare"
           :value="sessions?.total_active ?? null"
           :status="blocks.sessions.status"
           :generated-at="blocks.sessions.generated_at"
@@ -246,7 +266,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="Claude Session"
-          icon="◆"
+          :icon="Cpu"
           :value="sessions ? (sessions.per_runtime.claude ?? 0) : null"
           :status="blocks.sessions.status"
           :generated-at="blocks.sessions.generated_at"
@@ -256,7 +276,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="Codex Session"
-          icon="◇"
+          :icon="MemoryStick"
           :value="sessions ? (sessions.per_runtime.codex ?? 0) : null"
           :status="blocks.sessions.status"
           :generated-at="blocks.sessions.generated_at"
@@ -266,7 +286,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="CPU（fleet 平均）"
-          icon="▮"
+          :icon="HardDrive"
           :value="measurement('cpu_usage')"
           unit="%"
           :status="blocks.resources.status"
@@ -278,7 +298,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="記憶體（fleet 平均）"
-          icon="▩"
+          :icon="Boxes"
           :value="measurement('memory_usage')"
           unit="%"
           :status="blocks.resources.status"
@@ -290,7 +310,7 @@ function reportingCaption(name: string): string | undefined {
         />
         <MetricCard
           title="磁碟（fleet 平均）"
-          icon="▤"
+          :icon="Layers"
           :value="measurement('disk_usage')"
           unit="%"
           :status="blocks.resources.status"
@@ -349,7 +369,7 @@ function reportingCaption(name: string): string | undefined {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .head-actions {
@@ -361,15 +381,15 @@ function reportingCaption(name: string): string | undefined {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font-size: 12px;
 }
 .ghost {
   padding: 8px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
   font-weight: 600;
 }
 .sr-only {

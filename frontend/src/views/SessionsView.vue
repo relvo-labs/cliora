@@ -1,13 +1,35 @@
 <script setup lang="ts">
+// The session list. plan/28 changes three things about it.
+//
+// **The name and the path are one column, not two.** A path in its own column
+// sets that column's width from its longest value, which is how a table gets
+// wide enough to need a page-level scrollbar. As a second line under the name it
+// costs nothing horizontally, and the name is what identifies the row anyway.
+//
+// **Search and a runtime filter**, over the rows already fetched. No new
+// request and no new endpoint: this is a display filter. It exists because
+// plan/28 requires the empty-list and no-results states to be *different*, and
+// without a filter there is no no-results state to distinguish.
+//
+// **Empty and no-results say different things**, because the next action
+// differs: one is "create the first session", the other is "clear the filter".
+// The component that used to render both printed the same line for each.
+
 import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
+import { RefreshCw, Search } from "lucide-vue-next";
 
 import { ACTION_SESSION_CREATE } from "../api/dto";
 import type { SessionDetail } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
+import ErrorNotice from "../components/common/ErrorNotice.vue";
 import StatusBadge from "../components/common/StatusBadge.vue";
 import NewSessionDialog from "../components/session/NewSessionDialog.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiDataTable from "../components/ui/UiDataTable.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useAuthStore } from "../stores/auth";
 import { useSessionsStore } from "../stores/sessions";
@@ -20,6 +42,9 @@ const router = useRouter();
 const canCreate = computed(() => auth.hasPermission(ACTION_SESSION_CREATE));
 const dialogOpen = ref(false);
 
+const query = ref("");
+const runtimeFilter = ref("all");
+
 const resource = useAsyncResource(() => sessions.fetchList(), {
   isEmpty: (list) => list.length === 0,
 });
@@ -29,6 +54,33 @@ const displayState = computed(() =>
     ? "empty"
     : resource.state.value,
 );
+
+// Offered runtimes come from the rows themselves rather than a fixed list: a
+// filter that offers a runtime no session uses is a dead end, and one that
+// omits a runtime that is present hides rows.
+const runtimes = computed(() => [
+  ...new Set(sessions.list.map((s) => s.runtime)),
+]);
+
+const filtered = computed(() => {
+  const needle = query.value.trim().toLowerCase();
+  return sessions.list.filter((s) => {
+    const matchesRuntime =
+      runtimeFilter.value === "all" || s.runtime === runtimeFilter.value;
+    if (!matchesRuntime) return false;
+    if (!needle) return true;
+    return `${s.name} ${s.workspace}`.toLowerCase().includes(needle);
+  });
+});
+
+const isFiltered = computed(
+  () => query.value.trim() !== "" || runtimeFilter.value !== "all",
+);
+
+function clearFilters(): void {
+  query.value = "";
+  runtimeFilter.value = "all";
+}
 
 onMounted(() => resource.run());
 
@@ -47,67 +99,114 @@ function onCreated(session: SessionDetail): void {
     <header class="head">
       <div>
         <h1>Sessions</h1>
-        <p>CLI sessions running across your nodes.</p>
+        <p>跨節點的工作，從這裡繼續。</p>
       </div>
       <div class="head-actions">
-        <button
-          class="ghost"
-          :disabled="resource.state.value === 'loading'"
+        <UiButton
+          variant="secondary"
+          :busy="resource.state.value === 'loading'"
           @click="resource.run()"
         >
-          Refresh
-        </button>
-        <button v-if="canCreate" class="primary" @click="dialogOpen = true">
-          New session
-        </button>
+          <template #icon><RefreshCw class="icon" /></template>
+          重新整理
+        </UiButton>
+        <UiButton v-if="canCreate" variant="primary" @click="dialogOpen = true">
+          建立 Session
+        </UiButton>
       </div>
     </header>
 
-    <AsyncState v-if="displayState === 'loading'" state="loading"
-      >Loading sessions…</AsyncState
-    >
-    <AsyncState v-else-if="displayState === 'forbidden'" state="forbidden">
-      You do not have permission to view sessions.
-    </AsyncState>
-    <AsyncState v-else-if="displayState === 'error'" state="error">
-      Could not load sessions.
-      <button class="link" @click="resource.run()">Retry</button>
-    </AsyncState>
-    <AsyncState v-else-if="displayState === 'empty'" state="empty">
-      No sessions yet.
-      <span v-if="canCreate">Start one with “New session”.</span>
-    </AsyncState>
-
-    <div v-if="displayState === 'success'" class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Runtime</th>
-            <th>Workspace</th>
-            <th>Status</th>
-            <th>Started</th>
-            <th>Last activity</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="s in sessions.list" :key="s.id">
-            <td>
-              <button class="name" @click="open(s.id)">{{ s.name }}</button>
-            </td>
-            <td>{{ s.runtime }}</td>
-            <td class="path" :title="s.workspace">{{ s.workspace }}</td>
-            <td><StatusBadge :status="s.status" /></td>
-            <td :title="s.started_at ?? ''">
-              {{ formatInstant(s.started_at) }}
-            </td>
-            <td :title="s.last_activity_at ?? ''">
-              {{ formatInstant(s.last_activity_at) }}
-            </td>
-          </tr>
-        </tbody>
-      </table>
+    <!-- Hidden while there is nothing to filter: a search box over an empty
+         list invites the user to search for something that cannot be there. -->
+    <div v-if="displayState === 'success'" class="filters">
+      <label class="search">
+        <Search class="icon" aria-hidden="true" />
+        <span class="sr-only">搜尋 Sessions</span>
+        <input
+          v-model="query"
+          type="search"
+          placeholder="搜尋名稱或工作目錄"
+          aria-label="搜尋名稱或工作目錄"
+        />
+      </label>
+      <label class="runtime">
+        <span class="sr-only">Runtime 篩選</span>
+        <select v-model="runtimeFilter" aria-label="Runtime 篩選">
+          <option value="all">所有 Runtime</option>
+          <option v-for="rt in runtimes" :key="rt" :value="rt">{{ rt }}</option>
+        </select>
+      </label>
+      <!-- The filter state in words, not only in the controls' values: a user
+           who has scrolled past the toolbar should be able to tell why the list
+           is short. -->
+      <p v-if="isFiltered" class="filter-note" role="status">
+        顯示 {{ filtered.length }} / {{ sessions.list.length }} 筆
+      </p>
     </div>
+
+    <UiLoadingState
+      v-if="displayState === 'loading'"
+      label="正在載入 Sessions"
+    />
+    <UiInlineNotice
+      v-else-if="displayState === 'forbidden'"
+      tone="error"
+      title="無法存取"
+      message="你的角色沒有檢視 Sessions 的權限。UI 隱藏不能取代伺服器授權。"
+    />
+    <ErrorNotice
+      v-else-if="displayState === 'error'"
+      :error="resource.error.value"
+      @retry="resource.run()"
+    />
+    <UiEmptyState
+      v-else-if="displayState === 'empty'"
+      variant="empty"
+      title="尚未建立 Session"
+      detail="從「建立 Session」開始一段新的工作。"
+    >
+      <!-- The create entry only for someone who holds session.create. A
+           courtesy, not authorization: the server refuses either way. -->
+      <template v-if="canCreate" #action>
+        <UiButton variant="primary" @click="dialogOpen = true">
+          建立 Session
+        </UiButton>
+      </template>
+    </UiEmptyState>
+
+    <UiDataTable
+      v-else
+      label="Sessions"
+      :columns="['SESSION / WORKSPACE', 'NODE', 'RUNTIME', '狀態', '最近活動']"
+      :no-results="filtered.length === 0"
+    >
+      <template #no-results>
+        <UiEmptyState
+          variant="no-results"
+          title="沒有符合條件的項目"
+          detail="調整搜尋字串，或清除 Runtime 篩選。"
+        >
+          <template #action>
+            <UiButton variant="secondary" @click="clearFilters">
+              清除搜尋與篩選
+            </UiButton>
+          </template>
+        </UiEmptyState>
+      </template>
+      <tr v-for="s in filtered" :key="s.id">
+        <td>
+          <UiButton variant="quiet" @click="open(s.id)">{{ s.name }}</UiButton>
+          <!-- The path as a second line. -->
+          <small :title="s.workspace">{{ s.workspace }}</small>
+        </td>
+        <td>{{ s.node_id }}</td>
+        <td>{{ s.runtime }}</td>
+        <td><StatusBadge :status="s.status" kind="session" /></td>
+        <td :title="s.last_activity_at ?? ''">
+          {{ formatInstant(s.last_activity_at) }}
+        </td>
+      </tr>
+    </UiDataTable>
 
     <NewSessionDialog
       :open="dialogOpen"
@@ -122,81 +221,76 @@ function onCreated(session: SessionDetail): void {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  margin-bottom: 20px;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
 }
 .head h1 {
   margin: 0;
   font-size: 24px;
+  letter-spacing: -0.02em;
 }
 .head p {
-  margin: 4px 0 0;
-  color: var(--text-muted);
+  margin: 6px 0 0;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .head-actions {
   display: flex;
   gap: 10px;
 }
-.ghost,
-.primary {
-  padding: 8px 14px;
-  border-radius: var(--radius-sm);
-  font-weight: 600;
+.icon {
+  width: 15px;
+  height: 15px;
 }
-.ghost {
-  border: 1px solid var(--border-default);
-  background: var(--surface-default);
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.search {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search .icon {
+  position: absolute;
+  left: 10px;
   color: var(--text-secondary);
+  pointer-events: none;
 }
-.primary {
-  border: 0;
-  background: var(--action-primary);
-  color: var(--text-inverse);
-}
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
+.search input {
+  min-width: 260px;
+  min-height: var(--density-control);
+  padding: 0 10px 0 32px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-default);
+  color: var(--text-primary);
   font-size: 13px;
 }
-th,
-td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-default);
-  white-space: nowrap;
+.runtime select {
+  min-height: var(--density-control);
+  padding: 0 8px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-default);
+  color: var(--text-primary);
+  font-size: 13px;
 }
-th {
-  color: var(--text-muted);
-  font-weight: 600;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+.filter-note {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
 }
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-.name {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--action-primary);
-  font-weight: 600;
-}
-.path {
-  max-width: 280px;
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
   overflow: hidden;
-  text-overflow: ellipsis;
-}
-.link {
-  border: 0;
-  background: none;
-  color: var(--action-primary);
-  font-weight: 600;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 </style>

@@ -68,6 +68,26 @@ jobs:
         run: scripts/ly/layout-gates.sh panels
       - name: the sidebar width in style.md matches the token
         run: scripts/ly/layout-gates.sh sidebar
+      # Four colour-contract invariants (plan/28). Same reasoning as the three
+      # above and the same division of labour: these are text and arithmetic
+      # checks that run on every push, and they cannot see a pixel. The
+      # measurements they cannot make — that a theme switch recolours in place
+      # rather than rebuilding the terminal, that a translucent colour
+      # composites legibly, that the theme is in force on the first paint — need
+      # a browser and a full stack and live in frontend/tests/e2e/theme.spec.ts.
+      #
+      # What these four do buy is the failure that *accumulates*. They cannot
+      # stop a token being used wrongly once; they stop the palette being
+      # bypassed altogether, which is how 69 literal colours reached 13 files
+      # while every gate stayed green.
+      - name: no literal colour outside the two theme files
+        run: scripts/vr/vr-gates.sh literal-color
+      - name: no retired token name is back
+        run: scripts/vr/vr-gates.sh legacy-token
+      - name: no text glyph used as an icon, and theme-boot.js stays tiny
+        run: scripts/vr/vr-gates.sh glyph-icon
+      - name: tokens.css and themes.ts agree, and every pair meets its target
+        run: scripts/vr/vr-gates.sh theme-contract
   # Deployment configuration, checked without a platform account. It belongs in the baseline
   # gate rather than a phase workflow because the two edge
   # configurations can be made to disagree by a change to either one of them, and the

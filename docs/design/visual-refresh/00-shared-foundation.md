@@ -50,7 +50,7 @@ Runtime就緒與Session執行中不代表Agent正在思考；沒有可靠資料�
 | accent.primary / subtle | --accent / --tint | 品牌動作／選取背景 |
 | radius.panel | --radius | 元件可另定義button與dialog半徑 |
 
-新增text.onAccent、text.onTerminal、border.control、focus.ring以及狀態foreground/background tokens。每個主題必須明確定義，不用鏈式fallback掩蓋缺漏。Naive UI、xterm主題與Monaco主題使用相同語意來源；不能只更新頁面CSS而忽略終端及編輯器。
+新增text.onAccent、text.onTerminal、border.control、focus.ring以及狀態foreground/background tokens。每個主題必須明確定義，不用鏈式fallback掩蓋缺漏。xterm主題與Monaco主題使用相同語意來源；不能只更新頁面CSS而忽略終端及編輯器（**修訂（`plan/28`，ADR 0027 §6）：原本此處與各風格文件的「原型差距」段都寫著 Naive UI。它從未被使用，相依已移除**——所以本段列的四件既有 UI 元件能力（Dialog 焦點約束與返回、分頁箭頭鍵、抽屜關閉、樹狀鍵盤操作）其中兩件由本期自建：Dialog 焦點約束與抽屜。另兩件已經存在且做得對：`WorkspaceTabs` 的 roving tabindex 與 `FileTree` 的鍵盤操作）。
 
 ## 可讀性與輸入
 
@@ -60,7 +60,7 @@ Runtime就緒與Session執行中不代表Agent正在思考；沒有可靠資料�
 - Disabled保留可理解的原因；placeholder不取代label。
 - 按鈕具可讀名稱；圖示按鈕提供aria-label及tooltip。Lucide作為正式UI圖示來源，不混入文字符號充當導覽icon。
 - 觸控目標44px，桌面緊湊視覺控制可使用額外點擊區。
-- Dialog焦點約束及返回、Esc、分頁箭頭鍵、抽屜關閉與樹狀鍵盤操作使用既有UI元件能力。
+- Dialog焦點約束及返回、Esc、分頁箭頭鍵、抽屜關閉與樹狀鍵盤操作**自建**（`plan/28`：沒有 UI 元件庫可以「使用既有能力」，見 §Tokens 的修訂）；Dialog 與抽屜共用一個 `useFocusTrap`。
 - 快捷鍵不可攔截終端原生輸入；僅在非終端焦點下啟用全域快捷鍵。
 
 ## 終端與檔案

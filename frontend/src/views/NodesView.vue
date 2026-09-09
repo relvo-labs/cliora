@@ -5,7 +5,12 @@ import { useRouter } from "vue-router";
 import { ApiError } from "../api/client";
 import { ACTION_NODE_MANAGE } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
-import AsyncState from "../components/common/AsyncState.vue";
+import UiActionMenu from "../components/ui/UiActionMenu.vue";
+import UiButton from "../components/ui/UiButton.vue";
+import UiDataTable from "../components/ui/UiDataTable.vue";
+import UiEmptyState from "../components/ui/UiEmptyState.vue";
+import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
+import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import StatusBadge from "../components/common/StatusBadge.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
@@ -113,105 +118,153 @@ function open(id: string): void {
       </button>
     </header>
 
-    <p v-if="actionError" class="banner" role="alert">{{ actionError }}</p>
+    <UiInlineNotice v-if="actionError" tone="error" :message="actionError" />
 
-    <AsyncState v-if="displayState === 'loading'" state="loading"
-      >Loading nodes…</AsyncState
+    <UiLoadingState v-if="displayState === 'loading'" label="Loading nodes" />
+    <UiInlineNotice
+      v-else-if="displayState === 'forbidden'"
+      tone="error"
+      title="無法存取"
+      >You do not have permission to view nodes.</UiInlineNotice
     >
-    <AsyncState v-else-if="displayState === 'forbidden'" state="forbidden">
-      You do not have permission to view nodes.
-    </AsyncState>
-    <AsyncState v-else-if="displayState === 'error'" state="error">
-      Could not load nodes.
-      <button class="link" @click="resource.run()">Retry</button>
-    </AsyncState>
-    <AsyncState v-else-if="displayState === 'empty'" state="empty">
-      No nodes yet. Create an enrollment token to install one.
-    </AsyncState>
+    <UiInlineNotice
+      v-else-if="displayState === 'error'"
+      tone="error"
+      title="載入失敗"
+      >Could not load nodes.
+      <button class="link" @click="resource.run()">
+        Retry
+      </button></UiInlineNotice
+    >
+    <UiEmptyState
+      v-else-if="displayState === 'empty'"
+      variant="empty"
+      title="沒有資料"
+      >No nodes yet. Create an enrollment token to install one.</UiEmptyState
+    >
 
-    <AsyncState
+    <UiInlineNotice
       v-if="fleetNote === 'offline'"
-      state="offline"
       class="fleet-note"
+      tone="warning"
+      title="來源目前離線"
+      >部分節點目前離線，狀態欄顯示各節點最後在線時間。</UiInlineNotice
     >
-      部分節點目前離線，狀態欄顯示各節點最後在線時間。
-    </AsyncState>
-    <AsyncState
+    <UiInlineNotice
       v-else-if="fleetNote === 'stale'"
-      state="stale"
       class="fleet-note"
+      tone="stale"
+      title="資料可能不是最新"
+      >部分節點為降級 (Degraded) 狀態，資料可能不是最新。</UiInlineNotice
     >
-      部分節點為降級 (Degraded) 狀態，資料可能不是最新。
-    </AsyncState>
-    <AsyncState
+    <UiInlineNotice
       v-else-if="fleetNote === 'partial'"
-      state="partial"
       class="fleet-note"
+      tone="stale"
+      title="部分資料無法取得"
+      >部分線上節點的 runtime 尚未全部偵測到 (Claude / Codex)。</UiInlineNotice
     >
-      部分線上節點的 runtime 尚未全部偵測到 (Claude / Codex)。
-    </AsyncState>
 
-    <div v-if="displayState === 'success'" class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Node</th>
-            <th>Status</th>
-            <th>Hostname</th>
-            <th>OS</th>
-            <th>Claude</th>
-            <th>Codex</th>
-            <th>Sessions</th>
-            <th>Last seen</th>
-            <th v-if="canManage" class="actions-col">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="node in nodes.list" :key="node.id">
-            <td>
-              <button class="name" @click="open(node.id)">
-                {{ node.name }}
+    <UiDataTable
+      v-if="displayState === 'success'"
+      label="Nodes"
+      :columns="
+        canManage
+          ? [
+              'NODE / HOSTNAME',
+              '狀態',
+              'OS',
+              'RUNTIME',
+              'SESSIONS',
+              '最後在線',
+              '',
+            ]
+          : ['NODE / HOSTNAME', '狀態', 'OS', 'RUNTIME', 'SESSIONS', '最後在線']
+      "
+    >
+      <tr v-for="node in nodes.list" :key="node.id">
+        <td>
+          <UiButton variant="quiet" @click="open(node.id)">
+            {{ node.name }}
+          </UiButton>
+          <!-- The hostname as a second line rather than a second column, for
+               the same reason paths are: its longest value would otherwise set
+               the column width. -->
+          <small>{{ node.hostname }}</small>
+        </td>
+        <td><StatusBadge :status="node.status" kind="node" /></td>
+        <td>{{ node.os ?? "無資料" }}</td>
+        <td class="runtimes">
+          <!-- Runtime availability as two named badges rather than two columns
+               of "Ready" or an em dash. "—" in a column headed Claude does not
+               say whether the runtime is missing or the node never reported. -->
+          <StatusBadge
+            :status="node.claude_available ? 'available' : 'unavailable'"
+            kind="runtime"
+          />
+          <span class="rt-name">Claude</span>
+          <StatusBadge
+            :status="node.codex_available ? 'available' : 'unavailable'"
+            kind="runtime"
+          />
+          <span class="rt-name">Codex</span>
+        </td>
+        <td class="num">{{ node.session_count }}</td>
+        <td :title="node.last_seen_at ?? ''">
+          {{ formatInstant(node.last_seen_at) }}
+        </td>
+        <td v-if="canManage">
+          <!-- Behind a menu: Remove used to sit inline in every row, one pixel
+               from View. Same permission check, same actions. -->
+          <UiActionMenu :label="`${node.name} 的操作`">
+            <template #default="{ close }">
+              <button
+                type="button"
+                @click="
+                  close();
+                  open(node.id);
+                "
+              >
+                查看節點
               </button>
-            </td>
-            <td><StatusBadge :status="node.status" /></td>
-            <td>{{ node.hostname }}</td>
-            <td>{{ node.os ?? "—" }}</td>
-            <td>{{ node.claude_available ? "Ready" : "—" }}</td>
-            <td>{{ node.codex_available ? "Ready" : "—" }}</td>
-            <td>{{ node.session_count }}</td>
-            <td :title="node.last_seen_at ?? ''">
-              {{ formatInstant(node.last_seen_at) }}
-            </td>
-            <td v-if="canManage" class="actions-col">
-              <button class="link" @click="open(node.id)">View</button>
               <button
                 v-if="node.status === 'disabled'"
-                class="link"
+                type="button"
                 :disabled="actingId === node.id"
-                @click="toggleEnabled(node.id, true)"
+                @click="
+                  close();
+                  toggleEnabled(node.id, true);
+                "
               >
-                Enable
+                啟用
               </button>
               <button
                 v-else
-                class="link"
+                type="button"
                 :disabled="actingId === node.id"
-                @click="toggleEnabled(node.id, false)"
+                @click="
+                  close();
+                  toggleEnabled(node.id, false);
+                "
               >
-                Disable
+                停用
               </button>
               <button
-                class="link danger"
+                type="button"
+                data-danger
                 :disabled="actingId === node.id"
-                @click="removeTarget = { id: node.id, name: node.name }"
+                @click="
+                  close();
+                  removeTarget = { id: node.id, name: node.name };
+                "
               >
-                Remove
+                移除節點…
               </button>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+            </template>
+          </UiActionMenu>
+        </td>
+      </tr>
+    </UiDataTable>
 
     <ConfirmDialog
       :open="removeTarget !== null"
@@ -239,77 +292,31 @@ function open(id: string): void {
 }
 .head p {
   margin: 4px 0 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 13px;
 }
 .ghost {
   padding: 8px 14px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
-  color: var(--text-secondary);
-}
-.banner {
-  margin: 0 0 16px;
-  padding: 10px 12px;
-  border-radius: var(--radius-sm);
-  background: #f9eaea;
-  color: var(--status-error);
-  font-size: 13px;
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+  color: var(--text-primary);
 }
 .fleet-note {
   margin-bottom: 16px;
 }
-.table-wrap {
-  overflow-x: auto;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
-th,
-td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--border-default);
+.runtimes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   white-space: nowrap;
 }
-th {
-  color: var(--text-muted);
-  font-weight: 600;
+.rt-name {
+  color: var(--text-secondary);
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  margin-right: 6px;
 }
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-.name {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--action-primary);
-  font-weight: 600;
-}
-.actions-col {
-  text-align: right;
-}
-.link {
-  padding: 4px 8px;
-  border: 0;
-  background: none;
-  color: var(--action-primary);
-  font-weight: 600;
-}
-.link.danger {
-  color: var(--status-error);
-}
-.link:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.num {
+  font-variant-numeric: tabular-nums;
 }
 </style>

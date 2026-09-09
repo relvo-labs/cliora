@@ -262,6 +262,8 @@
 | FR-TERM-001.AC-12 | functional | covered-by-parent | — |
 | FR-TERM-001.AC-13 | functional | verifiable | — |
 | FR-TERM-001.AC-14 | functional | verifiable | — |
+| FR-TERM-001.AC-15 | functional | verifiable | — |
+| FR-TERM-001.AC-16 | functional | verifiable | — |
 | FR-TERM-002.AC-01 | functional | verifiable | — |
 | FR-TERM-003.AC-01 | functional | verifiable | — |
 | FR-TERM-003.AC-02 | functional | covered-by-parent | — |
@@ -277,6 +279,7 @@
 | FR-TERM-005.AC-03 | functional | covered-by-parent | — |
 | FR-TERM-005.AC-04 | functional | covered-by-parent | — |
 | FR-TERM-005.AC-05 | functional | covered-by-parent | — |
+| FR-TERM-005.AC-06 | functional | verifiable | — |
 | FR-TERM-006.AC-01 | functional | verifiable | — |
 | FR-TERM-006.AC-02 | functional | verifiable | — |
 | FR-TERM-006.AC-03 | functional | verifiable | — |
@@ -365,6 +368,14 @@
 | NFR-005.AC-08 | non_functional | verifiable | — |
 | NFR-005.AC-09 | non_functional | verifiable | — |
 | NFR-005.AC-10 | non_functional | verifiable | — |
+| NFR-006.AC-01 | non_functional | verifiable | — |
+| NFR-006.AC-02 | non_functional | verifiable | — |
+| NFR-006.AC-03 | non_functional | verifiable | — |
+| NFR-006.AC-04 | non_functional | verifiable | — |
+| NFR-006.AC-05 | non_functional | verifiable | — |
+| NFR-006.AC-06 | non_functional | verifiable | — |
+| NFR-006.AC-07 | non_functional | verifiable | — |
+| NFR-006.AC-08 | non_functional | verifiable | — |
 | SEC-001.AC-01 | security | verifiable | — |
 | SEC-001.AC-02 | security | verifiable | — |
 | SEC-001.AC-03 | security | verifiable | — |

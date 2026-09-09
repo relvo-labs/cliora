@@ -270,6 +270,8 @@
 | FR-TERM-001 | [FR-TERM-001.AC-12](../../research/prd.md#fr-term-001-ac-12) | CLI 原生審批選單 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-001 | [FR-TERM-001.AC-13](../../research/prd.md#fr-term-001-ac-13) | Terminal 面板必須填滿中央工作區的可用高度：終端機畫面高度不低於面板可用高度的 | plan:plan/09/02-panel-fill.md<br>source:research/tech.md | code:frontend/src/views/SessionWorkspaceView.vue | playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll |
 | FR-TERM-001 | [FR-TERM-001.AC-14](../../research/prd.md#fr-term-001-ac-14) | Session 工作區不得因版面高度計算而產生整頁滾動；Terminal 的可用高度必須來自 | plan:plan/09/01-app-shell-and-height.md<br>source:research/tech.md | code:frontend/src/components/layout/AppLayout.vue | playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll |
+| FR-TERM-001 | [FR-TERM-001.AC-15](../../research/prd.md#fr-term-001-ac-15) | 切換視覺主題後，終端 buffer、捲動位置、未送出的輸入與控制權四者不變， | plan:plan/28/00-execution-plan.md<br>source:research/prd.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/theme.spec.ts |
+| FR-TERM-001 | [FR-TERM-001.AC-16](../../research/prd.md#fr-term-001-ac-16) | 終端字級可由使用者調整 12–20px 並持久化；調整後重新 fit 且不重建連線。 | plan:plan/28/00-execution-plan.md<br>source:research/prd.md | code:frontend/src/components/session/TerminalFontControl.vue | playwright:frontend/tests/e2e/theme.spec.ts |
 | FR-TERM-002 | [FR-TERM-002.AC-01](../../research/prd.md#fr-term-002-ac-01) | 前端輸入應以低延遲 WebSocket 傳送至中央平台，再轉送至 Daemon PTY。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket<br>gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit |
 | FR-TERM-003 | [FR-TERM-003.AC-01](../../research/prd.md#fr-term-003-ac-01) | 瀏覽器尺寸變更時，前端需通知 Daemon： | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#connects to the authenticated session WS with a ws-ticket<br>gotest:daemon/internal/session#TestVerticalSlicePreservesBytesAndReportsExit |
 | FR-TERM-003 | [FR-TERM-003.AC-02](../../research/prd.md#fr-term-003-ac-02) | Rows | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
@@ -286,6 +288,7 @@
 | FR-TERM-005 | [FR-TERM-005.AC-03](../../research/prd.md#fr-term-005-ac-03) | Reconnecting | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-005 | [FR-TERM-005.AC-04](../../research/prd.md#fr-term-005-ac-04) | Disconnected | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
 | FR-TERM-005 | [FR-TERM-005.AC-05](../../research/prd.md#fr-term-005-ac-05) | Session Exited | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | — |
+| FR-TERM-005 | [FR-TERM-005.AC-06](../../research/prd.md#fr-term-005-ac-06) | 連線狀態必須在狀態列分列呈現，不得合併為單一指示：Session 狀態、 | plan:plan/28/00-execution-plan.md<br>source:research/prd.md | code:frontend/src/components/session/StatusBar.vue | vitest:frontend/src/views/SessionWorkspaceView.test.ts |
 | FR-TERM-006 | [FR-TERM-006.AC-01](../../research/prd.md#fr-term-006-ac-01) | WebSocket 中斷時，前端應自動重連。 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#reconnects on unexpected close using the bounded schedule |
 | FR-TERM-006 | [FR-TERM-006.AC-02](../../research/prd.md#fr-term-006-ac-02) | 1 秒 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#retries on the full 1/2/5/10/30 second schedule |
 | FR-TERM-006 | [FR-TERM-006.AC-03](../../research/prd.md#fr-term-006-ac-03) | 2 秒 | plan:plan/03/06-xterm-integration.md<br>source:research/tech.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/session.spec.ts<br>vitest:frontend/src/composables/useTerminalSession.test.ts#retries on the full 1/2/5/10/30 second schedule |
@@ -388,6 +391,14 @@
 | NFR-005 | [NFR-005.AC-08](../../research/prd.md#nfr-005-ac-08) | Edge | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
 | NFR-005 | [NFR-005.AC-09](../../research/prd.md#nfr-005-ac-09) | Safari | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
 | NFR-005 | [NFR-005.AC-10](../../research/prd.md#nfr-005-ac-10) | Firefox | source:research/tech.md | — | scenario:.github/workflows/p4.yml |
+| NFR-006 | [NFR-006.AC-01](../../research/prd.md#nfr-006-ac-01) | 使用者需要閱讀的文字，對其實際背景的對比不低於 4.5:1； | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/theme/contrast.ts | vitest:frontend/src/theme/theme.contrast.test.ts |
+| NFR-006 | [NFR-006.AC-02](../../research/prd.md#nfr-006-ac-02) | 每一個可聚焦控制項都有看得見的焦點指示，且不以 hover 代替鍵盤焦點。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/theme/base.css | playwright:frontend/tests/e2e/theme.spec.ts |
+| NFR-006 | [NFR-006.AC-03](../../research/prd.md#nfr-006-ac-03) | 狀態不以顏色單獨表達；每一個狀態同時有可讀文字。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/components/common/StatusBadge.vue | vitest:frontend/src/terminal.test.ts |
+| NFR-006 | [NFR-006.AC-04](../../research/prd.md#nfr-006-ac-04) | Dialog 開啟時焦點被限制在 Dialog 內，Esc 可關閉，關閉後焦點回到觸發它的元素。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/composables/useFocusTrap.ts | playwright:frontend/tests/e2e/theme.spec.ts |
+| NFR-006 | [NFR-006.AC-05](../../research/prd.md#nfr-006-ac-05) | 圖示按鈕有可讀名稱（aria-label）與 tooltip；tooltip 不得取代 aria-label | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/components/ui/UiIconButton.vue | vitest:frontend/src/components/layout/AppLayout.test.ts |
+| NFR-006 | [NFR-006.AC-06](../../research/prd.md#nfr-006-ac-06) | 1440×900、1024×768 與 390×844 下核心操作可觸及，且沒有不必要的整頁橫向溢出。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/components/layout/AppLayout.vue | playwright:frontend/tests/e2e/theme.spec.ts |
+| NFR-006 | [NFR-006.AC-07](../../research/prd.md#nfr-006-ac-07) | 視覺主題切換不改變任何授權、不中斷 Session、不重建終端。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/theme.spec.ts |
+| NFR-006 | [NFR-006.AC-08](../../research/prd.md#nfr-006-ac-08) | prefers-reduced-motion 下停用非必要動畫；終端內容永不套用動畫 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/theme/base.css | vitest:frontend/src/theme/theme.contract.test.ts |
 | SCOPE-001 | [SCOPE-001.AC-01](../../research/prd.md#scope-001-ac-01) | 不解析 Claude 或 Codex 的內部事件。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events |
 | SCOPE-002 | [SCOPE-002.AC-01](../../research/prd.md#scope-002-ac-01) | 不建立中央審批機制。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism |
 | SCOPE-003 | [SCOPE-003.AC-01](../../research/prd.md#scope-003-ac-01) | 不攔截或替代 CLI 原生權限確認。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt |
@@ -1368,12 +1379,18 @@
 - `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-11` (specified_by)
 - `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-12` (specified_by)
 - `manual:docs/runbooks/privileged-node-posture.md` ← `SEC-007.AC-02` (validated_by)
+- `code:frontend/src/components/common/StatusBadge.vue` ← `NFR-006.AC-03` (implemented_by)
 - `vitest:frontend/src/components/file/FileTree.test.ts` ← `FR-FILE-010.AC-12` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-04` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-04` (verified_by)
+- `vitest:frontend/src/components/layout/AppLayout.test.ts` ← `NFR-006.AC-05` (measured_by)
 - `code:frontend/src/components/layout/AppLayout.vue` ← `FR-TERM-001.AC-14` (implemented_by)
+- `code:frontend/src/components/layout/AppLayout.vue` ← `NFR-006.AC-06` (implemented_by)
+- `code:frontend/src/components/session/StatusBar.vue` ← `FR-TERM-005.AC-06` (implemented_by)
+- `code:frontend/src/components/session/TerminalFontControl.vue` ← `FR-TERM-001.AC-16` (implemented_by)
+- `code:frontend/src/components/ui/UiIconButton.vue` ← `NFR-006.AC-05` (implemented_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
@@ -1384,6 +1401,7 @@
 - `vitest:frontend/src/composables/useFileUpload.test.ts` ← `FR-FILE-010.AC-02` (verified_by)
 - `code:frontend/src/composables/useFileUpload.ts` ← `FR-FILE-010.AC-02` (implemented_by)
 - `code:frontend/src/composables/useFileUpload.ts` ← `FR-FILE-010.AC-12` (implemented_by)
+- `code:frontend/src/composables/useFocusTrap.ts` ← `NFR-006.AC-04` (implemented_by)
 - `vitest:frontend/src/composables/useImageDrop.test.ts` ← `FR-FILE-009.AC-02` (verified_by)
 - `code:frontend/src/composables/useImageDrop.ts` ← `FR-FILE-009.AC-02` (implemented_by)
 - `vitest:frontend/src/composables/useMonacoModel.test.ts#copies only a previewable file` ← `FR-FILE-002.AC-05` (verified_by)
@@ -1416,6 +1434,7 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-10` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-11` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-12` (implemented_by)
+- `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-001.AC-15` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-002.AC-01` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-003.AC-01` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-003.AC-02` (implemented_by)
@@ -1436,8 +1455,15 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-04` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-05` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-06` (implemented_by)
+- `code:frontend/src/composables/useTerminalSession.ts` ← `NFR-006.AC-07` (implemented_by)
 - `vitest:frontend/src/protocol/v1.test.ts#preserves UTF-8 and binary input bytes` ← `FR-TERM-001.AC-06` (verified_by)
+- `vitest:frontend/src/terminal.test.ts` ← `NFR-006.AC-03` (measured_by)
 - `vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone` ← `FR-TERM-005.AC-01` (verified_by)
+- `code:frontend/src/theme/base.css` ← `NFR-006.AC-02` (implemented_by)
+- `code:frontend/src/theme/base.css` ← `NFR-006.AC-08` (implemented_by)
+- `code:frontend/src/theme/contrast.ts` ← `NFR-006.AC-01` (implemented_by)
+- `vitest:frontend/src/theme/theme.contract.test.ts` ← `NFR-006.AC-08` (measured_by)
+- `vitest:frontend/src/theme/theme.contrast.test.ts` ← `NFR-006.AC-01` (measured_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#replaces the whole form when the deployment has no encryption key` ← `FR-TUNNEL-004.AC-04` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#requires the four-point acknowledgement before the first enable` ← `FR-TUNNEL-004.AC-01` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#shows only the fingerprint for a stored credential, never the token` ← `FR-TUNNEL-004.AC-03` (verified_by)
@@ -1450,6 +1476,7 @@
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#shows the one-time password in the creation dialog and nowhere else` ← `FR-TUNNEL-002.AC-02` (verified_by)
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#states that a local veto cannot be overridden by the platform` ← `FR-TUNNEL-004.AC-05` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `FR-FILE-010.AC-11` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `FR-TERM-005.AC-06` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
@@ -1513,6 +1540,12 @@
 - `playwright:frontend/tests/e2e/session.spec.ts#create → live terminal → reconnect → terminate` ← `FR-TERM-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll` ← `FR-TERM-001.AC-13` (verified_by)
 - `playwright:frontend/tests/e2e/session.spec.ts#layout: the CLI terminal fills the centre pane and the page does not scroll` ← `FR-TERM-001.AC-14` (verified_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `FR-TERM-001.AC-15` (verified_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `FR-TERM-001.AC-16` (verified_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `NFR-006.AC-02` (measured_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `NFR-006.AC-04` (measured_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `NFR-006.AC-06` (measured_by)
+- `playwright:frontend/tests/e2e/theme.spec.ts` ← `NFR-006.AC-07` (measured_by)
 - `playwright:frontend/tests/e2e/tunnel.spec.ts` ← `FR-TUNNEL-001.AC-02` (verified_by)
 - `playwright:frontend/tests/e2e/tunnel.spec.ts` ← `FR-TUNNEL-004.AC-03` (verified_by)
 - `manual:live-cli-approval` ← `MVP-AC-11.AC-01` (validated_by)
@@ -1872,6 +1905,17 @@
 - `plan:plan/15/03-contract-central-and-rbac.md` ← `FR-FILE-010.AC-11` (planned_by)
 - `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-02` (planned_by)
 - `plan:plan/15/04-frontend-drop-target.md` ← `FR-FILE-010.AC-12` (planned_by)
+- `plan:plan/28/00-execution-plan.md` ← `FR-TERM-001.AC-15` (planned_by)
+- `plan:plan/28/00-execution-plan.md` ← `FR-TERM-001.AC-16` (planned_by)
+- `plan:plan/28/00-execution-plan.md` ← `FR-TERM-005.AC-06` (planned_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-01` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-02` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-03` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-04` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-05` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-06` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-07` (refined_by)
+- `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-08` (refined_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)
@@ -1879,6 +1923,9 @@
 - `source:research/prd.md` ← `FR-SHELL-001.AC-06` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-07` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-08` (specified_by)
+- `source:research/prd.md` ← `FR-TERM-001.AC-15` (specified_by)
+- `source:research/prd.md` ← `FR-TERM-001.AC-16` (specified_by)
+- `source:research/prd.md` ← `FR-TERM-005.AC-06` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-001.AC-03` (specified_by)
@@ -1902,6 +1949,14 @@
 - `source:research/prd.md` ← `FR-TUNNEL-004.AC-04` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-004.AC-05` (specified_by)
 - `source:research/prd.md` ← `FR-TUNNEL-004.AC-06` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-01` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-02` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-03` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-04` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-05` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-06` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-07` (specified_by)
+- `source:research/prd.md` ← `NFR-006.AC-08` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-03` (specified_by)

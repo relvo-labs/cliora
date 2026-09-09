@@ -1,0 +1,4 @@
+interface:
+  display_name: "Vue Frontend Workflow"
+  short_description: "Build the Cliora Vue frontend; shared components are hand-built"
+  default_prompt: "Use $vue-frontend-workflow to handle this task with the relevant project constraints and verification."

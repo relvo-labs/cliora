@@ -92,12 +92,12 @@ function open(id: string): void {
 <style scoped>
 .panel {
   padding: 16px 18px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
 }
 .panel[data-status="degraded"] {
-  border-color: var(--border-danger);
+  border-color: var(--danger-bg);
 }
 header {
   display: flex;
@@ -108,7 +108,7 @@ header {
 }
 h3 {
   margin: 0;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 12px;
   font-weight: 600;
 }
@@ -120,21 +120,21 @@ ul {
 li + li {
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid var(--border-default);
+  border-top: 1px solid var(--border-subtle);
 }
 .reasons li,
 .reasons li + li {
   margin: 2px 0 0;
   padding: 0;
   border: 0;
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
   font-size: 12px;
 }
 .name {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
   font-size: 13px;
 }
@@ -142,7 +142,7 @@ time,
 .never {
   display: block;
   margin-top: 3px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .ok,
@@ -154,28 +154,28 @@ time,
 }
 .ok,
 .truncated {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .truncated {
   margin-top: 10px;
 }
 .unavailable {
   font-weight: 600;
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .reason {
   display: flex;
   align-items: center;
   gap: 8px;
   margin-top: 4px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-size: 11px;
 }
 .retry {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--action-primary);
+  color: var(--accent-strong);
   font-weight: 600;
   font-size: 11px;
 }

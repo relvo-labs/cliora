@@ -123,17 +123,17 @@ function clear(): void {
   align-items: center;
   gap: 4px;
   padding: 3px 6px;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  background: var(--surface-default);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
 }
 .field:focus-within {
-  outline: 2px solid var(--border-focus);
+  outline: 2px solid var(--focus-ring);
   outline-offset: -1px;
 }
 .lead {
   flex: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 input {
   flex: 1;
@@ -150,20 +150,20 @@ input:focus {
   flex: none;
   border: 0;
   background: none;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
 }
 .note {
   margin: 0;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 .note.bad {
-  color: var(--status-error);
+  color: var(--status-error-fg);
 }
 .note.warn {
-  color: var(--status-busy);
+  color: var(--status-warning-fg);
 }
 .hits {
   list-style: none;
@@ -180,14 +180,14 @@ input:focus {
   gap: 1px;
   padding: 3px 6px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-control);
   background: none;
   text-align: start;
   cursor: pointer;
 }
 .hit:hover,
 .hit:focus-visible {
-  background: var(--surface-default);
+  background: var(--surface-raised);
 }
 .hit-name {
   font-size: 12px;
@@ -195,7 +195,7 @@ input:focus {
 }
 .hit-path {
   font-size: 10px;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

@@ -4,6 +4,17 @@ import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 
+import { DEFAULT_THEME, xtermTheme, type ThemeId } from "../theme/themes";
+
+// A local monospace stack with no webfont name in it. What this replaces asked
+// for "JetBrains Mono", which has never been bundled (ADR 0016 ships no font
+// files), so it was a name that could only ever fall back — the terminal has
+// always rendered in whatever came next in the list.
+const TERMINAL_FONT_FAMILY =
+  'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
+// See the note at the Terminal constructor: 1.2, not the documents' 1.6.
+const TERMINAL_LINE_HEIGHT = 1.2;
+
 export type TerminalStatus =
   | "idle"
   | "connecting"
@@ -21,7 +32,22 @@ export type TicketProvider = (sessionId: string) => Promise<string>;
 
 const RETRY_MS = [1000, 2000, 5000, 10000, 30000] as const;
 
-export function useTerminalSession(getTicket: TicketProvider) {
+// Display options the caller owns, passed in rather than read from a store so
+// the composable stays testable without Pinia — the same reason `getTicket` is
+// injected.
+export interface TerminalDisplayOptions {
+  themeId?: ThemeId;
+  fontSize?: number;
+}
+
+export function useTerminalSession(
+  getTicket: TicketProvider,
+  display: TerminalDisplayOptions = {},
+) {
+  // Held so a theme or size change that arrives *before* mount is not lost, and
+  // so a re-mount rebuilds with the current values rather than the initial ones.
+  let themeId: ThemeId = display.themeId ?? DEFAULT_THEME;
+  let fontSize = display.fontSize ?? 14;
   const status = ref<TerminalStatus>("idle"),
     gap = ref<string>(),
     exit = ref<number>(),
@@ -213,14 +239,16 @@ export function useTerminalSession(getTicket: TicketProvider) {
       cursorBlink: true,
       convertEol: false,
       scrollback: 10000,
-      fontFamily: "JetBrains Mono, ui-monospace, monospace",
-      fontSize: 13,
-      theme: {
-        background: "#0F1115",
-        foreground: "#D7DDE4",
-        selectionBackground: "#78AAFF40",
-        cursor: "#FFFFFF",
-      },
+      fontFamily: TERMINAL_FONT_FAMILY,
+      fontSize: fontSize,
+      // xterm's `lineHeight` is a multiplier on the *measured cell height*, not
+      // a CSS line-height. The five design documents say 1.6, which is the
+      // convention for UI body copy; applied here it costs 9 rows. Measured in
+      // chromium at the target geometry (1440x900, a 674px CLI panel):
+      // 14px/1.2 -> 19px cell -> 35 rows; 14px/1.4 -> 30 rows exactly;
+      // 14px/1.6 -> 25px cell -> 26 rows, under plan/09's floor of 30.
+      lineHeight: TERMINAL_LINE_HEIGHT,
+      theme: xtermTheme(themeId),
     });
     fit = new FitAddon();
     terminal.loadAddon(fit);
@@ -268,6 +296,31 @@ export function useTerminalSession(getTicket: TicketProvider) {
     return true;
   }
 
+  // Recolour in place. Assigning `options.theme` repaints without touching the
+  // buffer — measured in chromium on 2026-09-08 with 200 rows written, scrolled
+  // to line 120 and a half-typed line pending: buffer length, viewportY,
+  // cursorX and rows were all identical afterwards and the rendered pixels did
+  // change (plan/28 08-…md §2). `new Terminal()` here would reconnect the
+  // socket and lose the scrollback, which is the whole thing the theme switch
+  // promises not to do (`FR-TERM-001.AC-15`).
+  //
+  // No socket, fit or writer-gate code is touched by this function, and that is
+  // a constraint rather than a coincidence (plan/28 D14).
+  function applyThemeOption(id: ThemeId): void {
+    themeId = id;
+    if (!terminal) return;
+    terminal.options.theme = xtermTheme(id);
+  }
+  // Refit after a size change: the cell size changed, so rows/cols changed, and
+  // the daemon has to be told or the remote PTY keeps the old geometry. Goes
+  // through applyFit so it still cannot send a 0x0 from a hidden panel.
+  function setFontSize(size: number): void {
+    fontSize = size;
+    if (!terminal) return;
+    terminal.options.fontSize = size;
+    applyFit();
+  }
+
   function retry(): void {
     retryIndex = 0;
     window.clearTimeout(retryTimer);
@@ -307,6 +360,9 @@ export function useTerminalSession(getTicket: TicketProvider) {
     // caller must wait for the DOM to actually be laid out first.
     fit: applyFit,
     proposeSize,
+    // Recolour and resize in place. Neither rebuilds the terminal.
+    applyTheme: applyThemeOption,
+    setFontSize,
     focus: () => terminal?.focus(),
     typeText,
     status: readonly(status),

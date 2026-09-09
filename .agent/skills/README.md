@@ -1,6 +1,8 @@
 # Skills Index
 
-> Auto-generated skills index. Last updated: 2026-08-03.
+> Skills index. Last updated: 2026-09-08 (`plan/28`: `vue-naive-ui-workflow`
+> renamed to `vue-frontend-workflow`, and the five `cliora` skills added — the
+> count had said 17 while the directory held 22).
 
 ## Category: backend
 
@@ -43,6 +45,22 @@
 |-------|------|----------|-------------|
 | [algorithmic-art](algorithmic-art/SKILL.md) | skill | en | Create algorithmic art using p5.js with seeded randomness and interactive parameter exploration. |
 
+## Category: cliora
+
+These five are specific to this repository rather than general practice, which
+is why they carry the product's own trust boundaries and posture decisions.
+**None of them was listed here before 2026-09-08**: the index had said 17 skills
+while the directory held 22. That drift predates `plan/28` and is corrected
+here rather than left for the next reader to discover.
+
+| Skill | Type | Language | Description |
+|-------|------|----------|-------------|
+| [cliora-project-context](cliora-project-context/SKILL.md) | agent | en | Route Cliora work to the canonical PRD, visual specification, and technical plan while preserving scope and trust boundaries. Start project work here. |
+| [cliora-security-review](cliora-security-review/SKILL.md) | agent | en | Review Cliora trust boundaries: authentication, RBAC, enrollment, daemon credentials, WebSockets, runtime launching, terminal access, workspace paths. |
+| [go-daemon-development](go-daemon-development/SKILL.md) | agent | en | Build and review the Go VM daemon: outbound WebSockets, runtime launching, PTY and tmux lifecycle, workspace access, installation, updates. |
+| [terminal-websocket-protocol](terminal-websocket-protocol/SKILL.md) | agent | en | Design the versioned WebSocket contract across Vue, FastAPI and Go: envelopes, correlation, binary terminal frames, heartbeats. |
+| [vue-frontend-workflow](vue-frontend-workflow/SKILL.md) | agent | en | Implement the Vue 3 / TypeScript / Vite / Pinia / xterm.js / Monaco frontend. Shared components are hand-built; there is no UI component library. |
+
 ## Category: meta
 
 | Skill | Type | Language | Description |
@@ -54,5 +72,5 @@
 ## Reference
 
 - **Authoring guide**: [AUTHORING.md](AUTHORING.md)
-- **Skill count**: 17 (1 agent, 16 skills)
-- **Categories**: backend (4), design-ui (6), platform (3), content (2), creative (1), meta (1)
+- **Skill count**: 22 (6 agents, 16 skills)
+- **Categories**: backend (4), design-ui (6), platform (3), content (2), creative (1), cliora (5), meta (1)

@@ -106,9 +106,22 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # (FR-FILE-007/008 and related scope/security criteria). Twenty-four are
     # verifiable; FR-FILE-008.AC-04/AC-05 remain non-blocking verification gaps
     # reported by the coverage command above.
+    # 2026-09-08: +11 for the visual refresh (plan/28, ADR 0027) — NFR-006's
+    # eight criteria plus FR-TERM-001.AC-15/AC-16 and FR-TERM-005.AC-06. All
+    # eleven are verifiable, so `blocking` stays 0.
+    #
+    # NFR-006 is worth a sentence of its own. Until this phase, none of the 115
+    # requirements was about legibility, keyboard operation or visual theming —
+    # so the five contrast failures measured in shipped code (a site-wide focus
+    # ring at 2.85:1, the Terminate confirm button at 4.09:1, every input border
+    # at 1.37:1, six of eight status badges under 4.5:1) were not waived. There
+    # was simply nothing in this registry that could go red about them. That is
+    # the gap these eight close, and it is why three of them are `measurement`
+    # rather than `automated`: whether a theme switch keeps a live session, and
+    # whether a page overflows at 390px, are claims about a real browser.
     assert result["summary"] == {
-        "total": 440,
-        "verifiable": 307,
+        "total": 451,
+        "verifiable": 318,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

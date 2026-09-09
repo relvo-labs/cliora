@@ -1,4 +1,4 @@
-.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability railway-parity railway-test railway-check
+.PHONY: bootstrap format-check lint typecheck unit contract integration e2e build check layout-gates vr-gates dev-central dev-stack dev-frontend migrate create-admin test-db perf release release-snapshot traceability-validate traceability-selectors traceability-render traceability-coverage traceability-coverage-baseline traceability-test traceability railway-parity railway-test railway-check
 
 # Postgres URL for the P1 data layer (override to point at your instance).
 DB_URL ?= postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -43,7 +43,18 @@ build:
 	cd daemon && mkdir -p bin && go build -o bin/agentd ./cmd/agentd && go build -o bin/fakecli ./cmd/fakecli
 	cd frontend && npm run build
 
-check: format-check lint typecheck unit contract build traceability-validate railway-check
+# The two permanent front-end gate sets. They are in `check` rather than in a
+# phase target because both protect invariants that no other gate here can see:
+# jsdom has no layout (plan/09) and a grep cannot see a colour that was never
+# written as a token (plan/28). The browser halves of both live in the e2e
+# suites.
+layout-gates:
+	scripts/ly/layout-gates.sh all
+
+vr-gates:
+	scripts/vr/vr-gates.sh all
+
+check: format-check lint typecheck unit contract build traceability-validate railway-check layout-gates vr-gates
 
 # --- Railway deployment target (ADR 0020 / plan/07) ---
 # Both of these are static and hermetic: no platform account, no network. What they cannot

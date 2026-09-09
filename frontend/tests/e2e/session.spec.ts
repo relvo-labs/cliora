@@ -56,6 +56,20 @@ async function openDialogAndCountNodes(page: Page): Promise<number> {
     .count();
 }
 
+// Terminate lives in the action menu now, and the confirmation names the
+// session. Extracted because three tests end this way and a copied-out
+// three-step flow is how one of them gets left behind.
+async function terminate(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Session 操作" }).click();
+  await page.getByRole("menuitem", { name: "終止 Session…" }).click();
+  const confirm = page.getByRole("dialog", { name: "終止此 Session？" });
+  await confirm.getByRole("button", { name: "確認終止" }).click();
+  // The session state is in the status bar now, not in the work header.
+  await expect(
+    page.locator(".status-bar").getByText(/已終止|已結束/),
+  ).toBeVisible({ timeout: 15_000 });
+}
+
 test.describe("session & terminal", () => {
   test.skip(
     !fullStack || !adminUser,
@@ -238,12 +252,7 @@ test.describe("session & terminal", () => {
     await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
     await expect(page.locator(".monaco-editor")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "Terminate" }).click();
-    const confirm = page.getByRole("dialog", { name: "Terminate session" });
-    await confirm.getByRole("button", { name: "Terminate" }).click();
-    await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    await terminate(page);
   });
 
   // WT-11 exit condition 4. The tab work removed a column and stacked every
@@ -322,16 +331,29 @@ test.describe("session & terminal", () => {
       ).toBeLessThanOrEqual(overflow.clientWidth);
     }
 
-    // Below the breakpoint the file tree is hidden rather than squeezed.
+    // Below 1024px the file panel is a *closed drawer*, not a removed feature.
+    // The tree is still hidden here, so the old assertion still passes — but it
+    // used to pass for the wrong reason. Before plan/28 the tree was
+    // `display: none` with no way whatsoever to bring it back, which is the one
+    // shape the shared design foundation names as forbidden ("不將功能直接隱藏").
+    // So the hidden check is kept AND the opening control is now required.
+    await page.setViewportSize({ width: 1000, height: 800 });
+    await page.waitForTimeout(400);
     await expect(page.getByRole("tree", { name: "工作區檔案" })).toBeHidden();
 
+    const openFiles = page.getByRole("button", { name: "開啟檔案欄" });
+    await expect(openFiles).toBeVisible();
+    await openFiles.click();
+    await expect(page.getByRole("tree", { name: "工作區檔案" })).toBeVisible();
+    // Escape closes it and hands focus back to the button that opened it. A
+    // drawer that traps focus and then drops it leaves the next Tab starting
+    // from the top of the document.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("tree", { name: "工作區檔案" })).toBeHidden();
+    await expect(openFiles).toBeFocused();
+
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("button", { name: "Terminate" }).click();
-    const confirm = page.getByRole("dialog", { name: "Terminate session" });
-    await confirm.getByRole("button", { name: "Terminate" }).click();
-    await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    await terminate(page);
   });
 
   // FR-TERM-001.AC-13 / AC-14 (plan/09 LY-06). The vertical counterpart of the
@@ -465,7 +487,9 @@ test.describe("session & terminal", () => {
         wide.rows,
       );
       // A gap banner here would mean the tab switch cost output continuity.
-      await expect(page.locator(".banner.gap")).toHaveCount(0);
+      await expect(
+        page.getByText("顯示最新輸出片段（先前歷史已截斷）。"),
+      ).toHaveCount(0);
     }
 
     // Inside the 1100px breakpoint: one column, no file tree, and the terminal
@@ -492,12 +516,7 @@ test.describe("session & terminal", () => {
     ).toBeLessThanOrEqual(1);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByRole("button", { name: "Terminate" }).click();
-    const confirm = page.getByRole("dialog", { name: "Terminate session" });
-    await confirm.getByRole("button", { name: "Terminate" }).click();
-    await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    await terminate(page);
   });
 
   // WT-11 exit condition 10 (FR-SHELL-001 AC-02 / AC-08). Everything else about
@@ -620,12 +639,7 @@ test.describe("session & terminal", () => {
     );
     await expect(page.locator('[data-status="connected"]')).toBeVisible();
 
-    await page.getByRole("button", { name: "Terminate" }).click();
-    const confirm = page.getByRole("dialog", { name: "Terminate session" });
-    await confirm.getByRole("button", { name: "Terminate" }).click();
-    await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    await terminate(page);
   });
 
   // The other half of AC-08: "closing the terminal **or leaving the Session

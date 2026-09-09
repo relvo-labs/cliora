@@ -54,6 +54,15 @@ export const routes: RouteRecordRaw[] = [
     name: "integrations",
     component: () => import("../views/IntegrationsView.vue"),
   },
+  // Personal display settings (plan/28 VR-10). A sibling of the integrations
+  // page in URL shape only: that one is platform configuration behind
+  // `integration.manage`, this one needs no permission because nothing on it is
+  // a capability — every value is a display preference held in this browser.
+  {
+    path: "/settings/preferences",
+    name: "preferences",
+    component: () => import("../views/PreferencesView.vue"),
+  },
 ];
 
 // The authenticated Session Workspace replaces the P0 terminal PoC (the P0 dev
