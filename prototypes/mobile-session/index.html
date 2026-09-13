@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light" />
+    <title>Cliora 行動工作階段原型</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <header class="app-header">
+        <button class="brand" type="button" data-action="sessions" aria-label="回到工作階段清單">
+          <span class="brand-mark" aria-hidden="true">C</span>
+          <span>Cliora</span>
+        </button>
+        <span class="header-mode">行動工作台</span>
+      </header>
+      <p class="prototype-banner" role="note">
+        合成資料原型 · 無 API、PTY、WebSocket 或指令執行
+      </p>
+      <main id="view" class="view" tabindex="-1"></main>
+      <p id="announcer" class="visually-hidden" aria-live="polite"></p>
+    </div>
+    <script src="app.js" defer></script>
+  </body>
+</html>
