@@ -1,11 +1,17 @@
 name: Requirement Traceability
 
 on:
-  push:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
   pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 jobs:
   static:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +42,7 @@ jobs:
             traceability-coverage-report.json
 
   impact:
-    if: github.event_name == 'pull_request'
+    if: (github.event_name == 'pull_request') && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

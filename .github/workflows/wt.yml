@@ -1,11 +1,19 @@
 name: WT
-on: [push, pull_request]
+on:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 jobs:
   # Backend against a real PostgreSQL. The two things this leg exists for that the
   # hermetic suite cannot check: the RBAC seed for `terminal.shell` (0012) actually
   # produces in Postgres what `ROLE_ACTIONS` claims, and the partial unique index
   # from 0013 really is what stops a second live shell per session.
   backend-db:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -44,6 +52,7 @@ jobs:
   # Daemon: the `shell` runtime joins a closed allowlist in four places, and the
   # enable-by-default rule must never override an operator's explicit disable.
   daemon:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +74,7 @@ jobs:
   # field must be refused identically by Python, Go and TypeScript, which is what
   # keeps SEC-002 true after SCOPE-011 was narrowed.
   contract:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +95,7 @@ jobs:
       - run: make contract
 
   frontend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -126,6 +137,7 @@ jobs:
   # test-only override. install/plan.go's defaults must not be edited to make this
   # green.
   browser-e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -172,6 +184,7 @@ jobs:
   # Requirement traceability: FR-SHELL-001's eight criteria must be `verifiable`
   # and SCOPE-011.AC-01 must have its supersedes link, or release blocking fails.
   traceability:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:

@@ -1,9 +1,17 @@
 name: P1
-on: [push, pull_request]
+on:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 jobs:
   # Backend against a real PostgreSQL: migrations (up/down/up) then the full
   # suite including the DB-backed auth/RBAC/enrollment/node/status/audit tests.
   backend-db:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -40,6 +48,7 @@ jobs:
 
   # Cross-architecture daemon build with checksums (the release artifact shape).
   daemon-artifacts:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +71,7 @@ jobs:
   # real systemd + a backend and runs as a release gate on VM runners — see
   # docs/p1-report.md.
   install-smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     needs: daemon-artifacts
     steps:
@@ -89,6 +99,7 @@ jobs:
   # Security-focused checks: the auth/enrollment/credential/ws test paths plus a
   # scan that no secret material leaks into logs/artifacts.
   security:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -114,13 +125,14 @@ jobs:
         run: uv run --project backend pytest backend/tests/db backend/tests/test_security.py -q
 
 
-  # Canonical release build via GoReleaser, gated to version tags (v*) so it
-  # never runs on PRs or branch pushes. Produces agentd_<ver>_linux_{amd64,arm64}
+  # Canonical release build via GoReleaser, gated to version tags (v*) so it never
+  # runs on PRs — reach it by dispatching this workflow manually against a v* tag.
+  # Produces agentd_<ver>_linux_{amd64,arm64}
   # .tar.gz + checksums.txt from daemon/.goreleaser.yaml — the same artifact shape
   # daemon-artifacts builds by hand. release.disable is true in that config, so no
   # GitHub release is published and no GITHUB_TOKEN is required.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: (startsWith(github.ref, 'refs/tags/v')) && (github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -136,6 +148,7 @@ jobs:
         with: { name: agentd-release, path: daemon/dist/ }
 
   frontend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -155,6 +168,7 @@ jobs:
           npm run build
 
   browser-e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:

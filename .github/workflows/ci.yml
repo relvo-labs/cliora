@@ -1,12 +1,20 @@
-# The baseline gate every push must pass, for all three languages. It was named
+# The baseline gate every ready-for-review PR must pass, for all three languages. It was named
 # `p0.yml` because P0 created it, but it has never been P0-specific — the
 # phase-specific workflows (p1/p2/p3, and p4 to come) add scenarios on top of this
 # one. Renamed in P4-07 so the file says what it is, since a file called `p0.yml`
 # looks like something the P0 retirement should have deleted.
 name: CI
-on: [push, pull_request]
+on:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 jobs:
   backend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +36,7 @@ jobs:
       - name: no credential leak paths
         run: scripts/pg/check-no-token-leak.sh
   daemon:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -42,6 +51,7 @@ jobs:
       - run: go build ./cmd/agentd ./cmd/fakecli
         working-directory: daemon
   frontend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -73,6 +83,7 @@ jobs:
   # configurations can be made to disagree by a change to either one of them, and the
   # disagreement is invisible until whichever deployment nobody tested is the one in use.
   deploy-config:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -125,6 +136,7 @@ jobs:
           docker run --rm --entrypoint python cliora-central -c 'import app.main'
 
   tmux-integration:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     needs: [backend, daemon, frontend]
     steps:
@@ -135,6 +147,7 @@ jobs:
       - run: go test -tags integration -race ./...
         working-directory: daemon
   e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     needs: frontend
     strategy: { fail-fast: false, matrix: { browser: [chromium, firefox, webkit] } }
