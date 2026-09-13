@@ -1,7 +1,7 @@
 # Mobile addendum v0.1 — proposed contract
 
-Status: **Proposed**, not an amendment to VDS 1.0 or ADR 0027 yet.  
-Scope: responsive presentation and interaction over existing sessions/files/terminal capabilities.  
+Status: **Proposed**, not an amendment to VDS 1.0 or ADR 0027 yet.
+Scope: responsive presentation and interaction over existing sessions/files/terminal capabilities.
 Normative language in this proposal becomes production policy only after M0 approval and the required versioned VDS/ADR decision.
 
 ## 1. Information architecture and route contract
@@ -21,7 +21,7 @@ The mobile starting route is an M0 product/router decision: changing `/` from th
 - writer/viewer control state;
 - privileged/sandbox posture when reported.
 
-The directly visible top-level mobile modes are `terminal` and `files`. A fullscreen preview is an in-route substate of Files, not a new file URL, not a new session, and not a second workspace. This avoids putting a workspace-relative path into browser history or persistent storage. Desktop's existing CLI / preview / conditional system-TERMINAL tabs remain governed by the current VDS until deliberately reconciled.
+The directly visible top-level mobile modes are `terminal` and `files`. A fullscreen preview is an in-route substate of Files, not a new file URL, not a new session, and not a second workspace. This avoids putting a workspace-relative path into browser history or persistent storage. Desktop's existing CLI / preview / conditional system-TERMINAL tabs and desktop theme behavior remain governed by the current VDS; the mobile light treatment does not change them.
 
 ### In-memory state shape
 
@@ -56,9 +56,9 @@ Retention is deliberately bounded to the mounted, exact session and eight previe
 | File session binding | `stores/files.ts::useSession/clearForSession/abortInflight`; `filesSessionId` in workspace view | Exact-session abort/wipe is load-bearing; no late old-session response may land. |
 | Folder listing | `FileTree.vue`; `useFileTree.ts`; `GET /api/sessions/{id}/files/tree`; `filesystem-list.schema.json`; `FileTreePage` | Mobile list, up, relative breadcrumb, lazy levels, `truncated` + `next_cursor`; no absolute path. |
 | Filename search | `FileSearchBar.vue`; `useFileTree.ts` calls `store.runSearch(keyword)` without `root`; `GET /api/sessions/{id}/files/search`; `filesystem-search.schema.json`; `FileSearchResult` | Whole current session workspace, case-insensitive filename substring only. Show `partial`, `stopped_reason`, `scanned_count`; never imply full text/current folder. |
-| Read-only preview | async `PreviewPane.vue`; `useMonacoModel.ts`; `PreviewDenied.vue`; `GET /api/sessions/{id}/files/content`; `filesystem-read.schema.json`; `FileContent` | Fullscreen mobile host, text/code only, same denial taxonomy, at most 8 models/positions, content cleared before loading/denial/session switch. |
+| Existing read-only preview | async `PreviewPane.vue`; `useMonacoModel.ts`; `PreviewDenied.vue`; `GET /api/sessions/{id}/files/content`; `filesystem-read.schema.json`; `FileContent` | Fullscreen mobile host, text/code only, same denial taxonomy, at most 8 models/positions, content cleared before loading/denial/session switch. Existing production code is not an image viewer. |
 | Existing upload | `FileTree.vue`, `FileTreeToolbar.vue`, `useFileUpload`; ADR 0026 | Outside prototype. M3 adapts only when server `can_upload_files` and node posture both allow it; touch picker must remain reachable. No edit/replace/delete. |
-| Theme consumers | `theme/tokens.css`, `theme/themes.ts`, `theme.contract.test.ts`, `theme.contrast.test.ts`, xterm and Monaco setup | Light terminal/editor proposal must update both concrete sources and every consumer/test atomically after VDS/ADR decision. |
+| Theme consumers | `theme/tokens.css`, `theme/themes.ts`, `theme.contract.test.ts`, `theme.contrast.test.ts`, xterm and Monaco setup | Approved mobile-only light terminal/editor behavior must update both concrete sources and every mobile consumer/test atomically through the reviewed VDS/ADR version mechanism. Desktop policy remains unchanged. |
 
 ## 3. File behavior and denial states
 
@@ -121,11 +121,13 @@ One writer/many viewers, explicit `terminal.control_acquire`, server-authoritati
 
 Node privileged and Codex sandbox-bypass posture stays visible before typing. Compact layout may shorten wording but cannot place it only behind a disclosure. The platform still names runtime id, never a shell command/binary/argv/environment/entrypoint.
 
-## 6. Entirely light terminal/editor proposal
+## 6. Mobile-only light terminal/editor contract
 
-The prototype proposes light xterm, preview, toolbar, denial, warning, and error surfaces. Current ADR 0027 and VDS §18/§19 keep xterm/Monaco dark even in Porcelain, so production work is blocked on an explicit version decision: approve a mobile addendum and decide whether ADR 0027/VDS become a minor theme-contract extension or a larger policy change. It must not be smuggled in as component CSS.
+The product direction is already settled by #62: mobile xterm, preview, toolbar, denial, warning, and error surfaces stay light. OS dark preference **must not** flip the mobile workspace to dark. This applies to mobile presentation only; desktop retains its current theme policy and current dark xterm/Monaco behavior. M0 must not reopen those decisions.
 
-If approved, the theme owner updates `frontend/src/theme/tokens.css` and `frontend/src/theme/themes.ts` together; `theme.contract.test.ts` proves exact key/value parity. Component-derived contrast tests cover page/terminal/editor text, dim text, selection, cursor and cursor accent, control borders, focus, warning/error/success states, and read-only/denial metadata.
+Current ADR 0027 and VDS §18/§19 do not yet encode this mobile-only exception. The remaining review is strictly the versioned mechanism: a mobile addendum and the appropriate VDS/ADR contract change. The behavior must not be smuggled in as component CSS or broadened into a desktop theme-policy change.
+
+After that mechanism is approved, the theme owner updates `frontend/src/theme/tokens.css` and `frontend/src/theme/themes.ts` together with explicitly mobile-scoped selection; `theme.contract.test.ts` proves exact key/value parity and desktop regression tests prove existing desktop selection is unchanged. Component-derived contrast tests cover page/terminal/editor text, dim text, selection, cursor and cursor accent, control borders, focus, warning/error/success states, and read-only/denial metadata. A simulated OS dark preference must still produce the approved light mobile values.
 
 Real xterm/Monaco validation must cover ANSI 16 normal/bright colors, selection, cursor, dim text, warning/error output, reverse video, explicit background colors, and representative real Claude/Codex/tmux/`ls`/Git truecolor output. Truecolor emitted by the CLI may remain visually imperfect; bytes and ANSI semantics are never changed. CSS `filter`/`invert`, canvas inversion, output recoloring, or PTY-byte rewriting are forbidden. Theme application changes colors in place; it does not remount xterm/Monaco, reconnect, move scroll, lose pending input, or alter authorization.
 

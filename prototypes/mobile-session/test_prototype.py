@@ -15,7 +15,7 @@ from typing import Callable
 from playwright.sync_api import Page, sync_playwright
 
 
-DEFAULT_CHROMIUM = Path(
+VERIFIED_CHROMIUM = Path(
     "/opt/hermes/.playwright/chromium_headless_shell-1243/"
     "chrome-headless-shell-linux64/chrome-headless-shell"
 )
@@ -250,10 +250,14 @@ def screenshot_suite(page: Page, base_url: str, evidence: Path, passed: Callable
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence-dir", type=Path, required=True)
-    parser.add_argument("--chromium", type=Path, default=DEFAULT_CHROMIUM)
+    parser.add_argument(
+        "--chromium",
+        type=Path,
+        help=f"Optional Chromium executable; omit to use Playwright-managed Chromium. Verified here: {VERIFIED_CHROMIUM}",
+    )
     args = parser.parse_args()
     args.evidence_dir.mkdir(parents=True, exist_ok=True)
-    if not args.chromium.is_file():
+    if args.chromium is not None and not args.chromium.is_file():
         raise SystemExit(f"Chromium executable not found: {args.chromium}")
 
     prototype = Path(__file__).resolve().parent
@@ -269,7 +273,10 @@ def main() -> int:
         print(line, flush=True)
 
     with local_server(prototype) as base_url, sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=str(args.chromium), headless=True)
+        launch_options = {"headless": True}
+        if args.chromium is not None:
+            launch_options["executable_path"] = str(args.chromium)
+        browser = playwright.chromium.launch(**launch_options)
         try:
             context = browser.new_context(reduced_motion="reduce")
             page = context.new_page()
@@ -282,6 +289,25 @@ def main() -> int:
             screenshot_suite(page, base_url, args.evidence_dir, passed)
             expect(page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches"), "reduced motion media did not match")
             passed("reduced-motion browser mode active")
+            page.emulate_media(color_scheme="dark", reduced_motion="reduce")
+            page.goto(base_url, wait_until="domcontentloaded")
+            open_session(page)
+            mobile_colors = page.evaluate(
+                """() => ({
+                  scheme: getComputedStyle(document.documentElement).colorScheme,
+                  canvas: getComputedStyle(document.body).backgroundColor,
+                  terminal: getComputedStyle(document.querySelector('.terminal-output')).backgroundColor
+                })"""
+            )
+            expect(
+                mobile_colors == {
+                    "scheme": "light",
+                    "canvas": "rgb(247, 248, 250)",
+                    "terminal": "rgb(255, 255, 255)",
+                },
+                f"OS dark preference changed the mobile light palette: {mobile_colors}",
+            )
+            passed("OS dark preference keeps the mobile prototype light")
             context.close()
         finally:
             browser.close()
@@ -304,7 +330,7 @@ def main() -> int:
     )
     result = {
         "result": "PASS",
-        "chromium": str(args.chromium),
+        "chromium": str(args.chromium) if args.chromium is not None else "playwright-managed",
         "viewports": [f"{width}x{height}" for width, height in VIEWPORTS],
         "checks": pass_lines,
         "external_requests": external,

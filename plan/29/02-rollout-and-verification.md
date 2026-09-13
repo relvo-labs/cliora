@@ -21,7 +21,7 @@ M0 decisions + versioned contracts
 
 ### M0 — decisions before code
 
-Approve mobile addendum version/status, `/` versus `/sessions` mobile entry behavior, in-route mode state, light-terminal VDS/ADR 0027 policy, exact capability wording, data retention, analytics exclusions, release flag ownership, and acceptance IDs. Reproduce and record the 1024/1100 drawer and compact-posture findings before declaring defects. No estimates are invented.
+Approve mobile addendum version/status, `/` versus `/sessions` mobile entry behavior, in-route mode state, the versioned VDS/ADR 0027 mechanism for the already-approved mobile-only light palette, exact preview capability wording, data retention, analytics exclusions, release flag ownership, and acceptance IDs. Do not reopen #62's decisions that mobile stays light regardless of OS dark preference and desktop theme policy stays unchanged. Reproduce and record the 1024/1100 drawer and compact-posture findings before declaring defects. No estimates are invented.
 
 ### M1 — shell plus isolated input spike
 
@@ -33,7 +33,7 @@ Only after M1 layout and spike evidence pass: integrate the existing `useTermina
 
 ### M3 — file adaptation, then remaining navigation
 
-Adapt `FileTree`/`FileSearchBar`/`PreviewPane` to the dedicated mobile flow, preserving `stores/files.ts` abort/wipe, partial cursor/search metadata, exact-session capability gates, denial clearing, and Monaco LRU disposal. After file acceptance, adapt existing upload with its unchanged security contract, then verify discoverable node/tunnel/enrollment/audit/integration/preferences routes by role. This sequencing prevents navigation and file writers from touching the same session shell concurrently.
+Adapt `FileTree`/`FileSearchBar` and the current text/code-only `PreviewPane` to the dedicated mobile flow, preserving `stores/files.ts` abort/wipe, partial cursor/search metadata, exact-session capability gates, denial clearing, and Monaco LRU disposal. Images and other binary previews remain refused. After file acceptance, adapt existing upload with its unchanged security contract, then verify discoverable node/tunnel/enrollment/audit/integration/preferences routes by role. This sequencing prevents navigation and file writers from touching the same session shell concurrently.
 
 ### M4 — real devices, security, and UAT
 
@@ -49,7 +49,7 @@ One native implementation writer owns each production write set at a time. “In
 | M1 shell writer | `AppLayout.vue`, `PrimaryNav.vue`, `SessionsView.vue`, `SessionHeader.vue`, route presentation tests | Does not touch terminal/file composables or wire contracts. |
 | IME spike owner | external evidence and a disposable isolated spike directory only | No shared frontend source; reports events/bytes/device versions, never production completion. |
 | M2 terminal writer | `SessionWorkspaceView.vue`, `useTerminalSession.ts`, dedicated mobile input components/tests | Sole owner of xterm/socket/resize during M2; no file-store edits. |
-| Theme owner | `theme/tokens.css`, `theme/themes.ts`, Monaco theme setup, theme contract/contrast/real-render tests | Starts only after M0 VDS/ADR approval; no socket/lifecycle edits. Coordinate sequentially with M2 where the workspace view overlaps. |
+| Theme owner | `theme/tokens.css`, `theme/themes.ts`, Monaco theme setup, theme contract/contrast/real-render tests | Starts only after M0 approves the version mechanism; implements mobile-only light selection and desktop regression coverage without reopening either settled policy. No socket/lifecycle edits. Coordinate sequentially with M2 where the workspace view overlaps. |
 | M3 file writer | `FileTree*`, `FileSearchBar.vue`, `PreviewPane.vue`, `PreviewDenied.vue`, `useFileTree.ts`, `useMonacoModel.ts`, `stores/files.ts`, file E2E | No terminal transport or shell lifecycle edits. |
 | M3 navigation writer | remaining existing route/nav components after the file writer merges | No file/terminal internals; server capabilities remain authoritative. |
 | M4 QA/security reviewers | external evidence and review findings | Read-only against implementation; fixes return to the owning writer. |
@@ -64,10 +64,10 @@ If a needed edit crosses write sets, stop and transfer ownership or serialize th
 | ID | Acceptance | Evidence |
 |---|---|---|
 | `MSP-F-001` | Session-first list opens exact selected synthetic id and shows session/node/runtime/workspace. | Playwright interaction; mobile/desktop session-primary PNGs. |
-| `MSP-F-002` | Terminal/Files switch is directly visible; terminal is bright, read-only synthetic stdout with correct CLI-vs-shell lifecycle wording. | Keyboard tab switch and screenshot. |
+| `MSP-F-002` | Terminal/Files switch is directly visible; terminal is bright, read-only synthetic stdout with correct CLI-vs-shell lifecycle wording. OS dark preference does not flip the mobile fixture to dark. | Keyboard tab switch, computed-color assertion under emulated dark preference, and screenshot. |
 | `MSP-F-003` | Browse nested folder, up, and relative breadcrumb. | Real click assertions. |
 | `MSP-F-004` | Search from `src` finds `docs/mobile-guide.md`, proving fixture behavior is whole-workspace filename substring rather than current-folder/full text. | Submit/Escape assertions and explicit scope label. |
-| `MSP-F-005` | Preview is fullscreen read-only TEXT/CODE; returning restores folder/query, actual nonzero file-list scroll, prior preview scroll, and triggering control focus; Escape works. | DOM scroll values >0 and `activeElement` assertion. |
+| `MSP-F-005` | Existing-capability preview is fullscreen read-only TEXT/CODE; returning restores folder/query, actual nonzero file-list scroll, prior preview scroll, and triggering control focus; Escape works. | DOM scroll values >0 and `activeElement` assertion. |
 | `MSP-F-006` | Session switch during preview or 403 clears old content, path, query, denial, preview, and scroll. | Cross-session assertions. |
 | `MSP-F-007` | Normal, empty folder, 403, transient failure/honest retry, unsupported image/binary, too-large, and ended-session fixtures are explicit. | State transitions and copy assertions. |
 | `MSP-F-008` | `results`, `depth`, `scanned`, and `timeout` partial search reasons plus scanned count are visible. | Four fixture assertions. |
@@ -88,9 +88,9 @@ These IDs prove only fixture behavior. They do not satisfy a production requirem
 | `MSP-R-004` | Writer/viewer/takeover/resize | Two users and two devices; exactly one writer; explicit acquire; valid 2–300×2–500 resize; orientation/posture behavior. |
 | `MSP-R-005` | IME/special keys/paste | iOS and Android event+byte traces for Traditional Chinese composition, Esc/Tab/arrows/Ctrl/Enter, selection mode, multiline confirmation, no autoEnter/no duplicate/offline replay. |
 | `MSP-R-006` | File list/search contracts | Real current workspace; lazy levels; next cursor; every stop reason; abort of old request; no absolute/cross-session path. |
-| `MSP-R-007` | Preview and denials | Real Monaco/read endpoint; UTF-8/ANSI text corpus, non-UTF-8, NUL/binary/image, size, sensitive, symlink/path, permission, missing, 403, ended session; stale content cleared first. |
+| `MSP-R-007` | Preview and denials | Real Monaco/read endpoint for current text/code; UTF-8/ANSI corpus, non-UTF-8, NUL/binary/image, size, sensitive, symlink/path, permission, missing, 403, ended session; stale content cleared first. Images remain refusal cases. |
 | `MSP-R-008` | Auth/session expiry | Access expiry, 403/capability loss, ws-ticket expiry/replay, logout; memory/cache/content wiped and server refusal preserved. |
-| `MSP-R-009` | Entirely light theme | Approved VDS/ADR version; CSS↔TS contract; component contrast; xterm/Monaco ANSI16/cursor/selection/dim/warning/error/reverse/truecolor with real CLIs; no remount/byte rewrite. |
+| `MSP-R-009` | Mobile-only entirely light theme | Approved VDS/ADR version mechanism; OS dark preference still yields mobile light; desktop policy regression; CSS↔TS contract; component contrast; xterm/Monaco ANSI16/cursor/selection/dim/warning/error/reverse/truecolor with real CLIs; no remount/byte rewrite. |
 | `MSP-R-010` | Viewport/keyboard/accessibility | Real iOS Safari and Android Chrome versions; safe areas, dvh/visualViewport keyboard open/close, rotation, 200% text, VoiceOver/TalkBack, touch, focus; 768/1024/1100/1440 desktop checks. |
 | `MSP-R-011` | Network/background recovery | Wi-Fi↔cellular, offline, background 60s+, ticket refresh, node offline/return, output burst/backpressure; no command replay. |
 | `MSP-R-012` | Security and desktop release gate | #47/#56/#57/#58/#59 current disposition/evidence, RBAC/path/audit/log-redaction tests, current desktop suite/layout gates, fresh independent security/code review, user UAT. |
@@ -122,8 +122,9 @@ PASS no persistent browser storage
 PASS 8 responsive sizes have no document overflow and visible controls are >=44px
 PASS 8 external screenshots captured
 PASS reduced-motion browser mode active
+PASS OS dark preference keeps the mobile prototype light
 PASS no external requests, WebSocket traffic, or JavaScript page errors
-RESULT PASS (16 checks)
+RESULT PASS (17 checks)
 ```
 
 Generated evidence is outside Git at `/opt/data/cliora-mobile-pr/evidence/mobile-session-writer/`: `prototype-test-results.json`, `browser-console.log`, and eight PNGs under `screenshots/`. The browser log is empty because no console message/error occurred.
@@ -156,6 +157,6 @@ The future implementation is reversible presentation work behind a server/deploy
 
 Kill switch behavior: stop serving the new mobile presentation on the next navigation/reload and return to the existing responsive UI. It may detach browser terminal connections in the same way a normal navigation does; it **must not** stop a main CLI session, terminate another user's session, create a replacement, broaden a viewer, or replay input. If a system child shell is open, existing bounded-lifecycle cleanup still applies—rollback does not weaken it or invent a keepalive.
 
-Rollback removes/turns off presentation code and its light-theme extension while retaining compatible server contracts. No data migration should be necessary because mobile paths/positions are memory-only and there is no mobile preferences API. If a future phase changes a wire schema, it needs a separately reversible compatibility window; this plan does not pre-authorize one.
+Rollback removes/turns off presentation code and its mobile-only light-theme extension while retaining compatible server contracts and the unchanged desktop theme policy. No data migration should be necessary because mobile paths/positions are memory-only and there is no mobile preferences API. If a future phase changes a wire schema, it needs a separately reversible compatibility window; this plan does not pre-authorize one.
 
 The release owner records the flag state and rollback reason without identifiers, paths, terminal bytes, or file content. A rollback is not authority to stop sessions or bypass unresolved security gates.
