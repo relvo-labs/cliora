@@ -1,11 +1,19 @@
 name: P2
-on: [push, pull_request]
+on:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 jobs:
   # Backend against a real PostgreSQL: migrations up/down/up (now including the
   # P2 terminal_sessions/session_connections tables, 0005/0006) then the full
   # suite — session state machine, domain service guards, HTTP RBAC, relay
   # queue/backpressure, writer/viewer/takeover and audit redaction.
   backend-db:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -39,6 +47,7 @@ jobs:
   # Daemon: static checks, the race suite, the tmux-backed integration suite
   # (recovery gate + session lifecycle + terminal attach), and cross-arch build.
   daemon:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -59,6 +68,7 @@ jobs:
   # / SESSION_* codes): the same manifest.json fixtures must accept/reject
   # identically in Python, Go and TypeScript.
   contract:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -86,6 +96,7 @@ jobs:
   # takeover RBAC, command-injection/path-escape guards, and log/DB redaction
   # (no terminal content). Runs the auth/security + relay + session DB suites.
   security:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -116,6 +127,7 @@ jobs:
             -q
 
   frontend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -140,6 +152,7 @@ jobs:
   # node online; Playwright's webServer starts the frontend. WebKit is included
   # in the matrix as in P1.
   browser-e2e:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -182,6 +195,7 @@ jobs:
   # Emits artifacts/p2/<run>/relay-bench.json and fails on a bounded-queue,
   # single-gap or <200ms fan-out regression.
   performance:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

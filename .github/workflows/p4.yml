@@ -1,5 +1,12 @@
 name: P4
-on: [push, pull_request]
+on:
+  # Manual re-run of the whole gate, for a draft PR or a branch with no PR open.
+  workflow_dispatch:
+  # Ready-for-review PRs only: `ready_for_review` catches the moment a draft is
+  # promoted, the other three cover a PR that was never a draft. Drafts still emit
+  # `opened`/`synchronize`, so every job below carries the draft guard as well.
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
 
 # The MVP release gate. All 12 jobs are required: nothing carries
 # `continue-on-error`, because a gate that can be green while a check failed is not a gate.
@@ -7,8 +14,10 @@ on: [push, pull_request]
 # Two jobs are scoped deliberately rather than by omission, and both are recorded in
 # docs/p4-report.md as verification gaps rather than left to be discovered:
 #
-#   * `capacity` runs the **smoke** profile on every push and the **full** NFR-003 profile
-#     only on main and release branches. A 100-node / 500-socket run on a shared hosted
+#   * `capacity` runs the **smoke** profile on every PR run and the **full** NFR-003 profile
+#     only on a manual dispatch from main or a release branch (a PR run's ref is
+#     `refs/pull/N/merge`, so the full profile never fires from a PR). A 100-node /
+#     500-socket run on a shared hosted
 #     runner measures the runner, not Cliora — the numbers would be noise and the gate
 #     would flap. The smoke profile exercises every assertion at smaller magnitude, so it
 #     still catches a harness or a bound regression.
@@ -20,6 +29,7 @@ jobs:
   #    exhaustive permission matrix and the P4 additions (audit query, dashboard blocks,
   #    metrics export, favourites, shutdown drain, per-user session cap).
   backend-db:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -62,6 +72,7 @@ jobs:
   # 2. Daemon: statics, race suite, the tmux-backed integration suites, cross-builds, and
   #    the reproducible-build check (same commit twice -> identical checksum).
   daemon:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -96,6 +107,7 @@ jobs:
 
   # 3. Contract: one manifest, three languages, same accept/reject verdicts.
   contract:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +132,7 @@ jobs:
 
   # 4. Frontend: lint, typecheck, unit, build.
   frontend:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -146,6 +159,7 @@ jobs:
   #    Its own database, dropped afterwards: run-stack.sh writes real data, and P3 taught
   #    us that pointing it at cliora_test breaks the suites with counting assertions.
   browser:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -189,6 +203,7 @@ jobs:
   # 6. Capacity and boundedness. Smoke on every push; full NFR-003 scale on main and
   #    release branches only — see the note at the top of this file.
   capacity:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -226,6 +241,7 @@ jobs:
 
   # 7. Security: the attack suite, the leakage scans, and dependency advisories.
   security:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     services:
       postgres:
@@ -278,6 +294,7 @@ jobs:
   #    file content, no credential" scan. This is where the ADR 0004 data-model promise is
   #    checked against the artifact that leaves the building.
   backup-restore:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -310,6 +327,7 @@ jobs:
   #    no line continuation in quoted strings), and `/api/metrics` proxied through while a
   #    comment claimed otherwise.
   edge:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -338,6 +356,7 @@ jobs:
   # 10. Docs and traceability consistency: the generated artifacts must match their
   #    sources, and every runbook an alert names must exist.
   docs:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -364,6 +383,7 @@ jobs:
 
   # 11. Ops drills: every alert can actually be triggered, and the runbook steps run.
   drills:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     env:
       CLIORA_DATABASE_URL: postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora_test
@@ -394,6 +414,7 @@ jobs:
   # 12. Evidence pack. Depends on everything, so it cannot be produced for a run whose
   #     gates did not pass — an evidence pack from a red run is worse than none.
   evidence:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.draft == false
     runs-on: ubuntu-24.04
     needs: [backend-db, daemon, contract, frontend, browser, capacity, security, backup-restore, edge, docs, drills]
     steps:
