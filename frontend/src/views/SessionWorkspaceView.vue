@@ -299,10 +299,14 @@ const session = computed(() => sessions.current);
 // the CLI panel is 542px at 1024x768 and 14px/1.2 gives 28 rows there, under
 // plan/09's floor of 30. One row recovers 24px — about one row — and the
 // user-adjustable font size covers the rest (13px/1.2 gives 30 at that size).
-// The widths are no longer written here (plan/29 MS-01). This file used to hold
-// two of the three that had drifted apart — `< 1024` in script and
-// `max-width: 1100px` in the stylesheet below — and the 76px between them was a
-// file panel with no way to open it.
+// The widths are no longer written here (plan/29 MS-01/MS-05). This file used to
+// hold two of the three that had drifted apart — `< 1024` in script and a
+// `@media (max-width: 1100px)` that hid the rail outright. Between 1024 and
+// 1100px the panel was therefore in the DOM, `display: none`, and had no
+// control to open it; measured at seven widths in plan/29 09-…md §4.1. The
+// media query is gone: `[data-files-hidden]` already collapses the grid from
+// the same state the drawer button reads, so the width rule was a second,
+// disagreeing source for a decision that was already being made correctly.
 const { isTablet, isCompact, belowDesktop } = useBreakpoint();
 const compactHeader = computed(() => isTablet.value || isCompact.value);
 
@@ -840,7 +844,7 @@ async function confirmTerminate(): Promise<void> {
           v-if="session && filesVisible"
           id="file-panel"
           ref="filePanel"
-          class="rail workspace-rail"
+          class="rail"
         >
           <FileTree
             :session-id="filesSessionId"
@@ -1290,13 +1294,5 @@ async function confirmTerminate(): Promise<void> {
   background: none;
   color: var(--accent-strong);
   font-weight: 600;
-}
-@media (max-width: 1100px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-  .workspace-rail {
-    display: none;
-  }
 }
 </style>

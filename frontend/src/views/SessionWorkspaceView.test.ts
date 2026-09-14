@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -126,6 +130,19 @@ function testRouter(): Router {
         component: SessionWorkspaceView,
       },
     ],
+  });
+}
+
+/**
+ * jsdom has no `matchMedia`, so `useBreakpoint` falls back to reading
+ * `innerWidth` once at setup — which is exactly what a width-per-case test
+ * needs. Set it before `render`, not after.
+ */
+function setViewportWidth(px: number): void {
+  Object.defineProperty(window, "innerWidth", {
+    value: px,
+    configurable: true,
+    writable: true,
   });
 }
 
@@ -603,5 +620,63 @@ describe("SessionWorkspaceView — file upload gate (FU-06)", () => {
     expect(uploadFile.mock.calls[0][1]).toBe("datasets");
     expect(wrapper.text()).toContain("data.csv");
     expect(wrapper.text()).toContain("已上傳");
+  });
+});
+
+describe("SessionWorkspaceView — 檔案欄在每個寬度都取得得到（plan/29 MS-05）", () => {
+  // The invariant, stated as one rule rather than as a list of widths: the file
+  // panel is either occupying space or has a focusable control that brings it
+  // back. Never neither.
+  //
+  // What this replaces failed that rule between 1024 and 1100px, and failed it
+  // silently: `filesAreDrawer` said "column mode, so no drawer button" while a
+  // `@media (max-width: 1100px)` said "display: none". Each half read as
+  // correct on its own, which is why it survived. Measured at seven widths in
+  // plan/29 09-…md §4.1 before it was called a defect.
+  //
+  // Two halves, and they need two different tests. jsdom applies no stylesheet,
+  // so the cases below cover the *script* half only — the button's `v-if` and
+  // the panel's. They would have passed against the broken version too, because
+  // there the panel WAS in the DOM; it was the CSS that removed it. The
+  // stylesheet assertion at the end of this block is the one that covers the
+  // half that actually broke, and it is deliberately a text check, because the
+  // failure was a rule existing at all rather than a rule computing wrongly.
+  for (const width of [390, 768, 1000, 1023, 1024, 1100, 1101, 1440]) {
+    it(`${width}px: 面板佔位，或有可聚焦的開啟控制`, async () => {
+      setViewportWidth(width);
+      const wrapper = await render(vi.fn(async () => session()));
+
+      const panel = wrapper.find("#file-panel");
+      const opener = wrapper.find('[aria-controls="file-panel"]');
+
+      expect(
+        panel.exists() || opener.exists(),
+        `${width}px: 面板不在 DOM，也沒有任何控制可以叫它回來`,
+      ).toBe(true);
+      // And the control, when it is the answer, is a real button rather than a
+      // decorative element a keyboard cannot reach.
+      if (!panel.exists()) {
+        expect(opener.element.tagName).toBe("BUTTON");
+      }
+    });
+  }
+
+  it("樣式表裡沒有任何以寬度為條件、會藏住檔案欄的規則", () => {
+    // The actual defect, in the form it actually took. Reading the SFC's own
+    // text rather than a rendered page is the point: the rule was wrong by
+    // existing, and any width it named would have been equally wrong once the
+    // drawer button started deciding the same thing from state.
+    const here = dirname(fileURLToPath(import.meta.url));
+    const sfc = readFileSync(join(here, "SessionWorkspaceView.vue"), "utf8");
+    const style = sfc.slice(sfc.indexOf("<style scoped>"));
+    const widthQueries = [...style.matchAll(/@media[^{]*?(\d+)px/g)].map((m) =>
+      Number(m[1]),
+    );
+    // Not "no media queries at all" — a later one may legitimately adjust
+    // spacing. What must never come back is one that names a width this file no
+    // longer owns: the four breakpoints live in useBreakpoint.ts, and the panel
+    // is shown or hidden from `[data-files-hidden]`, which is state.
+    expect(widthQueries).toEqual([]);
+    expect(style).not.toMatch(/\.workspace-rail/);
   });
 });

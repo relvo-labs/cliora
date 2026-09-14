@@ -63,7 +63,10 @@ function widthMatches(query: string): boolean {
 }
 
 function track(query: string): Ref<boolean> {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return ref(widthMatches(query));
   }
   const mql = window.matchMedia(query);
