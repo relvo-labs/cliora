@@ -307,8 +307,12 @@ const session = computed(() => sessions.current);
 // media query is gone: `[data-files-hidden]` already collapses the grid from
 // the same state the drawer button reads, so the width rule was a second,
 // disagreeing source for a decision that was already being made correctly.
-const { isTablet, isCompact, belowDesktop } = useBreakpoint();
-const compactHeader = computed(() => isTablet.value || isCompact.value);
+const { belowDesktop, belowWide } = useBreakpoint();
+// Every width below 1440, narrow included (plan/29 MS-06). It used to start at
+// 768, so a phone got the *uncompressed* two-row header — the widest layout on
+// the narrowest screen. Node posture is no longer part of what the compact form
+// collapses, so extending it down costs nothing ADR 0023 cares about.
+const compactHeader = belowWide;
 
 // The file column has three modes, not two. Below 1024px it is an overlay
 // drawer with a button on the tab strip; at 1024px and up it is a resizable

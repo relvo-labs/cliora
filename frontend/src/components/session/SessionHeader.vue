@@ -45,7 +45,7 @@ const props = defineProps<{
   canRetry?: boolean;
   canTerminate?: boolean;
   busy?: boolean;
-  /** 1024-1439px: one row, with the identity line behind a disclosure. */
+  /** Below 1440px: one row, with the identity line behind a disclosure. */
   compact?: boolean;
 }>();
 
@@ -80,6 +80,22 @@ const identity = computed(() =>
   <header class="head" :data-compact="compact ? '' : undefined">
     <div class="row primary">
       <h1 :title="name">{{ name }}</h1>
+      <!-- Posture is on the row that is never collapsed, and out of any menu:
+           ADR 0023 D10 requires it in view before the user presses Enter.
+           It used to sit on the identity row, which meant that from 1024px down
+           it was behind the disclosure — the one place the requirement says it
+           must not be. Compact shortens the wording; it does not hide it
+           (plan/29 MS-06). -->
+      <span v-if="sandboxBypassed" class="posture" title="ADR 0023：沙箱已停用">
+        {{ compact ? "沙箱停用" : "沙箱：已停用" }}
+      </span>
+      <span
+        v-if="privilegedNode"
+        class="posture"
+        title="ADR 0023：此 Node 可透過 sudo 提權"
+      >
+        {{ compact ? "可提權" : "此 Node 可提權（sudo）" }}
+      </span>
       <div class="actions">
         <!-- Only when the user is read-only *and* the server said takeover is
              possible. Both conditions are unchanged from before plan/28. -->
@@ -117,9 +133,10 @@ const identity = computed(() =>
       </div>
     </div>
 
-    <!-- Second row: who and where. At 1024-1439px it collapses behind a
+    <!-- Second row: who and where. Below 1440px it collapses behind a
          disclosure so the header can be one 48px row — which measured out as
-         24px recovered, about one terminal row at 14px/1.2. -->
+         24px recovered, about one terminal row at 14px/1.2. Node posture is
+         deliberately not in here; see the primary row. -->
     <div v-if="!compact || detailsOpen" class="row identity">
       <Server class="icon" aria-hidden="true" />
       <!-- The node name was not displayed at all before. The information
@@ -138,14 +155,6 @@ const identity = computed(() =>
         <Check v-if="copied" />
         <Copy v-else />
       </UiIconButton>
-      <!-- Posture stays on this row and out of any menu: ADR 0023 D10 requires
-           it in view before the user presses Enter. -->
-      <span v-if="sandboxBypassed" class="posture" title="ADR 0023"
-        >沙箱：已停用</span
-      >
-      <span v-if="privilegedNode" class="posture" title="ADR 0023"
-        >此 Node 可提權（sudo）</span
-      >
     </div>
     <button
       v-if="compact"
@@ -224,6 +233,10 @@ h1 {
   max-width: min(46ch, 100%);
 }
 .posture {
+  /* Never the thing that gives way when the row runs out of room: the session
+     name truncates (it has a `title`), the posture badge does not, because a
+     half-shown warning is worse than a truncated name. */
+  flex-shrink: 0;
   padding: 1px 7px;
   border-radius: var(--radius-pill);
   background: var(--status-warning-bg);
