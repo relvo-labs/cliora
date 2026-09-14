@@ -503,3 +503,28 @@
   /* Elevation */
   --shadow-overlay: 0 12px 32px #00000066;
 }
+
+/* Mobile scale (plan/29 MS-01). SCALE ONLY — no colour may appear in this
+ * block, and theme.contract.test.ts asserts that.
+ *
+ * Colour on a narrow viewport is not a media query's job: it is the `pocket`
+ * theme, selected through the same attribute every other theme uses, because
+ * xterm and Monaco need resolved strings that a media query cannot give them
+ * (see this file's header). Putting one colour here would split the palette
+ * across two mechanisms, which is the failure the two-source contract exists
+ * to prevent.
+ *
+ * `--density-control` is the whole point. Eight call sites render an input, a
+ * select or a menu row at 36px; UiButton already tops its *hit area* up to 44px
+ * with a pseudo-element, but an `<input>` cannot do that trick, so on touch the
+ * form controls were the only things under the floor. Raising the token fixes
+ * all eight without any of them restating it. */
+@media (max-width: 767px) {
+  :root {
+    --density-control: var(--density-touch);
+    --density-row: 52px;
+    /* One row for the work header, same as the 1024-1439 desktop compaction —
+       on a phone every 8px here is a row of terminal. */
+    --layout-workhead: var(--layout-workhead-compact);
+  }
+}

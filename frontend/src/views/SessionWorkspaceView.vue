@@ -32,6 +32,7 @@ const PreviewPane = defineAsyncComponent(
   () => import("../components/file/PreviewPane.vue"),
 );
 import { useAsyncResource } from "../composables/useAsyncResource";
+import { useBreakpoint } from "../composables/useBreakpoint";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useFocusTrap } from "../composables/useFocusTrap";
@@ -298,24 +299,19 @@ const session = computed(() => sessions.current);
 // the CLI panel is 542px at 1024x768 and 14px/1.2 gives 28 rows there, under
 // plan/09's floor of 30. One row recovers 24px — about one row — and the
 // user-adjustable font size covers the rest (13px/1.2 gives 30 at that size).
-const viewportWidth = ref(
-  typeof window === "undefined" ? 1440 : window.innerWidth,
-);
-function trackWidth(): void {
-  viewportWidth.value = window.innerWidth;
-}
-onMounted(() => window.addEventListener("resize", trackWidth));
-onBeforeUnmount(() => window.removeEventListener("resize", trackWidth));
-const compactHeader = computed(
-  () => viewportWidth.value >= 768 && viewportWidth.value < 1440,
-);
+// The widths are no longer written here (plan/29 MS-01). This file used to hold
+// two of the three that had drifted apart — `< 1024` in script and
+// `max-width: 1100px` in the stylesheet below — and the 76px between them was a
+// file panel with no way to open it.
+const { isTablet, isCompact, belowDesktop } = useBreakpoint();
+const compactHeader = computed(() => isTablet.value || isCompact.value);
 
 // The file column has three modes, not two. Below 1024px it is an overlay
 // drawer with a button on the tab strip; at 1024px and up it is a resizable
 // column. What this replaces was `display: none` below 1100px with no opening
 // control at all — the file tree simply ceased to exist, which is the shape the
 // shared design foundation names as forbidden ("不將功能直接隱藏").
-const filesAreDrawer = computed(() => viewportWidth.value < 1024);
+const filesAreDrawer = belowDesktop;
 const filesOpen = ref(false);
 // Visible means "occupying space or overlaying": a closed drawer is neither.
 const filesVisible = computed(() => !filesAreDrawer.value || filesOpen.value);
