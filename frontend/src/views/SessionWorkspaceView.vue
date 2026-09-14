@@ -15,6 +15,7 @@ import type { NodeDetail, SessionDetail } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
+import FileBrowser from "../components/file/FileBrowser.vue";
 import FileTree from "../components/file/FileTree.vue";
 import SessionHeader from "../components/session/SessionHeader.vue";
 import StatusBar from "../components/session/StatusBar.vue";
@@ -997,7 +998,19 @@ async function confirmTerminate(): Promise<void> {
           ref="filePanel"
           class="rail"
         >
+          <!-- One level at a time on a phone, the full tree elsewhere. Same
+               store, same session binding, same abort/wipe — only the
+               presentation differs (plan/29 MS-14). -->
+          <FileBrowser
+            v-if="isNarrow"
+            :session-id="filesSessionId"
+            :root-label="workspaceLabel"
+            :can-browse="canBrowseFiles"
+            :disabled-reason="filesDisabledReason"
+            @open="openPreview"
+          />
           <FileTree
+            v-else
             :session-id="filesSessionId"
             :root-label="workspaceLabel"
             :can-browse="canBrowseFiles"

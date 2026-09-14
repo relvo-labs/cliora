@@ -269,4 +269,23 @@ h2 {
   color: var(--accent-strong);
   font-weight: 600;
 }
+
+/* Narrow: the preview is the whole screen, so the toolbar has to survive at
+   390px and its controls have to be tappable (plan/29 MS-16). Nothing about
+   what the preview *is* changes here — still read-only, still text/code only,
+   same denial taxonomy. */
+@media (max-width: 767px) {
+  .tools {
+    flex-wrap: wrap;
+  }
+  .tools button {
+    min-height: var(--density-touch);
+    padding: 0 12px;
+  }
+  /* The preview reaches the bottom edge on a phone, and per MS-02 the element
+     that touches the edge is the one that applies the inset. */
+  .preview {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
 </style>

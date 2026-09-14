@@ -64,6 +64,21 @@ vi.mock("../components/file/FileTree.vue", () => ({
     </div>`,
   },
 }));
+// The narrow-viewport browser, mocked for the same reason FileTree is: it does
+// its own fetching, and these cases are about the workspace shell around it.
+// The emit surface is the whole contract between them.
+vi.mock("../components/file/FileBrowser.vue", () => ({
+  default: {
+    name: "FileBrowser",
+    props: ["sessionId", "rootLabel", "canBrowse", "disabledReason"],
+    emits: ["open"],
+    template: `<div class="file-tree">
+      <button class="open-a" @click="$emit('open', 'src/app.py')">a</button>
+      <button class="open-b" @click="$emit('open', 'docs/readme.md')">b</button>
+    </div>`,
+  },
+}));
+
 // PreviewPane is loaded through defineAsyncComponent (it drags Monaco in), so
 // the mocked module is resolved at runtime and both Vue and test-utils probe it
 // for internal markers (__isTeleport, __v_isVNode, name, …). A vi.mock factory
