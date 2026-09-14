@@ -30,11 +30,29 @@
 
 ## 交付內容
 
+### 提案與契約（PR #68）
+
 - [`00-execution-plan.md`](00-execution-plan.md)：Design Read、因果閱讀收據、範圍與實作順序。
 - [`01-mobile-addendum-v0.1.md`](01-mobile-addendum-v0.1.md)：提案中的 route、state、component、terminal/input、responsive、security、preview 與 theme 契約。
 - [`02-rollout-and-verification.md`](02-rollout-and-verification.md)：階段 DAG、write-set 所有權、acceptance IDs、證據分級、UAT、分階段推出、kill switch 與 rollback。
 - [`prototypes/mobile-session/index.html`](../../prototypes/mobile-session/index.html)、`style.css`、`app.js`：整合式互動靜態原型。
 - [`prototypes/mobile-session/test_prototype.py`](../../prototypes/mobile-session/test_prototype.py)：本機 HTTP Playwright 行為、viewport、touch、overflow、keyboard、preview restoration 與截圖測試。
+
+### 可執行的實作規格（本次補完）
+
+00–02 把「要遵守什麼契約」寫完了，但沒有寫「要改哪個檔、誰改、改完怎麼證明」。
+以下七份把 M0–M4 落成 **`MS-D-*` 決策**與 **`MS-01`～`MS-25` 票**，每一張都綁到實際檔案與既有測試閘門。
+
+- [`03-m0-decision-register.md`](03-m0-decision-register.md)：14 項 M0 決策的**選項 → 提案答案 → 理由 → 影響檔案 → 擋住哪張票**。沒有提案答案的決策清單會在開工時變成第二輪討論。
+- [`04-mobile-shell-and-navigation.md`](04-mobile-shell-and-navigation.md)：`MS-01`～`MS-06`。斷點單一來源、安全區與軟體鍵盤、行動導覽、Sessions 卡片清單、1024–1100 檔案欄缺陷、標頭與狀態列壓縮。
+- [`05-session-workspace-and-terminal.md`](05-session-workspace-and-terminal.md)：`MS-07`～`MS-13`。行動模式外殼、preview 返回鍵、fit 觸發、reconnect/detach、IME spike 的 12 項待測、輸入元件契約、writer/viewer 與姿態。
+- [`06-files-and-preview-mobile.md`](06-files-and-preview-mobile.md)：`MS-14`～`MS-17`。逐層瀏覽（正式版是樹、原型是逐層，差距與解法寫在 §0）、檔名搜尋範圍標示、全幅唯讀預覽與拒絕態、可整張切除的上傳票。
+- [`07-mobile-light-theme-contract.md`](07-mobile-light-theme-contract.md)：`MS-18`～`MS-21`。新增 `pocket` 主題的完整機制、**明亮終端調色盤的四條規則與一組通過全部對比門檻的實測提案值**（§1），以及 v0.1 沒有點名的三個技術後果——**ANSI 16 色只有一套且是為深底調的**、**ANSI 16 色從來不在對比測試裡**、**Monaco 每個主題都硬編 `base: "vs-dark"`**。
+- [`08-verification-and-exit.md`](08-verification-and-exit.md)：`MS-22`～`MS-25`。把 `MSP-R-*` 接到實際測試檔、三個新 `GATE-MS-*` 與 traceability 條目，以及七項離場條件。
+- [`09-implementation-status.md`](09-implementation-status.md)：唯一的「現在到哪了」來源，含 10 項**開放測量**（`MS-OM-*`）——其中三項可能推翻既有票的設計。
+
+票的編號規則：`MS-D-*` 是決策，`MS-*` 是實作票，`MS-OM-*` 是開放測量，
+`MSP-F-*`／`MSP-R-*` 沿用 `02-…md` 既有的 fixture／正式 acceptance ID，不重新編號。
 
 ## 原型結果，不是正式版狀態
 
