@@ -266,3 +266,31 @@ describe("AppLayout", () => {
     expect(navNames(wrapper)).toContain("Sessions");
   });
 });
+
+describe("行動導覽（plan/29 MS-03）", () => {
+  it("窄視窗的覆蓋抽屜把 Sessions 排在第一項", async () => {
+    setWidth(390);
+    const wrapper = await render();
+    await wrapper.get(".menu-toggle").trigger("click");
+    expect(navNames(wrapper)[0]).toBe("Sessions");
+  });
+
+  it("桌面側欄的順序完全不變", async () => {
+    // The mobile entry point is an ordering change and nothing else; if this
+    // goes red, it stopped being scoped to the overlay (MS-D-01).
+    setWidth(1440);
+    const wrapper = await render();
+    expect(navNames(wrapper)[0]).toBe("Dashboard");
+  });
+
+  it("權限決定的可見性不跟著順序走", async () => {
+    // Hoisting must not become a second, quieter way to decide what renders.
+    setWidth(390);
+    const developer = await render({}, []);
+    await developer.get(".menu-toggle").trigger("click");
+    const names = navNames(developer);
+    expect(names[0]).toBe("Sessions");
+    expect(names).not.toContain("Integrations");
+    expect(names).not.toContain("Audit");
+  });
+});

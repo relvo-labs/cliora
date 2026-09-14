@@ -183,6 +183,7 @@ async function logout(): Promise<void> {
       <PrimaryNav
         :collapsed="false"
         :collapsible="false"
+        sessions-first
         :product-name="productName"
         @update:collapsed="() => {}"
       />
@@ -291,6 +292,10 @@ async function logout(): Promise<void> {
   inset: 0;
   z-index: 25;
   background: var(--surface-scrim);
+  /* The scrim is not a scrollable surface, and on touch a drag over it would
+     otherwise scroll the page underneath while the menu is open. */
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 .menu-panel {
   position: fixed;
@@ -298,6 +303,23 @@ async function logout(): Promise<void> {
   z-index: 26;
   width: min(280px, 86vw);
   box-shadow: var(--shadow-overlay);
+  /* Its own insets, not the shell's: `position: fixed` takes it out of the
+     shell's padding box entirely, so without these it runs under the notch at
+     the top and the home indicator at the bottom (plan/29 MS-03). This is also
+     an element that touches the bottom edge, which under MS-02 is exactly who
+     is supposed to apply the bottom inset. */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  /* Seven items plus a brand can exceed a short landscape viewport once the
+     insets are added, and a nav you cannot reach the bottom of is a nav with
+     missing items. */
+  overflow-y: auto;
+  /* Stops the scroll chaining to the page behind. `overscroll-behavior` rather
+     than `position: fixed` on the body: the shell's `main` is the app's one
+     scrolling container, and pinning the body would throw away its scroll
+     position on every open. */
+  overscroll-behavior: contain;
 }
 .menu-panel :deep(.rail) {
   height: 100%;
