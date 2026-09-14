@@ -16,7 +16,7 @@
 // of a drag, and the only frame that can change the layout is the one that
 // crosses a boundary — which is the single event `matchMedia` reports.
 
-import { onScopeDispose, readonly, ref, watch, type Ref } from "vue";
+import { computed, onScopeDispose, readonly, ref, type Ref } from "vue";
 
 /** `<768px`. Phones in portrait, and the narrow end of the acceptance matrix. */
 export const NARROW = "(max-width: 767px)";
@@ -87,30 +87,26 @@ export function useBreakpoint(): Breakpoint {
   const isTablet = track(TABLET);
   const isCompact = track(COMPACT);
 
-  // Derived rather than tracked separately: four independent queries can
-  // disagree for one frame while the browser applies them, and a layout that
-  // briefly believes it is both narrow and wide is a flash the user sees.
-  const isWide = ref(false);
-  const belowDesktop = ref(false);
-  const belowWide = ref(false);
-  const sync = (): void => {
-    belowDesktop.value = isNarrow.value || isTablet.value;
-    belowWide.value = belowDesktop.value || isCompact.value;
-    isWide.value = !belowWide.value;
-  };
-  sync();
-  // One watcher over all three, not three watchers: the sources update in
-  // separate event callbacks, and `sync` reads all three every time, so the
-  // derived trio is never assembled from a half-applied set. A watcher created
-  // inside an effect scope stops with it, so there is nothing to clean up here.
-  watch([isNarrow, isTablet, isCompact], sync);
+  // Derived, not tracked. Three more `matchMedia` queries would answer the same
+  // questions, but they update in three separate callbacks, so for one frame
+  // the set can say both "narrow" and "wide" — and a layout that believes both
+  // is a flash the user sees.
+  //
+  // `computed` rather than a watcher writing into refs, which is what this was
+  // first: a watcher runs after the sources change, so every derived value
+  // lagged by a tick. Inside a component that is usually invisible because
+  // watchers flush before render, which is exactly what makes it a bad thing to
+  // rely on. A computed reads all three at the moment it is asked.
+  const belowDesktop = computed(() => isNarrow.value || isTablet.value);
+  const belowWide = computed(() => belowDesktop.value || isCompact.value);
+  const isWide = computed(() => !belowWide.value);
 
   return {
     isNarrow: readonly(isNarrow),
     isTablet: readonly(isTablet),
     isCompact: readonly(isCompact),
-    isWide: readonly(isWide),
-    belowDesktop: readonly(belowDesktop),
-    belowWide: readonly(belowWide),
+    isWide,
+    belowDesktop,
+    belowWide,
   };
 }

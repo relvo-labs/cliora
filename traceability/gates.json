@@ -788,6 +788,47 @@
         "mvp",
         "nfr"
       ]
+    },
+    {
+      "id": "GATE-MS-BREAKPOINT",
+      "owner": "frontend",
+      "layer": "static",
+      "command": [
+        "scripts/ms/ms-gates.sh",
+        "breakpoint"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all"
+      ]
+    },
+    {
+      "id": "GATE-MS-HISTORY-PATH",
+      "owner": "frontend",
+      "layer": "static",
+      "command": [
+        "scripts/ms/ms-gates.sh",
+        "history-path"
+      ],
+      "working_directory": ".",
+      "timeout_seconds": 60,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all",
+        "security"
+      ]
     }
   ]
 }

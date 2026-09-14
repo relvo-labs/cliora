@@ -294,3 +294,92 @@ describe("行動導覽（plan/29 MS-03）", () => {
     expect(names).not.toContain("Audit");
   });
 });
+
+describe("視窗高度（plan/29 MS-02）", () => {
+  interface FakeViewport {
+    height: number;
+    listeners: Map<string, Set<() => void>>;
+  }
+  function installVisualViewport(height: number): FakeViewport {
+    const vv: FakeViewport = { height, listeners: new Map() };
+    Object.defineProperty(window, "visualViewport", {
+      configurable: true,
+      writable: true,
+      value: {
+        get height() {
+          return vv.height;
+        },
+        addEventListener: (type: string, fn: () => void) => {
+          if (!vv.listeners.has(type)) vv.listeners.set(type, new Set());
+          vv.listeners.get(type)?.add(fn);
+        },
+        removeEventListener: (type: string, fn: () => void) => {
+          vv.listeners.get(type)?.delete(fn);
+        },
+      },
+    });
+    return vv;
+  }
+  function fire(vv: FakeViewport, type: string): void {
+    for (const fn of vv.listeners.get(type) ?? []) fn();
+  }
+
+  it("軟體鍵盤縮小可用高度時，shell 跟著縮", async () => {
+    const vv = installVisualViewport(844);
+    setWidth(390);
+    await render();
+    const root = document.documentElement;
+    expect(root.style.getPropertyValue("--viewport-usable-height")).toBe(
+      "844px",
+    );
+
+    // A keyboard opens: visualViewport shrinks, `100dvh` does not.
+    vv.height = 420;
+    fire(vv, "resize");
+    expect(root.style.getPropertyValue("--viewport-usable-height")).toBe(
+      "420px",
+    );
+  });
+
+  it("iOS 用 scroll 回報鍵盤變化，也要接得到", async () => {
+    const vv = installVisualViewport(844);
+    setWidth(390);
+    await render();
+    vv.height = 500;
+    fire(vv, "scroll");
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--viewport-usable-height",
+      ),
+    ).toBe("500px");
+  });
+
+  it("卸載時解除監聽並清掉變數", async () => {
+    const vv = installVisualViewport(844);
+    setWidth(390);
+    const wrapper = await render();
+    wrapper.unmount();
+
+    // Removed rather than left behind: the login page has no shell, and a stale
+    // height from the last session would size it.
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--viewport-usable-height",
+      ),
+    ).toBe("");
+    expect(vv.listeners.get("resize")?.size ?? 0).toBe(0);
+    expect(vv.listeners.get("scroll")?.size ?? 0).toBe(0);
+  });
+
+  it("瀏覽器沒有 visualViewport 時，什麼都不設，讓 CSS 回退", async () => {
+    // @ts-expect-error — the absence is the case under test.
+    delete window.visualViewport;
+    setWidth(390);
+    await render();
+    expect(
+      document.documentElement.style.getPropertyValue(
+        "--viewport-usable-height",
+      ),
+    ).toBe("");
+  });
+});
