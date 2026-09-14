@@ -6,18 +6,42 @@
 
 ## 1. 截至目前的真實狀態
 
-**正式程式碼改動：0 行。**
+分支 `feat/mobile-rwd`，10 個 commit。
 
-PR #68（已合併，`f012b14`）只新增了 `prototypes/mobile-session/` 與 `plan/29/` 的文字檔。
-沒有 frontend／backend／daemon／CI／governance 修改，沒有 API、PTY、WebSocket、shell、
-真實檔案寫入或 session 生命週期的副作用。
+**已完成**：`MS-01`～`MS-09`、`MS-14`～`MS-16`、`MS-18`～`MS-23`、`MS-25`。
+**未完成**：`MS-11`（IME spike，需真機）、`MS-12`（依賴 `MS-11`）、
+`MS-13`（writer/viewer 契約未改動，但多裝置驗證需真機）、`MS-17`（上傳，依 `MS-D-14` 可切除）、
+`MS-24`（真機／安全／UAT）。
 
-本次補完另外完成了一項**算術**（不是實作，也不是渲染證據）：
-`07-…md` §1 的明亮終端調色盤，16 個 ANSI 值加 9 個終端 token，全部通過 `theme/contrast.ts` 的既有門檻。
-同時發現 **ANSI 16 色從來不在 `PAIRS` 裡**（§0.1.1）——這是所有主題共有的既有缺口，由 `MS-19` 補。
+本機驗證：1026 個單元測試、typecheck、lint、prettier、
+`GATE-VR-*` 四項、`GATE-LY-*` 三項、新增的 `GATE-MS-BREAKPOINT` 與 `GATE-MS-HISTORY-PATH`，
+以及 `scripts/trace validate` 的 schema／static／selectors 三級，全部通過。
+E2E 的 13 個不需後端案例在真實 chromium 與 mobile-chrome-emulated 實際執行通過。
 
-已成立的只有 `MSP-F-001`～`012`：**fixture 行為**。它們證明提案的互動是連貫的，
-**不證明** reconnect、路徑限制、RBAC、ANSI、IME、二進位拒絕的正式服務行為、真實裝置版面或安全狀態。
+**`MSP-R-001`～`012` 仍然全部未完成。** 本期做的是呈現層，沒有碰任何 wire schema、
+daemon、RBAC 或 session 生命週期；上面那些綠燈證明的是「改動沒有弄壞既有契約」，
+不是「行動版可以上線」。
+
+### 1.1 實作過程中被推翻的計畫內容
+
+四處，都留在原文件裡而不是抹掉：
+
+| 位置 | 計畫原本寫的 | 實際結果 |
+|---|---|---|
+| `07-…md` §1.1 R3 | normal／bright 互相可分辨 ≥1.3:1，且「五個深色主題已經算過會通過」 | **沒算過**。實測 1.19–1.26，五個深色主題全紅。錯的是門檻不是值；改為有方向性的「對比之比 ≥1.15」 |
+| `08-…md` `GATE-MS-TOUCH-TOKEN` | 靜態檢查互動元素不得寫死像素高度 | **放棄**。40 個字面高度多半是圖示與 sr-only，規則會變成「大部分都是例外」。改由 E2E 量幾何，理由寫在 `scripts/ms/ms-gates.sh` 檔頭 |
+| `05-…md` `MS-08` 條件 (3) | 離開 route 時把推入的歷史條目一併退出 | **未實作**。在導航進行中呼叫 `history.back()` 會讓 router 跑到誰都沒選的地方。改為「棄用」該條目，殘留一筆同 URL 條目，記入 `MS-OM-07` |
+| `06-…md` §0 | 新增 `useFileBrowser` 與 `useFileTree` 並存 | 照做，但另外發現 `FileSearchBar` 缺兩件 ADR 0014/0015 要求的事（`scanned_count` 未顯示、搜尋範圍未標示），一併補上 |
+
+### 1.2 實作中找到、且非本期造成的既有缺陷
+
+兩個，都已修，回歸測試都先驗過「還原舊碼會變紅」：
+
+1. **1024–1100px 檔案欄完全無法取得**（`MS-05`）。詳見 §4.1。
+2. **node 姿態在壓縮標頭下被藏起來**（`MS-06`）。`SessionHeader` 的註解寫著
+   ADR 0023 D10 要求它在打字前可見，而那兩個徽章就在 `v-if="!compact || detailsOpen"`
+   的那一列裡，距離該註解四行。**這一條在修復前影響的是現行桌面 1024–1439px 的使用者**，
+   不只是行動版。
 
 ## 2. 決策狀態（`MS-D-*`）
 
@@ -43,38 +67,35 @@ PR #68（已合併，`f012b14`）只新增了 `prototypes/mobile-session/` 與 `
 
 ## 3. 票狀態（`MS-*`）
 
-全部 **未開始**。
+| 票 | 狀態 |
+|---|---|
+| MS-01 斷點單一來源與行動尺度 | ✅ 已合併 |
+| MS-02 安全區與軟體鍵盤 | ✅ 已合併 |
+| MS-03 行動主導覽 | ✅ 已合併 |
+| MS-04 Sessions 清單行動形態 | ✅ 已合併 |
+| MS-05 1024–1100 檔案欄缺陷 | ✅ 已合併（見 §1.2） |
+| MS-06 StatusBar 與標頭壓縮 | ✅ 已合併（見 §1.2） |
+| MS-07 行動模式外殼 | ✅ 已合併 |
+| MS-08 preview 返回鍵 | ✅ 已合併，條件 (3) 未實作（見 §1.1） |
+| MS-09 終端宿主與 fit | ✅ 已合併 |
+| MS-10 連線／重連／detach | ➖ 契約未改動；真機驗證屬 MSP-R-002 |
+| MS-11 IME／輸入 spike | ❌ **未做，需真機** |
+| MS-12 行動終端輸入元件 | ❌ **未做，依賴 MS-11** |
+| MS-13 writer／viewer／姿態 | ➖ 契約未改動；多裝置驗證屬 MSP-R-004 |
+| MS-14 行動檔案瀏覽 | ✅ 已合併 |
+| MS-15 檔名搜尋行動形態 | ✅ 已合併 |
+| MS-16 全幅唯讀預覽 | ✅ 已合併 |
+| MS-17 上傳（可切除） | ❌ 未做，依 MS-D-14 移出本期 |
+| MS-18 `pocket` token 值 | ✅ 已合併 |
+| MS-19 對比與真實渲染 | ✅ 自動化部分已合併；真實 CLI 渲染屬 MSP-R-009 |
+| MS-20 選擇層 | ✅ 已合併 |
+| MS-21 桌面回歸 | ✅ 已合併 |
+| MS-22 單元與靜態層 | ✅ 已合併（見 §1.1 的閘門調整） |
+| MS-23 瀏覽器 E2E | ✅ 已合併；mobile-safari-emulated 在本機無法執行（webkit 缺系統函式庫） |
+| MS-24 真機／安全／UAT | ❌ 未做 |
+| MS-25 Traceability | ✅ 已合併，新增 NFR-007 |
 
-| 票 | 階段 | 擁有者 | 擋在 | 文件 |
-|---|---|---|---|---|
-| MS-01 斷點單一來源與行動尺度 | M1 | shell writer | MS-D-03 | 04 |
-| MS-02 安全區與軟體鍵盤 | M1 | shell writer | MS-01、MS-D-09 | 04 |
-| MS-03 行動主導覽 | M1 | shell writer | MS-01、MS-D-01 | 04 |
-| MS-04 Sessions 清單行動形態 | M1 | shell writer | MS-01 | 04 |
-| MS-05 1024–1100 檔案欄缺陷 | M1 | shell writer | MS-D-08 | 04 |
-| MS-06 StatusBar 與標頭壓縮 | M1 | shell writer | MS-01 | 04 |
-| MS-07 行動模式外殼 | M1 | shell writer | MS-05 | 05 |
-| MS-08 preview 返回鍵 | M1 | shell writer | MS-D-02、MS-07 | 05 |
-| MS-09 終端宿主與 fit | M2 | terminal writer | M1 全數合併 | 05 |
-| MS-10 連線／重連／detach | M2 | terminal writer | MS-09 | 05 |
-| MS-11 IME／輸入 spike | M1（並行） | spike owner | 無 | 05 |
-| MS-12 行動終端輸入元件 | M2 | terminal writer | MS-11、MS-D-10 | 05 |
-| MS-13 writer／viewer／姿態 | M2 | terminal writer | MS-09 | 05 |
-| MS-14 行動檔案瀏覽 | M3 | file writer | M2 合併 | 06 |
-| MS-15 檔名搜尋行動形態 | M3 | file writer | MS-14 | 06 |
-| MS-16 全幅唯讀預覽 | M3 | file writer | MS-14 | 06 |
-| MS-17 上傳（可切除） | M3 | file writer | MS-16、MS-D-14 | 06 |
-| MS-18 `pocket` token 值 | 主題 | theme owner | MS-D-04 | 07 |
-| MS-19 對比與真實渲染 | 主題 | theme owner | MS-18 | 07 |
-| MS-20 選擇層 | 主題 | theme owner | MS-18、MS-D-05～07 | 07 |
-| MS-21 桌面回歸 | 主題 | theme owner | MS-20 | 07 |
-| MS-22 單元與靜態層 | 驗證 | frontend | MS-01、MS-18 | 08 |
-| MS-23 瀏覽器 E2E | 驗證 | frontend | M1 合併 | 08 |
-| MS-24 真機／安全／UAT | M4 | QA ＋ 安全 | M3 合併 | 08 |
-| MS-25 Traceability 與推出 | M4 | release owner | MS-24 | 08 |
-
-主題票（MS-18～21）在 DAG 上與 M2／M3 並行，但 `MS-20` 會碰 `SessionWorkspaceView.vue` 的主題套用路徑，
-**必須與 M2 序列化**。這是本期唯一一處跨階段的檔案爭用。
+「➖」表示該票的契約本來就不需要改動，本期確認沒有破壞它；真正的驗證在對應的 `MSP-R-*`。
 
 ## 4. 開放測量（`MS-OM-*`）
 
@@ -87,9 +108,9 @@ PR #68（已合併，`f012b14`）只新增了 `prototypes/mobile-session/` 與 `
 | `MS-OM-02` | iOS Safari 與 Android Chrome 的繁中 IME 事件序列與實際送出 bytes | 決定 `MS-D-10`，進而決定 `MS-12` 的整個形狀 | IME spike owner |
 | `MS-OM-03` | `visualViewport.height` 是否已排除 home indicator（各平台） | 決定底部安全區是否重複相減；錯了會在有 home indicator 的裝置上多切掉一條 | IME spike owner |
 | `MS-OM-04` | 明亮終端底下 ANSI 16 色的**真實 xterm 渲染**與真實 CLI 輸出 | **算術已完成**：`07-…md` §1.2 有一組通過 `contrast.ts` 全部門檻的提案值，規則見 §1.1。剩下的是渲染——次像素反鋸齒、真實 Claude／Codex／tmux 輸出、`\e[3Xm`／`\e[4Xm` 8×8 矩陣。屬 `MSP-R-009` | theme owner |
-| `MS-OM-05` | `theme-boot.js` 加入寬度判斷後的實際行數 | >12 行就必須回到「接受冷載入閃爍」，不是放寬門檻 | theme owner |
+| `MS-OM-05` | ~~`theme-boot.js` 加入寬度判斷後的實際行數~~ | **已量測：9 行，上限 12。** 且已在真實瀏覽器驗證首次繪製前即生效（擋掉 main.ts 後仍為 pocket） | 已完成 |
 | `MS-OM-06` | 390×844、軟體鍵盤開啟時，終端實際剩下幾列 | plan/09 為桌面訂的下限是 30 列。若行動端只剩 8 列，`MS-12` 的輔助鍵列可能必須改設計，甚至整個輸入形態要重想 | M2 terminal writer |
-| `MS-OM-07` | `popstate` 與 vue-router 導航守衛在 session 切換時是否互相干擾 | 決定 `MS-08` 是否要回退到只留 Escape 與關閉鈕 | M1 shell writer |
+| `MS-OM-07` | `popstate` 與 vue-router 在 session 切換／離開 route 時的互動 | **部分已答**：session 切換已處理（先清 state 再棄用歷史條目，單元測試涵蓋）。**未答**：離開 route 時殘留一筆同 URL 歷史條目，真機上「多按一次返回」的實際觀感未驗 | M4 QA（真機） |
 | `MS-OM-08` | Monaco 在實機行動瀏覽器上的載入時間、記憶體與觸控捲動可用性 | 預覽是本期三大功能之一。若 Monaco 在中階手機上不可用，`MS-16` 需要一個不是 Monaco 的唯讀呈現，而那是新的決策不是調參 | M3 file writer |
 | `MS-OM-09` | 行動瀏覽器背景化後回前景時，WebSocket 的實際存活率與重連耗時 | 決定 `MS-10` 的 stale 標示與重連提示要多積極 | M2 terminal writer |
 | `MS-OM-10` | 搜尋框與輸入列在鍵盤升起時是否被遮住（各平台） | `MS-02` 拒絕 `position: fixed` 的前提就是這個量測還沒做 | QA |

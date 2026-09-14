@@ -54,6 +54,12 @@
 票的編號規則：`MS-D-*` 是決策，`MS-*` 是實作票，`MS-OM-*` 是開放測量，
 `MSP-F-*`／`MSP-R-*` 沿用 `02-…md` 既有的 fixture／正式 acceptance ID，不重新編號。
 
+## 目前進度
+
+實作已在 `feat/mobile-rwd` 分支進行中。**唯一的「現在到哪了」來源是
+[`09-implementation-status.md`](09-implementation-status.md)**，其中 §1.1 記錄了實作過程中
+被推翻的四處計畫內容，§1.2 記錄了兩個實作中找到、非本期造成的既有缺陷。
+
 ## 原型結果，不是正式版狀態
 
 `02-rollout-and-verification.md` 記錄的 `MSP-F-*` fixture acceptance 已通過；所有 `MSP-R-*` 仍待完成。本 PR 不改正式程式，也沒有使用真實 Central、daemon、xterm、Monaco、裝置鍵盤、授權服務或 node。Fixture 只能證明提案互動連貫，不能證明 reconnect、路徑限制、RBAC、ANSI、IME、圖片／二進位拒絕的正式服務行為、真實裝置版面或安全狀態。
