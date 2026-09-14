@@ -104,9 +104,9 @@
 | | |
 |---|---|
 | 觀察 | `SessionWorkspaceView.vue:318` 的 `filesAreDrawer` 是 `< 1024`，抽屜開關鈕的 `v-if` 也是 `filesAreDrawer`（`:657`）。但 `:1298` 仍留著 `@media (max-width: 1100px) { .workspace-rail { display: none } }`，而 `.workspace-rail` 與 `.rail` 是同一個元素（`:847` `class="rail workspace-rail"`）。**在 1024–1100px：欄位被 CSS 隱藏，而抽屜鈕不渲染。** |
-| 現況 | 這是靜態閱讀結論，**尚未在瀏覽器重現**。`02-…md` M0 已要求先重現再宣告缺陷，本表不推翻那條。 |
+| 現況 | **已重現，確認為缺陷**（2026-09-14）。證據見 `09-…md` §4 `MS-OM-01`：1024 與 1100px 下 rail 在 DOM、CSS `display: none`、抽屜鈕不渲染，三者同時成立。 |
 | 選項 | (a) 刪掉 `:1298-1304` 整個 media block；(b) 把它的閾值改成 1024；(c) 把 `filesAreDrawer` 改成 `< 1100`。 |
-| **提案** | 先在 390／768／1000／1023／**1024**／**1100**／1101 重現並存證，確認後採 **(a)** |
+| **裁定** | 重現完成，採 **(a)**：刪掉整個 `@media (max-width: 1100px)` 區塊 |
 | 理由 | (b)/(c) 只是把兩個字面值再對齊一次，`MS-D-03` 的單一來源會讓 `:1298` 整塊失去存在理由——1024 以上是欄位模式，本來就不該有隱藏規則。 |
 | 影響 | `views/SessionWorkspaceView.vue` |
 | 決定者 | M1 shell writer（重現證據）＋ M0（確認為缺陷） |
@@ -191,7 +191,7 @@
 | MS-D-05 | pocket 觸發條件 | proposed | MS-20 |
 | MS-D-06 | 既有主題偏好 | proposed | MS-20 |
 | MS-D-07 | 冷載入閃爍 | proposed | MS-20 |
-| MS-D-08 | 1024–1100 缺陷 | 待重現 | MS-05 |
+| MS-D-08 | 1024–1100 缺陷 | **已重現、已裁定 (a)** | MS-05 |
 | MS-D-09 | 鍵盤高度所有權 | proposed | MS-02 |
 | MS-D-10 | 輸入形態 | **待測量**（spike） | MS-12 |
 | MS-D-11 | 保留與 analytics | proposed | MS-24 |

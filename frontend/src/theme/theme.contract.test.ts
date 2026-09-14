@@ -136,6 +136,28 @@ describe("tokens.css structural rules", () => {
     }
   });
 
+  it("keeps colour out of the mobile scale block", () => {
+    // plan/29 MS-01 adds a `@media (max-width: 767px)` block for the touch
+    // density. Theme blocks are already guarded above, but this one is not a
+    // theme block, so without this assertion it is an unguarded second place to
+    // put a colour — and a palette split across two mechanisms is exactly what
+    // the two-source contract exists to prevent. Colour on a narrow viewport is
+    // the `pocket` theme's job, selected through the same attribute as every
+    // other theme.
+    const at = WITHOUT_COMMENTS.indexOf("@media (max-width: 767px)");
+    expect(at, "the mobile scale block is missing").toBeGreaterThan(-1);
+    const body = WITHOUT_COMMENTS.slice(
+      at,
+      WITHOUT_COMMENTS.indexOf("}", WITHOUT_COMMENTS.indexOf("}", at) + 1),
+    );
+    for (const token of COLOR_TOKENS) {
+      expect(
+        body,
+        `--${token} is a colour and does not belong here`,
+      ).not.toMatch(new RegExp(`--${token}\\s*:`));
+    }
+  });
+
   it("keeps the light-preference rule scoped to :not([data-theme])", () => {
     // Drop the :not() and an explicit dark choice on a light OS stops holding —
     // which is the one case a CSS-only solution cannot express at all, and the
@@ -169,6 +191,17 @@ describe("theme-boot.js", () => {
     // whole audit. GATE-VR-NO-GLYPH-ICON checks the same bound in CI.
     const code = BOOT_CODE.split("\n").filter((l) => l.trim()).length;
     expect(code).toBeLessThanOrEqual(12);
+  });
+
+  it("derives pocket from the viewport without reading the stored choice", () => {
+    // The cold-load half of plan/29 MS-20. Without this line the first painted
+    // frame on a phone is Graphite, because main.ts is a deferred module — and
+    // one full dark frame is not a subtle flash when it is the whole page.
+    expect(BOOT).toContain("window.innerWidth < 768");
+    expect(BOOT).toContain('"pocket"');
+    // And it must not write the override back: the stored value is still the
+    // preference for every wider viewport (MS-D-06).
+    expect(BOOT_CODE).not.toMatch(/setItem/);
   });
 
   it("accepts exactly the shipped theme ids", () => {

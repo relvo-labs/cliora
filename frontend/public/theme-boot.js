@@ -7,11 +7,17 @@
  * the stylesheet has painted. In public/ so Vite does not hash the name.
  *
  * No choice stored means no attribute, which lets the prefers-color-scheme rule
- * in tokens.css decide. GATE-VR-NO-GLYPH-ICON checks this file's length. */
+ * in tokens.css decide. GATE-VR-NO-GLYPH-ICON checks this file's length.
+ *
+ * Below 768px the viewport decides and the stored choice is not read at all
+ * (plan/29 MS-D-05/MS-D-07). Doing it here rather than in main.ts is the whole
+ * point: main.ts is a deferred module, so leaving it to that path paints one
+ * full dark frame on every cold load on a phone. The stored value is left
+ * untouched — it is still the preference for every wider viewport. */
 (function () {
   try {
-    var t = localStorage.getItem("cliora-theme");
-    if (t === "graphite" || t === "porcelain") {
+    var t = window.innerWidth < 768 ? "pocket" : localStorage.getItem("cliora-theme");
+    if (t === "pocket" || t === "graphite" || t === "porcelain") {
       document.documentElement.setAttribute("data-theme", t);
     }
   } catch (e) {

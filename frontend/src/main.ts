@@ -17,6 +17,7 @@ import { createAppRouter } from "./router";
 import { installAuthStorageSync } from "./stores/auth";
 import {
   installPreferencesStorageSync,
+  installViewportThemeSync,
   usePreferencesStore,
 } from "./stores/preferences";
 
@@ -29,5 +30,9 @@ usePreferencesStore().init();
 // keep the old colours until it was reloaded — and reloading is exactly what a
 // theme switch promises not to require.
 installPreferencesStorageSync();
+// Rotating a phone or dragging a window across 768px changes which theme is
+// painted (plan/29 MS-20). Same reason as the line above: a live session must
+// recolour without a reload.
+installViewportThemeSync();
 app.use(createAppRouter());
 app.mount("#app");

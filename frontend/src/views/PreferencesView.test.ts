@@ -12,7 +12,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRouter, createWebHistory, type Router } from "vue-router";
 
 import { useAuthStore } from "../stores/auth";
-import { usePreferencesStore } from "../stores/preferences";
+import {
+  installViewportThemeSync,
+  usePreferencesStore,
+} from "../stores/preferences";
 import PreferencesView from "./PreferencesView.vue";
 
 function testRouter(): Router {
@@ -36,13 +39,35 @@ function testRouter(): Router {
   });
 }
 
-/** jsdom has no matchMedia; the store and the view both ask about the OS. */
-function stubPrefersLight(light: boolean): void {
+/**
+ * jsdom has no matchMedia, and there are now two different questions asked
+ * through it: the OS colour preference, and the viewport width that decides
+ * whether the mobile-only `pocket` theme overrides the stored choice (plan/29
+ * MS-20). Answering the second one with "whatever the first one is not" made
+ * every theme assertion here resolve to pocket, so each query is answered on
+ * its own terms.
+ *
+ * `width` defaults to a desktop, because that is the case these tests are
+ * about; the pocket path has its own cases below.
+ */
+function matchesWidth(query: string, width: number): boolean {
+  const min = /min-width:\s*(\d+)px/.exec(query);
+  const max = /max-width:\s*(\d+)px/.exec(query);
+  if (min && width < Number(min[1])) return false;
+  if (max && width > Number(max[1])) return false;
+  return true;
+}
+
+function stubPrefersLight(light: boolean, width = 1440): void {
   Object.defineProperty(window, "matchMedia", {
     writable: true,
     configurable: true,
     value: (query: string) => ({
-      matches: query.includes("light") ? light : !light,
+      matches: query.includes("light")
+        ? light
+        : query.includes("prefers-color-scheme")
+          ? !light
+          : matchesWidth(query, width),
       media: query,
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
@@ -271,5 +296,91 @@ describe("cross-tab preference sync", () => {
     );
 
     expect(preferences.themeIsExplicit).toBe(false);
+  });
+});
+
+describe("行動明亮（plan/29 MS-20、MS-21）", () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    localStorage.clear();
+    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.style.colorScheme = "";
+  });
+
+  it("窄視窗畫 pocket，而使用者存下的選擇原封不動", () => {
+    localStorage.setItem("cliora-theme", "graphite");
+    stubPrefersLight(false, 390);
+    usePreferencesStore().init();
+
+    expect(document.documentElement.getAttribute("data-theme")).toBe("pocket");
+    // The point of MS-D-06: a phone must not edit a preference set elsewhere.
+    expect(localStorage.getItem("cliora-theme")).toBe("graphite");
+    expect(usePreferencesStore().theme).toBe("graphite");
+    expect(usePreferencesStore().renderedTheme).toBe("pocket");
+  });
+
+  it("OS 偏好深色時，行動仍然是明亮的", () => {
+    // #62's decision, as an assertion rather than as a sentence in a document.
+    stubPrefersLight(false, 390);
+    usePreferencesStore().init();
+    expect(document.documentElement.getAttribute("data-theme")).toBe("pocket");
+    expect(document.documentElement.style.colorScheme).toBe("light");
+  });
+
+  it("窄視窗選主題仍會存起來，只是先不套用", () => {
+    stubPrefersLight(false, 390);
+    const preferences = usePreferencesStore();
+    preferences.setTheme("porcelain");
+
+    expect(localStorage.getItem("cliora-theme")).toBe("porcelain");
+    expect(preferences.theme).toBe("porcelain");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("pocket");
+  });
+
+  for (const [label, light] of [
+    ["OS 深色", false],
+    ["OS 淺色", true],
+  ] as const) {
+    it(`桌面在 ${label} 下的選擇與行動版加入前相同`, () => {
+      // MS-21. The regression this guards is silent: a viewport override that
+      // leaked one breakpoint too far would repaint every desktop.
+      stubPrefersLight(light, 1440);
+      usePreferencesStore().init();
+      expect(document.documentElement.getAttribute("data-theme")).toBe(
+        light ? "porcelain" : "graphite",
+      );
+    });
+  }
+
+  it("跨越 768px 時就地重新套用，不需重新載入", () => {
+    const listeners: Array<() => void> = [];
+    let width = 1440;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: query.includes("prefers-color-scheme")
+          ? !query.includes("light")
+          : matchesWidth(query, width),
+        media: query,
+        addEventListener: (_: string, fn: () => void) => listeners.push(fn),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+        onchange: null,
+      }),
+    });
+    usePreferencesStore().init();
+    expect(document.documentElement.getAttribute("data-theme")).toBe(
+      "graphite",
+    );
+
+    const teardown = installViewportThemeSync();
+    width = 390;
+    listeners.forEach((fn) => fn());
+    expect(document.documentElement.getAttribute("data-theme")).toBe("pocket");
+
+    teardown();
   });
 });

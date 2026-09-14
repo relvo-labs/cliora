@@ -83,7 +83,7 @@ PR #68（已合併，`f012b14`）只新增了 `prototypes/mobile-session/` 與 `
 
 | ID | 問題 | 為什麼重要 | 誰量 |
 |---|---|---|---|
-| `MS-OM-01` | 1024–1100px 下 `.workspace-rail` 的 computed `display` 與抽屜鈕是否存在 | 決定 `MS-05` 是缺陷修復還是不改 | M1 shell writer |
+| `MS-OM-01` | ~~1024–1100px 下 `.workspace-rail` 的 computed `display` 與抽屜鈕是否存在~~ | **已量測，見下方 §4.1。確認為缺陷，`MS-D-08` 裁定採選項 (a)** | 已完成 |
 | `MS-OM-02` | iOS Safari 與 Android Chrome 的繁中 IME 事件序列與實際送出 bytes | 決定 `MS-D-10`，進而決定 `MS-12` 的整個形狀 | IME spike owner |
 | `MS-OM-03` | `visualViewport.height` 是否已排除 home indicator（各平台） | 決定底部安全區是否重複相減；錯了會在有 home indicator 的裝置上多切掉一條 | IME spike owner |
 | `MS-OM-04` | 明亮終端底下 ANSI 16 色的**真實 xterm 渲染**與真實 CLI 輸出 | **算術已完成**：`07-…md` §1.2 有一組通過 `contrast.ts` 全部門檻的提案值，規則見 §1.1。剩下的是渲染——次像素反鋸齒、真實 Claude／Codex／tmux 輸出、`\e[3Xm`／`\e[4Xm` 8×8 矩陣。屬 `MSP-R-009` | theme owner |
@@ -94,6 +94,26 @@ PR #68（已合併，`f012b14`）只新增了 `prototypes/mobile-session/` 與 `
 | `MS-OM-09` | 行動瀏覽器背景化後回前景時，WebSocket 的實際存活率與重連耗時 | 決定 `MS-10` 的 stale 標示與重連提示要多積極 | M2 terminal writer |
 | `MS-OM-10` | 搜尋框與輸入列在鍵盤升起時是否被遮住（各平台） | `MS-02` 拒絕 `position: fixed` 的前提就是這個量測還沒做 | QA |
 | `MS-OM-11` | pocket 的 6 個色相在明亮底的色盲可辨性 | 深色底的可辨性結論不能直接搬到明亮底。現行調色盤也沒做過這項評估，所以這是新缺口不是回歸 | theme owner |
+
+### 4.1 `MS-OM-01` 量測結果（2026-09-14）
+
+兩個獨立量法，因為 jsdom 沒有 CSS、而瀏覽器骨架不是真元件，單獨一個都不足以定案：
+
+- **抽屜鈕**：vitest 掛載**真實** `SessionWorkspaceView.vue`（終端／FileTree／PreviewPane 為 mock），逐一設定 `window.innerWidth` 後讀 DOM。
+- **CSS `display`**：真實 chromium，樣式**直接取自 SFC 的 `<style scoped>` 原文**，依真實 template 的 class 結構搭骨架。
+
+| 寬度 | rail 在 DOM | CSS `display` | 抽屜鈕 | 結果 |
+|---:|---|---|---|---|
+| 390 | 否（抽屜關閉） | none | 有 | 可開啟 |
+| 768 | 否 | none | 有 | 可開啟 |
+| 1000 | 否 | none | 有 | 可開啟 |
+| 1023 | 否 | none | 有 | 可開啟 |
+| **1024** | **是** | **none** | **無** | **完全無法取得** |
+| **1100** | **是** | **none** | **無** | **完全無法取得** |
+| 1101 | 是 | block | 無 | 欄位可見 |
+
+`<1024` 時 rail 不在 DOM 是正確行為——抽屜關閉時它既不佔位也不覆蓋（`filesVisible` 的定義）。
+缺陷只發生在 **1024–1100 含端點**：欄位模式已生效（所以沒有開啟鈕），但舊的 media query 仍把它藏起來。
 
 `MS-OM-06`、`MS-OM-08` 兩項**可能推翻既有票的設計**，不只是填一個數字。
 它們應該在對應階段的**最前面**量，不是在實作完之後驗。

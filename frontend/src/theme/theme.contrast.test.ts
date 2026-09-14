@@ -19,8 +19,16 @@ import {
   PAIRS,
   TEXT_TARGET,
   contrastRatio,
+  luminance,
 } from "./contrast";
-import { COLOR_TOKENS, THEME_IDS, THEMES, type ColorToken } from "./themes";
+import {
+  COLOR_TOKENS,
+  THEME_IDS,
+  THEMES,
+  TERMINAL_DIM_ANSI,
+  terminalAnsi,
+  type ColorToken,
+} from "./themes";
 
 const STATUS_KINDS = [
   "success",
@@ -117,6 +125,121 @@ for (const id of THEME_IDS) {
           `${id} status.${kind}: outline (${outerEdge}) must out-edge the fill ` +
             `(${fillAgainstPanel}) against the panel`,
         ).toBeGreaterThan(fillAgainstPanel);
+      });
+    }
+  });
+}
+
+// ANSI, which until now was measured by nobody (plan/29 MS-19).
+//
+// `themes.ts` said the sixteen values were "verified against all five terminal
+// backgrounds", and they were — by a person, once. Not one of them appears in
+// PAIRS, so nothing has been re-checking them since, and adding a theme with a
+// light terminal is the first change that could break them.
+//
+// The rules are the ones the original table already followed without writing
+// them down. Fourteen readable, two deliberately dim at whichever end of the
+// ramp sits nearest the background — which is why the dim pair is declared per
+// theme rather than inferred.
+const CHROMATIC = [
+  ["red", "brRed"],
+  ["green", "brGreen"],
+  ["yellow", "brYellow"],
+  ["blue", "brBlue"],
+  ["magenta", "brMagenta"],
+  ["cyan", "brCyan"],
+] as const;
+const RAMP = ["black", "brBlack", "white", "brWhite"] as const;
+/**
+ * How much further from the background `bright` has to sit than `normal`.
+ *
+ * Stated as a ratio of contrasts rather than as the contrast between the two
+ * colours, and the difference is direction rather than arithmetic: whenever the
+ * terminal surface is at one end of the lightness range — which it is in all
+ * six themes — the two expressions reduce to the same number. But
+ * `contrastRatio(normal, bright)` is symmetric, so it is equally happy with a
+ * `bright` that sits *closer* to the background than `normal` does. Dividing
+ * says which way, and "bright carries more emphasis" is the thing that has to
+ * be true.
+ *
+ * The floor is empirical, and the first attempt at it was wrong: 1.3 looked
+ * reasonable and failed all five shipping dark themes at 1.19-1.26. Those
+ * palettes are reviewed and in production, and #E8807F beside #F09B9A is
+ * plainly two reds, so the threshold was the thing that was wrong. 1.19 is the
+ * smallest step the dark palette takes (yellow) and pocket's smallest is 1.41,
+ * so 1.15 admits both while still failing a pair that does not move at all.
+ */
+const BRIGHT_EMPHASIS = 1.15;
+
+for (const id of THEME_IDS) {
+  describe(`${id} ANSI`, () => {
+    const ansi = terminalAnsi(id);
+    const bg = THEMES[id]["terminal-background"];
+    const dim = new Set<string>(TERMINAL_DIM_ANSI[id]);
+
+    for (const slot of [...CHROMATIC.flat(), ...RAMP]) {
+      const isDim = dim.has(slot);
+      it(
+        isDim
+          ? `${slot} is the dim end: perceptible, and not pretending to be readable`
+          : `${slot} >= ${TEXT_TARGET}:1 on the terminal`,
+        () => {
+          const ratio = contrastRatio(ansi[slot], bg);
+          measured.push(
+            `${id.padEnd(11)} ${String(ratio).padStart(6)}:1  ` +
+              `(${isDim ? `${BADGE_EDGE_FLOOR}-${TEXT_TARGET}` : `>= ${TEXT_TARGET}`})  ` +
+              `ansi.${slot} ${ansi[slot]} / terminal-background ${bg}`,
+          );
+          if (isDim) {
+            // A floor, because a colour indistinguishable from the background
+            // is not "dim", it is absent — and CLIs do use these two.
+            expect(
+              ratio,
+              `${id}: ansi.${slot} vanished into the background`,
+            ).toBeGreaterThanOrEqual(BADGE_EDGE_FLOOR);
+            // And a ceiling, because if it cleared the readable bar it is no
+            // longer the dim end and TERMINAL_DIM_ANSI names the wrong pair.
+            expect(
+              ratio,
+              `${id}: ansi.${slot} is not dim; check TERMINAL_DIM_ANSI`,
+            ).toBeLessThan(TEXT_TARGET);
+          } else {
+            expect(
+              ratio,
+              `${id}: ansi.${slot} measured ${ratio}:1, needs ${TEXT_TARGET}:1`,
+            ).toBeGreaterThanOrEqual(TEXT_TARGET);
+          }
+        },
+      );
+    }
+
+    it("the four greys keep their order, lightest last", () => {
+      // Direction, not contrast. Reversing it would make `\e[30;47m` — black on
+      // white, which a CLI authors as a pair — render light on dark. That is
+      // not a readability problem, it is the palette contradicting its own
+      // names, and no contrast threshold would catch it.
+      const ramp = RAMP.map((slot) => luminance(ansi[slot]));
+      for (let i = 1; i < ramp.length; i += 1) {
+        expect(
+          ramp[i],
+          `${id}: ansi.${RAMP[i]} is not lighter than ansi.${RAMP[i - 1]}`,
+        ).toBeGreaterThan(ramp[i - 1]);
+      }
+    });
+
+    for (const [normal, bright] of CHROMATIC) {
+      it(`${bright} stands further off the surface than ${normal}`, () => {
+        const step =
+          contrastRatio(ansi[bright], bg) / contrastRatio(ansi[normal], bg);
+        measured.push(
+          `${id.padEnd(11)} ${step.toFixed(2).padStart(6)}x  ` +
+            `(>= ${BRIGHT_EMPHASIS})  ansi.${bright} over ansi.${normal}`,
+        );
+        expect(
+          step,
+          `${id}: ansi.${bright} is ${step.toFixed(2)}x ansi.${normal}'s contrast; ` +
+            `bright must carry more emphasis, not less`,
+        ).toBeGreaterThanOrEqual(BRIGHT_EMPHASIS);
       });
     }
   });

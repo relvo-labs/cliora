@@ -549,7 +549,10 @@ watch(
 // Rebuilding either one here would break the promise this whole ticket rests
 // on: switching theme must not interrupt work.
 watch(
-  () => preferences.theme,
+  // `renderedTheme`, not `theme`: on a narrow viewport the painted palette is
+  // pocket regardless of what the user chose, and the terminal has to be told
+  // the same thing the stylesheet was (plan/29 MS-20).
+  () => preferences.renderedTheme,
   (id) => {
     terminal.applyTheme(id);
     shellTerminal.applyTheme(id);
