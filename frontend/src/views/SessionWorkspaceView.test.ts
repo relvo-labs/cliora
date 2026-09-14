@@ -680,3 +680,115 @@ describe("SessionWorkspaceView — 檔案欄在每個寬度都取得得到（pla
     expect(style).not.toMatch(/\.workspace-rail/);
   });
 });
+
+describe("SessionWorkspaceView — 行動模式外殼（plan/29 MS-07～MS-09）", () => {
+  it("窄視窗有終端機／檔案兩段切換，且直接可見", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    const modes = wrapper.findAll('.modes [role="tab"]');
+    expect(modes).toHaveLength(2);
+    expect(modes.map((m) => m.text())).toEqual(["終端機", "檔案"]);
+    // The files tab controls the same panel the wider layouts' drawer button
+    // does, which is what keeps the reachability invariant one rule.
+    expect(modes[1].attributes("aria-controls")).toBe("file-panel");
+  });
+
+  it("桌面沒有這個切換", async () => {
+    setViewportWidth(1440);
+    const wrapper = await render(vi.fn(async () => session()));
+    expect(wrapper.find(".modes").exists()).toBe(false);
+  });
+
+  it("切到檔案再切回來，終端沒有被卸載", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    const before = wrapper.find("#panel-cli").element;
+
+    await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+    await flushPromises();
+    await wrapper.findAll('.modes [role="tab"]')[0].trigger("click");
+    await flushPromises();
+
+    // The same element, not an equal one: a rebuilt panel means a new xterm and
+    // a dropped socket (D4).
+    expect(wrapper.find("#panel-cli").element).toBe(before);
+  });
+
+  it("模式切回終端時重新量一次尺寸", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+    await flushPromises();
+    term.fit.mockClear();
+
+    await wrapper.findAll('.modes [role="tab"]')[0].trigger("click");
+    await flushPromises();
+    // A host that was display:none measures 0x0, so without this the terminal
+    // keeps whatever size it had before it was hidden (MS-09).
+    expect(term.fit).toHaveBeenCalled();
+  });
+
+  it("開啟 preview 推一筆歷史，關閉時退回，開關十次不累積", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    const pushed: unknown[] = [];
+    const push = vi
+      .spyOn(window.history, "pushState")
+      .mockImplementation((...args) => pushed.push(args));
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    // The file tree only exists in files mode on a phone, which is the point of
+    // the mode switch.
+    await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+    await flushPromises();
+
+    for (let i = 0; i < 10; i += 1) {
+      await wrapper.get(".open-a").trigger("click");
+      await flushPromises();
+      // Closed from the preview's own control: in preview mode the file tree is
+      // covered, which is what "fullscreen" means here.
+      await wrapper.get(".tabs .close").trigger("click");
+      await flushPromises();
+      // And closing returns to files, which is where it was opened from.
+      expect(wrapper.find(".file-tree").exists()).toBe(true);
+      await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+      await flushPromises();
+    }
+
+    expect(push).toHaveBeenCalledTimes(10);
+    expect(back).toHaveBeenCalledTimes(10);
+    // And the entry carries nothing: no state object, and the same URL it was
+    // already on. A workspace-relative path must not reach history (addendum §7).
+    for (const args of pushed as Array<[unknown, string, string]>) {
+      expect(args[0]).toBeNull();
+      expect(args[2]).toBe(window.location.href);
+    }
+  });
+
+  it("返回手勢關掉 preview，而不是離開 session", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    vi.spyOn(window.history, "pushState").mockImplementation(() => {});
+    await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+    await flushPromises();
+
+    await wrapper.get(".open-a").trigger("click");
+    await flushPromises();
+    expect(wrapper.find("#panel-preview").exists()).toBe(true);
+
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await flushPromises();
+    expect(wrapper.find("#panel-preview").exists()).toBe(false);
+  });
+
+  it("沒有開過 preview 時，popstate 不被這個檢視攔截", async () => {
+    // Otherwise every Back press anywhere in the app would be swallowed by a
+    // workspace that happens to be mounted.
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => session()));
+    const back = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    await flushPromises();
+    expect(back).not.toHaveBeenCalled();
+    expect(wrapper.find("#panel-cli").exists()).toBe(true);
+  });
+});
