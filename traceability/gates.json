@@ -829,6 +829,30 @@
         "all",
         "security"
       ]
+    },
+    {
+      "id": "GATE-MS-VIEWPORT-E2E",
+      "owner": "frontend",
+      "layer": "e2e",
+      "command": [
+        "npm",
+        "run",
+        "test:e2e",
+        "--",
+        "--project=mobile-chrome-emulated",
+        "--project=mobile-safari-emulated"
+      ],
+      "working_directory": "frontend",
+      "timeout_seconds": 1800,
+      "trigger": [
+        "pull_request",
+        "main",
+        "release"
+      ],
+      "required_for": [
+        "changed",
+        "all"
+      ]
     }
   ]
 }

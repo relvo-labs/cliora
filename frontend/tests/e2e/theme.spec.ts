@@ -199,9 +199,8 @@ test.describe("theme: switching does not interrupt work", () => {
         text: (
           document.querySelector("#panel-cli .xterm-rows") as HTMLElement
         ).innerText.slice(-400),
-        connection: (
-          document.querySelector(".status-bar") as HTMLElement
-        ).innerText,
+        connection: (document.querySelector(".status-bar") as HTMLElement)
+          .innerText,
         background: getComputedStyle(viewport).backgroundColor,
       };
     });
@@ -216,9 +215,9 @@ test.describe("theme: switching does not interrupt work", () => {
       const bar = document.querySelector(".status-bar");
       if (!bar) return;
       new MutationObserver(() => {
-        (window as unknown as { recordStatus: (v: string) => void }).recordStatus(
-          (bar as HTMLElement).innerText,
-        );
+        (
+          window as unknown as { recordStatus: (v: string) => void }
+        ).recordStatus((bar as HTMLElement).innerText);
       }).observe(bar, { subtree: true, childList: true, characterData: true });
     });
 
@@ -252,19 +251,17 @@ test.describe("theme: switching does not interrupt work", () => {
         text: (
           document.querySelector("#panel-cli .xterm-rows") as HTMLElement
         ).innerText.slice(-400),
-        connection: (
-          document.querySelector(".status-bar") as HTMLElement
-        ).innerText,
+        connection: (document.querySelector(".status-bar") as HTMLElement)
+          .innerText,
         background: getComputedStyle(viewport).backgroundColor,
       };
     });
 
     const why = JSON.stringify({ before, after, statusChanges }, null, 2);
     expect(after.text, `the buffer changed: ${why}`).toBe(before.text);
-    expect(
-      after.scrollHeight,
-      `the scrollback length changed: ${why}`,
-    ).toBe(before.scrollHeight);
+    expect(after.scrollHeight, `the scrollback length changed: ${why}`).toBe(
+      before.scrollHeight,
+    );
     expect(after.scrollTop, `the scroll position moved: ${why}`).toBe(
       before.scrollTop,
     );
@@ -285,10 +282,9 @@ test.describe("theme: switching does not interrupt work", () => {
     // xterm's renderer paints it, so measuring the screen reports
     // rgba(0,0,0,0) before and after and says nothing at all. That mistake was
     // made once already while measuring this (plan/28 08-…md §2).
-    expect(
-      after.background,
-      `the terminal did not repaint: ${why}`,
-    ).not.toBe(before.background);
+    expect(after.background, `the terminal did not repaint: ${why}`).not.toBe(
+      before.background,
+    );
   });
 });
 
@@ -352,9 +348,7 @@ test.describe("theme: contrast the arithmetic cannot reach", () => {
       // test.
       const composited = await page.evaluate(() => {
         const scrim = document.querySelector(".backdrop") as HTMLElement;
-        const panel = document.querySelector(
-          "[role='dialog']",
-        ) as HTMLElement;
+        const panel = document.querySelector("[role='dialog']") as HTMLElement;
         return {
           scrim: getComputedStyle(scrim).backgroundColor,
           panel: getComputedStyle(panel).backgroundColor,
@@ -407,12 +401,20 @@ test.describe("theme: responsive", () => {
     "needs E2E_FULL_STACK=1 with admin credentials",
   );
 
-  // 2 themes x 3 breakpoints, which is the acceptance matrix's own grid.
+  // 2 themes x 8 sizes — the acceptance widths from plan/29 MSP-F-009, which
+  // the fixture prototype already covered and production did not. 844x390 is
+  // landscape on a phone and is the one that most often finds a fixed height;
+  // 1024 and 1100 are the two sides of the file-panel defect MS-05 fixed.
   for (const theme of THEMES) {
     for (const size of [
       { width: 1440, height: 900 },
+      { width: 1100, height: 800 },
       { width: 1024, height: 768 },
+      { width: 768, height: 844 },
+      { width: 430, height: 932 },
       { width: 390, height: 844 },
+      { width: 360, height: 844 },
+      { width: 844, height: 390 },
     ]) {
       test(`${theme} at ${size.width}x${size.height}: no page-level horizontal overflow`, async ({
         page,
