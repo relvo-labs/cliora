@@ -75,9 +75,15 @@ Included in the pack, each with its own artifact — check the verdict line of e
 
 ## 4. Conditions on the Go (from `docs/p4-report.md` §5)
 
-### 4.1 `p4.yml` green on a release branch
+### 4.1 Manually dispatched `p4.yml` green on the exact release ref
 
-- [ ] All **12** jobs green, on a **release branch** so the full-scale capacity profile runs.
+- [ ] Freeze the remote `release/*` branch at the commit to release, record that SHA,
+      then manually dispatch `p4.yml` against that ref. An ordinary push or merge does not
+      launch the workflow.
+- [ ] The completed run's head SHA equals the recorded release SHA; all **12** jobs are green.
+      A `release/*` ref is currently required for the full-scale capacity profile: the other
+      accepted predicate is `main`, but this repository's default is `master` and `main` does
+      not exist. Dispatching from `master` runs smoke only.
 - [ ] `browser` matrix green on **all three** engines — chromium, firefox **and webkit**.
       "Works in Chromium" is not the claim the PRD makes, and WebKit is the engine that
       historically differs on WebSocket behaviour.
@@ -250,5 +256,15 @@ cat "artifacts/p4/$RUN/summary.md"
 cat "artifacts/p4/$RUN/skipped.txt"     # read this one
 ```
 
-Then push a release branch and confirm `p4.yml` — §4.1 is the only part this sequence cannot
-give you.
+Then freeze and push the intended `release/*` ref without treating the push as a gate trigger.
+Dispatch `p4.yml` explicitly and retain the completed run URL plus its head SHA — §4.1 is the
+only part this local sequence cannot give you:
+
+```bash
+RELEASE_REF=release/<version>
+git fetch origin "$RELEASE_REF"
+RELEASE_SHA=$(git rev-parse "origin/$RELEASE_REF")
+gh workflow run p4.yml --ref "$RELEASE_REF"
+# Verify the exact completed run reports headSha=$RELEASE_SHA before sign-off; do not infer
+# success from dispatch acceptance or from the branch name.
+```

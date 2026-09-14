@@ -143,15 +143,18 @@ timeout and passes at 70 s with the shipped 3600 s.
 therefore inert in the test (nginx warns and ignores it). Certificate provisioning and
 stapling remain an operator concern documented in `docs/deployment.md`.
 
-### 4.2 Full-scale capacity runs only on main
+### 4.2 Full-scale capacity needs a manual release-branch dispatch
 
-**Impact: low.** `capacity` runs the smoke profile (5 nodes, 10 sockets) on every push and
-the full NFR-003 profile (100 nodes, 500 sockets) only on main and release branches. A
-100-node run on a shared hosted runner measures the runner; the numbers would be noise and
-the gate would flap.
+**Impact: low.** `capacity` runs the smoke profile (5 nodes, 10 sockets) on every eligible
+P4 PR run or manual dispatch. The full NFR-003 profile (100 nodes, 500 sockets) runs only
+when `p4.yml` is manually dispatched from `release/*` in the current repository. The workflow
+condition also names `main`, but the default branch is `master` and no `main` branch exists;
+a manual default-branch run therefore executes smoke only. Ordinary pushes and merges do not
+trigger this workflow. A 100-node run on a shared hosted runner measures the runner; the
+numbers would be noise and the gate would flap.
 
-Every assertion runs at both magnitudes, so a bound regression is caught on every push. What
-the smoke profile cannot catch is a limit that only appears at scale.
+Every assertion runs at both magnitudes, so an eligible smoke run catches a harness or bound
+regression. What the smoke profile cannot catch is a limit that only appears at scale.
 
 **To close:** a dedicated runner. Not an MVP requirement.
 
@@ -189,14 +192,14 @@ that run. Recording it as a failure would train everyone to ignore the report; r
 as a pass would be a lie.
 
 **To close:** run the `drills` job on a host with systemd and a real enrolled node. The
-alert *rules* themselves are validated statically by `promtool check rules` on every push, so
-what is missing is confirmation that the signal moves, not that the rule parses.
+alert *rules* themselves are validated statically by `promtool check rules` in every eligible
+P4 run, so what is missing is confirmation that the signal moves, not that the rule parses.
 
 While wiring this up, `queue-saturation.sh` turned out to be calling the load harness with a
 CLI that never existed — it was written in P4-09 against a guessed interface, and the harness
 landed in P4-11 with different flags. A drill that cannot start is indistinguishable from an
-alert that cannot fire, so `test_drill_harness_flags_exist` now compares the two on every
-push.
+alert that cannot fire, so `test_drill_harness_flags_exist` now compares the two in every
+eligible P4 run.
 
 ### 4.6 P3's real-runner gap
 
@@ -210,9 +213,12 @@ evidence pack should be read with it in mind.
 
 ## 5. Conditions on the Go
 
-1. **Run `p4.yml` green on a release branch**, which includes the full-scale capacity
-   profile and all three browser engines. The local evidence pack covers everything except
-   the browser matrix.
+1. **Manually dispatch `p4.yml` from the exact `release/*` branch and record a green run whose
+   head SHA is the intended release commit.** This includes the full-scale capacity profile
+   and all three browser engines. Pushing or merging the branch does not launch the workflow.
+   Do not substitute default `master`: the current full-capacity predicate names nonexistent
+   `main`, not `master`, so a default-branch dispatch runs smoke only. The local evidence pack
+   covers everything except the browser matrix.
 2. **Set both production secrets.** `Settings` refuses to start on the dev defaults with
    `CLIORA_ENVIRONMENT=production`, so this is enforced — but note the asymmetry in
    `docs/deployment.md`: rotating `CLIORA_TOKEN_PEPPER` later forces every node to re-enroll.
