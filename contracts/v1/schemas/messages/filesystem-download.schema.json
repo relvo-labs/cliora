@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Workspace file download, contract 1.10.0 (ADR 0028). Deliberately the same two fields as filesystem-read: a download names a file and nothing else. There is no `encoding`, `range`, `offset`, `length`, `disposition` or `mime` field, and additionalProperties is false - the caller cannot ask for part of a file, cannot ask for it transcoded, and cannot influence how the browser will treat the bytes. A separate type from filesystem.read rather than a flag on it, because the two answer different questions under different policies: read is a bounded text preview that refuses binary, download is the exact bytes and refuses nothing for being binary.",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "path"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "path": {
+      "$comment": "Workspace-relative. Same shared pattern as filesystem-read.path: no absolute path, no ~, no .. segment, no control character.",
+      "type": "string", "minLength": 1, "maxLength": 4096,
+      "pattern": "^(?![/~])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000-\\u001f]+$"
+    }
+  }
+}

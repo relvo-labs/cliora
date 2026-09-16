@@ -161,6 +161,10 @@ class RegisterNodeInput:
     # predates the field — and separate from image_upload, because a machine may
     # accept screenshots while refusing this.
     file_upload: bool = False
+    # The node's own report that the platform may read its workspace files out to a
+    # browser (ADR 0028 §6). False for a daemon that predates the field, and separate
+    # from both upload flags: accepting a file is not agreeing to hand one back.
+    file_download: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,13 +286,16 @@ class NodeRegistrationService:
             node.privileged_terminal != data.privileged_terminal
             or node.image_upload != data.image_upload
             or node.file_upload != data.file_upload
+            or node.file_download != data.file_download
         )
         previous_posture = node.privileged_terminal
         previous_upload = node.image_upload
         previous_file_upload = node.file_upload
+        previous_file_download = node.file_download
         node.privileged_terminal = data.privileged_terminal
         node.image_upload = data.image_upload
         node.file_upload = data.file_upload
+        node.file_download = data.file_download
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -303,6 +310,8 @@ class NodeRegistrationService:
                     "previous_image_upload": previous_upload,
                     "file_upload": data.file_upload,
                     "previous_file_upload": previous_file_upload,
+                    "file_download": data.file_download,
+                    "previous_file_download": previous_file_download,
                 },
             )
         return node

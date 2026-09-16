@@ -275,6 +275,85 @@ func (m *Manager) handleFsStore(env protocol.Envelope, data []byte, send func([]
 	_ = send(frame)
 }
 
+// handleFsDownload hands one workspace file back to Central for delivery to a
+// browser (FR-FILE-011, ADR 0028). It sits beside handleFsRead, and the shape
+// difference between the two is the design rather than an inconsistency:
+// handleFsRead answers a denial with a *successful* frame carrying
+// success:false, because the browser has a denial pane to render it in. This
+// handler answers every denial with an error frame, because the browser's body
+// on this path is the file itself and there is nowhere for a denial to live
+// except the status line.
+func (m *Manager) handleFsDownload(env protocol.Envelope, data []byte, send func([]byte) error) {
+	if protocol.ValidateControl(data) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	var p fsDownloadPayload
+	if json.Unmarshal(env.Payload, &p) != nil {
+		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
+		return
+	}
+	root, code, ok := m.openSessionWorkspace(p.SessionID)
+	if !ok {
+		m.replyError(send, env.RequestID, orSessionNotFound(code))
+		return
+	}
+	defer root.Close()
+
+	started := time.Now()
+	res, err := m.files.Download(root, p.Path)
+	if err != nil {
+		// A policy refusal carries its own code; anything else is a real failure
+		// and maps through the workspace table like every other handler.
+		code, reason := files.DownloadCode(err)
+		if code == "" {
+			code, reason = workspaceCode(err), "unspecified"
+		} else {
+			metrics.Increment(metrics.FilesystemDeniedTotal,
+				map[string]string{"code": code, "reason": reason})
+		}
+		metrics.Increment(metrics.FilesystemRequestTotal,
+			map[string]string{"op": "download", "code": code})
+		// The reason is a coarse classification (dotenv/private_key/oversize/…),
+		// so it is safe to log; the path is not logged on a refusal, because a
+		// refusal is the one case where the caller may be probing.
+		slog.Info("filesystem download refused",
+			"event", "filesystem.download", "request_id", env.RequestID,
+			"session_id", p.SessionID.String(), "code", code, "reason", reason,
+			"duration_ms", time.Since(started).Milliseconds())
+		m.replyError(send, env.RequestID, code)
+		return
+	}
+	metrics.Increment(metrics.FilesystemRequestTotal, map[string]string{"op": "download", "code": "OK"})
+	metrics.Observe(metrics.FilesystemDownloadBytes, float64(res.Size), nil)
+	// The relative path is logged on success for the same reason the store path
+	// logs it: the user picked it out of a tree they were already shown, so it
+	// reveals nothing they did not have. The bytes are never logged.
+	slog.Info("filesystem download",
+		"event", "filesystem.download", "request_id", env.RequestID,
+		"session_id", p.SessionID.String(), "bytes", res.Size,
+		"rel_path", res.RelPath, "duration_ms", time.Since(started).Milliseconds())
+
+	frame, buildErr := protocol.BuildResponse("filesystem.downloaded", m.creds.NodeID, env.RequestID,
+		true, map[string]any{
+			"path":        res.RelPath,
+			"size":        res.Size,
+			"modified_at": res.ModifiedAt.UTC().Format(time.RFC3339),
+			"data":        base64.StdEncoding.EncodeToString(res.Content),
+		}, m.now())
+	if buildErr != nil {
+		// Over the frame bound. The size cap in Download is meant to make this
+		// unreachable; answering with an explicit error rather than emitting a
+		// frame Central would drop keeps it from surfacing as a request timeout
+		// if the two numbers ever drift apart.
+		metrics.Increment(metrics.FilesystemRequestTotal,
+			map[string]string{"op": "download", "code": "FRAME_TOO_LARGE"})
+		m.replyError(send, env.RequestID, "FRAME_TOO_LARGE")
+		return
+	}
+	_ = send(frame)
+}
+
 // denialReason is the coarse classification for a denial metric, defaulting to
 // the code when the policy did not attach one (binary/oversize).
 func denialReason(res files.ReadResult) string {
@@ -397,6 +476,17 @@ type fsStorePayload struct {
 	Directory string    `json:"directory"`
 	Filename  string    `json:"filename"`
 	Data      string    `json:"data"`
+}
+
+// fsDownloadPayload is deliberately the same two fields as fsReadPayload. A
+// download names a file and nothing else: there is no offset, length, range,
+// encoding or disposition field here, so the caller can neither ask for part of
+// a file nor influence how the browser will be told to treat the bytes
+// (ADR 0028 §2). The wire schema's additionalProperties:false is what makes that
+// a rejection rather than a silently ignored extra.
+type fsDownloadPayload struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Path      string    `json:"path"`
 }
 
 func entryMap(e files.Entry) map[string]any {

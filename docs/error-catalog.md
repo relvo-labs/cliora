@@ -146,6 +146,12 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `FILE_UPLOAD_NO_SPACE` | — | The node does not have enough free disk space | The workspace filesystem is below the node's configured free-space floor, or the file would not leave twice its own size free. This check is what stands in for a retention period on this path: uploaded files belong to the user, so nothing expires them. | Free space on the node, or ask an administrator to; `agentd doctor` reports the figure it is comparing against. | yes | no | daemon |
 | `FILE_INVALID_NAME` | — | That filename cannot be used | A filename must be a single path segment: no separator, no control characters, at most 255 bytes. Checked after URL decoding, because percent-encoding can otherwise smuggle a separator through. | Rename the file and try again. | no | no | central |
 
+## File download
+
+| Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |
+|---|---:|---|---|---|:--:|:--:|:--:|
+| `FILE_DOWNLOAD_DISABLED` | 403 | This node does not hand workspace files back | The node's config sets filesystem.download.enabled to false. Whether its workspace files may be read out to a browser is the node's decision, not the platform's — and it is a separate decision from whether the node accepts uploads. | None from the browser; the node's owner controls this setting. | no | no | daemon |
+
 ## Daemon update
 
 | Code | HTTP | Message | Cause | Next step | Retryable | Audited | Origin |

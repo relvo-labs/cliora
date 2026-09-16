@@ -107,6 +107,16 @@
 | FR-FILE-010 | [FR-FILE-010.AC-10](../../research/prd.md#fr-file-010-ac-10) | 每次上傳留下稽核紀錄（使用者、Session、節點、相對路徑、位元組數），不記內容。 | plan:plan/15/03-contract-central-and-rbac.md<br>adr:docs/adr/0026-general-file-upload.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_store_api.py |
 | FR-FILE-010 | [FR-FILE-010.AC-11](../../research/prd.md#fr-file-010-ac-11) | 節點可停用此功能並回報；停用時前端不顯示上傳入口。 | plan:plan/15/03-contract-central-and-rbac.md<br>adr:docs/adr/0026-general-file-upload.md | code:backend/app/db/migrations/versions/0020_node_file_upload.py | vitest:frontend/src/views/SessionWorkspaceView.test.ts |
 | FR-FILE-010 | [FR-FILE-010.AC-12](../../research/prd.md#fr-file-010-ac-12) | 不支援資料夾上傳，且必須明確拒絕而非部分處理。 | plan:plan/15/04-frontend-drop-target.md<br>adr:docs/adr/0026-general-file-upload.md | code:frontend/src/composables/useFileUpload.ts | vitest:frontend/src/components/file/FileTree.test.ts |
+| FR-FILE-011 | [FR-FILE-011.AC-01](../../research/prd.md#fr-file-011-ac-01) | 持有 file.browse 的使用者可下載 Session 工作區內的單一檔案。 | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_download_api.py |
+| FR-FILE-011 | [FR-FILE-011.AC-02](../../research/prd.md#fr-file-011-ac-02) | 敏感檔案規則（FR-FILE-005）適用於下載，且與預覽共用同一份判定。 | plan:plan/30/02-daemon-download-path.md<br>adr:docs/adr/0028-workspace-file-download.md | code:daemon/internal/files/download.go | gotest:daemon/internal/files/download_test.go |
+| FR-FILE-011 | [FR-FILE-011.AC-03](../../research/prd.md#fr-file-011-ac-03) | 二進位檔案與非 UTF-8 文字檔可下載；FR-FILE-004 的判定不適用於下載。 | plan:plan/30/02-daemon-download-path.md<br>adr:docs/adr/0028-workspace-file-download.md | code:daemon/internal/files/download.go | gotest:daemon/internal/files/download_test.go |
+| FR-FILE-011 | [FR-FILE-011.AC-04](../../research/prd.md#fr-file-011-ac-04) | 單檔上限 4 MiB，逾越時明確拒絕並指出替代路徑，不得逾時或截斷。 | plan:plan/30/02-daemon-download-path.md<br>adr:docs/adr/0028-workspace-file-download.md | code:daemon/internal/files/download.go | gotest:daemon/internal/files/download_test.go |
+| FR-FILE-011 | [FR-FILE-011.AC-05](../../research/prd.md#fr-file-011-ac-05) | 請求只能指定工作區相對路徑；不得包含範圍、位移、編碼或內容型別等欄位。 | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:contracts/v1/schemas/messages/filesystem-download.schema.json | pytest:backend/tests/test_scope_guards.py |
+| FR-FILE-011 | [FR-FILE-011.AC-06](../../research/prd.md#fr-file-011-ac-06) | 回應一律以 application/octet-stream 加 nosniff 與 attachment 交付， | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_download_api.py |
+| FR-FILE-011 | [FR-FILE-011.AC-07](../../research/prd.md#fr-file-011-ac-07) | 檔名以 Content-Disposition 交付，同時提供 ASCII 後備與 RFC 5987 的 UTF-8 形式。 | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_download_api.py |
+| FR-FILE-011 | [FR-FILE-011.AC-08](../../research/prd.md#fr-file-011-ac-08) | 每次成功下載留下稽核紀錄（使用者、Session、節點、相對路徑、位元組數），不記內容。 | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_download_api.py |
+| FR-FILE-011 | [FR-FILE-011.AC-09](../../research/prd.md#fr-file-011-ac-09) | 節點可停用此功能並回報；停用時前端不顯示下載入口。 | plan:plan/30/02-daemon-download-path.md<br>adr:docs/adr/0028-workspace-file-download.md | code:daemon/internal/files/download.go | gotest:daemon/internal/files/download_test.go |
+| FR-FILE-011 | [FR-FILE-011.AC-10](../../research/prd.md#fr-file-011-ac-10) | 中央不得保存下載內容：不落磁碟、不進資料庫、不進 log、不進 metrics label。 | plan:plan/30/03-contract-central-and-rbac.md<br>adr:docs/adr/0028-workspace-file-download.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_download_api.py |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-01](../../research/prd.md#fr-install-001-ac-01) | 管理員可建立一次性或限時 Token。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | pytest:backend/tests/db/test_enrollment_api.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_admin_creates_token_once_and_lists_without_plaintext<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_revoked_token_cannot_register<br>pytest:backend/tests/db/test_node_registration.py::test_concurrent_consume_respects_max_uses |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-02](../../research/prd.md#fr-install-001-ac-02) | Token 值 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-03](../../research/prd.md#fr-install-001-ac-03) | 建立者 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
@@ -399,6 +409,13 @@
 | NFR-006 | [NFR-006.AC-06](../../research/prd.md#nfr-006-ac-06) | 1440×900、1024×768 與 390×844 下核心操作可觸及，且沒有不必要的整頁橫向溢出。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/components/layout/AppLayout.vue | playwright:frontend/tests/e2e/theme.spec.ts |
 | NFR-006 | [NFR-006.AC-07](../../research/prd.md#nfr-006-ac-07) | 視覺主題切換不改變任何授權、不中斷 Session、不重建終端。 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/composables/useTerminalSession.ts | playwright:frontend/tests/e2e/theme.spec.ts |
 | NFR-006 | [NFR-006.AC-08](../../research/prd.md#nfr-006-ac-08) | prefers-reduced-motion 下停用非必要動畫；終端內容永不套用動畫 | source:research/prd.md<br>plan:plan/28/06-verification-and-exit.md | code:frontend/src/theme/base.css | vitest:frontend/src/theme/theme.contract.test.ts |
+| NFR-007 | [NFR-007.AC-01](../../research/prd.md#nfr-007-ac-01) | 每一個可見的互動控制項，其命中區在任一驗收寬度下都不小於 44×44 CSS px。 | source:research/prd.md<br>plan:plan/29/04-mobile-shell-and-navigation.md | code:frontend/src/theme/tokens.css | playwright:frontend/tests/e2e/mobile.spec.ts |
+| NFR-007 | [NFR-007.AC-02](../../research/prd.md#nfr-007-ac-02) | 任一驗收寬度下，頁面層級都沒有水平溢位。內容自身的橫向瀏覽 | source:research/prd.md<br>plan:plan/29/08-verification-and-exit.md | code:frontend/src/components/layout/AppLayout.vue | playwright:frontend/tests/e2e/mobile.spec.ts |
+| NFR-007 | [NFR-007.AC-03](../../research/prd.md#nfr-007-ac-03) | 任一功能不得只因為視窗寬度而變得無法取得。面板要嘛佔位， | source:research/prd.md<br>plan:plan/29/04-mobile-shell-and-navigation.md | code:frontend/src/views/SessionWorkspaceView.vue | vitest:frontend/src/views/SessionWorkspaceView.test.ts |
+| NFR-007 | [NFR-007.AC-04](../../research/prd.md#nfr-007-ac-04) | 版面斷點只有一組來源。同一個決定不得在樣式表與程式碼中各寫一次。 | source:research/prd.md<br>plan:plan/29/04-mobile-shell-and-navigation.md | code:frontend/src/composables/useBreakpoint.ts | vitest:frontend/src/composables/useBreakpoint.test.ts |
+| NFR-007 | [NFR-007.AC-05](../../research/prd.md#nfr-007-ac-05) | 視窗高度只有一個擁有者。軟體鍵盤升起時可用高度必須跟著縮， | source:research/prd.md<br>plan:plan/29/04-mobile-shell-and-navigation.md | code:frontend/src/components/layout/AppLayout.vue | vitest:frontend/src/components/layout/AppLayout.test.ts |
+| NFR-007 | [NFR-007.AC-06](../../research/prd.md#nfr-007-ac-06) | 行動端的資訊不得因為版面壓縮而消失：可以改變排列、縮短字樣、 | source:research/prd.md<br>plan:plan/29/05-session-workspace-and-terminal.md | code:frontend/src/components/session/SessionHeader.vue | vitest:frontend/src/components/session/SessionHeader.test.ts |
+| NFR-007 | [NFR-007.AC-07](../../research/prd.md#nfr-007-ac-07) | 工作區相對路徑不得進入瀏覽器歷史、網址或任何持久化儲存。 | source:research/prd.md<br>plan:plan/29/05-session-workspace-and-terminal.md | code:frontend/src/views/SessionWorkspaceView.vue | vitest:frontend/src/views/SessionWorkspaceView.test.ts |
 | SCOPE-001 | [SCOPE-001.AC-01](../../research/prd.md#scope-001-ac-01) | 不解析 Claude 或 Codex 的內部事件。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events |
 | SCOPE-002 | [SCOPE-002.AC-01](../../research/prd.md#scope-002-ac-01) | 不建立中央審批機制。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism |
 | SCOPE-003 | [SCOPE-003.AC-01](../../research/prd.md#scope-003-ac-01) | 不攔截或替代 CLI 原生權限確認。 | — | — | plan:plan/05/00-execution-plan.md<br>pytest:backend/tests/test_scope_guards.py::test_scope_003_nothing_intercepts_the_cli_native_permission_prompt |
@@ -517,6 +534,9 @@
 - `requirement:SEC-006` ← `MVP-AC-20.AC-01` (refined_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-009.AC-01` (implemented_by)
 - `code:backend/app/api/http/files.py` ← `FR-FILE-010.AC-01` (implemented_by)
+- `code:backend/app/api/http/files.py` ← `FR-FILE-011.AC-01` (implemented_by)
+- `code:backend/app/api/http/files.py` ← `FR-FILE-011.AC-06` (implemented_by)
+- `code:backend/app/api/http/files.py` ← `FR-FILE-011.AC-07` (implemented_by)
 - `code:backend/app/api/http/integrations.py` ← `FR-TUNNEL-004.AC-01` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-001.AC-02` (implemented_by)
 - `code:backend/app/api/http/tunnels.py` ← `FR-TUNNEL-002.AC-04` (implemented_by)
@@ -570,6 +590,8 @@
 - `code:backend/app/services/favorites.py` ← `FR-WORKSPACE-005.AC-06` (implemented_by)
 - `code:backend/app/services/files.py` ← `FR-FILE-009.AC-07` (implemented_by)
 - `code:backend/app/services/files.py` ← `FR-FILE-010.AC-10` (implemented_by)
+- `code:backend/app/services/files.py` ← `FR-FILE-011.AC-08` (implemented_by)
+- `code:backend/app/services/files.py` ← `FR-FILE-011.AC-10` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-02` (implemented_by)
 - `code:backend/app/services/integrations.py` ← `FR-TUNNEL-004.AC-06` (implemented_by)
 - `code:backend/app/services/nodes.py` ← `FR-NODE-001.AC-01` (implemented_by)
@@ -749,6 +771,11 @@
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-004.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_sensitive_denial_is_audited_without_path` ← `SEC-006.AC-06` (verified_by)
 - `pytest:backend/tests/db/test_files_api.py::test_viewer_can_browse` ← `FR-AUTH-002.AC-11` (verified_by)
+- `pytest:backend/tests/db/test_files_download_api.py` ← `FR-FILE-011.AC-01` (verified_by)
+- `pytest:backend/tests/db/test_files_download_api.py` ← `FR-FILE-011.AC-06` (verified_by)
+- `pytest:backend/tests/db/test_files_download_api.py` ← `FR-FILE-011.AC-07` (verified_by)
+- `pytest:backend/tests/db/test_files_download_api.py` ← `FR-FILE-011.AC-08` (verified_by)
+- `pytest:backend/tests/db/test_files_download_api.py` ← `FR-FILE-011.AC-10` (verified_by)
 - `pytest:backend/tests/db/test_files_store_api.py` ← `FR-FILE-010.AC-01` (verified_by)
 - `pytest:backend/tests/db/test_files_store_api.py` ← `FR-FILE-010.AC-10` (verified_by)
 - `pytest:backend/tests/db/test_files_upload_api.py` ← `FR-FILE-009.AC-01` (verified_by)
@@ -887,6 +914,7 @@
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-CONN-006.AC-07` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_session_stop_waits_a_bounded_number_of_seconds` ← `FR-SESSION-005.AC-05` (verified_by)
 - `pytest:backend/tests/test_relay_timeouts.py::test_the_daemon_update_budget_is_far_longer_than_the_others` ← `FR-CONN-006.AC-08` (verified_by)
+- `pytest:backend/tests/test_scope_guards.py` ← `FR-FILE-011.AC-05` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py` ← `FR-RUNTIME-003.AC-02` (verified_by)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_001_no_surface_parses_runtime_internal_events` ← `SCOPE-001.AC-01` (guards_scope)
 - `pytest:backend/tests/test_scope_guards.py::test_scope_002_no_central_approval_mechanism` ← `SCOPE-002.AC-01` (guards_scope)
@@ -945,6 +973,7 @@
 - `pytest:backend/tests/test_tunnel_policy.py::test_three_port_lists_intersect_instead_of_the_last_one_winning` ← `FR-TUNNEL-004.AC-05` (verified_by)
 - `fixture:contracts/v1/fixtures/invalid/filesystem-store-filename-with-slash.json` ← `FR-FILE-010.AC-03` (verified_by)
 - `fixture:contracts/v1/fixtures/invalid/filesystem-upload-with-filename.json` ← `FR-FILE-009.AC-03` (verified_by)
+- `code:contracts/v1/schemas/messages/filesystem-download.schema.json` ← `FR-FILE-011.AC-05` (implemented_by)
 - `code:contracts/v1/schemas/messages/session-start.schema.json` ← `FR-SHELL-001.AC-03` (implemented_by)
 - `gotest:daemon/cmd/agentd#TestConfigValidateCommand` ← `FR-INSTALL-004.AC-01` (verified_by)
 - `gotest:daemon/cmd/agentd#TestInstallLayoutMatchesTheDocumentedPaths` ← `FR-INSTALL-003.AC-06` (verified_by)
@@ -1071,6 +1100,14 @@
 - `gotest:daemon/internal/files#TestSearchFilenameOnlyWithBounds` ← `FR-FILE-007.AC-01` (verified_by)
 - `gotest:daemon/internal/files#TestSearchResultsBound` ← `FR-FILE-007.AC-04` (verified_by)
 - `gotest:daemon/internal/files/bench_test.go` ← `FR-FILE-008.AC-05` (measured_by)
+- `code:daemon/internal/files/download.go` ← `FR-FILE-011.AC-02` (implemented_by)
+- `code:daemon/internal/files/download.go` ← `FR-FILE-011.AC-03` (implemented_by)
+- `code:daemon/internal/files/download.go` ← `FR-FILE-011.AC-04` (implemented_by)
+- `code:daemon/internal/files/download.go` ← `FR-FILE-011.AC-09` (implemented_by)
+- `gotest:daemon/internal/files/download_test.go` ← `FR-FILE-011.AC-02` (verified_by)
+- `gotest:daemon/internal/files/download_test.go` ← `FR-FILE-011.AC-03` (verified_by)
+- `gotest:daemon/internal/files/download_test.go` ← `FR-FILE-011.AC-04` (verified_by)
+- `gotest:daemon/internal/files/download_test.go` ← `FR-FILE-011.AC-09` (verified_by)
 - `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-01` (implemented_by)
 - `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-02` (implemented_by)
 - `code:daemon/internal/files/policy.go` ← `FR-FILE-008.AC-03` (implemented_by)
@@ -1378,6 +1415,16 @@
 - `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-10` (specified_by)
 - `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-11` (specified_by)
 - `adr:docs/adr/0026-general-file-upload.md` ← `FR-FILE-010.AC-12` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-01` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-02` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-03` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-04` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-05` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-06` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-07` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-08` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-09` (specified_by)
+- `adr:docs/adr/0028-workspace-file-download.md` ← `FR-FILE-011.AC-10` (specified_by)
 - `manual:docs/runbooks/privileged-node-posture.md` ← `SEC-007.AC-02` (validated_by)
 - `code:frontend/src/components/common/StatusBadge.vue` ← `NFR-006.AC-03` (implemented_by)
 - `vitest:frontend/src/components/file/FileTree.test.ts` ← `FR-FILE-010.AC-12` (verified_by)
@@ -1386,13 +1433,20 @@
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-04` (verified_by)
 - `vitest:frontend/src/components/layout/AppLayout.test.ts` ← `NFR-006.AC-05` (measured_by)
+- `vitest:frontend/src/components/layout/AppLayout.test.ts` ← `NFR-007.AC-05` (measured_by)
 - `code:frontend/src/components/layout/AppLayout.vue` ← `FR-TERM-001.AC-14` (implemented_by)
 - `code:frontend/src/components/layout/AppLayout.vue` ← `NFR-006.AC-06` (implemented_by)
+- `code:frontend/src/components/layout/AppLayout.vue` ← `NFR-007.AC-02` (implemented_by)
+- `code:frontend/src/components/layout/AppLayout.vue` ← `NFR-007.AC-05` (implemented_by)
+- `vitest:frontend/src/components/session/SessionHeader.test.ts` ← `NFR-007.AC-06` (measured_by)
+- `code:frontend/src/components/session/SessionHeader.vue` ← `NFR-007.AC-06` (implemented_by)
 - `code:frontend/src/components/session/StatusBar.vue` ← `FR-TERM-005.AC-06` (implemented_by)
 - `code:frontend/src/components/session/TerminalFontControl.vue` ← `FR-TERM-001.AC-16` (implemented_by)
 - `code:frontend/src/components/ui/UiIconButton.vue` ← `NFR-006.AC-05` (implemented_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
+- `vitest:frontend/src/composables/useBreakpoint.test.ts` ← `NFR-007.AC-04` (measured_by)
+- `code:frontend/src/composables/useBreakpoint.ts` ← `NFR-007.AC-04` (implemented_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#loads only the root level on bind (lazy)` ← `FR-FILE-001.AC-01` (verified_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#re-reads every expanded level once auto-refresh is on` ← `FR-FILE-006.AC-04` (verified_by)
@@ -1464,6 +1518,7 @@
 - `code:frontend/src/theme/contrast.ts` ← `NFR-006.AC-01` (implemented_by)
 - `vitest:frontend/src/theme/theme.contract.test.ts` ← `NFR-006.AC-08` (measured_by)
 - `vitest:frontend/src/theme/theme.contrast.test.ts` ← `NFR-006.AC-01` (measured_by)
+- `code:frontend/src/theme/tokens.css` ← `NFR-007.AC-01` (implemented_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#replaces the whole form when the deployment has no encryption key` ← `FR-TUNNEL-004.AC-04` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#requires the four-point acknowledgement before the first enable` ← `FR-TUNNEL-004.AC-01` (verified_by)
 - `vitest:frontend/src/views/IntegrationsView.test.ts#shows only the fingerprint for a stored credential, never the token` ← `FR-TUNNEL-004.AC-03` (verified_by)
@@ -1477,11 +1532,15 @@
 - `vitest:frontend/src/views/NodeTunnelsView.test.ts#states that a local veto cannot be overridden by the platform` ← `FR-TUNNEL-004.AC-05` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `FR-FILE-010.AC-11` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `FR-TERM-005.AC-06` (verified_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `NFR-007.AC-03` (measured_by)
+- `vitest:frontend/src/views/SessionWorkspaceView.test.ts` ← `NFR-007.AC-07` (measured_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the page is unloaded, over the keepalive path` ← `FR-SHELL-001.AC-08` (verified_by)
 - `vitest:frontend/src/views/SessionWorkspaceView.test.ts#ends the shell when the workspace is left by navigating away` ← `FR-SHELL-001.AC-08` (verified_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-08` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-SHELL-001.AC-09` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-TERM-001.AC-13` (implemented_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-03` (implemented_by)
+- `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-07` (implemented_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-02` (verified_by)
@@ -1514,6 +1573,8 @@
 - `playwright:frontend/tests/e2e/files.spec.ts#sensitive, binary and oversize files are refused with no content` ← `FR-FILE-003.AC-05` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts#sensitive, binary and oversize files are refused with no content` ← `FR-FILE-004.AC-02` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts#sensitive, binary and oversize files are refused with no content` ← `FR-FILE-005.AC-01` (verified_by)
+- `playwright:frontend/tests/e2e/mobile.spec.ts` ← `NFR-007.AC-01` (measured_by)
+- `playwright:frontend/tests/e2e/mobile.spec.ts` ← `NFR-007.AC-02` (measured_by)
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-01.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-04.AC-01` (validated_by)
 - `playwright:frontend/tests/e2e/nodes.spec.ts` ← `MVP-AC-05.AC-01` (validated_by)
@@ -1916,6 +1977,23 @@
 - `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-06` (refined_by)
 - `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-07` (refined_by)
 - `plan:plan/28/06-verification-and-exit.md` ← `NFR-006.AC-08` (refined_by)
+- `plan:plan/29/04-mobile-shell-and-navigation.md` ← `NFR-007.AC-01` (planned_by)
+- `plan:plan/29/04-mobile-shell-and-navigation.md` ← `NFR-007.AC-03` (planned_by)
+- `plan:plan/29/04-mobile-shell-and-navigation.md` ← `NFR-007.AC-04` (planned_by)
+- `plan:plan/29/04-mobile-shell-and-navigation.md` ← `NFR-007.AC-05` (planned_by)
+- `plan:plan/29/05-session-workspace-and-terminal.md` ← `NFR-007.AC-06` (planned_by)
+- `plan:plan/29/05-session-workspace-and-terminal.md` ← `NFR-007.AC-07` (planned_by)
+- `plan:plan/29/08-verification-and-exit.md` ← `NFR-007.AC-02` (planned_by)
+- `plan:plan/30/02-daemon-download-path.md` ← `FR-FILE-011.AC-02` (planned_by)
+- `plan:plan/30/02-daemon-download-path.md` ← `FR-FILE-011.AC-03` (planned_by)
+- `plan:plan/30/02-daemon-download-path.md` ← `FR-FILE-011.AC-04` (planned_by)
+- `plan:plan/30/02-daemon-download-path.md` ← `FR-FILE-011.AC-09` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-01` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-05` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-06` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-07` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-08` (planned_by)
+- `plan:plan/30/03-contract-central-and-rbac.md` ← `FR-FILE-011.AC-10` (planned_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-01` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-02` (specified_by)
 - `source:research/prd.md` ← `FR-SHELL-001.AC-04` (specified_by)
@@ -1957,6 +2035,13 @@
 - `source:research/prd.md` ← `NFR-006.AC-06` (specified_by)
 - `source:research/prd.md` ← `NFR-006.AC-07` (specified_by)
 - `source:research/prd.md` ← `NFR-006.AC-08` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-01` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-02` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-03` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-04` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-05` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-06` (specified_by)
+- `source:research/prd.md` ← `NFR-007.AC-07` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-01` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-02` (specified_by)
 - `source:research/tech.md` ← `FR-AUTH-001.AC-03` (specified_by)

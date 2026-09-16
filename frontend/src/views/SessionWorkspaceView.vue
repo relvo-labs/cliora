@@ -34,6 +34,7 @@ const PreviewPane = defineAsyncComponent(
 );
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useBreakpoint } from "../composables/useBreakpoint";
+import { useFileDownload } from "../composables/useFileDownload";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useFocusTrap } from "../composables/useFocusTrap";
@@ -517,6 +518,31 @@ async function uploadFiles(files: File[], directory: string): Promise<void> {
   }
 }
 
+// --- File download (FD-06, ADR 0028) --------------------------------------
+//
+// Two conditions, mirroring the two upload paths above and derived the same way:
+// `can_browse_files` answers "may this user" — download reuses `file.browse`
+// rather than adding an action, so a Viewer may download and that is deliberate
+// (ADR 0028 §5) — and `file_download` answers "may this machine", separately from
+// the two upload flags, because accepting a file is not agreeing to hand one back.
+//
+// No writer condition, for the same reason the file-upload path has none: this
+// touches the filesystem and not the terminal, so it needs no write lock.
+const canDownloadFiles = computed(
+  () =>
+    capabilities.value?.can_browse_files === true &&
+    nodePosture.value?.file_download === true,
+);
+
+const fileDownload = useFileDownload((path, signal) =>
+  api().downloadFile(props.id, path, { signal }),
+);
+
+function downloadFile(relPath: string): void {
+  if (!canDownloadFiles.value) return;
+  void fileDownload.start(relPath);
+}
+
 function renameAndRetry(id: string): void {
   const item = fileUpload.items.value.find((entry) => entry.id === id);
   if (!item) return;
@@ -966,7 +992,26 @@ async function confirmTerminate(): Promise<void> {
               <PreviewPane
                 :session-id="filesSessionId"
                 :rel-path="previewPath"
+                :can-download="canDownloadFiles"
+                :downloading="fileDownload.activePath.value === previewPath"
+                @download="downloadFile"
               />
+              <!-- Kept until dismissed, the same rule the upload list follows:
+                   an error that disappears on its own is an error nobody read. -->
+              <p
+                v-if="fileDownload.errorMessage.value"
+                class="upload-refusal"
+                role="alert"
+              >
+                {{ fileDownload.errorMessage.value }}
+                <button
+                  type="button"
+                  class="link"
+                  @click="fileDownload.clearError()"
+                >
+                  關閉
+                </button>
+              </p>
             </section>
           </div>
         </div>

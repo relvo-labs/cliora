@@ -238,6 +238,10 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("GET", "/api/sessions/{session_id}/files/tree"): rbac.FILE_BROWSE,
     ("GET", "/api/sessions/{session_id}/files/search"): rbac.FILE_BROWSE,
     ("GET", "/api/sessions/{session_id}/files/content"): rbac.FILE_BROWSE,
+    # Download is a read, so it is `file.browse` and not a new action. Viewer holds
+    # it, deliberately (ADR 0028 §5) — this row is where that becomes a fact
+    # somebody has to change on purpose rather than a default nobody noticed.
+    ("GET", "/api/sessions/{session_id}/files/download"): rbac.FILE_BROWSE,
     # The one write route (ADR 0024). A separate action from file.browse on
     # purpose: all three roles browse, only two may write.
     ("POST", "/api/sessions/{session_id}/files/images"): rbac.FILE_UPLOAD,

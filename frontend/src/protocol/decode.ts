@@ -40,6 +40,11 @@ const TYPES = new Set([
   "filesystem.uploaded",
   "filesystem.store",
   "filesystem.stored",
+  // Download (v1.10.0, ADR 0028). Like the upload pair the browser is neither
+  // producer nor consumer — downloads travel over HTTP — but an unvalidated type
+  // is a type that forwards malformed data, so both are checked here too.
+  "filesystem.download",
+  "filesystem.downloaded",
   "node.challenge",
   "node.auth",
   "node.authenticated",
@@ -269,6 +274,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "privileged_terminal",
       "image_upload",
       "file_upload",
+      "file_download",
     ]),
     [
       "name",
@@ -314,6 +320,12 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
   // ADR 0026 §9). Absent means "no" here too.
   if ("file_upload" in payload && typeof payload.file_upload !== "boolean")
     reject("INVALID_MESSAGE", "file_upload must be boolean");
+  // Three switches now. Reading a workspace out to a browser and writing into it
+  // are not the same grant, so a node that accepts uploads is not thereby
+  // agreeing to hand its files back (contract 1.10.0, ADR 0028 §6). Absent means
+  // "no" here too, so an older daemon reads as download-off rather than unknown.
+  if ("file_download" in payload && typeof payload.file_download !== "boolean")
+    reject("INVALID_MESSAGE", "file_download must be boolean");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
   for (const root of payload.workspace_roots as unknown[]) {
     if (!isPlainObject(root))
@@ -524,6 +536,52 @@ function validateFsStorePayload(payload: Record<string, unknown>): void {
     (payload.data !== "" && !BASE64.test(payload.data))
   )
     reject("INVALID_MESSAGE", "Invalid upload payload");
+}
+
+function validateFsDownloadPayload(payload: Record<string, unknown>): void {
+  // The same two keys as filesystem.read, and `requireKeys` rejecting anything
+  // else is the control: no offset, no length, no range, no disposition. The
+  // caller names a file and nothing about how it will be delivered (ADR 0028 §2).
+  requireKeys(payload, new Set(["session_id", "path"]), ["session_id", "path"]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  if (!isRelPath(payload.path))
+    reject("INVALID_MESSAGE", "Invalid download path");
+}
+
+function validateFsDownloadedPayload(payload: Record<string, unknown>): void {
+  // No `mime` key, and rejecting one is the point rather than an oversight:
+  // Central answers every download as application/octet-stream with nosniff, so a
+  // content type on this frame could only ever be a value someone is tempted to
+  // trust (ADR 0028 §4).
+  requireKeys(payload, new Set(["path", "size", "modified_at", "data"]), [
+    "path",
+    "size",
+    "modified_at",
+    "data",
+  ]);
+  if (!isRelPath(payload.path))
+    reject("INVALID_MESSAGE", "Invalid download path");
+  if (
+    typeof payload.size !== "number" ||
+    !Number.isInteger(payload.size) ||
+    payload.size < 0 ||
+    payload.size > 4 * 1024 * 1024
+  )
+    reject("INVALID_MESSAGE", "Invalid download size");
+  if (
+    typeof payload.modified_at !== "string" ||
+    !TIMESTAMP.test(payload.modified_at)
+  )
+    reject("INVALID_MESSAGE", "Invalid download timestamp");
+  // An empty file is downloadable, so the empty string is accepted here for the
+  // same reason it is on filesystem.store.
+  if (
+    typeof payload.data !== "string" ||
+    payload.data.length > UPLOAD_MAX_BASE64 ||
+    (payload.data !== "" && !BASE64.test(payload.data))
+  )
+    reject("INVALID_MESSAGE", "Invalid download payload");
 }
 
 function validateFsStoredPayload(payload: Record<string, unknown>): void {
@@ -910,6 +968,10 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
     validateFsUploadedPayload(data.payload);
   if (data.type === "filesystem.store") validateFsStorePayload(data.payload);
   if (data.type === "filesystem.stored") validateFsStoredPayload(data.payload);
+  if (data.type === "filesystem.download")
+    validateFsDownloadPayload(data.payload);
+  if (data.type === "filesystem.downloaded")
+    validateFsDownloadedPayload(data.payload);
   if (data.type === "node.register") validateRegisterPayload(data.payload);
   if (data.type === "node.heartbeat") validateHeartbeatPayload(data.payload);
   if (data.type === "node.runtime_status")
