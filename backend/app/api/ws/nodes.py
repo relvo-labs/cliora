@@ -111,6 +111,7 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         privileged_terminal=bool(payload.get("privileged_terminal", False)),
         image_upload=bool(payload.get("image_upload", False)),
         file_upload=bool(payload.get("file_upload", False)),
+        file_download=bool(payload.get("file_download", False)),
     )
 
 

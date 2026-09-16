@@ -35,6 +35,7 @@ PUBLISHED_BUDGETS = [
     ("tunnel_open_timeout_seconds", 20, "FR-CONN-006.AC-09"),
     ("tunnel_close_timeout_seconds", 10, "FR-CONN-006.AC-10"),
     ("file_upload_timeout_seconds", 20, "FR-CONN-006.AC-11"),
+    ("file_download_timeout_seconds", 20, "FR-CONN-006.AC-12"),
 ]
 
 

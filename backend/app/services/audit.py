@@ -67,6 +67,22 @@ FILE_SENSITIVE_READ_DENIED = "file.sensitive_read_denied"
 # Content is never recorded, and neither is the client's original filename —
 # that string never enters the system at all.
 FILE_UPLOAD = "file.upload"
+# --- A workspace file was downloaded to a browser (ADR 0028 §7). The path IS
+# recorded, on the same reasoning as the upload paths: the user picked it out of
+# a tree they had already been shown, so it reveals nothing they did not have,
+# and without it "what left this machine" has only a counter for an answer.
+#
+# This is the only audited action on the read side that fires on *success*.
+# `file.sensitive_read_denied` records a refusal, because a preview that
+# succeeded is a fact with no consequences outside the session. A download's
+# consequence is a copy of the file on a laptop, which outlives everything the
+# platform controls, so the successful case is the one worth a row.
+#
+# Content is never recorded, and the byte count is recorded as `size_bytes`
+# rather than `bytes` on purpose: `bytes` is an exact-match forbidden key, so a
+# number written under it is stripped from every audit API response and nobody
+# would ever read it (see FORBIDDEN_METADATA_KEYS below).
+FILE_DOWNLOAD = "file.download"
 # --- P4: daemon update (SEC-006 item 8, ADR 0017) ---
 # Two actions, not one with a `phase` field: the request and the outcome can be
 # minutes apart and can be separated by a Central restart, so a filter for "which
@@ -132,6 +148,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         SESSION_FAILED,
         FILE_SENSITIVE_READ_DENIED,
         FILE_UPLOAD,
+        FILE_DOWNLOAD,
         DAEMON_UPDATE_STARTED,
         DAEMON_UPDATE_RESULT,
         AUTHZ_DENIED,

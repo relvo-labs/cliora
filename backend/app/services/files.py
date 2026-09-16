@@ -84,6 +84,15 @@ _UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
         "This node does not accept file upload",
         status.HTTP_403_FORBIDDEN,
     ),
+    # Download (ADR 0028) adds one refusal of its own. The other three it can
+    # produce - FILE_DENIED, FILE_TOO_LARGE, FILE_NOT_FOUND - are already mapped
+    # by `_map_error`, and reusing them says something true: a file the preview
+    # refuses to show is refused here on the same grounds, by the same function
+    # on the node.
+    "FILE_DOWNLOAD_DISABLED": (
+        "This node does not hand workspace files back",
+        status.HTTP_403_FORBIDDEN,
+    ),
 }
 
 
@@ -420,6 +429,98 @@ class FileRelayService:
             await self._audit_upload(actor_id, s.node_id, session_id, payload, source="file")
             return payload
 
+    async def download_file(
+        self, *, actor: User, session_id: uuid.UUID, path: str
+    ) -> tuple[str, bytes]:
+        """Relay one file back from the node and return (rel_path, raw bytes).
+
+        Gated on `file.browse`, not on a new action: a download is a read, and the
+        three fixed roles cannot express "may preview but may not download" anyway
+        (ADR 0028 sec 5). What that reuse costs is that `file.browse` now means more
+        than it did - its holder gets the exact bytes of a file the preview would
+        have shown only as text, and of one it would have refused to render at all.
+        That cost is real and belongs in the release note rather than a footnote.
+
+        Central holds the bytes only for the duration of this call, the same as the
+        two upload paths in the other direction: they are decoded, handed to the
+        response, and dropped. Nothing is written to disk, to the database, to a log
+        line or to a metrics label. A byte stored here would raise three questions -
+        how long, who can read it, is it in backups - and not storing it answers all
+        three (ADR 0024 sec 5, which applies unchanged).
+
+        Unlike `read_file` there is no in-band denial to unpack: every refusal
+        arrives as an error frame and `_expect` turns it into an ApiError. That is
+        forced by where the answer is going - the HTTP body on this path is the
+        file, so a denial has nowhere to live except the status line.
+        """
+        actor_id = actor.id
+        async with self._observe("download", session_id=session_id, actor_id=actor_id) as detail:
+            s = await self._resolve(session_id, actor)
+            detail["node_id"] = str(s.node_id)
+            rel = _reject_rel_path(path)
+            message = await self._registry.request(
+                s.node_id,
+                "filesystem.download",
+                {"session_id": str(session_id), "path": rel},
+                timeout_seconds=self._settings.file_download_timeout_seconds,
+            )
+            payload = self._expect(message, "filesystem.downloaded")
+            try:
+                data = base64.b64decode(payload.get("data") or "", validate=True)
+            except (ValueError, TypeError) as exc:
+                # A frame that passed the schema but does not decode means the node
+                # and this process disagree about the wire, which is not something a
+                # user can act on.
+                raise ApiError(
+                    "INTERNAL_ERROR",
+                    "Node could not complete the request",
+                    status.HTTP_502_BAD_GATEWAY,
+                ) from exc
+            # Byte count only - never the content, and never the path, which goes to
+            # the audit table instead (it has access control; a log line does not).
+            detail["bytes"] = len(data)
+            stored_rel = str(payload.get("path") or rel)
+            await self._audit_download(actor_id, s.node_id, session_id, stored_rel, len(data))
+            return stored_rel, data
+
+    async def _audit_download(
+        self,
+        actor_id: uuid.UUID,
+        node_id: uuid.UUID,
+        session_id: uuid.UUID,
+        rel_path: str,
+        size: int,
+    ) -> None:
+        """Record a successful download (ADR 0028 sec 7).
+
+        The successful case is the one audited here, which is the opposite of the
+        preview path next door. The asymmetry is not an oversight: a preview that
+        succeeded leaves nothing behind, so its refusals are the interesting rows,
+        while a download that succeeded leaves a copy of the file somewhere the
+        platform will never see again.
+
+        `size_bytes`, not `bytes`: the latter is an exact-match forbidden metadata
+        key and is stripped from every audit API response, so a number written under
+        it would be recorded and then never readable.
+        """
+        try:
+            await self._audit.record(
+                audit.FILE_DOWNLOAD,
+                user_id=actor_id,
+                node_id=node_id,
+                session_id=session_id,
+                metadata={"path": rel_path, "size_bytes": size},
+            )
+        except Exception:
+            # Same trade as the upload audit: the bytes have already left the node,
+            # so failing the user's request would not un-send them. The gap is
+            # counted and logged rather than hidden.
+            metrics.increment(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="download")
+            log.warning(
+                "audit write failed",
+                extra={"action": audit.FILE_DOWNLOAD, "session_id": str(session_id)},
+            )
+
     async def _resolve_for_upload(self, session_id: uuid.UUID, viewer: User) -> TerminalSession:
         """Same resolution as `_resolve`, gated on `file.upload` instead of
         `file.browse`. Kept separate rather than parameterised so that neither
@@ -548,6 +649,26 @@ class FileRelayService:
                 "Permission denied",
                 status.HTTP_403_FORBIDDEN,
             )
+        # Three codes that, before ADR 0028, only ever arrived *in band* on
+        # `filesystem.content` with success:false. The download path has no in-band
+        # body to put a denial in - the body is the file - so they arrive as error
+        # frames here, and each keeps its own status because each has a different
+        # next step: change nothing (denied), use the terminal (too large), refresh
+        # the tree (gone).
+        if code == "FILE_DENIED":
+            return ApiError(
+                "FILE_DENIED",
+                "This file cannot be downloaded",
+                status.HTTP_403_FORBIDDEN,
+            )
+        if code == "FILE_TOO_LARGE":
+            return ApiError(
+                "FILE_TOO_LARGE",
+                "The file is larger than the 4 MiB download limit",
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        if code == "FILE_NOT_FOUND":
+            return ApiError("FILE_NOT_FOUND", "Cannot access path", status.HTTP_404_NOT_FOUND)
         if code == "WORKSPACE_INVALID":
             return ApiError("FILE_INVALID_PATH", "Invalid path", status.HTTP_400_BAD_REQUEST)
         if code == "SESSION_NOT_FOUND":

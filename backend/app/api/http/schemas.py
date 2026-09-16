@@ -265,6 +265,7 @@ class RegisterNodeRequest(BaseModel):
     privileged_terminal: bool = False
     image_upload: bool = False
     file_upload: bool = False
+    file_download: bool = False
     runtimes: list[RuntimeItemDTO] = Field(default_factory=list, max_length=16)
     workspace_roots: list[WorkspaceRootDTO] = Field(default_factory=list, max_length=64)
 
@@ -281,6 +282,7 @@ class RegisterNodeRequest(BaseModel):
             privileged_terminal=self.privileged_terminal,
             image_upload=self.image_upload,
             file_upload=self.file_upload,
+            file_download=self.file_download,
             runtimes=[r.to_input() for r in self.runtimes],
             workspace_roots=[w.to_input() for w in self.workspace_roots],
         )
@@ -368,6 +370,11 @@ class NodeDetail(NodeSummary):
     # the terminal's paste affordance on the first and the file tree's drop target
     # on the second, and a machine may allow one without the other.
     file_upload: bool
+    # Whether this node hands workspace files back to the browser (ADR 0028 §6).
+    # A third flag rather than a reuse of `file.browse` being granted: the user's
+    # permission and the machine's consent are different questions, and the console
+    # needs both answered before it shows a download control.
+    file_download: bool
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]
