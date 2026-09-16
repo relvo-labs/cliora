@@ -98,6 +98,14 @@ jobs:
         run: scripts/vr/vr-gates.sh glyph-icon
       - name: tokens.css and themes.ts agree, and every pair meets its target
         run: scripts/vr/vr-gates.sh theme-contract
+      # plan/29's two, same reasoning and the same admitted limit: text checks,
+      # no geometry. The breakpoint one exists because three literals for one
+      # decision had already drifted 76px apart and left a file panel with no
+      # way to open it between 1024 and 1100px.
+      - name: every @media width is one of the four breakpoints
+        run: scripts/ms/ms-gates.sh breakpoint
+      - name: no workspace path reaches browser history
+        run: scripts/ms/ms-gates.sh history-path
   # Deployment configuration, checked without a platform account. It belongs in the baseline
   # gate rather than a phase workflow because the two edge
   # configurations can be made to disagree by a change to either one of them, and the

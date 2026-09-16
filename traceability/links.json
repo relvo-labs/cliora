@@ -28415,6 +28415,433 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-01-SPECIFIED-BY",
+      "from": "NFR-007.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "每個可見控制項的命中區 >= 44x44，量出來而不是推論。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-01-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/theme/tokens.css"
+      },
+      "role": "primary",
+      "assertion": "每個可見控制項的命中區 >= 44x44，量出來而不是推論。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-01-MEASURED-BY",
+      "from": "NFR-007.AC-01",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/mobile.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "每個可見控制項的命中區 >= 44x44，量出來而不是推論。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-MS-VIEWPORT-E2E"
+    },
+    {
+      "id": "LNK-NFR-007-AC-01-PLANNED-BY",
+      "from": "NFR-007.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/04-mobile-shell-and-navigation.md"
+      },
+      "role": "primary",
+      "assertion": "每個可見控制項的命中區 >= 44x44，量出來而不是推論。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-02-SPECIFIED-BY",
+      "from": "NFR-007.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "任一驗收寬度下頁面層級無水平溢位。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-02-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/layout/AppLayout.vue"
+      },
+      "role": "primary",
+      "assertion": "任一驗收寬度下頁面層級無水平溢位。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-02-MEASURED-BY",
+      "from": "NFR-007.AC-02",
+      "type": "measured_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/mobile.spec.ts"
+      },
+      "role": "primary",
+      "assertion": "任一驗收寬度下頁面層級無水平溢位。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-MS-VIEWPORT-E2E"
+    },
+    {
+      "id": "LNK-NFR-007-AC-02-PLANNED-BY",
+      "from": "NFR-007.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/08-verification-and-exit.md"
+      },
+      "role": "primary",
+      "assertion": "任一驗收寬度下頁面層級無水平溢位。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-03-SPECIFIED-BY",
+      "from": "NFR-007.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "面板要嘛佔位、要嘛有可聚焦的開啟控制；沒有第三種狀態。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-03-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/views/SessionWorkspaceView.vue"
+      },
+      "role": "primary",
+      "assertion": "面板要嘛佔位、要嘛有可聚焦的開啟控制；沒有第三種狀態。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-03-MEASURED-BY",
+      "from": "NFR-007.AC-03",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/SessionWorkspaceView.test.ts"
+      },
+      "role": "primary",
+      "assertion": "面板要嘛佔位、要嘛有可聚焦的開啟控制；沒有第三種狀態。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-NFR-007-AC-03-PLANNED-BY",
+      "from": "NFR-007.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/04-mobile-shell-and-navigation.md"
+      },
+      "role": "primary",
+      "assertion": "面板要嘛佔位、要嘛有可聚焦的開啟控制；沒有第三種狀態。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-04-SPECIFIED-BY",
+      "from": "NFR-007.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "版面斷點只有一組來源，樣式表與程式碼不得各寫一次。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-04-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useBreakpoint.ts"
+      },
+      "role": "primary",
+      "assertion": "版面斷點只有一組來源，樣式表與程式碼不得各寫一次。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-04-MEASURED-BY",
+      "from": "NFR-007.AC-04",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBreakpoint.test.ts"
+      },
+      "role": "primary",
+      "assertion": "版面斷點只有一組來源，樣式表與程式碼不得各寫一次。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-MS-BREAKPOINT"
+    },
+    {
+      "id": "LNK-NFR-007-AC-04-PLANNED-BY",
+      "from": "NFR-007.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/04-mobile-shell-and-navigation.md"
+      },
+      "role": "primary",
+      "assertion": "版面斷點只有一組來源，樣式表與程式碼不得各寫一次。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-05-SPECIFIED-BY",
+      "from": "NFR-007.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "視窗高度單一擁有者；鍵盤升起時可用高度跟著縮，安全區不重複相減。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-05-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/layout/AppLayout.vue"
+      },
+      "role": "primary",
+      "assertion": "視窗高度單一擁有者；鍵盤升起時可用高度跟著縮，安全區不重複相減。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-05-MEASURED-BY",
+      "from": "NFR-007.AC-05",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/components/layout/AppLayout.test.ts"
+      },
+      "role": "primary",
+      "assertion": "視窗高度單一擁有者；鍵盤升起時可用高度跟著縮，安全區不重複相減。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-NFR-007-AC-05-PLANNED-BY",
+      "from": "NFR-007.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/04-mobile-shell-and-navigation.md"
+      },
+      "role": "primary",
+      "assertion": "視窗高度單一擁有者；鍵盤升起時可用高度跟著縮，安全區不重複相減。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-06-SPECIFIED-BY",
+      "from": "NFR-007.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "版面壓縮不得移除資訊；安全姿態不得收進揭露之後。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-06-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/session/SessionHeader.vue"
+      },
+      "role": "primary",
+      "assertion": "版面壓縮不得移除資訊；安全姿態不得收進揭露之後。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-06-MEASURED-BY",
+      "from": "NFR-007.AC-06",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/components/session/SessionHeader.test.ts"
+      },
+      "role": "primary",
+      "assertion": "版面壓縮不得移除資訊；安全姿態不得收進揭露之後。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-NFR-007-AC-06-PLANNED-BY",
+      "from": "NFR-007.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/05-session-workspace-and-terminal.md"
+      },
+      "role": "primary",
+      "assertion": "版面壓縮不得移除資訊；安全姿態不得收進揭露之後。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-07-SPECIFIED-BY",
+      "from": "NFR-007.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "source",
+        "locator": "research/prd.md"
+      },
+      "role": "primary",
+      "assertion": "工作區相對路徑不得進入瀏覽器歷史、網址或持久化儲存。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-07-IMPLEMENTED-BY",
+      "from": "NFR-007.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/views/SessionWorkspaceView.vue"
+      },
+      "role": "primary",
+      "assertion": "工作區相對路徑不得進入瀏覽器歷史、網址或持久化儲存。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-NFR-007-AC-07-MEASURED-BY",
+      "from": "NFR-007.AC-07",
+      "type": "measured_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/views/SessionWorkspaceView.test.ts"
+      },
+      "role": "primary",
+      "assertion": "工作區相對路徑不得進入瀏覽器歷史、網址或持久化儲存。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-MS-HISTORY-PATH"
+    },
+    {
+      "id": "LNK-NFR-007-AC-07-PLANNED-BY",
+      "from": "NFR-007.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/29/05-session-workspace-and-terminal.md"
+      },
+      "role": "primary",
+      "assertion": "工作區相對路徑不得進入瀏覽器歷史、網址或持久化儲存。",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
     }
   ]
 }

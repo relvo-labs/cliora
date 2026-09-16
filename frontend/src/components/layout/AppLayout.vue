@@ -25,6 +25,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { Menu, X } from "lucide-vue-next";
 
+import { useBreakpoint } from "../../composables/useBreakpoint";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import { useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
@@ -50,20 +51,60 @@ const productName =
 // Three layout modes rather than two. `narrow` is not "collapsed but smaller":
 // a 64px rail beside a terminal at 390px leaves the terminal 326px, so the rail
 // goes away entirely and comes back as an overlay.
-const width = ref(typeof window === "undefined" ? 1440 : window.innerWidth);
-function onResize(): void {
-  width.value = window.innerWidth;
-}
-onMounted(() => window.addEventListener("resize", onResize));
-onBeforeUnmount(() => window.removeEventListener("resize", onResize));
-
-const isNarrow = computed(() => width.value < 768);
+//
+// The widths themselves are no longer written here (plan/29 MS-01): they lived
+// in three files that had already drifted apart by 76px, so they now have one
+// owner.
+const { isNarrow, belowWide } = useBreakpoint();
 // Automatic below 1440, and the user's choice above it. Not the other way
 // round: at 1024 an expanded rail costs the terminal 144px of width, and that
 // is a measurement rather than a preference.
-const collapsed = computed(
-  () => preferences.navCollapsed || width.value < 1440,
-);
+const collapsed = computed(() => preferences.navCollapsed || belowWide.value);
+
+// Software keyboards do not shrink `100dvh` (plan/29 MS-02). `visualViewport`
+// is the only thing that reports the height actually left over, so the shell —
+// which owns the window's height and is the only place that does (plan/09 D1) —
+// owns this dimension too. A second owner here would recreate exactly the 16px
+// disagreement plan/09 removed.
+//
+// Non-persistent by construction: it is a style property on the root element,
+// never a store, never storage. If the browser has no `visualViewport` the
+// property is never set at all, so `var(--viewport-usable-height, 100dvh)`
+// falls back rather than being handed a guess.
+//
+// Deliberately NOT combined with `env(safe-area-inset-bottom)` here:
+// `visualViewport.height` already excludes the keyboard but its treatment of
+// the home indicator differs by platform and has not been measured yet
+// (plan/29 MS-OM-03). Subtracting both would cut a strip that is not there. The
+// bottom inset is applied by whichever element actually sits against the
+// bottom edge.
+const USABLE_HEIGHT = "--viewport-usable-height";
+let viewport: VisualViewport | undefined;
+function syncUsableHeight(): void {
+  if (!viewport) return;
+  document.documentElement.style.setProperty(
+    USABLE_HEIGHT,
+    `${viewport.height}px`,
+  );
+}
+onMounted(() => {
+  viewport = window.visualViewport ?? undefined;
+  if (!viewport) return;
+  syncUsableHeight();
+  viewport.addEventListener("resize", syncUsableHeight);
+  // `scroll` as well as `resize`: iOS reports a keyboard-driven change by
+  // scrolling the visual viewport, not by resizing it.
+  viewport.addEventListener("scroll", syncUsableHeight);
+});
+onBeforeUnmount(() => {
+  if (!viewport) return;
+  viewport.removeEventListener("resize", syncUsableHeight);
+  viewport.removeEventListener("scroll", syncUsableHeight);
+  // Removed, not left behind: the login page has no shell, and a stale height
+  // from the last session would size it.
+  document.documentElement.style.removeProperty(USABLE_HEIGHT);
+  viewport = undefined;
+});
 
 const menuOpen = ref(false);
 const menuPanel = ref<HTMLElement>();
@@ -142,6 +183,7 @@ async function logout(): Promise<void> {
       <PrimaryNav
         :collapsed="false"
         :collapsible="false"
+        sessions-first
         :product-name="productName"
         @update:collapsed="() => {}"
       />
@@ -170,10 +212,20 @@ async function logout(): Promise<void> {
      main — invisible while it was `fixed`, obvious now. The header keeps its own
      height, so the row is 56px in the normal case. */
   grid-template-rows: auto minmax(0, 1fr);
-  /* 100vh first as the fallback: dvh also tracks a collapsing mobile URL bar,
-     which style.md §24's narrow breakpoints meet. */
+  /* Three layers, each the fallback for the one after it. 100vh is the floor;
+     dvh also tracks a collapsing mobile URL bar, which style.md §24's narrow
+     breakpoints meet; and --viewport-usable-height is the only one of the three
+     that shrinks when a software keyboard opens (plan/29 MS-02). A browser that
+     does not set the custom property simply keeps the dvh answer. */
   height: 100vh;
   height: 100dvh;
+  height: var(--viewport-usable-height, 100dvh);
+  /* Top and sides only. The bottom inset belongs to whatever actually touches
+     the bottom edge, because subtracting it here as well as inside
+     visualViewport's answer would remove the same strip twice (MS-OM-03). */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 .shell[data-collapsed] {
   grid-template-columns: var(--layout-sidebar-collapsed) minmax(0, 1fr);
@@ -240,6 +292,10 @@ async function logout(): Promise<void> {
   inset: 0;
   z-index: 25;
   background: var(--surface-scrim);
+  /* The scrim is not a scrollable surface, and on touch a drag over it would
+     otherwise scroll the page underneath while the menu is open. */
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 .menu-panel {
   position: fixed;
@@ -247,6 +303,23 @@ async function logout(): Promise<void> {
   z-index: 26;
   width: min(280px, 86vw);
   box-shadow: var(--shadow-overlay);
+  /* Its own insets, not the shell's: `position: fixed` takes it out of the
+     shell's padding box entirely, so without these it runs under the notch at
+     the top and the home indicator at the bottom (plan/29 MS-03). This is also
+     an element that touches the bottom edge, which under MS-02 is exactly who
+     is supposed to apply the bottom inset. */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  /* Seven items plus a brand can exceed a short landscape viewport once the
+     insets are added, and a nav you cannot reach the bottom of is a nav with
+     missing items. */
+  overflow-y: auto;
+  /* Stops the scroll chaining to the page behind. `overscroll-behavior` rather
+     than `position: fixed` on the body: the shell's `main` is the app's one
+     scrolling container, and pinning the body would throw away its scroll
+     position on every open. */
+  overscroll-behavior: contain;
 }
 .menu-panel :deep(.rail) {
   height: 100%;

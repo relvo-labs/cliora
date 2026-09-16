@@ -17,6 +17,7 @@ import EditorWorker from "monaco-editor/editor/editor.worker.js?worker";
 import {
   DEFAULT_THEME,
   THEME_IDS,
+  isLightTerminal,
   monacoColors,
   type ThemeId,
 } from "../theme/themes";
@@ -104,12 +105,15 @@ function defineThemes(): void {
   }
   for (const id of THEME_IDS) {
     monaco.editor.defineTheme(previewThemeName(id), {
-      // `vs-dark` for every theme, including the light ones. style.md §19 has
-      // the preview share the terminal's dark surface, and the shared design
-      // foundation agrees: a light editor inside a light theme would put two
-      // different code backgrounds in one workspace, and the user is looking at
-      // the code.
-      base: "vs-dark",
+      // The rule is "the preview shares the terminal's surface" (style.md §19),
+      // not "the preview is dark". For five themes those are the same sentence,
+      // because their terminal is dark; for pocket the terminal is #FFFFFF, and
+      // keeping `vs-dark` there would put two different code backgrounds in one
+      // workspace — the exact thing the rule exists to prevent (plan/29 MS-19).
+      //
+      // Derived from the token rather than from a theme list, so a future light
+      // theme cannot be added without this following it.
+      base: isLightTerminal(id) ? "vs" : "vs-dark",
       inherit: true,
       rules: [],
       colors: monacoColors(id),

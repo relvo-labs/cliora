@@ -19,13 +19,20 @@
 
 import { defineStore } from "pinia";
 
+import { NARROW } from "../composables/useBreakpoint";
+
 import {
   THEME_STORAGE_KEY,
   applyTheme,
   effectiveTheme,
   readStoredTheme,
+  renderedTheme,
 } from "../theme/applyTheme";
-import { isShippedThemeId, type ShippedThemeId } from "../theme/themes";
+import {
+  isShippedThemeId,
+  type ShippedThemeId,
+  type ThemeId,
+} from "../theme/themes";
 
 const KEYS = {
   theme: THEME_STORAGE_KEY,
@@ -100,6 +107,12 @@ interface PreferencesState {
   // "following the OS" is a third state, and collapsing it would turn the first
   // visit into a silent explicit choice that then ignores the OS forever.
   themeIsExplicit: boolean;
+  // What is actually painted. Equal to `theme` on every viewport except a
+  // narrow one, where the mobile-only light theme overrides it (plan/29
+  // MS-D-06). Kept as separate state rather than folded into `theme` so the
+  // switcher keeps showing the user's own choice: a phone must not silently
+  // rewrite a preference that was set on a desktop.
+  renderedTheme: ThemeId;
   terminalFontSize: number;
   inspectorWidth: number;
   navCollapsed: boolean;
@@ -140,7 +153,7 @@ export function installPreferencesStorageSync(): () => void {
       preferences.themeIsExplicit = true;
       preferences.theme = storedTheme;
     }
-    applyTheme(preferences.theme);
+    preferences.applyRendered();
     preferences.terminalFontSize = readNumber(
       KEYS.terminalFontSize,
       TERMINAL_FONT_MIN,
@@ -159,10 +172,32 @@ export function installPreferencesStorageSync(): () => void {
   return () => window.removeEventListener("storage", handler);
 }
 
+// Re-apply when the viewport crosses the mobile boundary (plan/29 MS-20).
+//
+// Rotating a phone, or dragging a desktop window narrow, changes which theme is
+// painted. It goes through `applyRendered` — the same action a local change and
+// a cross-tab change use — so the recolour is in place: xterm keeps its buffer,
+// Monaco keeps its scroll position, and nothing is remounted.
+//
+// Same shape as `installPreferencesStorageSync`, and installed next to it.
+export function installViewportThemeSync(): () => void {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return () => {};
+  }
+  const mql = window.matchMedia(NARROW);
+  const handler = (): void => usePreferencesStore().applyRendered();
+  mql.addEventListener("change", handler);
+  return () => mql.removeEventListener("change", handler);
+}
+
 export const usePreferencesStore = defineStore("preferences", {
   state: (): PreferencesState => ({
     theme: effectiveTheme(),
     themeIsExplicit: readStoredTheme() !== undefined,
+    renderedTheme: renderedTheme(effectiveTheme()),
     terminalFontSize: readNumber(
       KEYS.terminalFontSize,
       TERMINAL_FONT_MIN,
@@ -183,14 +218,22 @@ export const usePreferencesStore = defineStore("preferences", {
     // and `theme-color` are set even on the OS-preference path, where
     // theme-boot.js deliberately sets no attribute at all.
     init(): void {
-      applyTheme(this.theme);
+      this.applyRendered();
+    },
+    // One place decides what gets painted, so the viewport override cannot be
+    // forgotten by one of the four callers.
+    applyRendered(): void {
+      this.renderedTheme = renderedTheme(this.theme);
+      applyTheme(this.renderedTheme);
     },
     setTheme(id: ShippedThemeId): void {
       if (!isShippedThemeId(id)) return;
       this.theme = id;
       this.themeIsExplicit = true;
       write(KEYS.theme, id);
-      applyTheme(id);
+      // Stored either way. On a narrow viewport the choice is recorded and
+      // simply not painted — it is the preference for every other viewport.
+      this.applyRendered();
     },
     // Go back to following the operating system.
     //
@@ -203,7 +246,7 @@ export const usePreferencesStore = defineStore("preferences", {
       remove(KEYS.theme);
       this.themeIsExplicit = false;
       this.theme = effectiveTheme();
-      applyTheme(this.theme);
+      this.applyRendered();
     },
     setTerminalFontSize(size: number): void {
       const next = Math.min(

@@ -4585,6 +4585,65 @@
       ]
     },
     {
+      "id": "NFR-007",
+      "kind": "non_functional",
+      "title": "行動視窗的操作性",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "nfr-007"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "must",
+      "owner": "frontend",
+      "criteria": [
+        {
+          "id": "NFR-007.AC-01",
+          "source_anchor": "nfr-007-ac-01",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-02",
+          "source_anchor": "nfr-007-ac-02",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-03",
+          "source_anchor": "nfr-007-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-04",
+          "source_anchor": "nfr-007-ac-04",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-05",
+          "source_anchor": "nfr-007-ac-05",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-06",
+          "source_anchor": "nfr-007-ac-06",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "NFR-007.AC-07",
+          "source_anchor": "nfr-007-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        }
+      ]
+    },
+    {
       "id": "SCOPE-001",
       "kind": "scope",
       "title": "不解析 Claude 或 Codex 的內部事件。",

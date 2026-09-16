@@ -36,11 +36,16 @@ const STOP_REASONS: Record<string, string> = {
   timeout: "搜尋逾時，僅顯示已找到的結果。",
 };
 
-const partialNote = computed(() =>
-  props.slice.partial
-    ? (STOP_REASONS[props.slice.stoppedReason ?? ""] ?? "結果不完整。")
-    : "",
-);
+// The stop reason and the scanned count, together. ADR 0014/0015 require both:
+// the reason says what stopped the search and the count says how much of the
+// workspace it got through, and "incomplete" without a size is a sentence the
+// user cannot act on (plan/29 MS-15).
+const partialNote = computed(() => {
+  if (!props.slice.partial) return "";
+  const reason =
+    STOP_REASONS[props.slice.stoppedReason ?? ""] ?? "結果不完整。";
+  return `${reason}已掃描 ${props.slice.scanned} 個檔案。`;
+});
 
 function submit(): void {
   const trimmed = keyword.value.trim();
@@ -80,6 +85,14 @@ function clear(): void {
         <X :size="13" aria-hidden="true" />
       </button>
     </form>
+
+    <!-- The scope, in words. On a phone the search box sits directly under a
+         breadcrumb that says "src", and the default reading of that layout is
+         "search inside src" — which is not what this does and never was. The
+         request carries no root, so the daemon walks the whole workspace
+         (FR-FILE-007); the only thing that can correct the misreading is text
+         (plan/29 MS-15). -->
+    <p class="note scope">搜尋範圍：整個工作區的檔名，不含檔案內容。</p>
 
     <p v-if="slice.state === 'loading'" class="note" role="status">搜尋中…</p>
     <p
@@ -161,6 +174,9 @@ input:focus {
 }
 .note.bad {
   color: var(--status-error-fg);
+}
+.note.scope {
+  color: var(--text-secondary);
 }
 .note.warn {
   color: var(--status-warning-fg);

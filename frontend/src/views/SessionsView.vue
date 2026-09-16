@@ -31,9 +31,25 @@ import UiEmptyState from "../components/ui/UiEmptyState.vue";
 import UiInlineNotice from "../components/ui/UiInlineNotice.vue";
 import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
+import { useBreakpoint } from "../composables/useBreakpoint";
 import { useAuthStore } from "../stores/auth";
 import { useSessionsStore } from "../stores/sessions";
 import { formatInstant } from "../utils/time";
+
+// Below 768px the same rows are cards, not a five-column table (plan/29 MS-04).
+// Not a horizontally scrolling table: at 390px the first column is all that is
+// legible, and the other four are reached by a gesture nothing on screen
+// suggests. No field is dropped — what gets compressed is the layout, not the
+// information.
+const { isNarrow } = useBreakpoint();
+
+// One copy of the no-results wording for two presentations. The desktop table
+// keeps rendering its own empty row exactly as before, so the two states cannot
+// be merged into one element — but they can share the sentence.
+const NO_RESULTS = {
+  title: "沒有符合條件的項目",
+  detail: "調整搜尋字串，或清除 Runtime 篩選。",
+} as const;
 
 const auth = useAuthStore();
 const sessions = useSessionsStore();
@@ -174,6 +190,43 @@ function onCreated(session: SessionDetail): void {
       </template>
     </UiEmptyState>
 
+    <!-- Narrow: one card per session, the whole card being the control. -->
+    <ul v-else-if="isNarrow" class="cards" aria-label="Sessions">
+      <li v-if="filtered.length === 0" class="cards-empty">
+        <UiEmptyState
+          variant="no-results"
+          :title="NO_RESULTS.title"
+          :detail="NO_RESULTS.detail"
+        >
+          <template #action>
+            <UiButton variant="secondary" @click="clearFilters">
+              清除搜尋與篩選
+            </UiButton>
+          </template>
+        </UiEmptyState>
+      </li>
+      <li v-for="s in filtered" v-else :key="s.id">
+        <button type="button" class="card" @click="open(s.id)">
+          <span class="card-top">
+            <span class="card-name">{{ s.name }}</span>
+            <StatusBadge :status="s.status" kind="session" />
+          </span>
+          <code class="card-path" :title="s.workspace">{{ s.workspace }}</code>
+          <!-- Node, runtime and last activity on one secondary line. All three
+               are kept: the table shows them, so the phone shows them. -->
+          <span class="card-meta">
+            <span>{{ s.node_id }}</span>
+            <span aria-hidden="true">·</span>
+            <span>{{ s.runtime }}</span>
+            <span aria-hidden="true">·</span>
+            <span :title="s.last_activity_at ?? ''">{{
+              formatInstant(s.last_activity_at)
+            }}</span>
+          </span>
+        </button>
+      </li>
+    </ul>
+
     <UiDataTable
       v-else
       label="Sessions"
@@ -183,8 +236,8 @@ function onCreated(session: SessionDetail): void {
       <template #no-results>
         <UiEmptyState
           variant="no-results"
-          title="沒有符合條件的項目"
-          detail="調整搜尋字串，或清除 Runtime 篩選。"
+          :title="NO_RESULTS.title"
+          :detail="NO_RESULTS.detail"
         >
           <template #action>
             <UiButton variant="secondary" @click="clearFilters">
@@ -292,5 +345,73 @@ function onCreated(session: SessionDetail): void {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* Narrow presentation (plan/29 MS-04). A list, not divs dressed as a table:
+   the rows are items and the assistive reading should say so. */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.cards-empty {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
+}
+/* The whole card is the control, so the hit area is the card. A name-only link
+   inside a card leaves most of the row inert, which on touch reads as a list
+   that sometimes ignores you. */
+.card {
+  width: 100%;
+  min-height: var(--density-row);
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-panel);
+  background: var(--surface-default);
+  text-align: left;
+  color: var(--text-primary);
+  font: inherit;
+}
+.card-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.card-name {
+  font-weight: 600;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.card-top :deep(.badge) {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+/* Truncated at the start: the end of a workspace path is the part that
+   identifies it, which is the opposite of the session name above. */
+.card-path {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  direction: rtl;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 </style>

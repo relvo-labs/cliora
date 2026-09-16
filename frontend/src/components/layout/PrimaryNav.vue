@@ -54,8 +54,15 @@ const props = withDefaults(
      * happens, and they have to work out whether it is broken or they are.
      */
     collapsible?: boolean;
+    /**
+     * True in the narrow-viewport overlay only. Hoists Sessions to the top,
+     * which is the whole of what the mobile entry point changes: `/` keeps its
+     * current redirect, because repointing it by viewport would make one URL
+     * land on two different pages (plan/29 MS-D-01).
+     */
+    sessionsFirst?: boolean;
   }>(),
-  { collapsible: true },
+  { collapsible: true, sessionsFirst: false },
 );
 const emit = defineEmits<{ "update:collapsed": [boolean] }>();
 
@@ -72,6 +79,10 @@ const canManageIntegrations = computed(() =>
   auth.hasPermission(ACTION_INTEGRATION_MANAGE),
 );
 
+// The desktop order, and the only one written down. `sessionsFirst` hoists one
+// item out of it for the narrow-viewport overlay (plan/29 MS-D-01); it does not
+// define a second list, because two lists drift and the drift would be
+// invisible — both would still render something plausible.
 const items = computed(() =>
   [
     {
@@ -100,7 +111,17 @@ const items = computed(() =>
       icon: Plug,
       show: canManageIntegrations.value,
     },
-  ].filter((item) => item.show),
+  ]
+    .filter((item) => item.show)
+    // A hoist, not a sort. Written as a sort first, over an array that had
+    // already been reordered to put Sessions at the top — which moved the
+    // desktop rail too, because a stable sort with no key to compare leaves the
+    // source order exactly as it found it. The test caught it; the shape is the
+    // fix.
+    .sort((a, b) => {
+      if (!props.sessionsFirst) return 0;
+      return Number(b.name === "sessions") - Number(a.name === "sessions");
+    }),
 );
 </script>
 

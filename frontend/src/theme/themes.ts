@@ -16,6 +16,7 @@ export const THEME_IDS = [
   "midnight",
   "studio",
   "industrial",
+  "pocket",
 ] as const;
 export type ThemeId = (typeof THEME_IDS)[number];
 
@@ -194,6 +195,69 @@ export const THEMES: Record<ThemeId, Theme> = {
     // Elevation
     "shadow-overlay": "0 8px 28px #25313C1F",
   },
+  // The mobile-only light theme (plan/29 MS-18). Not offered in the switcher:
+  // it is selected from the viewport, not from a preference (MS-D-05), so it is
+  // in THEME_IDS but not in SHIPPED_THEME_IDS.
+  //
+  // Non-terminal values are Porcelain's, unchanged and deliberately so — they
+  // are already measured and already shipping, and re-deriving them would put a
+  // second light palette in the product for no reason. What pocket exists to
+  // change is the nine terminal tokens below, which in Porcelain are still
+  // dark: a light workbench with a dark terminal is the thing #62 rejected.
+  pocket: {
+    // Surfaces and boundaries
+    "surface-canvas": "#F9FAFC",
+    "surface-default": "#FFFFFF",
+    "surface-raised": "#EEF2F7",
+    "surface-scrim": "#25313C73",
+    "border-subtle": "#E0E5EB",
+    "border-control": "#838689",
+    "focus-ring": "#286BF0",
+    // Text
+    "text-primary": "#25313C",
+    "text-secondary": "#5E6B78",
+    "text-on-accent": "#FFFFFF",
+    "text-on-terminal": "#2B333B",
+    "text-disabled": "#78899A",
+    // Accent and actions
+    "accent-primary": "#286BF0",
+    "accent-strong": "#1B54C4",
+    "accent-subtle": "#E9F0FF",
+    "accent-hover": "#1B54C4",
+    "danger-bg": "#B03434",
+    "danger-fg": "#FFFFFF",
+    "danger-hover": "#8E2727",
+    // Status: five semantics, three values each
+    "status-success-fg": "#1F7A54",
+    "status-success-bg": "#E4F3EA",
+    "status-success-border": "#B8DCC8",
+    "status-warning-fg": "#7E5712",
+    "status-warning-bg": "#FAF0DC",
+    "status-warning-border": "#E0C68C",
+    "status-error-fg": "#B03434",
+    "status-error-bg": "#FBE9E9",
+    "status-error-border": "#E8B8B8",
+    "status-info-fg": "#1F5C96",
+    "status-info-bg": "#E8F0FA",
+    "status-info-border": "#B6CDE6",
+    "status-neutral-fg": "#5E6B78",
+    "status-neutral-bg": "#EEF1F4",
+    "status-neutral-border": "#CBD3DA",
+    // Terminal and editor. The terminal is the brightest surface here, not the
+    // darkest: on a light workbench the thing being read takes the "paper"
+    // role and the canvas recedes behind it.
+    "terminal-background": "#FFFFFF",
+    "terminal-foreground": "#2B333B",
+    "terminal-input": "#10161B",
+    "terminal-cursor": "#16324F",
+    "terminal-selection": "#286BF033",
+    "text-on-terminal-dim": "#5B6670",
+    "border-on-terminal": "#DFE4EA",
+    "border-on-terminal-control": "#8A949D",
+    "surface-on-terminal": "#EEF1F5",
+    // Elevation
+    "shadow-overlay": "0 8px 28px #25313C1F",
+  },
   midnight: {
     // Surfaces and boundaries
     "surface-canvas": "#0B1322",
@@ -352,8 +416,24 @@ export const THEMES: Record<ThemeId, Theme> = {
   },
 };
 
-// One ANSI set for every theme, verified against all five terminal
-// backgrounds. black/brBlack are deliberately dim — see tokens.css.
+// ANSI, per theme family (plan/29 MS-18 §0.1).
+//
+// This used to be one table for every theme, and the comment said it was
+// "verified against all five terminal backgrounds". All five were dark —
+// Porcelain included, because Porcelain's terminal is still #101416. The moment
+// a theme put a light surface under these, brWhite (#E8EEF0) sat at 1.06:1 on
+// it.
+//
+// The split is deliberately conservative: every dark theme keeps this exact
+// table, byte for byte, so nothing that ships today changes colour.
+// themes.test.ts asserts that equality, because "we refactored the palette" is
+// not something to take on trust.
+//
+// The rule the old table already followed, without saying so: fourteen of the
+// sixteen are readable (5.79-16.02:1) and two — black and brBlack — are
+// deliberately dim, because they are the end of the ramp that sits nearest the
+// background. A light theme does not need a new rule, it needs that one
+// mirrored: the dim end moves from the dark end to the light end.
 export const TERMINAL_ANSI = {
   black: "#3A4145",
   red: "#E8807F",
@@ -373,6 +453,91 @@ export const TERMINAL_ANSI = {
   brWhite: "#E8EEF0",
 } as const;
 
+// The same sixteen roles against a light terminal (plan/29 07-…md §1.2).
+//
+// Three rules produced these, and they are worth stating because the obvious
+// alternative is wrong in a way that looks clever:
+//
+//   1. The ramp keeps its direction. black is still the darkest and brWhite
+//      still the lightest. Mapping black to a pale grey and white to a dark one
+//      would make both ends "readable" and would render `\e[30;47m` — black on
+//      white, a pairing the CLI authored as a pair — as light on dark. That is
+//      not a contrast problem, it is the palette lying about its own order.
+//   2. The twelve chromatic colours all clear 4.5:1. They are where CLI output
+//      carries meaning: the error is red, the diff is green.
+//   3. `bright` goes *darker* here, not lighter. For the four greys `bright`
+//      means a position on the ramp, so they stay in order; for the twelve
+//      colours it means emphasis, and on a light surface "lighter" is less
+//      contrast, which would make the emphasised span the hardest one to read.
+//
+// Measured against #FFFFFF: chromatics 5.35-9.28, black 14.90, brBlack 10.23,
+// white 3.66, brWhite 1.69. The last two are the dim end, the mirror of
+// black/brBlack above.
+export const POCKET_ANSI = {
+  black: "#22282D",
+  red: "#B62B2B",
+  green: "#1F7A45",
+  yellow: "#7A5A12",
+  blue: "#1F5FD0",
+  magenta: "#9333A8",
+  cyan: "#0F6F77",
+  white: "#7D8790",
+  brBlack: "#39424A",
+  brRed: "#8F1F1F",
+  brGreen: "#155C33",
+  brYellow: "#5C430D",
+  brBlue: "#16469C",
+  brMagenta: "#72237F",
+  brCyan: "#0A5359",
+  brWhite: "#C2C8CE",
+} as const;
+
+/**
+ * The two ANSI slots each theme deliberately leaves dim, named rather than
+ * inferred.
+ *
+ * Inferring them from "is this theme light or dark" would silently pick the
+ * wrong pair the first time someone adds a theme whose terminal surface is a
+ * mid-tone, and the symptom would be a contrast test that passes while two
+ * colours are invisible.
+ */
+export const TERMINAL_DIM_ANSI: Record<ThemeId, readonly [string, string]> = {
+  graphite: ["black", "brBlack"],
+  porcelain: ["black", "brBlack"],
+  midnight: ["black", "brBlack"],
+  studio: ["black", "brBlack"],
+  industrial: ["black", "brBlack"],
+  pocket: ["white", "brWhite"],
+};
+
+/**
+ * Whether this theme's terminal surface is light.
+ *
+ * Read from the token, not from a list of theme ids: xterm, Monaco and
+ * `color-scheme` all need the same answer, and three hand-maintained lists
+ * would be three chances to disagree. The threshold is sRGB relative luminance
+ * rather than a "looks light" judgement, and 0.5 is the midpoint rather than a
+ * tuned value — every terminal surface in the table is far from it (pocket is
+ * 1.0, the darkest is 0.006).
+ */
+export function isLightTerminal(id: ThemeId): boolean {
+  const hex = THEMES[id]["terminal-background"].replace("#", "").slice(0, 6);
+  const channel = (v: number): number => {
+    const c = v / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const luminance =
+    0.2126 * channel(parseInt(hex.slice(0, 2), 16)) +
+    0.7152 * channel(parseInt(hex.slice(2, 4), 16)) +
+    0.0722 * channel(parseInt(hex.slice(4, 6), 16));
+  return luminance > 0.5;
+}
+
+/** The sixteen ANSI colours this theme renders with. */
+export function terminalAnsi(id: ThemeId): Record<string, string> {
+  return id === "pocket" ? { ...POCKET_ANSI } : { ...TERMINAL_ANSI };
+}
+
 // What xterm gets. Assigned as `terminal.options.theme = xtermTheme(id)`,
 // never `new Terminal()`: measured in chromium on 2026-09-08, that assignment
 // repaints in place and leaves buffer length, viewportY, cursorX and rows all
@@ -386,7 +551,7 @@ export function xtermTheme(id: ThemeId): Record<string, string> {
     cursor: t["terminal-cursor"],
     cursorAccent: t["terminal-background"],
     selectionBackground: t["terminal-selection"],
-    ...TERMINAL_ANSI,
+    ...terminalAnsi(id),
   };
 }
 

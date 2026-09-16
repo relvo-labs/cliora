@@ -15,6 +15,7 @@ import type { NodeDetail, SessionDetail } from "../api/dto";
 import AppLayout from "../components/layout/AppLayout.vue";
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
+import FileBrowser from "../components/file/FileBrowser.vue";
 import FileTree from "../components/file/FileTree.vue";
 import SessionHeader from "../components/session/SessionHeader.vue";
 import StatusBar from "../components/session/StatusBar.vue";
@@ -32,6 +33,7 @@ const PreviewPane = defineAsyncComponent(
   () => import("../components/file/PreviewPane.vue"),
 );
 import { useAsyncResource } from "../composables/useAsyncResource";
+import { useBreakpoint } from "../composables/useBreakpoint";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useFocusTrap } from "../composables/useFocusTrap";
@@ -133,11 +135,52 @@ const tabs = computed(() => [
 function openPreview(relPath: string): void {
   previewPath.value = relPath;
   activeTab.value = "preview";
+  if (isNarrow.value) {
+    mobileMode.value = "preview";
+    pushPreviewHistory();
+  }
 }
 
 function closePreview(): void {
   previewPath.value = null;
   activeTab.value = "cli";
+  if (isNarrow.value) {
+    // Back to the list it was opened from, not to the terminal: preview is a
+    // substate of files.
+    mobileMode.value = "files";
+    popPreviewHistory();
+  }
+}
+
+// The back gesture, without putting a workspace-relative path in history
+// (plan/29 MS-D-02/MS-08).
+//
+// A fullscreen preview that the system Back button exits the *session* from is
+// the single most likely mis-tap on a phone. The fix is one history entry with
+// no state and the same URL, popped again when the preview closes by any other
+// route, so opening and closing ten files leaves the stack exactly as it was.
+// The path itself is never written anywhere: not the URL, not the entry's
+// state, not storage (addendum §1/§7).
+let previewHistoryDepth = 0;
+function pushPreviewHistory(): void {
+  if (typeof window === "undefined" || previewHistoryDepth > 0) return;
+  window.history.pushState(null, "", window.location.href);
+  previewHistoryDepth += 1;
+}
+function popPreviewHistory(): void {
+  if (typeof window === "undefined" || previewHistoryDepth === 0) return;
+  previewHistoryDepth -= 1;
+  window.history.back();
+}
+function onPopState(): void {
+  // Only meaningful while we are the ones who pushed. Decrement first: `back()`
+  // already happened, so calling `popPreviewHistory` from here would pop a
+  // second entry and leave the route.
+  if (previewHistoryDepth === 0) return;
+  previewHistoryDepth = 0;
+  previewPath.value = null;
+  activeTab.value = "cli";
+  mobileMode.value = "files";
 }
 
 function closeTab(id: string): void {
@@ -298,27 +341,53 @@ const session = computed(() => sessions.current);
 // the CLI panel is 542px at 1024x768 and 14px/1.2 gives 28 rows there, under
 // plan/09's floor of 30. One row recovers 24px — about one row — and the
 // user-adjustable font size covers the rest (13px/1.2 gives 30 at that size).
-const viewportWidth = ref(
-  typeof window === "undefined" ? 1440 : window.innerWidth,
-);
-function trackWidth(): void {
-  viewportWidth.value = window.innerWidth;
-}
-onMounted(() => window.addEventListener("resize", trackWidth));
-onBeforeUnmount(() => window.removeEventListener("resize", trackWidth));
-const compactHeader = computed(
-  () => viewportWidth.value >= 768 && viewportWidth.value < 1440,
-);
+// The widths are no longer written here (plan/29 MS-01/MS-05). This file used to
+// hold two of the three that had drifted apart — `< 1024` in script and a
+// `@media (max-width: 1100px)` that hid the rail outright. Between 1024 and
+// 1100px the panel was therefore in the DOM, `display: none`, and had no
+// control to open it; measured at seven widths in plan/29 09-…md §4.1. The
+// media query is gone: `[data-files-hidden]` already collapses the grid from
+// the same state the drawer button reads, so the width rule was a second,
+// disagreeing source for a decision that was already being made correctly.
+const { isNarrow, isTablet, belowWide } = useBreakpoint();
+// Every width below 1440, narrow included (plan/29 MS-06). It used to start at
+// 768, so a phone got the *uncompressed* two-row header — the widest layout on
+// the narrowest screen. Node posture is no longer part of what the compact form
+// collapses, so extending it down costs nothing ADR 0023 cares about.
+const compactHeader = belowWide;
 
 // The file column has three modes, not two. Below 1024px it is an overlay
 // drawer with a button on the tab strip; at 1024px and up it is a resizable
 // column. What this replaces was `display: none` below 1100px with no opening
 // control at all — the file tree simply ceased to exist, which is the shape the
 // shared design foundation names as forbidden ("不將功能直接隱藏").
-const filesAreDrawer = computed(() => viewportWidth.value < 1024);
+// Only the tablet range keeps the overlay drawer. Below 768px the file browser
+// is a *mode* rather than a panel that floats over the terminal: an overlay on
+// a 390px screen covers the thing it is supposed to sit beside, so it is a
+// mode wearing an overlay's costume (plan/29 MS-07).
+const filesAreDrawer = isTablet;
 const filesOpen = ref(false);
-// Visible means "occupying space or overlaying": a closed drawer is neither.
-const filesVisible = computed(() => !filesAreDrawer.value || filesOpen.value);
+
+// The narrow-viewport mode. Three values, and the first one is `cli`, not
+// `terminal`, on purpose: in this file `terminal` already means the system
+// shell, whose lifecycle is the opposite of the main CLI's — the shell dies on
+// close, the CLI only detaches (ADR 0021 vs ADR 0012/0013). The mobile addendum
+// called this mode `terminal`; it is renamed here rather than inherited,
+// because the one thing worse than two names for one concept is one name for
+// two (plan/29 05-…md §0).
+//
+// `preview` is a substate of `files`, not a fourth top-level place: closing it
+// returns to the file list, which is where it was opened from.
+type MobileMode = "cli" | "files" | "preview";
+const mobileMode = ref<MobileMode>("cli");
+
+// Visible means "occupying space or overlaying": a closed drawer is neither,
+// and on a phone the file browser is visible exactly when it is the mode.
+const filesVisible = computed(() =>
+  isNarrow.value
+    ? mobileMode.value === "files"
+    : !filesAreDrawer.value || filesOpen.value,
+);
 
 const filePanel = ref<HTMLElement>();
 const drawerButton = ref<{ $el: HTMLElement } | null>(null);
@@ -533,12 +602,59 @@ watch(
       //    this the previous session's shell stayed alive, and worse, its id stayed
       //    in `shellSession` — the TERMINAL tab here would then show the terminal
       //    of the session the user just left.
+      // Mobile state belongs to the session that was left, and it is cleared
+      // *before* anything for the new one runs (plan/29 MS-08 condition 2).
+      // The pushed history entry is disowned rather than popped: popping here
+      // would fight the navigation that is already in progress.
+      previewHistoryDepth = 0;
+      mobileMode.value = "cli";
       await closeShell();
       await resource.run();
       void terminal.connect(next);
     }
   },
 );
+
+// Re-measure when the phone's mode brings the terminal back into view, and when
+// the screen rotates (plan/29 MS-09).
+//
+// A hidden host measures 0x0, and the composable refuses to fit it — correctly,
+// because the alternative is sending a nonsense rows/cols pair to the daemon.
+// The consequence is that something has to fit it once it is visible again, and
+// the existing `activeTab` watcher does not fire when only the mode changed.
+//
+// Nothing here relaxes the contract underneath: the composable still clamps to
+// 2-300 x 2-500, still sends only a size that actually changed, and still
+// refuses to send at all as a viewer.
+watch(mobileMode, async (mode) => {
+  if (mode !== "cli") return;
+  await nextTick();
+  terminal.fit();
+});
+
+function onOrientationChange(): void {
+  // Same debounce the composable already uses for window resizes rather than a
+  // second timing scheme: rotation is a resize that announces itself early, and
+  // the layout has not settled when the event fires.
+  window.setTimeout(() => terminal.fit(), 100);
+}
+
+// `popstate` is only listened to while this view is mounted, and the handler
+// ignores events it did not cause.
+onMounted(() => {
+  window.addEventListener("popstate", onPopState);
+  window.addEventListener("orientationchange", onOrientationChange);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("popstate", onPopState);
+  window.removeEventListener("orientationchange", onOrientationChange);
+  // Disowned, not popped: unmount happens during a navigation, and calling
+  // `history.back()` inside one is how a router ends up somewhere neither it
+  // nor the user chose. The entry is same-URL, so what remains is one extra
+  // Back press on the way out — the residual is recorded as MS-OM-07 rather
+  // than hidden.
+  previewHistoryDepth = 0;
+});
 
 // Recolour in place when the theme changes. Three consumers, one source: the
 // CLI terminal, the system terminal and Monaco. `terminal.options.theme = ...`
@@ -549,7 +665,10 @@ watch(
 // Rebuilding either one here would break the promise this whole ticket rests
 // on: switching theme must not interrupt work.
 watch(
-  () => preferences.theme,
+  // `renderedTheme`, not `theme`: on a narrow viewport the painted palette is
+  // pocket regardless of what the user chose, and the terminal has to be told
+  // the same thing the stylesheet was (plan/29 MS-20).
+  () => preferences.renderedTheme,
   (id) => {
     terminal.applyTheme(id);
     shellTerminal.applyTheme(id);
@@ -632,11 +751,44 @@ async function confirmTerminate(): Promise<void> {
         />
       </div>
 
+      <!-- The phone's two top-level places, directly visible rather than
+           behind a menu (plan/29 MS-07). It is a tablist because that is what
+           it is: two panels, one shown at a time, and the files tab controls
+           the panel the drawer button controls at wider widths — so the "the
+           file panel is reachable at every width" invariant holds through the
+           same attribute. Hidden under preview, which is fullscreen. -->
+      <nav
+        v-if="isNarrow && session && mobileMode !== 'preview'"
+        class="modes"
+        role="tablist"
+        aria-label="工作區"
+      >
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mobileMode === 'cli'"
+          aria-controls="panel-cli"
+          @click="mobileMode = 'cli'"
+        >
+          終端機
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="mobileMode === 'files'"
+          aria-controls="file-panel"
+          @click="mobileMode = 'files'"
+        >
+          檔案
+        </button>
+      </nav>
+
       <div
         class="grid"
         :style="{ '--inspector-width': `${preferences.inspectorWidth}px` }"
         :data-files-hidden="filesVisible ? undefined : ''"
         :data-drawer="filesAreDrawer ? '' : undefined"
+        :data-mobile="isNarrow ? '' : undefined"
         @dragover="swallowStrayDrop"
         @drop="swallowStrayDrop"
       >
@@ -844,9 +996,21 @@ async function confirmTerminate(): Promise<void> {
           v-if="session && filesVisible"
           id="file-panel"
           ref="filePanel"
-          class="rail workspace-rail"
+          class="rail"
         >
+          <!-- One level at a time on a phone, the full tree elsewhere. Same
+               store, same session binding, same abort/wipe — only the
+               presentation differs (plan/29 MS-14). -->
+          <FileBrowser
+            v-if="isNarrow"
+            :session-id="filesSessionId"
+            :root-label="workspaceLabel"
+            :can-browse="canBrowseFiles"
+            :disabled-reason="filesDisabledReason"
+            @open="openPreview"
+          />
           <FileTree
+            v-else
             :session-id="filesSessionId"
             :root-label="workspaceLabel"
             :can-browse="canBrowseFiles"
@@ -1295,12 +1459,50 @@ async function confirmTerminate(): Promise<void> {
   color: var(--accent-strong);
   font-weight: 600;
 }
-@media (max-width: 1100px) {
-  .grid {
-    grid-template-columns: 1fr;
-  }
-  .workspace-rail {
-    display: none;
-  }
+
+/* Narrow: two modes, one column, no overlay (plan/29 MS-07). */
+.modes {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-control);
+  background: var(--surface-raised);
+}
+.modes button {
+  flex: 1;
+  min-height: var(--density-touch);
+  border: 0;
+  border-radius: calc(var(--radius-control) - 2px);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-weight: 600;
+}
+.modes button[aria-selected="true"] {
+  background: var(--surface-default);
+  color: var(--text-primary);
+}
+/* One column, and the resizer is meaningless without two. */
+.grid[data-mobile] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.grid[data-mobile] .resizer {
+  display: none;
+}
+/* In files mode the rail *is* the column. Not an overlay: an overlay at 390px
+   covers the thing it is supposed to sit beside, which makes it a mode with
+   extra steps. */
+.grid[data-mobile] .rail {
+  width: auto;
+  border-left: 0;
+  border-radius: var(--radius-panel);
+}
+/* Files mode hides the centre rather than unmounting it: the terminal keeps its
+   socket and its buffer, which is the same reason the panels inside it use
+   v-show (D4). */
+.grid[data-mobile]:not([data-files-hidden]) .center {
+  display: none;
 }
 </style>

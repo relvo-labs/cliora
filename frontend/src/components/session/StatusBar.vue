@@ -128,13 +128,24 @@ defineProps<{
   font-size: 11px;
 }
 /* Below 768px the preference controls give up their space first: the three
-   states are information, and the two controls are also available elsewhere. */
+   states are information, and the two controls are also available on the
+   preferences page. The three state *values* stay — they are three of the four
+   facts the session header contract requires to remain visible. */
 @media (max-width: 767px) {
   .group.end {
     display: none;
   }
+  /* Visually hidden, still announced. `display: none` took the labels out of
+     the accessibility tree along with the layout, which left a screen reader
+     with three unlabelled values — the readings, with no way to tell which was
+     the session and which was the connection (plan/29 MS-06). */
   .key {
-    display: none;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 }
 </style>

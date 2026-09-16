@@ -503,3 +503,91 @@
   /* Elevation */
   --shadow-overlay: 0 12px 32px #00000066;
 }
+
+/* Pocket: the mobile-only light theme (plan/29 MS-18), and the first theme in
+ * this file whose terminal is lighter than its canvas. It is selected from the
+ * viewport rather than from a preference, so it is not in the switcher and not
+ * in SHIPPED_THEME_IDS — see theme/applyTheme.ts for who decides.
+ *
+ * Everything outside "Terminal and editor" is Porcelain's, value for value.
+ * The terminal block is the whole reason the theme exists: Porcelain keeps a
+ * dark terminal, and a light workbench wrapped around a dark terminal is the
+ * arrangement #62 rejected. */
+:root[data-theme="pocket"] {
+  color-scheme: light;
+  /* Surfaces and boundaries */
+  --surface-canvas: #f9fafc;
+  --surface-default: #ffffff;
+  --surface-raised: #eef2f7;
+  --surface-scrim: #25313c73;
+  --border-subtle: #e0e5eb;
+  --border-control: #838689;
+  --focus-ring: #286bf0;
+  /* Text */
+  --text-primary: #25313c;
+  --text-secondary: #5e6b78;
+  --text-on-accent: #ffffff;
+  --text-on-terminal: #2b333b;
+  --text-disabled: #78899a;
+  /* Accent and actions */
+  --accent-primary: #286bf0;
+  --accent-strong: #1b54c4;
+  --accent-subtle: #e9f0ff;
+  --accent-hover: #1b54c4;
+  --danger-bg: #b03434;
+  --danger-fg: #ffffff;
+  --danger-hover: #8e2727;
+  /* Status: five semantics, three values each */
+  --status-success-fg: #1f7a54;
+  --status-success-bg: #e4f3ea;
+  --status-success-border: #b8dcc8;
+  --status-warning-fg: #7e5712;
+  --status-warning-bg: #faf0dc;
+  --status-warning-border: #e0c68c;
+  --status-error-fg: #b03434;
+  --status-error-bg: #fbe9e9;
+  --status-error-border: #e8b8b8;
+  --status-info-fg: #1f5c96;
+  --status-info-bg: #e8f0fa;
+  --status-info-border: #b6cde6;
+  --status-neutral-fg: #5e6b78;
+  --status-neutral-bg: #eef1f4;
+  --status-neutral-border: #cbd3da;
+  /* Terminal and editor */
+  --terminal-background: #ffffff;
+  --terminal-foreground: #2b333b;
+  --terminal-input: #10161b;
+  --terminal-cursor: #16324f;
+  --terminal-selection: #286bf033;
+  --text-on-terminal-dim: #5b6670;
+  --border-on-terminal: #dfe4ea;
+  --border-on-terminal-control: #8a949d;
+  --surface-on-terminal: #eef1f5;
+  /* Elevation */
+  --shadow-overlay: 0 8px 28px #25313c1f;
+}
+
+/* Mobile scale (plan/29 MS-01). SCALE ONLY — no colour may appear in this
+ * block, and theme.contract.test.ts asserts that.
+ *
+ * Colour on a narrow viewport is not a media query's job: it is the `pocket`
+ * theme, selected through the same attribute every other theme uses, because
+ * xterm and Monaco need resolved strings that a media query cannot give them
+ * (see this file's header). Putting one colour here would split the palette
+ * across two mechanisms, which is the failure the two-source contract exists
+ * to prevent.
+ *
+ * `--density-control` is the whole point. Eight call sites render an input, a
+ * select or a menu row at 36px; UiButton already tops its *hit area* up to 44px
+ * with a pseudo-element, but an `<input>` cannot do that trick, so on touch the
+ * form controls were the only things under the floor. Raising the token fixes
+ * all eight without any of them restating it. */
+@media (max-width: 767px) {
+  :root {
+    --density-control: var(--density-touch);
+    --density-row: 52px;
+    /* One row for the work header, same as the 1024-1439 desktop compaction —
+       on a phone every 8px here is a row of terminal. */
+    --layout-workhead: var(--layout-workhead-compact);
+  }
+}

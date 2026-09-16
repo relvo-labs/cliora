@@ -17,10 +17,14 @@ import {
   SHIPPED_THEME_IDS,
   THEME_IDS,
   THEMES,
+  POCKET_ANSI,
   TERMINAL_ANSI,
+  TERMINAL_DIM_ANSI,
+  isLightTerminal,
   isShippedThemeId,
   isThemeId,
   monacoColors,
+  terminalAnsi,
   xtermTheme,
 } from "./themes";
 
@@ -117,4 +121,36 @@ describe("terminal palette", () => {
       }
     });
   }
+});
+
+describe("ANSI per theme (plan/29 MS-18)", () => {
+  it("every dark theme keeps the exact table it shipped with", () => {
+    // The whole safety of splitting one ANSI table into two rests here. If this
+    // ever goes red, a "light terminal" change has quietly recoloured five
+    // themes that were not supposed to move at all.
+    for (const id of THEME_IDS) {
+      if (id === "pocket") continue;
+      expect(terminalAnsi(id), id).toEqual({ ...TERMINAL_ANSI });
+    }
+  });
+
+  it("pocket has its own table, and it is not the dark one", () => {
+    expect(terminalAnsi("pocket")).toEqual({ ...POCKET_ANSI });
+    expect(terminalAnsi("pocket")).not.toEqual({ ...TERMINAL_ANSI });
+  });
+
+  it("every theme names the two ANSI slots it leaves dim", () => {
+    // Named rather than inferred from light-or-dark: the first theme with a
+    // mid-tone terminal would have the wrong pair inferred, and the symptom
+    // would be a green contrast run with two invisible colours in it.
+    for (const id of THEME_IDS) {
+      const dim = TERMINAL_DIM_ANSI[id];
+      expect(dim, id).toHaveLength(2);
+      for (const slot of dim) expect(terminalAnsi(id)).toHaveProperty(slot);
+    }
+  });
+
+  it("isLightTerminal answers from the token, and answers pocket alone", () => {
+    expect(THEME_IDS.filter((id) => isLightTerminal(id))).toEqual(["pocket"]);
+  });
 });

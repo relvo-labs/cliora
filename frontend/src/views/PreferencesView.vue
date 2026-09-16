@@ -79,6 +79,11 @@ if (import.meta.env.DEV && THEMES.length !== SHIPPED_THEME_IDS.length) {
 // What the OS currently says, so "follow the system" can show what that means
 // right now instead of leaving the user to guess.
 const systemLabel = computed(() => (prefersLight() ? "淺色" : "深色"));
+// Reads the store rather than the media query, so it says what is actually
+// painted right now and follows a rotation without this view knowing how.
+const pocketInForce = computed(
+  () => preferences.renderedTheme !== preferences.theme,
+);
 </script>
 
 <template>
@@ -105,6 +110,15 @@ const systemLabel = computed(() => (prefersLight() ? "淺色" : "深色"));
             切換不會中斷 Session，也不會重建終端。
           </p>
         </div>
+
+        <!-- Without this the switcher and the screen contradict each other in
+             public: the radio still shows the user's choice, and the page is
+             painted in something else entirely. Saying so is cheaper than
+             making the control lie (plan/29 MS-20). -->
+        <UiInlineNotice v-if="pocketInForce" tone="info">
+          這個裝置的視窗寬度固定使用行動明亮配色，下面的選擇會被保留，
+          但要在較寬的視窗才會生效。
+        </UiInlineNotice>
 
         <fieldset class="choices">
           <legend class="sr-only">視覺主題</legend>
