@@ -32,6 +32,11 @@ const (
 	// whether the 4 MiB per-file ceiling needs to become a chunked upload. Without
 	// it that argument can only be made from anecdote (plan/15 00-…md D3).
 	FilesystemStoreRefusedTotal = "filesystem_store_refused_total"
+	// Workspace file download (ADR 0028). Bytes leaving the node, which is the
+	// quantity an operator actually wants a series for: this path has no quota by
+	// design, so "how much left this machine" is answered by measurement rather
+	// than by a counter that would have refused something.
+	FilesystemDownloadBytes = "filesystem_download_bytes"
 )
 
 // tech §18.2, the daemon's own series (P4-09).

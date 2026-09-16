@@ -88,7 +88,39 @@ type FilesystemConfig struct {
 	// Upload bounds both write paths into the workspace: image drop (ADR 0024)
 	// and general file upload (ADR 0026, the nested Files block).
 	Upload UploadConfig `yaml:"upload"`
+	// Download bounds the one path by which workspace bytes leave the node for a
+	// browser (ADR 0028). A sibling of Upload rather than a key inside it,
+	// because reading a workspace out and writing into it are different grants
+	// and a node owner is entitled to answer them separately - the same argument
+	// that made Upload.Files its own switch rather than a widening of Upload.
+	Download DownloadConfig `yaml:"download"`
 }
+
+// DownloadConfig bounds workspace file download (ADR 0028, FR-FILE-011).
+//
+// There is no quota here and the absence is deliberate. Image drop and file
+// upload are bounded by cumulative counters because a write consumes the node's
+// disk; a read consumes nothing that can run out, so a counter here would bound
+// nothing and would mainly teach operators that quotas are decorative. What
+// actually bounds this path is the per-file ceiling (which is a frame-budget
+// fact), the sensitive-file policy, RBAC, and an audit record per download.
+type DownloadConfig struct {
+	// Enabled is a pointer for the same reason as UploadConfig.Enabled: absent
+	// and explicitly-false are different facts about a machine, and only the
+	// second one was chosen by a person.
+	Enabled *bool `yaml:"enabled"`
+	// MaxBytes caps a single download. It defaults to the same number as
+	// Upload.MaxBytes, but it is a separate key rather than a reuse: the two
+	// ceilings answer to the same frame budget today and an operator who wants
+	// to narrow what leaves this machine should not have to narrow what arrives.
+	MaxBytes int64 `yaml:"max_bytes"`
+}
+
+// DownloadEnabled reports whether this node hands workspace files back to a
+// browser, treating an absent key as on (ADR 0028 D2, same trade as ADR 0024 D8
+// and ADR 0026 sec 9: upgrade acquires the behaviour, so a release note and a
+// runbook are owed).
+func (d DownloadConfig) DownloadEnabled() bool { return d.Enabled == nil || *d.Enabled }
 
 // UploadConfig bounds image drop, the one path by which anything may be written
 // into a workspace (ADR 0024, FR-FILE-009).
@@ -208,6 +240,14 @@ const (
 	DefaultUploadRetentionDays         = 7
 )
 
+// Download default (ADR 0028). The same number as DefaultUploadMaxBytes, for the
+// same reason: 4 MiB of file is 5.33 MiB of base64, which fits the 8 MiB
+// MaxFilePayload with room for the JSON envelope. TestDownloadCapFitsFrameBound
+// asserts it, because raising this key without raising the frame would not fail
+// loudly - the frame would be refused at build time and the request would look
+// like a timeout.
+const DefaultDownloadMaxBytes int64 = 4 * 1024 * 1024
+
 // File-upload defaults (ADR 0026). The per-file ceiling is deliberately absent:
 // it is DefaultUploadMaxBytes above, shared with image drop, and
 // TestUploadCapFitsFrameBound asserts that it still fits the frame.
@@ -294,6 +334,13 @@ type Config struct {
 	// second one is the wider grant, so conflating them would report the wrong
 	// posture. Never serialised.
 	FileUploadFromDefault bool `yaml:"-"`
+
+	// DownloadFromDefault is the same fact for filesystem.download.enabled
+	// (ADR 0028). Tracked separately from the two upload flags because it is the
+	// only one of the three about bytes *leaving* the machine, which is the
+	// question a node owner is most likely to have a different answer to. Never
+	// serialised.
+	DownloadFromDefault bool `yaml:"-"`
 
 	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
 	// absent and defaulted to enabled rather than being chosen. Surfaced in the
@@ -487,6 +534,13 @@ func (c *Config) applyFilesystemDefaults() {
 	}
 	// MinFreeBytes is left as-is: absent (nil) and an explicit 0 mean different
 	// things, and MinFree() resolves that rather than a default written here.
+	d := &c.Filesystem.Download
+	if d.Enabled == nil {
+		c.DownloadFromDefault = true
+	}
+	if d.MaxBytes <= 0 {
+		d.MaxBytes = DefaultDownloadMaxBytes
+	}
 }
 
 // applyTunnelDefaults fills in what an absent `tunnel:` block means. Absent is "do not

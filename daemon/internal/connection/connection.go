@@ -403,7 +403,13 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		// and "may it put arbitrary files anywhere in my workspace" are
 		// different-sized grants, and a node owner is entitled to answer them
 		// differently (ADR 0026 §9).
-		"file_upload":     m.files.FileUploadEnabled(),
+		"file_upload": m.files.FileUploadEnabled(),
+		// The third switch, and the only one about bytes leaving this machine.
+		// Separate from the two upload flags for the reason ADR 0028 §6 gives:
+		// agreeing to accept a file is not agreeing to hand one back, and an
+		// operator who has thought about exfiltration has thought about exactly
+		// this key.
+		"file_download":   m.files.DownloadEnabled(),
 		"name":            m.cfg.Node.Name,
 		"hostname":        hostname,
 		"os":              m.info.OS,
@@ -514,6 +520,8 @@ func (m *Manager) dispatch(
 			m.handleFsUpload(env, data, send)
 		case "filesystem.store":
 			m.handleFsStore(env, data, send)
+		case "filesystem.download":
+			m.handleFsDownload(env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
