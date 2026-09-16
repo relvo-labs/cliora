@@ -141,6 +141,12 @@ export interface NodeDetail extends NodeSummary {
   // first: the terminal's paste affordance is gated on `image_upload` and the file
   // tree's drop target on this one, and a machine may allow one without the other.
   file_upload: boolean;
+  // Whether this node hands workspace files back to the browser (ADR 0028 §6).
+  // A third flag, not a widening of either upload one: accepting a file is not
+  // agreeing to hand one back, and an operator worried about exfiltration is
+  // worried about exactly this switch. Absent-means-no on the wire, so an older
+  // daemon reads as false and the console hides the control.
+  file_download: boolean;
   is_enabled: boolean;
   registered_at: string;
   runtimes: NodeRuntime[];
@@ -492,6 +498,7 @@ export const AUDIT_ACTIONS = [
   "enrollment.create",
   "enrollment.revoke",
   "enrollment.use",
+  "file.download",
   "file.sensitive_read_denied",
   "file.upload",
   "node.disable",

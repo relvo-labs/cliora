@@ -87,6 +87,28 @@ export interface TokenStore {
 
 const BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "";
 
+// Read a filename out of a Content-Disposition header, preferring the RFC 5987
+// `filename*` form over the ASCII `filename` fallback. Both are sent (see the
+// server's `_content_disposition`); taking the fallback when the real one is
+// present would drop every non-ASCII character in the name.
+//
+// Exported for the test, not for callers: `downloadFile` is the only thing that
+// should ever be parsing this header.
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const starred = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (starred) {
+    try {
+      return decodeURIComponent(starred[1]);
+    } catch {
+      // A malformed percent-escape is not worth failing a download over; fall
+      // through to the ASCII form, which is exactly what it is there for.
+    }
+  }
+  const plain = /filename="([^"]*)"/i.exec(header);
+  return plain ? plain[1] : null;
+}
+
 export class ApiClient {
   private readonly tokens: TokenStore;
   private readonly fetchImpl: typeof fetch;
@@ -398,6 +420,43 @@ export class ApiClient {
       undefined,
       options,
     );
+  }
+
+  // Download one workspace file (ADR 0028). Returns the bytes plus the name the
+  // server chose, because the *server* chose it: the browser's `download`
+  // attribute is ignored for a cross-origin blob and honoured for a same-origin
+  // one, so relying on it would give two different filenames depending on
+  // deployment topology. Content-Disposition is the one answer both agree on.
+  //
+  // Not routed through `request`, which parses every body as JSON - this one is a
+  // file. The 401 refresh-and-retry is therefore spelled out here, the same trade
+  // `uploadWithProgress` makes on the other side.
+  async downloadFile(
+    sessionId: string,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<{ blob: Blob; filename: string }> {
+    const query = new URLSearchParams({ path });
+    const url = `/api/sessions/${encodeURIComponent(sessionId)}/files/download?${query}`;
+    let res = await this.raw("GET", url, undefined, true, options.signal);
+    if (res.status === 401 && this.tokens.refreshToken()) {
+      if (await this.refresh()) {
+        res = await this.raw("GET", url, undefined, true, options.signal);
+      }
+    }
+    if (!res.ok) {
+      // The error path IS JSON - only the success path is bytes - so the shared
+      // parser can do the work and keep one place that knows the error envelope.
+      await this.parse(res);
+      throw new ApiError("HTTP_ERROR", res.statusText, res.status);
+    }
+    return {
+      blob: await res.blob(),
+      filename:
+        filenameFromDisposition(res.headers.get("content-disposition")) ??
+        path.split("/").pop() ??
+        "download",
+    };
   }
 
   // --- P4 dashboard aggregates ---

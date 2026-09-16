@@ -4,8 +4,12 @@ import { describe, expect, it } from "vitest";
 import PreviewDenied from "./PreviewDenied.vue";
 import type { PreviewDenial } from "../../composables/useMonacoModel";
 
-function render(denial: PreviewDenial, relPath = "config/app.conf") {
-  return mount(PreviewDenied, { props: { denial, relPath } });
+function render(
+  denial: PreviewDenial,
+  relPath = "config/app.conf",
+  extra: { canDownload?: boolean; downloading?: boolean } = {},
+) {
+  return mount(PreviewDenied, { props: { denial, relPath, ...extra } });
 }
 
 describe("PreviewDenied", () => {
@@ -115,5 +119,63 @@ describe("PreviewDenied", () => {
     const wrapper = render({ code: "FILE_NOT_FOUND" });
     await wrapper.get("button").trigger("click");
     expect(wrapper.emitted("refresh")).toHaveLength(1);
+  });
+});
+
+// Download (FD-06, ADR 0028). This pane is where the two ceilings become visible
+// to a user, and where the platform has to be careful not to offer a button that
+// reproduces the refusal it is standing next to.
+describe("PreviewDenied download offer", () => {
+  const binary: PreviewDenial = {
+    code: "FILE_BINARY",
+    mime: "application/octet-stream",
+    size: 4096,
+    modifiedAt: "2026-07-25T00:00:00Z",
+  };
+
+  it("offers a download for a binary file, which is the case it exists for", () => {
+    const wrapper = render(binary, "assets/logo.png", { canDownload: true });
+    const button = wrapper
+      .findAll("button")
+      .find((b) => b.text().includes("下載檔案"));
+    expect(button).toBeDefined();
+    button!.trigger("click");
+    expect(wrapper.emitted("download")).toHaveLength(1);
+  });
+
+  it("offers nothing when the node does not hand files back", () => {
+    const wrapper = render(binary, "assets/logo.png", { canDownload: false });
+    expect(wrapper.text()).not.toContain("下載檔案");
+  });
+
+  it("offers a download for a file between the preview cap and the download cap", () => {
+    // 3 MiB: unshowable at 2 MiB, obtainable at 4 MiB. Telling this user to go
+    // and use a terminal would simply be wrong.
+    const wrapper = render(
+      { code: "FILE_TOO_LARGE", size: 3 * 1024 * 1024 },
+      "data/big.csv",
+      { canDownload: true },
+    );
+    expect(wrapper.text()).toContain("下載上限");
+    expect(wrapper.text()).toContain("下載檔案");
+  });
+
+  it("withdraws the offer above the download cap rather than letting the button teach the limit", () => {
+    const wrapper = render(
+      { code: "FILE_TOO_LARGE", size: 9 * 1024 * 1024 },
+      "data/huge.csv",
+      { canDownload: true },
+    );
+    expect(wrapper.text()).toContain("終端機");
+    expect(wrapper.text()).not.toContain("下載檔案");
+  });
+
+  it("never offers a download for a sensitive file, because the node refuses it too", () => {
+    const wrapper = render({ code: "FILE_DENIED", reason: "dotenv" }, ".env", {
+      canDownload: true,
+    });
+    expect(wrapper.text()).not.toContain("下載檔案");
+    // And it says so, rather than leaving the user to discover it by trying.
+    expect(wrapper.text()).toContain("下載同樣被拒");
   });
 });
