@@ -29,6 +29,13 @@ MAX_FILE_PAYLOAD = 8 * 1024 * 1024
 # shares image drop's 4 MiB per-file ceiling, which is 5.33 MiB of base64 and
 # still inside the room already granted here. Its response, filesystem.stored,
 # is a path and two scalars and keeps the tight limit.
+#
+# filesystem.downloaded (ADR 0028) is the sixth, and it is the mirror of the
+# fifth: the same 4 MiB of bytes travelling the other way, so the same 5.33 MiB
+# of base64 and the same unmoved bound. Its *request*, filesystem.download, is a
+# session id and a path and keeps the tight limit — the asymmetry with
+# filesystem.store (where the request is the large half) is just which direction
+# the bytes go.
 LARGE_FRAME_TYPES = frozenset(
     {
         "filesystem.entries",
@@ -36,6 +43,7 @@ LARGE_FRAME_TYPES = frozenset(
         "filesystem.search_result",
         "filesystem.upload",
         "filesystem.store",
+        "filesystem.downloaded",
     }
 )
 HEADER_SIZE = 18
