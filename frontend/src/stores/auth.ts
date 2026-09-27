@@ -46,7 +46,15 @@ export const useAuthStore = defineStore("auth", {
       this.user = result.user;
     },
     async logout(): Promise<void> {
-      await api().logout();
+      // The client clears the tokens in its own `finally`, which is where the
+      // auth-loss handler hears about it; the flag is how that handler tells a
+      // sign-out the user asked for from one that happened to them.
+      signingOut = true;
+      try {
+        await api().logout();
+      } finally {
+        signingOut = false;
+      }
     },
     async loadMe(): Promise<void> {
       this.user = await api().me();
@@ -55,6 +63,16 @@ export const useAuthStore = defineStore("auth", {
 });
 
 let client: ApiClient | null = null;
+
+// True only while this tab's own `logout()` is running. Plain module state, not
+// store state: it is read synchronously at the instant the tokens are cleared
+// and means nothing at any other time.
+let signingOut = false;
+
+/** Whether the current loss of authentication is this tab's own sign-out. */
+export function isSigningOut(): boolean {
+  return signingOut;
+}
 
 // api() returns the shared client, wired to read/rotate tokens through the auth
 // store. Lazy so it is only touched once Pinia is active.

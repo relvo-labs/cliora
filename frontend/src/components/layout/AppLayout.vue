@@ -22,16 +22,12 @@
 // revised to say so).
 
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { Menu, X } from "lucide-vue-next";
 
 import { useBreakpoint } from "../../composables/useBreakpoint";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import { useAuthStore } from "../../stores/auth";
-import { useFavoritesStore } from "../../stores/favorites";
-import { useFilesStore } from "../../stores/files";
 import { usePreferencesStore } from "../../stores/preferences";
-import { useSessionsStore } from "../../stores/sessions";
 import UiIconButton from "../ui/UiIconButton.vue";
 import UiToastHost from "../ui/UiToastHost.vue";
 import AccountMenu from "./AccountMenu.vue";
@@ -43,11 +39,7 @@ import PrimaryNav from "./PrimaryNav.vue";
 defineProps<{ fill?: boolean }>();
 
 const auth = useAuthStore();
-const favorites = useFavoritesStore();
-const files = useFilesStore();
-const sessions = useSessionsStore();
 const preferences = usePreferencesStore();
-const router = useRouter();
 
 const productName =
   (import.meta.env.VITE_PRODUCT_NAME as string | undefined) ?? "Cliora";
@@ -126,25 +118,14 @@ async function logout(): Promise<void> {
     // Central did not confirm, but the client has already dropped the tokens
     // (it clears them in `finally`), so this tab is signed out either way and
     // saying otherwise would be the false state. Cleared again here so that
-    // stays true whatever the client does; the router guard would otherwise
-    // bounce the push below back into the app.
+    // stays true whatever the client does.
     auth.clearTokens();
-  } finally {
-    // On success *and* failure (#76). Favourites are per-user workspace paths
-    // held in memory; without this, signing in as someone else on the same
-    // page load would briefly show the previous user's paths. The file cache
-    // is keyed by session id only, so the next user opening that session would
-    // otherwise be shown the previous user's listing without a request made
-    // for them.
-    favorites.clear();
-    files.clearForSession(null);
   }
-  await router.push({ name: "login" });
-  // The current session payload (name, workspace path) goes too, but only
-  // once the workspace has unmounted: clearing it under a mounted workspace
-  // would close an open phone preview through the history stack in the
-  // middle of this navigation.
-  sessions.reset();
+  // Nothing else here, deliberately (#76). Clearing the per-user caches and
+  // leaving for the login page is the auth-loss handler's job
+  // (`router/authLoss.ts`), which runs the moment the tokens go, for this
+  // button and for every other way a tab can be signed out. A second copy here
+  // would be a second navigation racing the first.
 }
 </script>
 

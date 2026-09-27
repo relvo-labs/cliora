@@ -9,10 +9,20 @@
 // was read" is exercised end to end. Only xterm and Monaco are replaced — the
 // first needs a socket, the second a real DOM layout.
 
-import { flushPromises, mount } from "@vue/test-utils";
+import {
+  enableAutoUnmount,
+  flushPromises,
+  mount,
+  type DOMWrapper,
+} from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createRouter, createWebHistory } from "vue-router";
+import {
+  createMemoryHistory,
+  createRouter,
+  createWebHistory,
+  type Router,
+} from "vue-router";
 
 import { ApiError } from "../api/client";
 import type { FileEntry, SessionDetail } from "../api/dto";
@@ -31,7 +41,7 @@ const { term } = vi.hoisted(() => ({
     applyTheme: vi.fn(),
     setFontSize: vi.fn(),
     typeText: vi.fn(),
-    status: { value: "connected" },
+    status: { value: "connected" } as { value: string },
     role: { value: "writer" },
     gap: { value: undefined },
     exit: { value: undefined },
@@ -39,9 +49,14 @@ const { term } = vi.hoisted(() => ({
     canRetry: { value: false },
   },
 }));
-vi.mock("../composables/useTerminalSession", () => ({
-  useTerminalSession: () => term,
-}));
+// `status` is made a real ref so a case can deliver the socket's own exit
+// signal — the one `useTerminalSession` sets on `terminal.exited` /
+// `session.stopped` — without a session refetch behind it.
+vi.mock("../composables/useTerminalSession", async () => {
+  const { ref } = await import("vue");
+  term.status = ref("connected");
+  return { useTerminalSession: () => term };
+});
 
 // Just enough Monaco for useMonacoModel to create an editor and a model. The
 // content that reaches the model is recorded so the test can see that the
@@ -102,7 +117,9 @@ vi.mock("../monaco/setup", () => {
   };
 });
 
+import * as router from "../router";
 import * as auth from "../stores/auth";
+import { useFavoritesStore } from "../stores/favorites";
 import { useFilesStore } from "../stores/files";
 import { useSessionsStore } from "../stores/sessions";
 import SessionWorkspaceView from "./SessionWorkspaceView.vue";
@@ -260,14 +277,23 @@ async function settle(): Promise<void> {
   }
 }
 
+// Every case's view is unmounted after it. They all share the one terminal
+// mock, so a view left mounted by an earlier case would hear a later case's
+// exit signal and act on it.
+enableAutoUnmount(afterEach);
+
 beforeEach(() => {
   setActivePinia(createPinia());
+  // Signed in, as the router guard guarantees before this view can mount; the
+  // signed-out cases at the end of this file replace it with real tokens.
+  auth.useAuthStore().accessToken = "test-access";
   listeners.clear();
   width = 1440;
   installMatchMedia();
   shown.length = 0;
   models.length = 0;
   editors.length = 0;
+  term.status.value = "connected";
   vi.spyOn(window.history, "pushState").mockImplementation(() => {});
   vi.spyOn(window.history, "back").mockImplementation(() => {});
 });
@@ -419,7 +445,13 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function openReadmeOnPhone(wrapper: Awaited<ReturnType<typeof render>>) {
+// Only what the helper touches, so the directly mounted view and the routed
+// host both qualify.
+interface Finder {
+  findAll(selector: string): DOMWrapper<Element>[];
+}
+
+async function openReadmeOnPhone(wrapper: Finder) {
   await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
   await flushPromises();
   await wrapper
@@ -587,5 +619,368 @@ describe("SessionWorkspaceView — session 在預覽開著時結束（#76）", (
     expect(wrapper.find("#panel-preview").exists()).toBe(false);
     expect(models.every((m) => m.disposed)).toBe(true);
     expect(readFileContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- The terminal socket reports the end, and nothing refetches (#76 review) --
+//
+// `useTerminalSession` sets `exited` on `terminal.exited` / `session.stopped`.
+// That is often the *only* news the page gets: no refetch follows, so
+// `sessions.current` still says `running`. The binding has to drop on the
+// socket's word alone, and take the preview with it.
+
+async function exitFromTerminal(): Promise<void> {
+  term.status.value = "exited";
+  await settle();
+}
+
+describe("SessionWorkspaceView — 終端機回報 session 結束、沒有重新取得 session（#76）", () => {
+  it("手機：預覽關閉、模型釋放、回到檔案面板並說明，同一個 route，不再讀取或列目錄", async () => {
+    width = 390;
+    const getSession = vi.fn(async () => session());
+    const { listFileTree, readFileContent } = stubApi(getSession);
+    const wrapper = await render();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    expect(window.history.pushState).toHaveBeenCalledTimes(1);
+
+    await exitFromTerminal();
+
+    // The payload was never refetched and still says running.
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(useSessionsStore().current?.status).toBe("running");
+    expectEndedOnFilePanel(wrapper);
+    expect(wrapper.text()).not.toContain("# synthetic");
+    expect(models.every((m) => m.disposed)).toBe(true);
+    expect(editors.every((e) => e.disposed)).toBe(true);
+    // Exactly the one same-URL entry this view pushed, and the route is still
+    // this session.
+    expect(window.history.back).toHaveBeenCalledTimes(1);
+    expect(wrapper.vm.$route.params.id).toBe(ID);
+
+    // No stale restoration, no request.
+    await wrapper.findAll('.modes [role="tab"]')[0].trigger("click");
+    await flushPromises();
+    await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+    await settle();
+    expect(wrapper.find("#panel-preview").exists()).toBe(false);
+    expect(wrapper.get("#file-panel").text()).not.toContain("README.md");
+    expect(readFileContent).toHaveBeenCalledTimes(1);
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    // No retry is offered for something asking again cannot change.
+    expect(wrapper.find('#file-panel [data-action="retry"]').exists()).toBe(
+      false,
+    );
+  });
+
+  it("手機：讀取進行中時終端機回報結束，遲到的內容不會出現", async () => {
+    width = 390;
+    const pending = deferred<unknown>();
+    const readFileContent = vi.fn(() => pending.promise);
+    const { listFileTree } = stubApi(async () => session(), {
+      readFileContent,
+    });
+    const wrapper = await render();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(readFileContent).toHaveBeenCalledTimes(1), {
+      timeout: 5_000,
+    });
+
+    await exitFromTerminal();
+    pending.resolve({
+      success: true,
+      rel_path: "README.md",
+      encoding: "utf-8",
+      content: "# late\n",
+    });
+    await settle();
+
+    expectEndedOnFilePanel(wrapper);
+    expect(shown).toEqual([]);
+    expect(wrapper.text()).not.toContain("# late");
+    expect(readFileContent).toHaveBeenCalledTimes(1);
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    expect(window.history.back).toHaveBeenCalledTimes(1);
+    expect(wrapper.vm.$route.params.id).toBe(ID);
+  });
+
+  it("桌面：預覽分頁移除、回到 CLI、檔案樹說明原因，不動瀏覽歷史", async () => {
+    const getSession = vi.fn(async () => session());
+    const { listFileTree, readFileContent } = stubApi(getSession);
+    const wrapper = await render();
+    await wrapper
+      .get('[role="tree"]')
+      .findAll('[role="treeitem"]')
+      .find((row) => row.text().includes("README.md"))!
+      .trigger("click");
+    await vi.waitFor(() => expect(readFileContent).toHaveBeenCalledTimes(1), {
+      timeout: 5_000,
+    });
+    await settle();
+
+    await exitFromTerminal();
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(wrapper.find("#panel-preview").exists()).toBe(false);
+    const tabs = wrapper.findAll('[role="tab"]');
+    expect(tabs.map((t) => t.text())).toEqual(["CLI"]);
+    expect(tabs[0].attributes("aria-selected")).toBe("true");
+    expect(wrapper.get("#file-panel").text()).toContain("Session 已結束");
+    expect(wrapper.get("#file-panel").text()).not.toContain("README.md");
+    expect(models.every((m) => m.disposed)).toBe(true);
+    expect(window.history.pushState).not.toHaveBeenCalled();
+    expect(window.history.back).not.toHaveBeenCalled();
+    expect(readFileContent).toHaveBeenCalledTimes(1);
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    expect(useFilesStore().sessionId).toBeNull();
+  });
+});
+
+// --- Signed out by something other than this tab's Logout button (#76) -------
+//
+// Another tab signing out, or a refresh Central refuses, clears the tokens
+// without any navigation in this tab — so the router guard never runs, and the
+// workspace would go on showing the last user's listing and open file. These
+// cases go through the real API client (only `fetch` is replaced), the real
+// guard, the real storage sync and the app's own auth-loss handler, mounted
+// behind a RouterView so leaving the route really unmounts the workspace.
+
+const USER_A = {
+  id: "user-a",
+  username: "alice",
+  display_name: "Alice",
+  role: "Developer",
+  permissions: [],
+};
+const USER_B = { ...USER_A, id: "user-b", username: "bob", display_name: "B" };
+
+function fakeCentral() {
+  const state = { expired: false, forbidden: false };
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { "Content-Type": "application/json" },
+    });
+  const fail = (code: string, status: number) =>
+    json({ error: { code, message: "no" }, request_id: "r" }, status);
+  const calls: string[] = [];
+  const fetchMock = vi.fn(async (url: string) => {
+    const path = new URL(url, "http://central.test").pathname;
+    calls.push(path);
+    if (path === "/api/auth/refresh") return fail("TOKEN_INVALID", 401);
+    if (state.expired) return fail("TOKEN_EXPIRED", 401);
+    if (path === `/api/sessions/${ID}`) {
+      return state.forbidden ? fail("FORBIDDEN", 403) : json(session());
+    }
+    if (path.endsWith("/files/tree")) {
+      return json({ path: ".", truncated: false, entries: [README] });
+    }
+    if (path.endsWith("/files/content")) {
+      return json({
+        success: true,
+        rel_path: "README.md",
+        size: 12,
+        encoding: "utf-8",
+        language_hint: "markdown",
+        content: "# synthetic\n",
+      });
+    }
+    return fail("NOT_FOUND", 404);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  const fileCalls = () =>
+    calls.filter((c) => c.includes("/files/") || c.startsWith("/api/sessions"))
+      .length;
+  return { state, fileCalls };
+}
+
+const cleanups: Array<() => void> = [];
+
+async function renderRouted(): Promise<{
+  wrapper: ReturnType<typeof mount>;
+  appRouter: Router;
+}> {
+  const appRouter = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      {
+        path: "/login",
+        name: "login",
+        component: { template: '<p class="login-page">login</p>' },
+        meta: { public: true },
+      },
+      {
+        path: "/dashboard",
+        name: "dashboard",
+        component: { template: "<p>dashboard</p>" },
+      },
+      {
+        path: "/sessions/:id",
+        name: "session-workspace",
+        component: SessionWorkspaceView,
+        props: true,
+      },
+    ],
+  });
+  router.registerGuards(appRouter);
+  cleanups.push(router.installAuthLossHandler(appRouter));
+  appRouter.push(`/sessions/${ID}`);
+  await appRouter.isReady();
+  const wrapper = mount(
+    { template: "<RouterView />" },
+    {
+      global: {
+        plugins: [appRouter],
+        stubs: { AppLayout: { template: "<div><slot /></div>" } },
+      },
+    },
+  );
+  await settle();
+  return { wrapper, appRouter };
+}
+
+function signIn(user: typeof USER_A, token: string): void {
+  auth.useAuthStore().setTokens({
+    access_token: `${token}-access`,
+    refresh_token: `${token}-refresh`,
+    token_type: "bearer",
+  });
+  auth.useAuthStore().user = user;
+}
+
+async function openReadmeOnDesktop(wrapper: ReturnType<typeof mount>) {
+  await wrapper
+    .get('[role="tree"]')
+    .findAll('[role="treeitem"]')
+    .find((row) => row.text().includes("README.md"))!
+    .trigger("click");
+  await settle();
+}
+
+function expectSignedOutAndWiped(
+  wrapper: ReturnType<typeof mount>,
+  appRouter: Router,
+): void {
+  const files = useFilesStore();
+  expect(files.sessionId).toBeNull();
+  expect(files.dirs).toEqual({});
+  expect(useFavoritesStore().favorites).toEqual([]);
+  expect(useSessionsStore().current).toBeNull();
+  expect(auth.useAuthStore().isAuthenticated).toBe(false);
+  // Left the protected view for the login page, remembering where it was.
+  expect(appRouter.currentRoute.value.name).toBe("login");
+  expect(appRouter.currentRoute.value.query.redirect).toBe(`/sessions/${ID}`);
+  expect(wrapper.find(".login-page").exists()).toBe(true);
+  // Nothing of the previous user's workspace is still mounted.
+  expect(wrapper.find("#panel-preview").exists()).toBe(false);
+  expect(wrapper.find("#file-panel").exists()).toBe(false);
+  expect(wrapper.text()).not.toContain("# synthetic");
+  expect(wrapper.text()).not.toContain("README.md");
+  expect(models.every((m) => m.disposed)).toBe(true);
+  expect(editors.every((e) => e.disposed)).toBe(true);
+  // A navigation is in progress: the preview's same-URL entry is disowned,
+  // not popped under it.
+  expect(window.history.back).not.toHaveBeenCalled();
+}
+
+describe("SessionWorkspaceView — 在別處失去登入時清掉檔案與預覽（#76）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    auth._resetApiClient();
+    signIn(USER_A, "a");
+    useFavoritesStore().favorites = [
+      { id: "f1", node_id: "n", path: "/srv/private" } as never,
+    ];
+  });
+  afterEach(() => {
+    while (cleanups.length) cleanups.pop()!();
+    vi.unstubAllGlobals();
+    auth._resetApiClient();
+    localStorage.clear();
+  });
+
+  it("手機：另一個分頁登出（storage 事件）→ 快取、收藏、預覽都清掉並回到登入；之後換人登入看不到舊快取", async () => {
+    width = 390;
+    const central = fakeCentral();
+    cleanups.push(auth.installAuthStorageSync());
+    const { wrapper, appRouter } = await renderRouted();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    expect(useFilesStore().dirs["."]?.entries).toHaveLength(1);
+    const before = central.fileCalls();
+
+    // The other tab's logout: both keys removed, one event each.
+    localStorage.removeItem("cliora.access_token");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "cliora.access_token" }),
+    );
+    localStorage.removeItem("cliora.refresh_token");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "cliora.refresh_token" }),
+    );
+    await settle();
+
+    expectSignedOutAndWiped(wrapper, appRouter);
+    expect(central.fileCalls()).toBe(before);
+
+    // Someone else signs in in this tab and opens the same session id, which
+    // the server refuses them. Nothing from the first user may be served.
+    central.state.forbidden = true;
+    signIn(USER_B, "b");
+    await appRouter.push(`/sessions/${ID}`);
+    await settle();
+    expect(wrapper.text()).toContain("無法存取此 Session");
+    expect(wrapper.text()).not.toContain("README.md");
+    expect(useFilesStore().sessionId).toBeNull();
+    expect(useFilesStore().dirs).toEqual({});
+    // Only the refused session read; no listing or content was asked for.
+    expect(central.fileCalls()).toBe(before + 1);
+  });
+
+  it("手機：token 更新被拒 → 快取、收藏、預覽都清掉並回到登入", async () => {
+    width = 390;
+    const central = fakeCentral();
+    const { wrapper, appRouter } = await renderRouted();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    const before = central.fileCalls();
+
+    // Any request in this tab meets an expired token and Central refuses the
+    // refresh; the client drops the tokens and nothing navigates.
+    central.state.expired = true;
+    await expect(auth.api().listNodes()).rejects.toMatchObject({
+      status: 401,
+    });
+    await settle();
+
+    expectSignedOutAndWiped(wrapper, appRouter);
+    expect(localStorage.getItem("cliora.access_token")).toBeNull();
+    expect(central.fileCalls()).toBe(before);
+  });
+
+  it("桌面：另一個分頁登出 → 預覽分頁與檔案樹一起清掉並回到登入", async () => {
+    const central = fakeCentral();
+    cleanups.push(auth.installAuthStorageSync());
+    const { wrapper, appRouter } = await renderRouted();
+    await openReadmeOnDesktop(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    const before = central.fileCalls();
+
+    localStorage.removeItem("cliora.access_token");
+    localStorage.removeItem("cliora.refresh_token");
+    window.dispatchEvent(new StorageEvent("storage", { key: null }));
+    await settle();
+
+    expectSignedOutAndWiped(wrapper, appRouter);
+    expect(window.history.pushState).not.toHaveBeenCalled();
+    expect(central.fileCalls()).toBe(before);
   });
 });

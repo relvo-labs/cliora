@@ -25,7 +25,7 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRouter, createWebHistory, type Router } from "vue-router";
 
-import { registerGuards } from "../../router";
+import { installAuthLossHandler, registerGuards } from "../../router";
 import { _resetApiClient, useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
 import { useFilesStore } from "../../stores/files";
@@ -251,6 +251,10 @@ describe("AppLayout", () => {
   // client, with only `fetch` replaced: the client drops the tokens in
   // `finally`, and the point of the failure case is that the layout must not
   // stop halfway and leave a signed-out tab still holding the last listing.
+  //
+  // The clearing and the navigation belong to the app's auth-loss handler, not
+  // to this button, so the handler is installed exactly as `createAppRouter`
+  // installs it; the button's only job is to end up with the tokens gone.
   for (const outcome of ["accepted", "rejected"] as const) {
     it(`sign-out ${outcome} by Central: caches cleared and the login page shown (#76)`, async () => {
       const SESSION = "44444444-4444-4444-8444-444444444444";
@@ -310,6 +314,7 @@ describe("AppLayout", () => {
       // redirect /login to itself.
       router.getRoutes().find((r) => r.name === "login")!.meta.public = true;
       registerGuards(router);
+      const stopAuthLoss = installAuthLossHandler(router);
       await router.push("/dashboard");
       await router.isReady();
       const wrapper = mount(AppLayout, {
@@ -334,7 +339,10 @@ describe("AppLayout", () => {
       expect(localStorage.getItem("cliora.access_token")).toBeNull();
       expect(localStorage.getItem("cliora.refresh_token")).toBeNull();
       expect(router.currentRoute.value.name).toBe("login");
+      // Asked for, so it starts over rather than coming back here.
+      expect(router.currentRoute.value.query.redirect).toBeUndefined();
 
+      stopAuthLoss();
       wrapper.unmount();
       vi.unstubAllGlobals();
       _resetApiClient();

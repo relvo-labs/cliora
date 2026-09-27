@@ -39,7 +39,7 @@ import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useFocusTrap } from "../composables/useFocusTrap";
 import { useTerminalSession } from "../composables/useTerminalSession";
-import { api } from "../stores/auth";
+import { api, useAuthStore } from "../stores/auth";
 import {
   INSPECTOR_MAX,
   INSPECTOR_MIN,
@@ -50,6 +50,7 @@ import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 
 const props = defineProps<{ id: string }>();
+const auth = useAuthStore();
 const sessions = useSessionsStore();
 // Reached directly for one thing only: refreshing the directory an upload landed
 // in. The tree owns its own loading; this is the one event it cannot see.
@@ -78,6 +79,18 @@ const canOpenShell = computed(
 // A session in a terminal state has no daemon-side workspace to browse.
 const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
 
+// Ended, by either witness (#76 review). The payload's status is only as fresh
+// as the last fetch; the terminal socket's `terminal.exited` /
+// `session.stopped` is usually the first — and often the only — news that the
+// session is over, and no refetch follows it. Either one is enough. The
+// socket's `exited` is sticky for the session it belongs to (no reconnect is
+// scheduled after it) and a switch to another id reconnects, which leaves it.
+const sessionEnded = computed(
+  () =>
+    terminal.status.value === "exited" ||
+    (session.value !== null && TERMINAL_STATUSES.has(session.value.status)),
+);
+
 // The file panel keys off the session id; a null id (or a dead session) means it
 // binds nothing and issues no request.
 //
@@ -89,10 +102,16 @@ const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
 // one value, and the preview in particular is not mounted beside the browser on
 // a phone, so it cannot rely on the browser noticing. Unbinding wipes the store
 // and closes the preview (see the watcher before the session-switch one).
+//
+// And only while this tab is signed in: the file cache is keyed by session id
+// alone, so it must not outlive the user it was fetched for. The auth-loss
+// handler wipes the store and leaves the route; unbinding here as well means
+// nothing in this view can ask for it again in the meantime.
 const filesSessionId = computed(() =>
+  auth.isAuthenticated &&
   resource.state.value === "success" &&
   session.value?.id === props.id &&
-  !TERMINAL_STATUSES.has(session.value.status)
+  !sessionEnded.value
     ? props.id
     : null,
 );
@@ -106,7 +125,7 @@ const workspaceLabel = computed(() => {
 });
 
 const filesDisabledReason = computed(() =>
-  session.value && TERMINAL_STATUSES.has(session.value.status)
+  session.value && sessionEnded.value
     ? "Session 已結束，檔案瀏覽不再可用。"
     : undefined,
 );
@@ -644,14 +663,19 @@ onMounted(async () => {
 // a navigation is how a router ends up somewhere neither it nor the user chose.
 // Both sources are watched together so that the two cases cannot be told apart
 // by which watcher happened to run first.
+//
+// Losing authentication is the second kind: the auth-loss handler is already
+// navigating to the login page, so the entry is disowned too, and the phone
+// leaves the preview mode so nothing is left behind the veil below.
 watch(
-  [() => props.id, filesSessionId],
-  ([id, files], [previousId, previousFiles]) => {
+  [() => props.id, filesSessionId, () => auth.isAuthenticated],
+  ([id, files, authenticated], [previousId, previousFiles]) => {
     if (!previewPath.value || files === previousFiles) return;
-    if (id !== previousId) {
+    if (id !== previousId || !authenticated) {
       previewHistoryDepth = 0;
       previewPath.value = null;
       activeTab.value = "cli";
+      if (!authenticated) mobileMode.value = "cli";
       return;
     }
     if (files === null) closePreview();
@@ -1190,11 +1214,29 @@ async function confirmTerminate(): Promise<void> {
         </template>
       </StatusBar>
 
-      <div v-if="!session || resource.state.value !== 'success'" class="veil">
+      <div
+        v-if="
+          !auth.isAuthenticated ||
+          !session ||
+          resource.state.value !== 'success'
+        "
+        class="veil"
+      >
+        <!-- Signed out while this page is open (another tab, a refused token
+             refresh): covered at once, in the same tick the tokens went, and
+             left for the login page by the auth-loss handler (#76). The
+             terminal and anything else underneath is not the next user's to
+             read in the meantime. -->
+        <UiInlineNotice
+          v-if="!auth.isAuthenticated"
+          tone="warning"
+          title="已登出"
+          message="登入已失效，正在前往登入頁。"
+        />
         <!-- Three different situations, three different components. What was
              here printed the state's internal name on screen for all three. -->
         <UiLoadingState
-          v-if="resource.state.value === 'loading'"
+          v-else-if="resource.state.value === 'loading'"
           label="正在載入 Session"
         />
         <UiInlineNotice

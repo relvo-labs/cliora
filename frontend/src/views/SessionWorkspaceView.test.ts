@@ -191,6 +191,10 @@ async function render(getSession: ReturnType<typeof vi.fn>) {
 
 beforeEach(() => {
   setActivePinia(createPinia());
+  // Signed in, as the router guard guarantees before this view can mount. The
+  // view unbinds its files and covers itself when this tab is signed out
+  // (#76), so a case that forgot this would be testing the signed-out veil.
+  auth.useAuthStore().accessToken = "test-access";
   shellApi.openShell.mockReset();
   shellApi.openShell.mockResolvedValue({
     ...session(),
