@@ -261,16 +261,62 @@ watch(activeTab, async (tab) => {
 // When the same user is confirmed again, both reconnect at once with fresh
 // tickets (and a fresh authorization check). A different user never resumes
 // here: the page is left and unmounted, which disposes both.
+//
+// The same seam fences the *session* a ticket is for (#76 review 4). The route
+// component is reused when `/sessions/:id` changes, and the composable has no
+// notion of a superseded connect: an attach request for session A answered
+// after the switch to B would open a socket to A under B's page, and the B view
+// would type into it. So each terminal gets its own provider that knows which
+// session is current for it, and a ticket is handed over only if, when it
+// arrives, it is still for that session *and* is the latest one that terminal
+// asked for.
+//
+// A request that fails either check is abandoned, not refused: its promise
+// never settles. A refusal means "try again soon" to the composable — it would
+// schedule a reconnect, and that reconnect closes whatever socket is current,
+// which for a superseded request is the good one. Leaving it unanswered opens
+// nothing and schedules nothing; the newer request (or the route change that
+// made it stale) owns the terminal from here. The ticket Central already minted
+// for it is single-use and short-lived, and simply expires.
 let identityEpoch = 0;
-async function ticketFor(sessionId: string): Promise<string> {
-  const epoch = identityEpoch;
-  if (!auth.identityConfirmed) throw new Error("terminal suspended");
-  const res = await api().attachSession(sessionId);
-  if (epoch !== identityEpoch || !auth.identityConfirmed) {
-    throw new Error("terminal suspended");
-  }
-  return res.ticket;
+const abandoned = (): Promise<never> => new Promise<never>(() => {});
+function fencedTicket(
+  isCurrent: (sessionId: string) => boolean,
+): (sessionId: string) => Promise<string> {
+  let latest = 0;
+  return async (sessionId) => {
+    const request = ++latest;
+    const stale = () => request !== latest || !isCurrent(sessionId);
+    // Not current before anything is asked: Central is not even called.
+    if (stale()) return abandoned();
+    const epoch = identityEpoch;
+    if (!auth.identityConfirmed) throw new Error("terminal suspended");
+    let ticket: string;
+    try {
+      ticket = (await api().attachSession(sessionId)).ticket;
+    } catch (caught) {
+      // A superseded request's failure is not the terminal's failure either.
+      if (stale()) return abandoned();
+      throw caught;
+    }
+    if (stale()) return abandoned();
+    if (epoch !== identityEpoch || !auth.identityConfirmed) {
+      throw new Error("terminal suspended");
+    }
+    return ticket;
+  };
 }
+// The main CLI: the route's session, and only once the latest fetch confirmed
+// that very id (a session whose payload failed to load gets no ticket either).
+const cliTicket = fencedTicket(
+  (sessionId) => sessionId === props.id && workspaceLive.value,
+);
+// The system terminal: the shell this page opened, while it is open. Closing
+// it (by tab, unload, or route change) clears it first, so a reconnect for a
+// shell that is being terminated never asks Central for a ticket.
+const shellTicket = fencedTicket(
+  (sessionId) => sessionId === shellSession.value?.id,
+);
 let terminalsSuspended = !auth.identityConfirmed;
 watch(
   () => auth.identityConfirmed,
@@ -297,7 +343,7 @@ watch(
 //
 // A second, independent instance of the same composable: the shell is an
 // ordinary session over the same relay, so nothing about the transport differs.
-const shellTerminal = useTerminalSession(ticketFor);
+const shellTerminal = useTerminalSession(shellTicket);
 const shellSession = ref<SessionDetail | null>(null);
 const shellHost = ref<HTMLElement | null>(null);
 const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
@@ -410,12 +456,31 @@ const resource = useAsyncResource<SessionDetail>(async () => {
 // The theme and font size are passed in rather than read from a store inside
 // the composable, so it stays testable without Pinia — the same reason the
 // ticket provider is injected.
-const terminal = useTerminalSession(ticketFor, {
+const terminal = useTerminalSession(cliTicket, {
   themeId: preferences.theme,
   fontSize: preferences.terminalFontSize,
 });
 
 const session = computed(() => sessions.current);
+
+// The workspace on screen is the route's session, loaded by the latest fetch.
+// False from the very tick `/sessions/:id` changes in place — `sessions.current`
+// still holds the session that was left until the new one arrives — and while
+// any fetch is outstanding or failed. While false the veil covers the page and
+// everything under it is inert (#76 review 4): a veil is only paint, and the
+// old session's terminal, header actions and file panel stayed focusable and
+// typeable behind it.
+const workspaceLive = computed(
+  () => resource.state.value === "success" && session.value?.id === props.id,
+);
+// Bound on every sibling of the veil. `inert` takes a subtree out of the
+// focus order, pointer and keyboard input and the accessibility tree;
+// `aria-hidden` repeats the last part for engines that predate it. An absent
+// key rather than `false`, as in `App.vue`: where an engine has no `inert`
+// property Vue writes the attribute as a string, and `inert="false"` is inert.
+const behindVeil = computed(() =>
+  workspaceLive.value ? {} : { inert: true, "aria-hidden": "true" as const },
+);
 
 // 這台 Node 的執行姿態（ADR 0023）。使用者按下 Enter 之前，資訊要在他眼前 —— 不是藏在
 // Node 詳情頁裡。額外一次請求、且失敗不影響工作區：拿不到姿態時什麼都不顯示，
@@ -756,8 +821,21 @@ watch(
       previewPath.value = null;
       activeTab.value = "cli";
       mobileMode.value = "cli";
+      // The previous session's CLI stops here, before the first await (#76
+      // review 4). What follows waits on the network twice — the shell's
+      // termination and B's payload — and all that time A's socket was open
+      // under a page that already says B: a focused xterm kept sending
+      // keystrokes to A. Closing it synchronously leaves nothing to carry
+      // them. The composable will try to reconnect it; `cliTicket` abandons
+      // that without asking Central, because A is no longer the route. The
+      // page itself goes inert in the same tick (`workspaceLive`). The
+      // shell is closed synchronously too: `closeShell` disconnects before
+      // its own first await.
+      terminal.disconnect();
       await closeShell();
       await resource.run();
+      // Superseded while waiting (A → B → C): the later change connects.
+      if (props.id !== next) return;
       void terminal.connect(next);
     }
   },
@@ -863,8 +941,13 @@ async function confirmTerminate(): Promise<void> {
          Loading / forbidden / error therefore render as an overlay on top
          rather than instead of it (WT-02). -->
     <div class="workspace">
+      <!-- Everything but the veil carries `behindVeil`: inert whenever the
+           veil is up — in particular from the tick the route id changes in
+           place until the new session has loaded, while this still shows the
+           one that was left (#76 review 4). -->
       <SessionHeader
         v-if="session"
+        v-bind="behindVeil"
         :name="session.name"
         :node-name="nodePosture?.name"
         :runtime="session.runtime"
@@ -886,7 +969,11 @@ async function confirmTerminate(): Promise<void> {
            user may never have read, and the gap banner in particular is
            explaining why output is missing — it has to stay while the gap
            does. -->
-      <div v-if="actionError || terminal.gap.value" class="notices">
+      <div
+        v-if="actionError || terminal.gap.value"
+        v-bind="behindVeil"
+        class="notices"
+      >
         <UiInlineNotice
           v-if="actionError"
           tone="error"
@@ -907,6 +994,7 @@ async function confirmTerminate(): Promise<void> {
            same attribute. Hidden under preview, which is fullscreen. -->
       <nav
         v-if="isNarrow && session && mobileMode !== 'preview'"
+        v-bind="behindVeil"
         class="modes"
         role="tablist"
         aria-label="工作區"
@@ -932,6 +1020,7 @@ async function confirmTerminate(): Promise<void> {
       </nav>
 
       <div
+        v-bind="behindVeil"
         class="grid"
         :style="{ '--inspector-width': `${preferences.inspectorWidth}px` }"
         :data-files-hidden="filesVisible ? undefined : ''"
@@ -1253,6 +1342,7 @@ async function confirmTerminate(): Promise<void> {
            revised to say so). It renders even under the veil — a blank status
            bar behind a failure reads as "everything is fine back here". -->
       <StatusBar
+        v-bind="behindVeil"
         :session-status="session?.status"
         :connection="terminal.status.value"
         :role="terminal.role.value"
@@ -1271,11 +1361,17 @@ async function confirmTerminate(): Promise<void> {
 
       <!-- Signed out, or not sure as whom, is not this veil's job: `App.vue`
            makes the whole page inert behind `AuthGate` (#76). -->
-      <div v-if="!session || resource.state.value !== 'success'" class="veil">
+      <div v-if="!workspaceLive" class="veil">
         <!-- Three different situations, three different components. What was
-             here printed the state's internal name on screen for all three. -->
+             here printed the state's internal name on screen for all three.
+             A route change that has not started its fetch yet (the old
+             shell is still being closed) is loading too: the previous
+             fetch's `success` is not about this id. -->
         <UiLoadingState
-          v-if="resource.state.value === 'loading'"
+          v-if="
+            resource.state.value === 'loading' ||
+            resource.state.value === 'success'
+          "
           label="正在載入 Session"
         />
         <UiInlineNotice

@@ -13,7 +13,10 @@ import type { SessionDetail } from "../api/dto";
 // The composable owns a real xterm and a real WebSocket; neither belongs in a
 // component test. The mock keeps the shape the view depends on and records the
 // calls the tab logic is supposed to make.
-const { term } = vi.hoisted(() => ({
+const { term, ticketProviders } = vi.hoisted(() => ({
+  // The ticket provider each `useTerminalSession` call was handed, in call
+  // order: the system shell's first, then the CLI's.
+  ticketProviders: [] as Array<(sessionId: string) => Promise<string>>,
   term: {
     mount: vi.fn(),
     connect: vi.fn(async () => {}),
@@ -39,7 +42,10 @@ const { term } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../composables/useTerminalSession", () => ({
-  useTerminalSession: () => term,
+  useTerminalSession: (getTicket: (sessionId: string) => Promise<string>) => {
+    ticketProviders.push(getTicket);
+    return term;
+  },
 }));
 
 // The file tree owns its own fetching; here it only needs to emit.
@@ -204,6 +210,7 @@ beforeEach(() => {
   shellApi.terminateSession.mockReset();
   shellApi.terminateSession.mockResolvedValue({});
   shellApi.terminateSessionOnUnload.mockReset();
+  ticketProviders.length = 0;
   Object.values(term).forEach((value) => {
     if (typeof value === "function")
       (value as ReturnType<typeof vi.fn>).mockClear();
@@ -501,6 +508,45 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     expect(wrapper.findAll('[role="tab"]')[0].attributes("aria-selected")).toBe(
       "true",
     );
+  });
+
+  // The shell's reconnects go through their own fenced provider (#76 review
+  // 4): once the shell is closed — here by the switch — a ticket already in
+  // flight is never handed over, and a reconnect does not even ask Central.
+  it("hands no ticket for the previous session's shell after an in-place switch", async () => {
+    const wrapper = await render(withShell());
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await flushPromises();
+    const shellTicket = ticketProviders[0];
+    const attach = (
+      auth.api() as unknown as { attachSession: ReturnType<typeof vi.fn> }
+    ).attachSession;
+    await expect(shellTicket(SHELL_ID)).resolves.toBe("t");
+
+    let release!: () => void;
+    attach.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ ticket: "late" });
+        }),
+    );
+    let settled = false;
+    void shellTicket(SHELL_ID).then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    await flushPromises();
+
+    await wrapper.setProps({ id: "66666666-6666-4666-8666-666666666666" });
+    await flushPromises();
+    release();
+    await flushPromises();
+    expect(settled).toBe(false);
+
+    attach.mockClear();
+    void shellTicket(SHELL_ID);
+    await flushPromises();
+    expect(attach).not.toHaveBeenCalled();
   });
 });
 

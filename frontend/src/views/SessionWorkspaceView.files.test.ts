@@ -1175,6 +1175,44 @@ describe("SessionWorkspaceView — 另一個分頁換了帳號、/me 尚未回�
     await expect(term.getTicket!(ID)).resolves.toBe("t");
   });
 
+  // #76 review 4: the other tab's access token has expired by the time this
+  // tab's `/me` uses it. The client refreshes in this tab and retries; the
+  // answer arrives under a pair derived from the one being checked, and must
+  // still uncover the page rather than be thrown away with the gate left up.
+  it("/me 先 401、本分頁 refresh 後回答同一位使用者：蓋板解除、終端機重新連線、不清快取", async () => {
+    width = 390;
+    const central = fakeCentral();
+    cleanups.push(auth.installAuthStorageSync());
+    const { wrapper, appRouter } = await renderRouted();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    const before = central.fileCalls();
+
+    central.state.expireOnce = true;
+    localStorage.setItem("cliora.access_token", "b-access");
+    localStorage.setItem("cliora.refresh_token", "b-refresh");
+    window.dispatchEvent(
+      new StorageEvent("storage", { key: "cliora.access_token" }),
+    );
+    await settle();
+
+    expect(central.count("/api/auth/me")).toBe(2);
+    expect(central.count("/api/auth/refresh")).toBe(1);
+    expect(localStorage.getItem("cliora.access_token")).toBe("a2-access");
+    expectUncovered(wrapper);
+    expect(auth.useAuthStore().identityPending).toBe(false);
+    expect(auth.useAuthStore().identityConfirmed).toBe(true);
+    expect(auth.useAuthStore().user?.id).toBe(USER_A.id);
+    expect(appRouter.currentRoute.value.name).toBe("session-workspace");
+    expect(useFilesStore().dirs["."]?.entries).toHaveLength(1);
+    expect(wrapper.find("#panel-preview").exists()).toBe(true);
+    expect(central.fileCalls()).toBe(before);
+    expect(term.retry).toHaveBeenCalled();
+    await expect(term.getTicket!(ID)).resolves.toBe("t");
+  });
+
   it("本分頁一般的 token 更新：不蓋頁面、不停終端機、不動快取", async () => {
     width = 390;
     const central = fakeCentral();

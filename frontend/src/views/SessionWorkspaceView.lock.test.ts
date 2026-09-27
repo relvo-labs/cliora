@@ -104,9 +104,9 @@ const USER_A = {
   permissions: [],
 };
 
-function session(): SessionDetail {
+function session(id: string = ID): SessionDetail {
   return {
-    id: ID,
+    id,
     node_id: "11111111-1111-1111-1111-111111111111",
     user_id: "22222222-2222-2222-2222-222222222222",
     name: "refactor-api",
@@ -370,5 +370,182 @@ describe("SessionWorkspaceView — 失去使用者後終端機不能再送出任
     expect(api.attachSession).toHaveBeenCalledTimes(2);
     expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
     expect(wrapper.get(".routed").attributes("inert")).toBeUndefined();
+  });
+});
+
+// --- Changing /sessions/:id in place (#76 review 4) -------------------------
+//
+// The route component is reused, so nothing unmounts: whatever session A left
+// behind has to be stopped by the view itself, before it waits for anything
+// about session B. Two ways A can still carry input meant for B: its open
+// socket, and an attach request for A answered after the switch.
+
+const OTHER = "55555555-5555-4555-8555-555555555555";
+
+/** Session and attach responses per id; any id can be held until released. */
+function stubSwitchApi() {
+  const heldSession = new Map<string, ReturnType<typeof deferred<void>>>();
+  const heldAttach = new Map<string, ReturnType<typeof deferred<void>>>();
+  const attachSession = vi.fn(async (id: string) => {
+    await heldAttach.get(id)?.promise;
+    return { ticket: `ticket-${id}` };
+  });
+  vi.spyOn(auth, "api").mockReturnValue({
+    getSession: vi.fn(async (id: string) => {
+      await heldSession.get(id)?.promise;
+      return session(id);
+    }),
+    getNode: vi.fn(async () => {
+      throw new ApiError("NOT_FOUND", "no", 404, "r");
+    }),
+    terminateSession: vi.fn(async () => ({})),
+    terminateSessionOnUnload: vi.fn(),
+    listFileTree: vi.fn(async () => ({
+      path: ".",
+      truncated: false,
+      entries: [README],
+    })),
+    attachSession,
+  } as never);
+  return {
+    attachSession,
+    holdSession(id: string) {
+      const gate = deferred<void>();
+      heldSession.set(id, gate);
+      return () => gate.resolve();
+    },
+    holdAttach(id: string) {
+      const gate = deferred<void>();
+      heldAttach.set(id, gate);
+      return () => gate.resolve();
+    },
+    attachesFor(id: string): number {
+      return attachSession.mock.calls.filter(([asked]) => asked === id).length;
+    },
+  };
+}
+
+function socketsFor(id: string): MockSocket[] {
+  return sockets.filter((socket) =>
+    socket.url.includes(`/ws/sessions/${id}/terminal`),
+  );
+}
+
+describe("SessionWorkspaceView — 原地切換 session：舊 session 的終端機不能再收到輸入（#76）", () => {
+  it("B 的 session 還在載入：A 的 socket 在第一個 await 之前就關閉，打字不送給 A，舊工作區 inert，A 不會重新連線", async () => {
+    const api = stubSwitchApi();
+    const { wrapper, appRouter } = await render();
+    const a = await connectedAsWriter();
+    type("ls");
+    expect(inputFrames(a)).toBe(1);
+
+    const releaseB = api.holdSession(OTHER);
+    await appRouter.push(`/sessions/${OTHER}`);
+    // Nothing about B has answered yet: this is the window the user can type
+    // into.
+    expect(a.readyState).toBe(MockSocket.CLOSED);
+    type("rm -rf .");
+    expect(inputFrames(a)).toBe(1);
+    // The workspace that still shows A is out of the focus order and the
+    // accessibility tree, not merely drawn over.
+    const grid = wrapper.get(".grid");
+    expect(grid.attributes("inert")).toBeDefined();
+    expect(grid.attributes("aria-hidden")).toBe("true");
+
+    // A's close schedules the composable's reconnect; it must not get a
+    // ticket for the session that was left, nor open a socket.
+    await pastFirstRetry();
+    expect(api.attachesFor(ID)).toBe(1);
+    expect(sockets).toHaveLength(1);
+
+    releaseB();
+    await flushPromises();
+    await vi.waitFor(() => expect(socketsFor(OTHER)).toHaveLength(1));
+    const b = socketsFor(OTHER)[0];
+    b.open();
+    b.emit(
+      JSON.stringify({ type: "terminal.role", payload: { role: "writer" } }),
+    );
+    expect(wrapper.get(".grid").attributes("inert")).toBeUndefined();
+    type("pwd");
+    expect(inputFrames(b)).toBe(1);
+    expect(inputFrames(a)).toBe(1);
+
+    // And no reconnect storm on B afterwards.
+    await pastFirstRetry();
+    expect(sockets).toHaveLength(2);
+    expect(b.readyState).toBe(MockSocket.OPEN);
+    expect(api.attachesFor(OTHER)).toBe(1);
+  });
+
+  it("A 的 ticket 在 B 連上之後才回來：不開 A 的 socket，B 維持連線", async () => {
+    const api = stubSwitchApi();
+    const releaseA = api.holdAttach(ID);
+    const { appRouter } = await render();
+    await vi.waitFor(() => expect(api.attachesFor(ID)).toBe(1));
+    expect(sockets).toHaveLength(0);
+
+    await appRouter.push(`/sessions/${OTHER}`);
+    await flushPromises();
+    await vi.waitFor(() => expect(socketsFor(OTHER)).toHaveLength(1));
+    const b = socketsFor(OTHER)[0];
+    b.open();
+
+    releaseA();
+    await flushPromises();
+    expect(socketsFor(ID)).toHaveLength(0);
+
+    await pastFirstRetry();
+    expect(socketsFor(ID)).toHaveLength(0);
+    expect(sockets).toHaveLength(1);
+    expect(b.readyState).toBe(MockSocket.OPEN);
+    expect(api.attachesFor(OTHER)).toBe(1);
+  });
+
+  it("A 的 ticket 比 B 的先回來：不開 A 的 socket，只連上 B", async () => {
+    const api = stubSwitchApi();
+    const releaseA = api.holdAttach(ID);
+    const releaseAttachB = api.holdAttach(OTHER);
+    const { appRouter } = await render();
+    await vi.waitFor(() => expect(api.attachesFor(ID)).toBe(1));
+
+    await appRouter.push(`/sessions/${OTHER}`);
+    await flushPromises();
+    await vi.waitFor(() => expect(api.attachesFor(OTHER)).toBe(1));
+
+    releaseA();
+    await flushPromises();
+    expect(sockets).toHaveLength(0);
+
+    releaseAttachB();
+    await flushPromises();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(socketsFor(OTHER)).toHaveLength(1);
+    const b = socketsFor(OTHER)[0];
+    b.open();
+
+    await pastFirstRetry();
+    expect(socketsFor(ID)).toHaveLength(0);
+    expect(sockets).toHaveLength(1);
+    expect(b.readyState).toBe(MockSocket.OPEN);
+  });
+
+  it("A 的 ticket 在 B 的 session 還在載入時回來：不開 A 的 socket", async () => {
+    const api = stubSwitchApi();
+    const releaseA = api.holdAttach(ID);
+    const { appRouter } = await render();
+    await vi.waitFor(() => expect(api.attachesFor(ID)).toBe(1));
+
+    const releaseB = api.holdSession(OTHER);
+    await appRouter.push(`/sessions/${OTHER}`);
+    releaseA();
+    await flushPromises();
+    expect(sockets).toHaveLength(0);
+
+    releaseB();
+    await flushPromises();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(socketsFor(OTHER)).toHaveLength(1);
+    expect(socketsFor(ID)).toHaveLength(0);
   });
 });

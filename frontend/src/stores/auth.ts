@@ -98,6 +98,17 @@ export function isSigningOut(): boolean {
   return signingOut;
 }
 
+// The token pairs the outstanding cross-tab identity check may still be
+// answered for, refresh token → access token (#76 review 4). It starts as the
+// pair the check was started for; each refresh *this tab* makes from one of
+// them adds the pair it rotated to. Its own `/me` is the usual cause: the
+// other tab's access token has often expired by the time this tab uses it, so
+// the client refreshes and retries, and the answer then arrives under a pair
+// the check has never seen. That pair was derived from the one being checked,
+// so it names the same user and the answer stands. Anything else — a pair from
+// another tab, a sign-in or sign-out here — is not in the set.
+let verifyingPairs: Map<string, string> | null = null;
+
 // api() returns the shared client, wired to read/rotate tokens through the auth
 // store. Lazy so it is only touched once Pinia is active.
 export function api(): ApiClient {
@@ -105,7 +116,19 @@ export function api(): ApiClient {
     const tokenStore: TokenStore = {
       accessToken: () => localStorage.getItem(ACCESS_KEY),
       refreshToken: () => localStorage.getItem(REFRESH_KEY),
-      setTokens: (pair) => useAuthStore().setTokens(pair),
+      setTokens: (pair, reason) => {
+        // Read before the write: the refresh token being replaced. The client
+        // installs a refresh result only when that is the one it refreshed.
+        const replaced = localStorage.getItem(REFRESH_KEY);
+        if (
+          reason === "refresh" &&
+          replaced !== null &&
+          verifyingPairs?.has(replaced)
+        ) {
+          verifyingPairs.set(pair.refresh_token, pair.access_token);
+        }
+        useAuthStore().setTokens(pair);
+      },
       clear: () => useAuthStore().clearTokens(),
     };
     client = new ApiClient(tokenStore);
@@ -153,10 +176,26 @@ export function installAuthStorageSync(): () => void {
     auth.refreshToken = refreshToken;
     auth.user = null;
 
-    const isStillCurrent = (): boolean =>
-      generation === eventGeneration &&
-      localStorage.getItem(ACCESS_KEY) === accessToken &&
-      localStorage.getItem(REFRESH_KEY) === refreshToken;
+    // Two separate questions, answered separately (#76 review 4). Is this
+    // still the latest check? — the generation, which only another storage
+    // event (or uninstalling) moves. Is the pair installed now one this check
+    // speaks for? — the original pair or one this tab's own refresh derived
+    // from it. Comparing against the original pair alone threw away a correct
+    // answer whenever `/me` had to refresh first, and left the page covered
+    // with nothing left to uncover it.
+    const pairs = new Map([[refreshToken, accessToken]]);
+    verifyingPairs = pairs;
+    const isStillCurrent = (): boolean => {
+      if (generation !== eventGeneration) return false;
+      const installed = localStorage.getItem(REFRESH_KEY);
+      return (
+        installed !== null &&
+        pairs.get(installed) === localStorage.getItem(ACCESS_KEY)
+      );
+    };
+    const settle = (): void => {
+      if (verifyingPairs === pairs) verifyingPairs = null;
+    };
 
     api()
       .me()
@@ -180,11 +219,13 @@ export function installAuthStorageSync(): () => void {
           localStorage.removeItem(ACCESS_KEY);
           localStorage.removeItem(REFRESH_KEY);
         }
-      });
+      })
+      .finally(settle);
   };
   window.addEventListener("storage", handler);
   return () => {
     generation += 1;
+    verifyingPairs = null;
     window.removeEventListener("storage", handler);
   };
 }
