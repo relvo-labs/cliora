@@ -103,12 +103,19 @@ const sessionEnded = computed(
 // a phone, so it cannot rely on the browser noticing. Unbinding wipes the store
 // and closes the preview (see the watcher before the session-switch one).
 //
-// And only while this tab is signed in: the file cache is keyed by session id
-// alone, so it must not outlive the user it was fetched for. The auth-loss
-// handler wipes the store and leaves the route; unbinding here as well means
-// nothing in this view can ask for it again in the meantime.
+// And only while this tab is signed in as the user it was opened for: the file
+// cache is keyed by session id alone, so it must not outlive the user it was
+// fetched for. The auth-loss handler wipes the store and leaves the route;
+// unbinding here as well means nothing in this view can ask for it again in
+// the meantime.
+//
+// An *unconfirmed* identity (a cross-tab token swap, `/me` outstanding) does
+// not unbind — unbinding wipes, and `/me` may yet name the same user, in which
+// case the page comes back exactly as it was. It is covered and made inert by
+// `App.vue` instead, and the handler aborts in-flight file work.
 const filesSessionId = computed(() =>
   auth.isAuthenticated &&
+  !auth.discarding &&
   resource.state.value === "success" &&
   session.value?.id === props.id &&
   !sessionEnded.value
@@ -236,15 +243,61 @@ watch(activeTab, async (tab) => {
   }
 });
 
+// --- Terminals while the user is not confirmed (#76) -----------------------
+//
+// Signed out, or signed in as someone `/me` has not confirmed yet: neither
+// terminal may send a byte. `App.vue` already makes the page inert, which stops
+// the keyboard reaching xterm; this stops the socket existing at all.
+//
+// `disconnect()` closes the socket, but the composable's own close handler then
+// schedules a reconnect, and a reconnect is only a new ticket away. So the
+// ticket is what is gated: every (re)connect of either terminal asks this
+// function, and while the identity is unconfirmed it refuses without calling
+// Central. The composable backs off and keeps asking; nothing reaches the
+// relay. A ticket requested *before* the suspension and answered after it is
+// refused too, by the epoch check. No transport code changes: this is the seam
+// the composable was given a ticket provider for.
+//
+// When the same user is confirmed again, both reconnect at once with fresh
+// tickets (and a fresh authorization check). A different user never resumes
+// here: the page is left and unmounted, which disposes both.
+let identityEpoch = 0;
+async function ticketFor(sessionId: string): Promise<string> {
+  const epoch = identityEpoch;
+  if (!auth.identityConfirmed) throw new Error("terminal suspended");
+  const res = await api().attachSession(sessionId);
+  if (epoch !== identityEpoch || !auth.identityConfirmed) {
+    throw new Error("terminal suspended");
+  }
+  return res.ticket;
+}
+let terminalsSuspended = !auth.identityConfirmed;
+watch(
+  () => auth.identityConfirmed,
+  (confirmed) => {
+    if (!confirmed && !terminalsSuspended) {
+      terminalsSuspended = true;
+      identityEpoch += 1;
+      // An ended session's terminal is left as it is: disconnecting would turn
+      // `exited` into `disconnected` and rebind the files of a dead session.
+      if (terminal.status.value !== "exited") terminal.disconnect();
+      if (shellSession.value) shellTerminal.disconnect();
+    } else if (confirmed && terminalsSuspended) {
+      terminalsSuspended = false;
+      if (terminal.status.value !== "exited") terminal.retry();
+      if (shellSession.value) shellTerminal.retry();
+    }
+  },
+  // Synchronous: suspended inside the very call that cleared or replaced the
+  // tokens, not on the next render.
+  { flush: "sync" },
+);
+
 // --- System terminal (FR-SHELL-001) ---------------------------------------
 //
 // A second, independent instance of the same composable: the shell is an
 // ordinary session over the same relay, so nothing about the transport differs.
-const shellTerminal = useTerminalSession((sessionId) =>
-  api()
-    .attachSession(sessionId)
-    .then((res) => res.ticket),
-);
+const shellTerminal = useTerminalSession(ticketFor);
 const shellSession = ref<SessionDetail | null>(null);
 const shellHost = ref<HTMLElement | null>(null);
 const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
@@ -357,13 +410,10 @@ const resource = useAsyncResource<SessionDetail>(async () => {
 // The theme and font size are passed in rather than read from a store inside
 // the composable, so it stays testable without Pinia — the same reason the
 // ticket provider is injected.
-const terminal = useTerminalSession(
-  (sessionId) =>
-    api()
-      .attachSession(sessionId)
-      .then((res) => res.ticket),
-  { themeId: preferences.theme, fontSize: preferences.terminalFontSize },
-);
+const terminal = useTerminalSession(ticketFor, {
+  themeId: preferences.theme,
+  fontSize: preferences.terminalFontSize,
+});
 
 const session = computed(() => sessions.current);
 
@@ -664,18 +714,23 @@ onMounted(async () => {
 // Both sources are watched together so that the two cases cannot be told apart
 // by which watcher happened to run first.
 //
-// Losing authentication is the second kind: the auth-loss handler is already
-// navigating to the login page, so the entry is disowned too, and the phone
-// leaves the preview mode so nothing is left behind the veil below.
+// Losing the user — signed out, or `/me` naming someone else — is the second
+// kind: the auth-loss handler is already navigating away, so the entry is
+// disowned too, and the phone leaves the preview mode so nothing is left
+// behind the gate.
 watch(
-  [() => props.id, filesSessionId, () => auth.isAuthenticated],
-  ([id, files, authenticated], [previousId, previousFiles]) => {
+  [
+    () => props.id,
+    filesSessionId,
+    () => auth.isAuthenticated && !auth.discarding,
+  ],
+  ([id, files, ownUser], [previousId, previousFiles]) => {
     if (!previewPath.value || files === previousFiles) return;
-    if (id !== previousId || !authenticated) {
+    if (id !== previousId || !ownUser) {
       previewHistoryDepth = 0;
       previewPath.value = null;
       activeTab.value = "cli";
-      if (!authenticated) mobileMode.value = "cli";
+      if (!ownUser) mobileMode.value = "cli";
       return;
     }
     if (files === null) closePreview();
@@ -1214,29 +1269,13 @@ async function confirmTerminate(): Promise<void> {
         </template>
       </StatusBar>
 
-      <div
-        v-if="
-          !auth.isAuthenticated ||
-          !session ||
-          resource.state.value !== 'success'
-        "
-        class="veil"
-      >
-        <!-- Signed out while this page is open (another tab, a refused token
-             refresh): covered at once, in the same tick the tokens went, and
-             left for the login page by the auth-loss handler (#76). The
-             terminal and anything else underneath is not the next user's to
-             read in the meantime. -->
-        <UiInlineNotice
-          v-if="!auth.isAuthenticated"
-          tone="warning"
-          title="已登出"
-          message="登入已失效，正在前往登入頁。"
-        />
+      <!-- Signed out, or not sure as whom, is not this veil's job: `App.vue`
+           makes the whole page inert behind `AuthGate` (#76). -->
+      <div v-if="!session || resource.state.value !== 'success'" class="veil">
         <!-- Three different situations, three different components. What was
              here printed the state's internal name on screen for all three. -->
         <UiLoadingState
-          v-else-if="resource.state.value === 'loading'"
+          v-if="resource.state.value === 'loading'"
           label="正在載入 Session"
         />
         <UiInlineNotice

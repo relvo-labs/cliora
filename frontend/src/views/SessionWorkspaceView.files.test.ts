@@ -46,6 +46,9 @@ const { term } = vi.hoisted(() => ({
     gap: { value: undefined },
     exit: { value: undefined },
     lastError: { value: undefined },
+    // The ticket provider the view handed the composable, so a case can ask it
+    // for a ticket the way a reconnect would.
+    getTicket: undefined as undefined | ((id: string) => Promise<string>),
     canRetry: { value: false },
   },
 }));
@@ -55,7 +58,12 @@ const { term } = vi.hoisted(() => ({
 vi.mock("../composables/useTerminalSession", async () => {
   const { ref } = await import("vue");
   term.status = ref("connected");
-  return { useTerminalSession: () => term };
+  return {
+    useTerminalSession: (getTicket: (id: string) => Promise<string>) => {
+      term.getTicket = getTicket;
+      return term;
+    },
+  };
 });
 
 // Just enough Monaco for useMonacoModel to create an editor and a model. The
@@ -122,6 +130,7 @@ import * as auth from "../stores/auth";
 import { useFavoritesStore } from "../stores/favorites";
 import { useFilesStore } from "../stores/files";
 import { useSessionsStore } from "../stores/sessions";
+import App from "../App.vue";
 import SessionWorkspaceView from "./SessionWorkspaceView.vue";
 
 const ID = "44444444-4444-4444-8444-444444444444";
@@ -757,7 +766,15 @@ const USER_A = {
 const USER_B = { ...USER_A, id: "user-b", username: "bob", display_name: "B" };
 
 function fakeCentral() {
-  const state = { expired: false, forbidden: false };
+  const state = {
+    expired: false,
+    forbidden: false,
+    // `/me`: who the current tokens belong to, and a gate to hold the answer.
+    me: USER_A as typeof USER_A,
+    meHeld: null as Promise<void> | null,
+    // One 401 followed by a refresh Central accepts: an ordinary refresh.
+    expireOnce: false,
+  };
   const json = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
@@ -769,8 +786,25 @@ function fakeCentral() {
   const fetchMock = vi.fn(async (url: string) => {
     const path = new URL(url, "http://central.test").pathname;
     calls.push(path);
-    if (path === "/api/auth/refresh") return fail("TOKEN_INVALID", 401);
+    if (path === "/api/auth/refresh") {
+      return state.expired
+        ? fail("TOKEN_INVALID", 401)
+        : json({
+            access_token: "a2-access",
+            refresh_token: "a2-refresh",
+            token_type: "bearer",
+          });
+    }
     if (state.expired) return fail("TOKEN_EXPIRED", 401);
+    if (state.expireOnce) {
+      state.expireOnce = false;
+      return fail("TOKEN_EXPIRED", 401);
+    }
+    if (path === "/api/auth/me") {
+      if (state.meHeld) await state.meHeld;
+      return json(state.me);
+    }
+    if (path.endsWith("/attach")) return json({ ticket: "t" });
     if (path === `/api/sessions/${ID}`) {
       return state.forbidden ? fail("FORBIDDEN", 403) : json(session());
     }
@@ -793,7 +827,18 @@ function fakeCentral() {
   const fileCalls = () =>
     calls.filter((c) => c.includes("/files/") || c.startsWith("/api/sessions"))
       .length;
-  return { state, fileCalls };
+  const count = (fragment: string) =>
+    calls.filter((c) => c.includes(fragment)).length;
+  /** Hold `/me` until the returned function is called. */
+  function holdMe(): () => void {
+    let release!: () => void;
+    state.meHeld = new Promise<void>((r) => (release = r));
+    return () => {
+      state.meHeld = null;
+      release();
+    };
+  }
+  return { state, fileCalls, count, holdMe };
 }
 
 const cleanups: Array<() => void> = [];
@@ -828,15 +873,14 @@ async function renderRouted(): Promise<{
   cleanups.push(router.installAuthLossHandler(appRouter));
   appRouter.push(`/sessions/${ID}`);
   await appRouter.isReady();
-  const wrapper = mount(
-    { template: "<RouterView />" },
-    {
-      global: {
-        plugins: [appRouter],
-        stubs: { AppLayout: { template: "<div><slot /></div>" } },
-      },
+  // The real app root: the gate that makes a protected page inert lives there.
+  const wrapper = mount(App, {
+    attachTo: document.body,
+    global: {
+      plugins: [appRouter],
+      stubs: { AppLayout: { template: "<div><slot /></div>" } },
     },
-  );
+  });
   await settle();
   return { wrapper, appRouter };
 }
@@ -982,5 +1026,179 @@ describe("SessionWorkspaceView — 在別處失去登入時清掉檔案與預覽
     expectSignedOutAndWiped(wrapper, appRouter);
     expect(window.history.pushState).not.toHaveBeenCalled();
     expect(central.fileCalls()).toBe(before);
+  });
+});
+
+// --- Another tab swaps the account before this one hears (#76 review 3) -----
+//
+// All this tab sees is one token pair replaced by another; whose it is waits on
+// `/me`. Until then the page must be covered and inert, its file work stopped
+// and its terminal unable to reconnect — without wiping, because `/me` may name
+// the same user (another tab merely refreshed). Then: the same user gets the
+// page back as it was; a different one never sees it.
+
+function swapTokensFromAnotherTab(token: string): void {
+  localStorage.setItem("cliora.access_token", `${token}-access`);
+  window.dispatchEvent(
+    new StorageEvent("storage", { key: "cliora.access_token" }),
+  );
+  localStorage.setItem("cliora.refresh_token", `${token}-refresh`);
+  window.dispatchEvent(
+    new StorageEvent("storage", { key: "cliora.refresh_token" }),
+  );
+}
+
+function gate(wrapper: ReturnType<typeof mount>) {
+  return wrapper.find('[role="alertdialog"]');
+}
+
+async function expectCoveredAndInert(
+  wrapper: ReturnType<typeof mount>,
+  reason: string,
+): Promise<void> {
+  expect(gate(wrapper).exists()).toBe(true);
+  expect(gate(wrapper).attributes("data-reason")).toBe(reason);
+  expect(gate(wrapper).attributes("aria-modal")).toBe("true");
+  const routed = wrapper.get(".routed");
+  expect(routed.attributes("inert")).toBeDefined();
+  expect(routed.attributes("aria-hidden")).toBe("true");
+  // The gate is not inside the inert part, and it has the focus.
+  expect(routed.element.contains(gate(wrapper).element)).toBe(false);
+  await vi.waitFor(() =>
+    expect(gate(wrapper).element.contains(document.activeElement)).toBe(true),
+  );
+}
+
+function expectUncovered(wrapper: ReturnType<typeof mount>): void {
+  expect(gate(wrapper).exists()).toBe(false);
+  const routed = wrapper.get(".routed");
+  expect(routed.attributes("inert")).toBeUndefined();
+  expect(routed.attributes("aria-hidden")).toBeUndefined();
+}
+
+describe("SessionWorkspaceView — 另一個分頁換了帳號、/me 尚未回答（#76）", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    auth._resetApiClient();
+    signIn(USER_A, "a");
+    useFavoritesStore().favorites = [
+      { id: "f1", node_id: "n", path: "/srv/private" } as never,
+    ];
+  });
+  afterEach(() => {
+    while (cleanups.length) cleanups.pop()!();
+    vi.unstubAllGlobals();
+    auth._resetApiClient();
+    localStorage.clear();
+  });
+
+  async function openAndSwap() {
+    width = 390;
+    const central = fakeCentral();
+    cleanups.push(auth.installAuthStorageSync());
+    const rendered = await renderRouted();
+    await openReadmeOnPhone(rendered.wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    expectUncovered(rendered.wrapper);
+    const before = central.fileCalls();
+    const release = central.holdMe();
+    swapTokensFromAnotherTab("b");
+    await settle();
+    return { ...rendered, central, before, release };
+  }
+
+  it("/me 未回：頁面被蓋住且 inert、焦點在對話框、不發檔案請求、終端機停住且拿不到 ticket", async () => {
+    const { wrapper, central, before, release } = await openAndSwap();
+
+    await expectCoveredAndInert(wrapper, "pending");
+    expect(auth.useAuthStore().identityPending).toBe(true);
+    // Not wiped yet — it may be the same user — but nothing new is asked for.
+    expect(useFilesStore().dirs["."]?.entries).toHaveLength(1);
+    expect(central.fileCalls()).toBe(before);
+    // The terminal's socket is closed and no reconnect can get a ticket;
+    // Central is not even asked.
+    expect(term.disconnect).toHaveBeenCalled();
+    await expect(term.getTicket!(ID)).rejects.toThrow();
+    expect(central.count("/attach")).toBe(0);
+
+    release();
+    await settle();
+  });
+
+  it("/me 回答另一位使用者：快取、收藏清空，離開頁面，舊內容不會出現在新使用者面前", async () => {
+    const { wrapper, appRouter, central, before, release } =
+      await openAndSwap();
+
+    central.state.me = USER_B;
+    release();
+    await settle();
+
+    expect(useFilesStore().sessionId).toBeNull();
+    expect(useFilesStore().dirs).toEqual({});
+    expect(useFavoritesStore().favorites).toEqual([]);
+    expect(useSessionsStore().current).toBeNull();
+    expect(auth.useAuthStore().user?.id).toBe("user-b");
+    expect(appRouter.currentRoute.value.name).toBe("dashboard");
+    expect(wrapper.text()).toContain("dashboard");
+    expect(wrapper.text()).not.toContain("README.md");
+    expect(wrapper.text()).not.toContain("# synthetic");
+    expect(wrapper.find("#panel-preview").exists()).toBe(false);
+    expect(models.every((m) => m.disposed)).toBe(true);
+    expectUncovered(wrapper);
+    expect(central.fileCalls()).toBe(before);
+  });
+
+  it("/me 回答同一位使用者：原樣恢復，不清快取、不重新讀取，終端機重新連線", async () => {
+    const { wrapper, appRouter, central, before, release } =
+      await openAndSwap();
+    await expectCoveredAndInert(wrapper, "pending");
+
+    release();
+    await settle();
+
+    expectUncovered(wrapper);
+    expect(auth.useAuthStore().identityPending).toBe(false);
+    expect(appRouter.currentRoute.value.name).toBe("session-workspace");
+    expect(useFilesStore().sessionId).toBe(ID);
+    expect(useFilesStore().dirs["."]?.entries).toHaveLength(1);
+    expect(useFavoritesStore().favorites).toHaveLength(1);
+    // The preview is still the one that was open, with the same model.
+    expect(wrapper.find("#panel-preview").exists()).toBe(true);
+    expect(shown).toEqual(["# synthetic\n"]);
+    expect(models.some((m) => !m.disposed)).toBe(true);
+    expect(window.history.back).not.toHaveBeenCalled();
+    expect(central.fileCalls()).toBe(before);
+    // Reconnected, through a ticket that is minted again now.
+    expect(term.retry).toHaveBeenCalled();
+    await expect(term.getTicket!(ID)).resolves.toBe("t");
+  });
+
+  it("本分頁一般的 token 更新：不蓋頁面、不停終端機、不動快取", async () => {
+    width = 390;
+    const central = fakeCentral();
+    cleanups.push(auth.installAuthStorageSync());
+    const { wrapper } = await renderRouted();
+    await openReadmeOnPhone(wrapper);
+    await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
+      timeout: 5_000,
+    });
+    term.disconnect.mockClear();
+
+    central.state.expireOnce = true;
+    await auth
+      .api()
+      .listNodes()
+      .catch(() => {});
+    await settle();
+
+    expect(central.count("/api/auth/refresh")).toBe(1);
+    expect(localStorage.getItem("cliora.access_token")).toBe("a2-access");
+    expectUncovered(wrapper);
+    expect(auth.useAuthStore().identityConfirmed).toBe(true);
+    expect(term.disconnect).not.toHaveBeenCalled();
+    expect(useFilesStore().dirs["."]?.entries).toHaveLength(1);
+    expect(wrapper.find("#panel-preview").exists()).toBe(true);
   });
 });

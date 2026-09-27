@@ -183,11 +183,61 @@ describe("auth store", () => {
       // the old user's permissions must not keep gating UI after the tokens
       // that authorized them are already gone.
       expect(auth.user).toBeNull();
+      // And until `/me` answers, the new pair is not a confirmed identity
+      // (#76): protected pages are covered and suspended meanwhile.
+      expect(auth.identityPending).toBe(true);
+      expect(auth.isAuthenticated).toBe(true);
+      expect(auth.identityConfirmed).toBe(false);
 
       await vi.waitFor(() => {
         expect(auth.user).toEqual(newUser);
       });
+      expect(auth.identityPending).toBe(false);
+      expect(auth.identityConfirmed).toBe(true);
     } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("a cross-tab pair that /me rejects is dropped, and is never confirmed on the way out (#76)", async () => {
+    const auth = useAuthStore();
+    auth.setTokens({
+      access_token: "access-1",
+      refresh_token: "refresh-1",
+      token_type: "bearer",
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: { code: "NO" } }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    ) as unknown as typeof fetch;
+    // Every state the store passes through, so a transient "confirmed with the
+    // unverified pair" would show up here even though it lasts no tick.
+    const seen: boolean[] = [];
+    const stop = auth.$subscribe(() => seen.push(auth.identityConfirmed), {
+      flush: "sync",
+    });
+
+    const cleanup = installAuthStorageSync();
+    try {
+      localStorage.setItem("cliora.access_token", "access-2");
+      localStorage.setItem("cliora.refresh_token", "refresh-2");
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "cliora.access_token" }),
+      );
+      await vi.waitFor(() => expect(auth.accessToken).toBeNull());
+
+      expect(auth.identityPending).toBe(false);
+      expect(auth.identityConfirmed).toBe(false);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((confirmed) => !confirmed)).toBe(true);
+    } finally {
+      stop();
       cleanup();
       globalThis.fetch = originalFetch;
     }

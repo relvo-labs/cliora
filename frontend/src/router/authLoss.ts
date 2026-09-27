@@ -17,8 +17,16 @@
 //
 // What is cleared is the user-scoped in-memory state: the file cache (with its
 // in-flight requests aborted), favourites, and — once the workspace has
-// unmounted — the current session payload. The workspace itself covers its
-// content and drops its preview in the same tick (see `SessionWorkspaceView`).
+// unmounted — the current session payload. The workspace itself drops its
+// preview and suspends its terminals in the same tick (see
+// `SessionWorkspaceView`), and `App.vue` makes the whole protected page inert
+// behind a dialog for as long as `identityConfirmed` is false.
+//
+// A cross-tab token swap is the in-between case: the tokens are there but
+// nobody yet knows whose they are. Nothing is wiped (it may be the same user
+// after a refresh in another tab) but in-flight file work is aborted and the
+// page is covered, and `/me` decides: the same user uncovers it as it was, a
+// different one wipes it before it can render for them.
 
 import { watch } from "vue";
 import type { RouteLocationRaw, Router } from "vue-router";
@@ -42,16 +50,25 @@ export function installAuthLossHandler(router: Router): () => void {
     favorites.clear();
   }
 
-  async function leave(target: RouteLocationRaw): Promise<void> {
+  /**
+   * Leave the protected page. True when the router actually got there; false
+   * when the navigation was refused, superseded or threw (a lazy route chunk
+   * that failed to load). On false the page is still mounted, and it stays
+   * covered and suspended: `App.vue`'s gate keys off auth state, not off this
+   * navigation, and offers a full-page link that does not depend on the
+   * router working.
+   */
+  async function leave(target: RouteLocationRaw): Promise<boolean> {
     try {
-      if (!router.currentRoute.value.meta.public) await router.push(target);
+      if (router.currentRoute.value.meta.public) return true;
+      return (await router.push(target)) === undefined;
     } catch {
-      // A navigation that throws still must not leave the payload behind; the
-      // guard stops the protected view on the next attempt either way.
+      return false;
     } finally {
-      // Only after the workspace has unmounted: clearing the session payload
-      // under a mounted workspace would close an open phone preview through
-      // the history stack in the middle of this navigation.
+      // Only after the navigation has settled: clearing the session payload
+      // under a mounted workspace in the middle of it would close an open
+      // phone preview through the history stack. On failure it goes anyway;
+      // the page is covered, and the previous user's payload is not kept.
       sessions.reset();
     }
   }
@@ -65,6 +82,8 @@ export function installAuthLossHandler(router: Router): () => void {
     (authenticated, was) => {
       if (authenticated || !was) return;
       lastUserId = null;
+      // Signed out covers the page on its own; a switch in progress is over.
+      auth.discarding = false;
       wipeUserScoped();
       const from = router.currentRoute.value;
       // A sign-out the user asked for starts over at the landing page; one that
@@ -89,8 +108,29 @@ export function installAuthLossHandler(router: Router): () => void {
       const previous = lastUserId;
       lastUserId = id;
       if (previous === null || previous === id) return;
+      // Covered from here until the previous user's page has really been left
+      // — before `identityPending` drops, so there is no tick in which the new
+      // user is "confirmed" on the old user's page.
+      auth.discarding = true;
       wipeUserScoped();
-      void leave({ name: "dashboard" });
+      void leave({ name: "dashboard" }).then((left) => {
+        // Only a navigation that arrived uncovers anything. A failed one keeps
+        // the old page mounted, so it stays covered; the gate's link reloads.
+        if (left && auth.user?.id === id) auth.discarding = false;
+      });
+    },
+    { flush: "sync" },
+  );
+
+  // Identity unconfirmed (a cross-tab token swap, `/me` outstanding): stop
+  // whatever file work is in flight — it was asked for by, or is about to be
+  // answered to, someone who may no longer be here — but keep the cache, in
+  // case `/me` names the same user. The store's own public abort
+  // (stores/files.ts read-only, plan/29 MS-14).
+  const stopPending = watch(
+    () => auth.identityPending,
+    (pending) => {
+      if (pending) files.abortInflight();
     },
     { flush: "sync" },
   );
@@ -98,5 +138,6 @@ export function installAuthLossHandler(router: Router): () => void {
   return () => {
     stopAuth();
     stopUser();
+    stopPending();
   };
 }

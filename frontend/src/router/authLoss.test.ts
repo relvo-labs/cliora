@@ -9,7 +9,12 @@
 import { flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createMemoryHistory, createRouter, type Router } from "vue-router";
+import {
+  createMemoryHistory,
+  createRouter,
+  type RouteComponent,
+  type Router,
+} from "vue-router";
 
 import type { User } from "../api/dto";
 import { _resetApiClient, useAuthStore } from "../stores/auth";
@@ -70,7 +75,12 @@ function expectUntouched(): void {
 
 let stop: (() => void) | undefined;
 
-async function start(path = `/sessions/${SESSION}`): Promise<Router> {
+async function start(
+  path = `/sessions/${SESSION}`,
+  dashboard: RouteComponent | (() => Promise<RouteComponent>) = {
+    template: "<div/>",
+  },
+): Promise<Router> {
   const blank = { template: "<div/>" };
   const router = createRouter({
     history: createMemoryHistory(),
@@ -81,7 +91,7 @@ async function start(path = `/sessions/${SESSION}`): Promise<Router> {
         component: blank,
         meta: { public: true },
       },
-      { path: "/dashboard", name: "dashboard", component: blank },
+      { path: "/dashboard", name: "dashboard", component: dashboard },
       { path: "/sessions/:id", name: "session-workspace", component: blank },
     ],
   });
@@ -230,5 +240,132 @@ describe("installAuthLossHandler", () => {
 
     expect(useFilesStore().sessionId).toBeNull();
     expect(useFavoritesStore().favorites).toEqual([]);
+  });
+});
+
+// Identity unconfirmed: another tab installed a pair and `/me` is outstanding
+// (#76 review 3). What the storage sync does is replayed here by hand — the
+// flag, the tokens, the user unknown, then `/me`'s answer in the same order the
+// sync applies it — so each rule can be pinned on its own.
+describe("installAuthLossHandler — identity unconfirmed", () => {
+  function swapPending(token: string): void {
+    const auth = useAuthStore();
+    auth.identityPending = true;
+    auth.accessToken = `${token}-access`;
+    auth.refreshToken = `${token}-refresh`;
+    auth.user = null;
+  }
+  function meAnswers(id: string): void {
+    const auth = useAuthStore();
+    auth.user = user(id);
+    auth.identityPending = false;
+  }
+
+  it("pending: in-flight file work is aborted, nothing is wiped, nobody navigates", async () => {
+    signIn("a");
+    const router = await start();
+    populate();
+    const abort = vi.spyOn(useFilesStore(), "abortInflight");
+
+    swapPending("x");
+    expect(abort).toHaveBeenCalledOnce();
+    expect(useAuthStore().identityConfirmed).toBe(false);
+    await flushPromises();
+
+    expectUntouched();
+    expect(router.currentRoute.value.name).toBe("session-workspace");
+  });
+
+  it("/me names the same user: everything is kept and the identity is confirmed again", async () => {
+    signIn("a");
+    const router = await start();
+    populate();
+
+    swapPending("a2");
+    meAnswers("a");
+    await flushPromises();
+
+    expectUntouched();
+    expect(useAuthStore().identityConfirmed).toBe(true);
+    expect(useAuthStore().discarding).toBe(false);
+    expect(router.currentRoute.value.name).toBe("session-workspace");
+  });
+
+  it("/me names someone else: wiped and covered in the same call, before the pending flag drops", async () => {
+    signIn("a");
+    const router = await start();
+    populate();
+    swapPending("b");
+
+    const auth = useAuthStore();
+    auth.user = user("b");
+    // The sync drops the pending flag next; at this instant the page must
+    // already be wiped and marked as being left.
+    const confirmedInBetween = auth.identityConfirmed;
+    expect(useFilesStore().dirs).toEqual({});
+    expect(useFavoritesStore().favorites).toEqual([]);
+    auth.identityPending = false;
+
+    expect(confirmedInBetween).toBe(false);
+    expect(auth.discarding).toBe(true);
+    expect(auth.identityConfirmed).toBe(false);
+    await flushPromises();
+
+    expectWiped();
+    expect(router.currentRoute.value.name).toBe("dashboard");
+    // Arrived, so uncovered.
+    expect(auth.discarding).toBe(false);
+    expect(auth.identityConfirmed).toBe(true);
+  });
+
+  it("/me names someone else and leaving fails: the old page stays covered", async () => {
+    signIn("a");
+    const router = await start(`/sessions/${SESSION}`, () =>
+      Promise.reject(new Error("chunk failed to load")),
+    );
+    populate();
+
+    swapPending("b");
+    meAnswers("b");
+    await flushPromises();
+
+    expect(router.currentRoute.value.name).toBe("session-workspace");
+    expect(useFilesStore().dirs).toEqual({});
+    expect(useAuthStore().discarding).toBe(true);
+    expect(useAuthStore().identityConfirmed).toBe(false);
+  });
+
+  it("an ordinary refresh in this tab confirms nothing and suspends nothing", async () => {
+    signIn("a");
+    await start();
+    populate();
+    const abort = vi.spyOn(useFilesStore(), "abortInflight");
+
+    // What the API client does after a 401 it could refresh.
+    useAuthStore().setTokens({
+      access_token: "a2-access",
+      refresh_token: "a2-refresh",
+      token_type: "bearer",
+    });
+    await flushPromises();
+
+    expect(useAuthStore().identityConfirmed).toBe(true);
+    expect(abort).not.toHaveBeenCalled();
+    expectUntouched();
+  });
+
+  it("signed out while pending: the pending flag and any switch in progress are over", async () => {
+    signIn("a");
+    const router = await start();
+    populate();
+    swapPending("b");
+
+    useAuthStore().clearTokens();
+    await flushPromises();
+
+    expectWiped();
+    expect(useAuthStore().identityPending).toBe(false);
+    expect(useAuthStore().discarding).toBe(false);
+    expect(router.currentRoute.value.name).toBe("login");
   });
 });
