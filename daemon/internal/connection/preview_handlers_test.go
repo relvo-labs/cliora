@@ -666,6 +666,9 @@ func TestPreviewConcurrentWorstCaseMetadata(t *testing.T) {
 					break drain
 				}
 			}
+			if len(beats) < 2 {
+				t.Fatalf("observed %d heartbeats; want at least 2", len(beats))
+			}
 			for i := 1; i < len(beats); i++ {
 				if gap := beats[i].Sub(beats[i-1]); gap > 2*time.Second {
 					t.Fatalf("heartbeat gap %v; interval 1 s, allowed drift 1 s", gap)
