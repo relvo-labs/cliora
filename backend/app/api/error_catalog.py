@@ -612,6 +612,78 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "None from the browser; the node's owner controls this setting.",
             origin=DAEMON,
         ),
+        # --- Read-only binary preview (ADR 0029, contract 1.11.0) ---
+        # Each code keeps its own status because each has a different next step. None
+        # of them offers a download instead: a preview refused as unsafe must not be
+        # handed over by another route (ADR 0029 §16).
+        _entry(
+            "FILE_PREVIEW_UNSUPPORTED",
+            status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            "This file type cannot be shown as an image or PDF",
+            "The node decided the type from the file's content, and it is not one of "
+            "PNG, JPEG, WebP, GIF or PDF. The file name's extension does not decide it.",
+            "If it is a text file, open it with the text preview.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_PREVIEW_INVALID",
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "The file is damaged or changed while it was being read",
+            "Its header or structure did not check out, or the file changed between the "
+            "node's checks and its read, so nothing was sent.",
+            "Refresh and try again; if it still fails, the file itself is damaged.",
+            retryable=True,
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_PREVIEW_LIMIT",
+            status.HTTP_413_CONTENT_TOO_LARGE,
+            "The image or PDF is too complex to preview safely",
+            "Its pixel count, side length or metadata exceeds the preview limits, which "
+            "stop a small file from exhausting the node or the browser when decoded.",
+            "None in the browser; open it on the node from a terminal session.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_PREVIEW_DISABLED",
+            status.HTTP_403_FORBIDDEN,
+            "This node does not serve image or PDF previews",
+            "The node's config sets filesystem.binary_preview.enabled to false. This is "
+            "the node's decision, and it is separate from any download setting.",
+            "None from the browser; the node's owner controls this setting.",
+            origin=DAEMON,
+        ),
+        _entry(
+            "FILE_PREVIEW_UNSUPPORTED_NODE",
+            status.HTTP_409_CONFLICT,
+            "Image and PDF preview is not available for this session",
+            "Central's rollout flag is off, or the node's current connection did not "
+            "report the capability (an older or disabled daemon). No request was sent "
+            "to the node: an older daemon would have dropped it without an answer.",
+            "Use the text preview, or ask an administrator about Central's setting and "
+            "the node's version.",
+            origin=CENTRAL,
+        ),
+        _entry(
+            "FILE_PREVIEW_BUSY",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many previews are loading at once",
+            "Central allows two previews in flight per user and four per node, so one "
+            "user cannot starve a node's link for everyone else.",
+            "Wait for the current preview to finish loading, then try again.",
+            retryable=True,
+            origin=CENTRAL,
+        ),
+        _entry(
+            "FILE_PREVIEW_EXPIRED",
+            status.HTTP_502_BAD_GATEWAY,
+            "The preview was interrupted",
+            "The node no longer holds the snapshot being sent, usually because the "
+            "connection to the node was re-established mid-transfer.",
+            "Open the file again.",
+            retryable=True,
+            origin=DAEMON,
+        ),
         # --- Daemon update (P4-10) ---
         _entry(
             "UPDATE_NOT_ALLOWED",

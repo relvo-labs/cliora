@@ -49,11 +49,26 @@ var LargeFrameTypes = map[string]bool{
 	// "direction the bytes go" means. Its request, filesystem.download, is a
 	// session id and a path and stays on the tight 64 KiB bound.
 	"filesystem.downloaded": true,
+	// filesystem.preview_data (contract 1.11.0, ADR 0029) is the seventh, response
+	// direction only, and the bound does not move: `data` is at most one 512 KiB
+	// chunk (MaxPreviewDataBase64 characters). The preview requests and the small
+	// preview responses stay on 64 KiB.
+	"filesystem.preview_data": true,
 }
+
+// Binary preview transport constants (contract 1.11.0, ADR 0029 §5). They mirror
+// filesystem-preview-*.schema.json: chunk_size is a const, chunk_count and index
+// are bounded by MaxPreviewChunks, and data by MaxPreviewDataBase64.
+const (
+	PreviewChunkSize     = 512 * 1024
+	MaxPreviewChunks     = 32
+	MaxPreviewDataBase64 = 699052 // base64 length of PreviewChunkSize bytes
+	MaxPreviewSize       = MaxPreviewChunks * PreviewChunkSize
+)
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "filesystem.download": true, "filesystem.downloaded": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "filesystem.download": true, "filesystem.downloaded": true, "filesystem.preview_open": true, "filesystem.preview_opened": true, "filesystem.preview_chunk": true, "filesystem.preview_data": true, "filesystem.preview_close": true, "filesystem.preview_closed": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -66,6 +81,13 @@ type Envelope struct {
 }
 
 func DecodeControl(data []byte) (Envelope, error) {
+	return decodeControlWith(data, allowedTypes)
+}
+
+// decodeControlWith is DecodeControl against a given type vocabulary. It exists so
+// a test can decode with a frozen older vocabulary and show what an older daemon
+// does with a newer type (ADR 0029 §9); production always passes allowedTypes.
+func decodeControlWith(data []byte, types map[string]bool) (Envelope, error) {
 	// Two-stage bound, mirroring backend/app/protocol/codec.py: refuse an absurd
 	// frame before parsing it, then — once the type is known — hold everything
 	// except the large types to the tight 64 KiB control limit. Until image drop
@@ -91,7 +113,7 @@ func DecodeControl(data []byte) (Envelope, error) {
 	if env.Version != 1 {
 		return Envelope{}, errors.New("PROTOCOL_VERSION_UNSUPPORTED")
 	}
-	if !allowedTypes[env.Type] {
+	if !types[env.Type] {
 		return Envelope{}, errors.New("MESSAGE_TYPE_UNSUPPORTED")
 	}
 	// Stage two of the bound: the wider ceiling belongs to the large types only,
@@ -276,6 +298,11 @@ type registerFields struct {
 	// upload flag: those say what may be written into this machine, this one says
 	// what may be read out of it. Absent means "no", same as the other two.
 	FileDownload *bool `json:"file_download,omitempty"`
+	// BinaryPreview reports that this node serves read-only binary preview
+	// (contract 1.11.0, ADR 0029 §9). Unlike the booleans above it is const:true:
+	// a disabled daemon OMITS the key, because an older Central rejects the key
+	// itself, whatever its value, and does so silently. So false is invalid here.
+	BinaryPreview *bool `json:"binary_preview,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -729,11 +756,44 @@ func ValidateControl(raw []byte) error {
 			!validRelPath(p.Path) {
 			return errors.New("INVALID_MESSAGE")
 		}
+	case "filesystem.preview_open":
+		// Same two fields as filesystem.read, and strictUnmarshal refuses anything
+		// else: no mime/kind (the daemon sniffs), no raw/encoding, no offset/length/
+		// range, no disposition/filename, no password (ADR 0029 §5, plan/31/02 §1).
+		var p fsReadFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!validRelPath(p.Path) {
+			return errors.New("INVALID_MESSAGE")
+		}
 	case "filesystem.downloaded":
 		var p fsDownloadedFields
 		if strictUnmarshal(env.Payload, &p) != nil || !validRelPath(p.Path) ||
 			p.Size < 0 || p.Size > MaxDownloadBytes ||
 			!validTimestamp(p.ModifiedAt) || !validStoreData(p.Data) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.preview_chunk":
+		var p previewChunkFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!ValidPreviewID(p.PreviewID) || !validChunkIndex(p.Index) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.preview_close":
+		var p previewCloseFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!ValidPreviewID(p.PreviewID) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.preview_opened":
+		if !validatePreviewOpened(env.Payload) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.preview_data":
+		if !validatePreviewData(env) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.preview_closed":
+		if !validatePreviewClosed(env) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "tunnel.open":
@@ -793,7 +853,8 @@ func ValidateControl(raw []byte) error {
 		if strictUnmarshal(env.Payload, &p) != nil ||
 			p.Name == "" || p.Hostname == "" || p.OS == "" || p.OSVersion == "" ||
 			p.DaemonVersion == "" || p.RunUser == "" || !validArch(p.Architecture) ||
-			!validRuntimes(p.Runtimes) || !validTunnelReport(p.Tunnel) {
+			!validRuntimes(p.Runtimes) || !validTunnelReport(p.Tunnel) ||
+			!validConstTrue(env.Payload, "binary_preview", p.BinaryPreview) {
 			return errors.New("INVALID_MESSAGE")
 		}
 		for _, w := range p.WorkspaceRoots {

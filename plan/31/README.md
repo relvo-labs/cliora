@@ -1,12 +1,13 @@
 # Cliora 唯讀二進位預覽：圖片與 PDF（含 Viewer）
 
-版本：**v0.2（提案，僅設計）**。v0.1 = `c7b85c5`；v0.2 回應該版的獨立設計審查（BLOCKED），各項處置見 `09-…md` §6
+版本：**v0.6（ADR 已核准，實作中）**。v0.1 = `c7b85c5`；v0.2–v0.5 回應四次獨立設計審查，各項處置見 `09-…md` §6、§7；
+2026-09-27 產品負責人核准 ADR 0029 §7 與 OD-1…OD-11 全部建議預設（`01-…md` §6.1）。
 議題：#77。基準：master `157efe3178999a8c35b34f55ee183d47842c63ec`。
-決策文件：[`docs/adr/0029-read-only-binary-preview.md`](../../docs/adr/0029-read-only-binary-preview.md)（`proposed`）。
+決策文件：[`docs/adr/0029-read-only-binary-preview.md`](../../docs/adr/0029-read-only-binary-preview.md)（**`accepted`，2026-09-27**）。
 Ticket 前綴 `BP-`（**B**inary **P**review）。開放測量為 `BP-OM-*`，產品決策為 `OD-*`。
 
-> **本目錄只是規劃，不等於已上線**（#77 驗收末項）。截至本版，
-> `frontend/`、`backend/`、`daemon/`、`contracts/` 沒有任何一行為本功能改動。
+> **本目錄是規劃，不等於已上線**（#77 驗收末項）。實作進度只以 `09-…md` §1 為準；
+> Central flag 預設關閉，在 `BP-11` 之前沒有任何使用者看得到這個功能。
 
 ## 為什麼是 `plan/31` 而不是 `plan/30`
 
@@ -28,9 +29,9 @@ migration `0021`、`FR-FILE-011` 與 `node-register.file_download`。
 | Migration | `0021_node_file_download` | **`0022_node_binary_preview`**（提案） |
 | Ticket 前綴 | `FD-` | **`BP-`** |
 
-**條件式編號**：若 #71 沒有先合併，上表右欄在合併當下一律往前挪一號
-（ADR 0028、`plan/30`、v1.10.0、`0021`、`FR-FILE-011`）；語意不變。
-`BP-01` 的第一個驗收項就是「合併前重新核對 master 與 #71 的狀態」。
+**編號定案（2026-09-27，`BP-01`）**：#71 仍開啟、未合併。依協調者指示**不重排**，右欄維持原號；
+master 上因此留有空號：ADR 0028、契約 v1.10.0、migration `0021`（`0022` 的 `down_revision` 暫接 `0020`）、
+`FR-FILE-011`、`FR-CONN-006.AC-12`。兩者之中**後合併**的一方負責接上 `down_revision`、CHANGELOG 次序與 census。
 
 ## 這一期最重要的一句話
 

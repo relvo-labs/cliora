@@ -53,6 +53,11 @@ class NodeConnection:
     last_metric_persist: float | None = None
     # Correlation table: request_id -> Future resolved by the daemon's response.
     pending: dict[str, asyncio.Future[ControlMessage]] = field(default_factory=dict)
+    # Whether the registration that opened THIS connection reported binary_preview
+    # (ADR 0029 §9). Per connection on purpose: a daemon that reconnects downgraded
+    # starts from False, and the bit disappears with the socket. This, not the
+    # persisted `nodes.binary_preview` column, is what gates a preview request.
+    binary_preview: bool = False
 
 
 def _request_frame(type_: str, node_id: uuid.UUID, request_id: str, payload: dict[str, Any]) -> str:
@@ -184,6 +189,19 @@ class NodeConnectionRegistry:
 
     def is_connected(self, node_id: uuid.UUID) -> bool:
         return node_id in self._connections
+
+    def set_binary_preview(self, connection: NodeConnection, value: bool) -> None:
+        """Record what this connection's node.register reported. Written on the
+        connection object, so a late write for a superseded socket cannot switch a
+        newer connection on."""
+        connection.binary_preview = value
+
+    def binary_preview(self, node_id: uuid.UUID) -> bool:
+        """The live gate: True only while the current connection's registration
+        reported binary_preview. An old daemon never reports it, so it is never sent
+        a filesystem.preview_* frame it would silently drop."""
+        connection = self._connections.get(node_id)
+        return connection is not None and connection.binary_preview
 
     @property
     def connection_count(self) -> int:

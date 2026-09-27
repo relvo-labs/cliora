@@ -27755,6 +27755,816 @@
       ]
     },
     {
+      "id": "LNK-FR-FILE-012-AC-01-PLANNED-BY",
+      "from": "FR-FILE-012.AC-01",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-01-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-01",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §7 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-01-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-01",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/files.py"
+      },
+      "role": "primary",
+      "assertion": "The route requires file.browse and FileRelayService resolves file-browse scope, which refuses shell sessions.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-01-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-01",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_files_binary_preview_api.py::test_roles_matrix"
+      },
+      "role": "primary",
+      "assertion": "Viewer, Developer and Admin preview; a user without file.browse and a shell session are refused.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-02-PLANNED-BY",
+      "from": "FR-FILE-012.AC-02",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/03-daemon.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-02-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-02",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §2 fixes this rule of the read-only binary preview.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-02-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-02",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/preview_image.go"
+      },
+      "role": "primary",
+      "assertion": "The daemon sniffs the type from magic bytes; the wire mime enum is the allowlist.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-02-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-02",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/preview_test.go#TestPreviewAllowlistIsClosed"
+      },
+      "role": "primary",
+      "assertion": "SVG, BMP, TIFF, HEIC, ZIP, text and HTML are unsupported_type; content overrules the extension.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-03-PLANNED-BY",
+      "from": "FR-FILE-012.AC-03",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/03-daemon.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-03-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-03",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §3, §7 fixes this rule of the read-only binary preview.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-03-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-03",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/preview.go"
+      },
+      "role": "primary",
+      "assertion": "PreviewOpen calls the shared SensitiveClassification on the request path and on the fd resolved name.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-03-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-03",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/preview_test.go#TestPreviewUsesSameSensitivePolicyTwice"
+      },
+      "role": "primary",
+      "assertion": "Sensitive names and an in-root symlink to .env are FILE_DENIED with the shared policy reason.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-04-PLANNED-BY",
+      "from": "FR-FILE-012.AC-04",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/03-daemon.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-04-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-04",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §4 fixes this rule of the read-only binary preview.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-05-PLANNED-BY",
+      "from": "FR-FILE-012.AC-05",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/03-daemon.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-05-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-05",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §3, §4 fixes this rule of the read-only binary preview.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-05-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-05",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/preview_image.go"
+      },
+      "role": "primary",
+      "assertion": "Header and marker walks plus the PDF envelope check refuse malformed and over-budget files before transfer.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-05-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-05",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/preview_formats_test.go#TestPreviewPNGAncillaryBudgetBoundary"
+      },
+      "role": "primary",
+      "assertion": "Envelope and D15 budget boundaries refuse before any byte is sent, inflating nothing when the compressed caps are exceeded.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-06-PLANNED-BY",
+      "from": "FR-FILE-012.AC-06",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-06-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-06",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §2, §11 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-PLANNED-BY",
+      "from": "FR-FILE-012.AC-07",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-07",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §12 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-08-PLANNED-BY",
+      "from": "FR-FILE-012.AC-08",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-08-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-08",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §6, §11, §16 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-09-PLANNED-BY",
+      "from": "FR-FILE-012.AC-09",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-09-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-09",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §5, §6, §14 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-PLANNED-BY",
+      "from": "FR-FILE-012.AC-10",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-10",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §14 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-11-PLANNED-BY",
+      "from": "FR-FILE-012.AC-11",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-11-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-11",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §9 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-11-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-11",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/files.py"
+      },
+      "role": "primary",
+      "assertion": "binary_preview_target refuses FILE_PREVIEW_UNSUPPORTED_NODE unless the live registration reported the capability, before any frame.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-11-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-11",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_files_binary_preview_api.py::test_old_daemon_is_never_asked"
+      },
+      "role": "primary",
+      "assertion": "A node whose registration lacks binary_preview is refused 409 and receives no frame.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-12-PLANNED-BY",
+      "from": "FR-FILE-012.AC-12",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-12-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-12",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §9 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-12-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-12",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/api/http/schemas.py"
+      },
+      "role": "primary",
+      "assertion": "can_preview_binary composes the rollout flag, the live registration and file-browse scope on every session response.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-12-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-12",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_node_register_binary_preview.py::test_reconnect_flips_gate_and_capability"
+      },
+      "role": "primary",
+      "assertion": "Reconnecting with the field omitted flips the capability and the endpoint off together, and back on.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-13-PLANNED-BY",
+      "from": "FR-FILE-012.AC-13",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-13-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-13",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §10 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-13-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-13",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/services/files.py"
+      },
+      "role": "primary",
+      "assertion": "The route commits a sensitive denial before raising; success is audited on its own session with kind, mime and size_bytes.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-13-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-13",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/db/test_files_binary_preview_api.py::test_success_audit_has_no_path"
+      },
+      "role": "primary",
+      "assertion": "Success metadata has kind, mime, size_bytes and only a correlation key; no path, filename, extension or canary fragment.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-14-PLANNED-BY",
+      "from": "FR-FILE-012.AC-14",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-14-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-14",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §4, §15 fixes this rule of the read-only binary preview.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-15-PLANNED-BY",
+      "from": "FR-FILE-012.AC-15",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-15-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-15",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §11, §12 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-PLANNED-BY",
+      "from": "FR-FILE-012.AC-16",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/05-frontend.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for this criterion (plan/31).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-SPECIFIED-BY",
+      "from": "FR-FILE-012.AC-16",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §4, §12 fixes this rule of the read-only binary preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-12-PLANNED-BY",
+      "from": "FR-CONN-006.AC-12",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/30/01-decisions-and-governance.md"
+      },
+      "role": "primary",
+      "assertion": "Plan/30 names the 20-second download relay budget.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-12-SPECIFIED-BY",
+      "from": "FR-CONN-006.AC-12",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0028-workspace-file-download.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0028 specifies the bounded download relay.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-12-IMPLEMENTED-BY",
+      "from": "FR-CONN-006.AC-12",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/settings.py"
+      },
+      "role": "primary",
+      "assertion": "file_download_timeout_seconds is 20 seconds.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-12-VERIFIED-BY",
+      "from": "FR-CONN-006.AC-12",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_relay_timeouts.py::test_every_relay_budget_is_published"
+      },
+      "role": "primary",
+      "assertion": "The published download budget matches the setting.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-13-PLANNED-BY",
+      "from": "FR-CONN-006.AC-13",
+      "type": "planned_by",
+      "target": {
+        "kind": "plan",
+        "locator": "plan/31/04-central-and-edge.md"
+      },
+      "role": "primary",
+      "assertion": "Delivery work package for the preview relay budgets (plan/31 BP-04 §6).",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-13-SPECIFIED-BY",
+      "from": "FR-CONN-006.AC-13",
+      "type": "specified_by",
+      "target": {
+        "kind": "adr",
+        "locator": "docs/adr/0029-read-only-binary-preview.md"
+      },
+      "role": "primary",
+      "assertion": "ADR 0029 §4 fixes the 15 s open, 10 s per-chunk and 60 s total preview budgets.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-13-IMPLEMENTED-BY",
+      "from": "FR-CONN-006.AC-13",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "backend/app/settings.py"
+      },
+      "role": "primary",
+      "assertion": "file_preview_open/chunk timeouts and file_preview_total_seconds are the published 15/10/60 s budgets.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-CONN-006-AC-13-VERIFIED-BY",
+      "from": "FR-CONN-006.AC-13",
+      "type": "verified_by",
+      "target": {
+        "kind": "pytest",
+        "locator": "backend/tests/test_relay_timeouts.py::test_the_binary_preview_transfer_has_a_total_budget"
+      },
+      "role": "primary",
+      "assertion": "The three binary preview budgets equal the PRD numbers.",
+      "owner": "central",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
       "id": "LNK-NFR-006-AC-01-SPECIFIED-BY",
       "from": "NFR-006.AC-01",
       "type": "specified_by",

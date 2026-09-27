@@ -3,7 +3,9 @@
 ## 1. ADR 0029
 
 [`docs/adr/0029-read-only-binary-preview.md`](../../docs/adr/0029-read-only-binary-preview.md)，
-狀態 `proposed`。轉為 `accepted` 需要三件事，缺一不可：
+狀態 **`accepted`（2026-09-27）**：第 1、2 項已於 2026-09-27 由產品負責人書面核准（§6.1）。
+第 3 項改為**發布閘門**：`BP-08` 判定為 `FAIL` 時 ADR 重新開啟，`BP-11` 在取得非 `FAIL` 判定前不得開始。
+原本的三項條件如下：
 
 1. 產品負責人對 §7（`file.browse` 語意變寬，含 Viewer）**書面簽核**。#77 已表達意向，
    但 #77 自己要求「需在版本化 PRD、RBAC、審計與部署說明正式記錄；不應默默沿用舊規則」。
@@ -137,6 +139,26 @@
 | OD-10 | 格式清單 | 目前五種；是否加 HEIC／AVIF／SVG | **只有五種；HEIC／AVIF／SVG 都不加** | SVG 是可帶腳本的文件，不是點陣圖。HEIC 在 Android Chrome 無原生解碼，加了等於只在 iOS 能用。AVIF 的解碼器攻擊面較新。任何新增都要修訂 ADR。 |
 | OD-11 | Railway（或任何 edge）的 log／暫存行為若無法證實（`BP-OM-06`／`BP-OM-10`） | (a) 該拓樸的 Central flag **保持關閉**，直到兩項都證實：沒有 body 或回應落地、log 沒有路徑；(b) 在 canary log 搜尋為零之後開啟，並把「不落地」限定為 Cliora 經營的元件、點名該 edge 不在內；(c) 不管 edge，照常宣稱 | **(a) 保持關閉** | `FR-FILE-012.AC-09` 是端到端的「不落地」。(b) 會在一個沒有證實的 edge 上出貨，直接違反它，所以 (b) **不是發布時的選擇**：必須先由產品負責人明確修訂 AC-09，寫明哪個元件不在保證內（`BP-01` 的修訂流程），之後才可以選。(c) 違反 ADR §6 的發布閘門，不是選項。代價：Railway 部署在量測完成前看不到圖片／PDF 預覽，文字預覽不受影響。 |
 
+### 6.1 決策登記（2026-09-27 核准）
+
+產品負責人於 **2026-09-27** 書面核准下列答案（經 #77 的協調者轉達）：**OD-1…OD-11 全部採用上表的建議預設，
+沒有任何一題改答**，同時簽核 ADR 0029 §7 的 `file.browse` 語意變寬（含 Viewer）。因為答案與建議預設相同，
+ADR 0029 的決策內容**不需回填修改**，只把「待決」字樣改為「已核准」。
+
+| # | 核准的答案 | 仍待量測才定案的數字或前提 |
+|---|---|---|
+| OD-1 | (a) GIF／APNG／動態 WebP 只顯示首幀 | — |
+| OD-2 | 圖 8 MiB、16 777 216 px、邊長 8192；PDF 16 MiB、200 頁 | 像素上限待 `BP-OM-01`（iOS canvas 實測）；實測若推翻，需再回到產品負責人 |
+| OD-3 | (a) v1 不做 PDF 文字層 | release note 與畫面要寫明螢幕報讀器的代價 |
+| OD-4 | (a) PDF 內連結全部無效 | — |
+| OD-5 | Central flag 預設**關**；節點開關預設**開** | — |
+| OD-6 | (a) 成功預覽留 `file.binary_preview`，只記 `kind`／`mime`／`size_bytes` | — |
+| OD-7 | (a) 手機與桌面共用同一渲染器 | — |
+| OD-8 | (a) 需要密碼的 PDF 拒絕且不提示；只有權限密碼的照常唯讀顯示 | `BP-07` E2E 驗證 PDF.js 的實際行為 |
+| OD-9 | (a) PDF.js 現代版 | 待 `BP-OM-07`；量測若顯示支援清單內的裝置跑不動，需再回到產品負責人改 (b) |
+| OD-10 | 只有五種格式；HEIC／AVIF／SVG 都不加 | — |
+| OD-11 | (a) 未證實的拓樸（含 Railway）flag 保持關閉 | `BP-OM-06`／`BP-OM-10` 是發布閘門 |
+
 **不是開放題、但需要簽核的一項：** Viewer 包含在內。#77 已明確表達，
 這裡要的是 PRD `FR-AUTH-002.AC-11` 註記（§2.2）與 release note 第一段的簽核，不是再討論一次。
 
@@ -156,12 +178,12 @@
 
 **驗收清單：**
 
-- [ ] ADR 0029 狀態 `accepted`，日期與簽核人寫在 ADR 標頭。
-- [ ] OD-1…OD-11 每題都有書面答案，並回填 ADR 0029 相關段落（若答案不是建議預設）。
-- [ ] PRD `FR-FILE-012`（16 條）、`FR-FILE-004` 註記、`FR-AUTH-002.AC-11` 註記、`FR-CONN-006.AC-13`。
-- [ ] `research/tech.md` §11.6 末段修訂與新 §11.10。
-- [ ] generator 修改並重新產生 `docs/permission-matrix.md`；`--check` 綠。
-- [ ] `requirements.json`／`links.json`／census；`make traceability` 五階段綠。
-- [ ] 本計畫的條件式編號已依 #71 實際狀態定案，README 對照表更新。
+- [x] ADR 0029 狀態 `accepted`，日期與簽核人寫在 ADR 標頭（2026-09-27，產品負責人）。
+- [x] OD-1…OD-11 每題都有書面答案（§6.1，全部為建議預設，ADR 0029 不需回填決策內容）。
+- [x] PRD `FR-FILE-012`（16 條）、`FR-FILE-004` 註記、`FR-AUTH-002.AC-11` 註記、`FR-CONN-006.AC-13`。
+- [x] `research/tech.md` §11.6 末段修訂與新 §11.10。
+- [x] generator 修改並重新產生 `docs/permission-matrix.md`；`--check` 綠。
+- [x] `requirements.json`／`links.json`／census；`make traceability` 五階段綠（見 `09-…md` §1 的實作偏差：implemented_by／verified_by 隨實作階段補上）。
+- [x] 條件式編號：#71 於 2026-09-27 仍未合併；依協調者指示**不重排**，維持 0029／v1.11.0／`0022`／`FR-FILE-012`／`FR-CONN-006.AC-13`，並記錄空號（README）。
 
 **不在範圍：** 任何 schema、程式、fixture；generator 既有缺口（§4 觀察）的修補。

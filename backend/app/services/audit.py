@@ -83,6 +83,12 @@ FILE_UPLOAD = "file.upload"
 # number written under it is stripped from every audit API response and nobody
 # would ever read it (see FORBIDDEN_METADATA_KEYS below).
 FILE_DOWNLOAD = "file.download"
+# --- Read-only binary preview (ADR 0029 §10, OD-6) ---
+# Recorded on success, unlike the text preview, because this is a deliberate widening
+# of what Viewers can see and "did Viewers use it, on which sessions" must be
+# answerable without a log that holds paths. Metadata is kind, mime and size_bytes
+# only: no path, no filename, no extension, no content. (`bytes` would be filtered.)
+FILE_BINARY_PREVIEW = "file.binary_preview"
 # --- P4: daemon update (SEC-006 item 8, ADR 0017) ---
 # Two actions, not one with a `phase` field: the request and the outcome can be
 # minutes apart and can be separated by a Central restart, so a filter for "which
@@ -149,6 +155,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         FILE_SENSITIVE_READ_DENIED,
         FILE_UPLOAD,
         FILE_DOWNLOAD,
+        FILE_BINARY_PREVIEW,
         DAEMON_UPDATE_STARTED,
         DAEMON_UPDATE_RESULT,
         AUTHZ_DENIED,

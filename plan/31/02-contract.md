@@ -53,9 +53,9 @@ Report-only：節點陳述姿態，平台不能選擇。
 所以停用的新 daemon 必須在 wire 上與舊 daemon 長得一樣。`const: true` 讓「送了 `false`」
 在三個消費端都是**無效訊息**，daemon 的錯誤會在共用 fixture 上變紅，而不是等到回退那天才被發現。
 
-**凍結的舊 schema：** `contracts/v1/compat/node-register.pre-1.11.schema.json` 是 1.10.0
-（或 #71 未合併時的 1.9.0）`node-register.schema.json` 的逐字複本，只給相容測試用，**永不修改**；
-檔頭註明來源 commit。
+**凍結的舊 schema：** `contracts/v1/compat/node-register.pre-1.11.schema.json` 是 1.9.0
+`node-register.schema.json` 的逐字複本，只給相容測試用，**永不修改**；
+測試在記憶體中只加上 #71 的 `file_download` 以模擬 1.10.0 Central。檔頭註明來源 commit。
 
 ## 3. 錯誤碼（加進 envelope 的 `error.code` enum，`control-envelope.schema.json:18`）
 

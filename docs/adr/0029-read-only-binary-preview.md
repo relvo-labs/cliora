@@ -1,6 +1,12 @@
 # ADR 0029 — Read-only binary preview: images and PDF, rendered in the console, never handed over
 
-- Status: **proposed** (design only, 2026-09-27; nothing in this ADR is implemented)
+- Status: **accepted** (2026-09-27). The product owner approved, in writing on 2026-09-27,
+  the widening of `file.browse` in §7 (Viewer included) and **all** recommended defaults
+  OD-1 … OD-11 in `plan/31/01-decisions-and-governance.md` §6, unchanged. No decision in
+  this ADR was altered by the approval. `BP-08`'s security review is still required before
+  release: a `FAIL` verdict reopens this ADR, and `BP-11` may not start without a non-`FAIL`
+  verdict (plan/31/01 §1). Implementation is tracked in `plan/31/09-implementation-status.md`.
+- Previously: **proposed** (design only, 2026-09-27).
 - Revised a third time: 2026-09-27, after the review of `653ff61` (BLOCKED). Changes:
   expanded-byte budget for compressed PNG metadata and length budgets for other formats'
   metadata (§3, §4, T3).
@@ -23,13 +29,14 @@
 - Related: ADR 0014 (`workspace.Root` confinement, reused unchanged), ADR 0016 (RBAC is
   one table; resource scope), ADR 0017 (CSP with no external origin), ADR 0024 / 0026
   (report-only node switches; "Central holds no byte"), ADR 0027 (tokens; no literal
-  colour), ADR 0028 **as proposed in open PR #71** (download; §16 below keeps the two
+  colour), ADR 0028 (merged in PR #71) (download; §16 below keeps the two
   separate)
-- Requirements (proposed, not registered): `FR-FILE-012` (new), amendments listed in
-  `plan/31/01-decisions-and-governance.md` §2
-- Contract (proposed): v1.11.0, compatible. **Conditional numbering**: PR #71 claims
-  v1.10.0, migration `0021`, `FR-FILE-011` and `plan/30/`. If #71 is not merged first,
-  every number here shifts down by one at merge time; nothing else changes.
+- Requirements: `FR-FILE-012` (new, registered 2026-09-27), plus the amendments listed in
+  `plan/31/01-decisions-and-governance.md` §2 (`FR-FILE-004` note, `FR-AUTH-002.AC-11` note,
+  `FR-CONN-006.AC-13`)
+- Contract: v1.11.0, compatible. PR #71 merged first with ADR 0028, v1.10.0,
+  migration `0021`, `FR-FILE-011`, and `FR-CONN-006.AC-12`. This work keeps ADR 0029,
+  v1.11.0, migration `0022` (revising `0021`), `FR-FILE-012`, and `FR-CONN-006.AC-13`.
 - Plan: `plan/31/` (not `plan/30/`, which PR #71 occupies)
 
 ## Context
@@ -108,7 +115,7 @@ a routing hint, choosing which endpoint to ask; the daemon's verdict overrules i
 | image | `image/png` | `89 50 4E 47 0D 0A 1A 0A` | Static. APNG is accepted as PNG and shows its **default image only** (§11). |
 | image | `image/jpeg` | `FF D8 FF` | Static. EXIF orientation is applied at decode. Metadata is not shown. |
 | image | `image/webp` | `RIFF????WEBP` | Static. Animated WebP shows its first frame only. |
-| image | `image/gif` | `GIF87a` / `GIF89a` | **First frame only**, never animated. Pending product decision OD-1, and this is the recommended default. |
+| image | `image/gif` | `GIF87a` / `GIF89a` | **First frame only**, never animated (OD-1, recommended default, approved 2026-09-27). |
 | pdf | `application/pdf` | `%PDF-` | Paged, canvas-rendered, no active content (§12). |
 
 Explicitly **not** in v1, and refused as `FILE_PREVIEW_UNSUPPORTED` / `unsupported_type`:
@@ -203,7 +210,7 @@ dependency (`daemon/go.mod`) and this ADR adds none to the daemon.
 All limits are daemon config with these defaults. The browser re-checks the ones it can
 see, as defence in depth.
 
-| Limit | Default (recommended, OD-2) | Enforced by | On breach |
+| Limit | Default (OD-2, recommended default approved 2026-09-27; still subject to `BP-OM-01`) | Enforced by | On breach |
 |---|---:|---|---|
 | Image file size | 8 MiB | daemon (fd size, before the full read) | `FILE_TOO_LARGE` + size + limit |
 | Image pixels (w × h) | 16 777 216 (= 4096²) | daemon from header; browser before decode | `FILE_PREVIEW_LIMIT` / `pixels` |
@@ -215,7 +222,7 @@ see, as defence in depth.
 | PDF file size | 16 MiB | daemon | `FILE_TOO_LARGE` |
 | PDF structure | `%PDF-` at offset 0; `%%EOF` in the last 1 KiB | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
 | PDF that needs a password to open | PDF.js asks for a password (`onPassword` / `PasswordException`) | **browser only**; no prompt is shown, and the load is destroyed | frontend state `pdf_password_required` |
-| PDF encrypted with an empty user password (permissions only) | opens without a password | not refused (OD-8 recommended default) | renders view-only |
+| PDF encrypted with an empty user password (permissions only) | opens without a password | not refused (OD-8 (a), approved 2026-09-27) | renders view-only |
 | PDF pages | 200 | **browser** (`numPages` before any page renders) | frontend state `pdf_too_many_pages` |
 | PDF page render | canvas ≤ 16 777 216 px (scale clamped); 10 s per page | browser | `render_failed`, page-scoped |
 | Transfer budget | 60 s total; 10 s per chunk; 15 s open | Central | `REQUEST_TIMEOUT` (stream aborted) |
@@ -405,7 +412,7 @@ deployment topology that ships, meaning the compose/nginx deployment and Railway
    HTTP and deploy logs. Every search must return zero hits.
 
 **Until both are proven for a topology, the Central flag stays OFF on that topology**
-(OD-11's recommended default). That includes Railway, whose own edge we do not configure,
+(OD-11 (a), approved 2026-09-27). That includes Railway, whose own edge we do not configure,
 and any other edge in front of Central. Turning the flag on with a scoped claim instead is
 not a release-time choice. It requires the product owner to **change `FR-FILE-012.AC-09`
 explicitly**, recording which component is outside the no-persistence guarantee.
@@ -516,15 +523,15 @@ an old one.
   Rolling back Central with enabled new daemons still connected is the silent-staleness
   failure above, and the runbook says so. Tests that make this rollback checkable:
   `TestRegisterOmitsBinaryPreviewWhenDisabled` (daemon); a compat test in `BP-02` that
-  validates a disabled daemon's register payload against a **frozen copy of the pre-1.11
-  `node-register` schema**, which must be accepted, and an enabled one, which must be
-  rejected; and a staging rollback drill (`plan/31/08-device-matrix-and-rollout.md` `BP-11` §2).
+  validates a disabled daemon's register payload against the **1.10.0
+  `node-register` surface** derived from the frozen 1.9.0 copy plus `file_download`,
+  which must be accepted, and an enabled one, which must be rejected; and a staging rollback drill (`plan/31/08-device-matrix-and-rollout.md` `BP-11` §2).
 
 ### 10. Audit and observability: no path, no content
 
 - **Sensitive denial**: the existing `file.sensitive_read_denied` with `{classification, extension}`
   (`services/files.py:482-523`), unchanged and shared.
-- **Success** (OD-6, recommended **yes**): a new audit action `file.binary_preview` with
+- **Success** (OD-6 (a), approved 2026-09-27: **yes**): a new audit action `file.binary_preview` with
   caller-supplied metadata `{kind, mime, size_bytes}` plus the usual user, session and node
   ids. `AuditService.record` adds the correlation key `request_id`, or `source` when there
   is none (`audit.py:196-201`), and that key is allowed. There is **no path, no filename,
@@ -699,7 +706,7 @@ between sessions.
 | T11 | Cross-session leakage | a late response for session A painted while B is shown; a `preview_id` reused across sessions | exact-session request and late-drop rule; handle bound to session and connection; the id never reaches the browser (§8, §5) | — | switch sessions mid-transfer: A's bytes are never painted; forged cross-session chunk → `FILE_PREVIEW_EXPIRED` |
 | T12 | Viewer privilege expansion beyond the grant | Viewer uses preview as download; Viewer reaches a shell session's files; preview enables download | no save affordance; shell refused (`authz.py:163-164`); separate switches; the widening recorded in PRD, release note and matrix (§7, §16) | screenshots and devtools (not DRM) | a role matrix for Viewer/Developer/Admin × allowed/denied; the cross-switch test from §16 |
 | T13 | DoS on node, Central or WebSocket | parallel opens; slowloris clients; huge PDFs; terminal starvation | concurrency limits, snapshot memory cap, TTL, 512 KiB chunks, worker pool off the dispatch loop, transfer budget (§4, §5, §15) | a legitimate user who hits the limits sees `NODE_BUSY` | a concurrency test (N+1 → 429 / `NODE_BUSY`); a slow reader aborted at 60 s; terminal echo latency under load (`BP-OM-05`) |
-| T14 | Old daemon or old Central mismatch, including rollback | new Central sends an unknown type; an enabled new daemon registers with an old or rolled-back Central, and its registration is silently skipped | gate on the live registration; deployment order; the field is omitted when disabled (`const: true`), so a disabled daemon registers with an old Central (§9) | an operator rolling Central back without disabling or rolling back daemons first | a new Central with a fake old daemon never sends `preview_*`; the frozen pre-1.11 schema accepts a disabled daemon's register and rejects an enabled one; `false` is invalid; staging rollback drill |
+| T14 | Old daemon or old Central mismatch, including rollback | new Central sends an unknown type; an enabled new daemon registers with an old or rolled-back Central, and its registration is silently skipped | gate on the live registration; deployment order; the field is omitted when disabled (`const: true`), so a disabled daemon registers with an old Central (§9) | an operator rolling Central back without disabling or rolling back daemons first | a new Central with a fake old daemon never sends `preview_*`; the 1.10.0 schema derived from the frozen 1.9.0 copy accepts a disabled daemon's register and rejects an enabled one; `false` is invalid; staging rollback drill |
 | T15 | Leaking a path or content through telemetry | logs, metrics labels, audit, error messages | ids, kind and counts only; `ApiError` messages are fixed strings (§10) | — | a log-capture test asserts that no path or filename substring appears for a request on `secret-project/plan.pdf` |
 | T16 | Silent degradation to download | a fallback that sends the file when rendering fails | no `Content-Disposition`; no save UI; the denial pane has no "download instead" for unsafe refusals (§6, §16) | — | a frontend test: on a `render_failed`/`LIMIT`/`INVALID` state no `<a download>` exists and no blob URL was created |
 | T17 | Workspace path written to an access log | `?path=` in a URL recorded by nginx `$request`, uvicorn's access log, the Railway edge or a future proxy | the path travels in a POST body; the dedicated nginx location logs `$request_method $uri` only; release gate on `BP-OM-06` / `BP-OM-10` (§6) | the Railway edge, until measured; the **pre-existing** GET file routes (`/content`, `/tree`, `/search`) still log paths and keywords (Context) | canary path with a distinctive marker, searched raw and percent-encoded in both nginx logs, uvicorn/Central stdout, the Central JSON log, the audit table and Railway's logs: zero hits |
@@ -707,7 +714,7 @@ between sessions.
 ## Consequences
 
 - Phones and desktops can view the five allowlisted types without leaving the console.
-  Whether desktop is included is OD-7; the recommendation is yes, through one renderer.
+  Desktop is included (OD-7 (a), approved 2026-09-27), through one renderer.
 - **What `file.browse` authorises widens, including for Viewer.** This must be the first
   paragraph of the release note and must appear in the generated permission matrix. It
   cannot be a footnote.
@@ -760,5 +767,7 @@ between sessions.
 Product decisions, each with a recommended default, are in
 `plan/31/01-decisions-and-governance.md` §6 (OD-1 … OD-11). Technical unknowns that must be
 measured before a default is final are `BP-OM-01 … BP-OM-11` in
-`plan/31/09-implementation-status.md`. This ADR moves to `accepted` only after the product
-owner signs off on §7 (the widening) and on the ODs, and after `BP-08`'s security review.
+`plan/31/09-implementation-status.md`. The product owner signed off on §7 (the widening)
+and on every OD's recommended default on 2026-09-27, which is what moved this ADR to
+`accepted`. `BP-08`'s security review remains a release gate; its verdict is recorded in
+`plan/31/09-implementation-status.md`, and a `FAIL` reopens this ADR.

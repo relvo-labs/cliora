@@ -1,5 +1,63 @@
 # Contract changelog
 
+## 1.11.0 — 2026-09-27 (compatible)
+
+- **Six new types and one additive report field** (`version` stays `1`):
+  `filesystem.preview_open` / `_opened`, `_chunk` / `_data`, `_close` / `_closed`, and
+  `node-register.binary_preview`. Read-only, in-console rendering of an allowlisted image or
+  PDF. See ADR 0029 and `plan/31`.
+- **`filesystem.read` is unchanged**, and `invalid/filesystem-read-with-raw.json` now pins
+  that it never grows a `raw` flag. It was already rejected by all three consumers
+  (`additionalProperties:false`); the fixture is a guard, not a change.
+- **The request can claim nothing.** `filesystem.preview_open` is `{session_id, path}`,
+  the same shape and path pattern as `filesystem.read`. There is no `mime`/`kind`/`format`
+  (the daemon decides the type from magic bytes), no `raw`/`encoding`/`mode`, no
+  `offset`/`length`/`range` (chunks are cut from a validated in-memory snapshot, never read
+  from the live file), no `disposition`/`filename` and no `password`. Chunks are addressed by
+  handle and index only. Pinned by `invalid/filesystem-preview-open-with-mime.json`,
+  `-with-range.json` and `-parent-escape.json`.
+- **The `mime` enum is the allowlist**: png, jpeg, webp, gif, pdf. SVG is refused by schema
+  (`invalid/filesystem-preview-opened-svg.json`). `kind` must agree with `mime`; an image
+  carries `width`/`height` (each 1–8192), a PDF carries neither
+  (`invalid/filesystem-preview-opened-pdf-with-size.json`). `chunk_size` is the constant
+  524288 and `chunk_count` is 1–32, so `size` is at most 16 MiB. What JSON Schema cannot say
+  (`chunk_count = ceil(size / chunk_size)`, `width × height ≤ 16 777 216`) the daemon
+  guarantees and Central re-checks.
+- **In-band refusals** (`success:false` + `{code, reason, size?, limit?}`) use
+  `FILE_PREVIEW_UNSUPPORTED`, `FILE_PREVIEW_INVALID`, `FILE_PREVIEW_LIMIT`, `FILE_DENIED`,
+  `FILE_NOT_FOUND`, `FILE_PERMISSION_DENIED` and `FILE_TOO_LARGE`. `reason` is a lowercase
+  classification (`^[a-z][a-z0-9_]{0,63}$`), so it cannot carry a path. Node-level refusals,
+  `FILE_PREVIEW_DISABLED`, `FILE_PREVIEW_EXPIRED` and `NODE_BUSY`, are `error` frames because
+  they say nothing about the file. Encryption is not a wire reason: the daemon makes no
+  encryption judgement (ADR 0029 §4, OD-8).
+- **`filesystem.preview_data` is the sixth type allowed the 8 MiB bound** (response
+  direction only; the other six are `entries`, `content`, `search_result`, `upload`,
+  `store`, `downloaded`). Its `data` is canonical standard-alphabet base64 of at most 512 KiB (699052
+  characters, never empty), so the bound does not move. The preview requests and the small
+  responses keep 64 KiB. `preview_data` and `preview_closed` must carry envelope
+  `success:true`.
+- **`binary_preview` is optional, `const: true`, and absent means "no"**. A disabled daemon
+  *omits* it rather than sending `false`, so that its registration is still accepted by an
+  older Central, whose strict schema rejects the key itself, silently. Unlike
+  `image_upload` / `file_upload`, `false` is invalid (`invalid/node-register-binary-preview-false.json`).
+  `contracts/v1/compat/node-register.pre-1.11.schema.json` is a frozen, digest-checked copy
+  of the 1.9.0 schema, and `backend/tests/test_contract_compat.py` proves both halves: the
+  old Central rejects an enabled daemon's register and accepts a disabled one's.
+- A Central must never send a `filesystem.preview_*` frame to a node whose live
+  registration did not report it, because older daemons drop unknown types without replying
+  (pinned in Go against a frozen copy of the 1.9.0 type vocabulary).
+- New error codes: `FILE_PREVIEW_UNSUPPORTED`, `FILE_PREVIEW_INVALID`, `FILE_PREVIEW_LIMIT`,
+  `FILE_PREVIEW_DISABLED`, `FILE_PREVIEW_EXPIRED`. Two further codes are Central-only and not
+  on the wire: `FILE_PREVIEW_UNSUPPORTED_NODE` (409) and `FILE_PREVIEW_BUSY` (429).
+- **The browser is neither producer nor consumer** of these frames — the bytes reach it as an
+  HTTP response body — but the TypeScript decoder validates all six, for the same reason as
+  every filesystem type since 1.6.0. Its control-frame bound stays 64 KiB.
+
+## 1.10.0 — 2026-09-16 (compatible)
+
+- Add `filesystem.download` and `filesystem.downloaded` for bounded workspace file download (ADR 0028, FR-FILE-011). The response carries at most 4 MiB of base64 file data under the existing 8 MiB large-frame ceiling; the request remains under 64 KiB.
+- Add optional `node-register.file_download` to report the node's independent download switch. Add `FILE_DOWNLOAD_DISABLED` to the wire error vocabulary. Download is authorized by `file.browse`, enforces the sensitive-file policy, and is delivered as `application/octet-stream` with `nosniff` and attachment disposition.
+
 ## 1.9.0 — 2026-08-03 (compatible)
 
 - **One new type pair and one additive report field** (`version` stays `1`): `filesystem.store` (Central → daemon), `filesystem.stored` (daemon → Central), and `node-register.file_upload`. Together they place one file, under a name the user chose, into a directory the user chose. See ADR 0026 and `plan/15`.

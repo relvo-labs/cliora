@@ -17,7 +17,7 @@ Two write paths exist, both gated on `file.upload`, which Viewer does not hold:
 The contrast is deliberate and is not a redundancy: a pasted screenshot does not
 need a name, and `requirements.txt`'s name is its entire meaning.
 
-One read path returns bytes rather than JSON:
+Two read paths return bytes rather than JSON; each has its own policy:
 
 * GET /download hands back the exact contents of one file (ADR 0028). It is gated
   on `file.browse` like the rest of this module, because a download is a read -
@@ -27,23 +27,29 @@ One read path returns bytes rather than JSON:
   sensitive file /content does. The response is always application/octet-stream
   with nosniff, so the platform never asks a browser to render node content
   inside the console's own origin.
+* POST /binary-preview streams an allowlisted image or PDF with a path in the
+  JSON body, under a separate rollout flag and live node capability (ADR 0029).
 """
 
 from __future__ import annotations
 
+import json
 import posixpath
 import uuid
 from typing import Any
 from urllib.parse import quote
 
+import anyio
 from fastapi import APIRouter, Depends, Query, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.types import Receive, Scope, Send
 
 from app.api.errors import ApiError
 from app.api.http.deps import require_action
 from app.db.engine import get_session
 from app.db.models import User
-from app.services.files import FileRelayService
+from app.services.files import BinaryPreviewDenial, BinaryPreviewStream, FileRelayService
 from app.services.rbac import FILE_BROWSE, FILE_UPLOAD
 from app.services.registry import NodeConnectionRegistry, get_node_registry
 
@@ -305,3 +311,105 @@ async def read_content(
     # A sensitive-read denial is audited inside read_file; commit that entry.
     await session.commit()
     return payload
+
+
+# --- Read-only binary preview (ADR 0029 §6, plan/31/04 §1) ---
+
+
+class BinaryPreviewResponse(StreamingResponse):
+    """The snapshot as `application/octet-stream`, pulled chunk by chunk from the node.
+
+    `__call__` makes cleanup unconditional. Starlette cancels the body on a client
+    disconnect, and an async generator cancelled before its first chunk never runs
+    its own `finally` — so the handle would stay open on the node until its TTL. The
+    shielded block below closes it either way.
+    """
+
+    def __init__(self, service: FileRelayService, stream: BinaryPreviewStream) -> None:
+        self._service = service
+        self._stream = stream
+        self._body = service.stream_binary_preview(stream)
+        super().__init__(
+            self._body, media_type="application/octet-stream", headers=stream.headers()
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.CancelScope(shield=True):
+                await self._body.aclose()
+                await self._service.abandon_binary_preview(self._stream)
+
+
+def _shape_error(message: str, http_status: int) -> ApiError:
+    return ApiError("INVALID_ARGUMENT", message, http_status)
+
+
+async def _preview_path(request: Request, limit: int) -> str:
+    """Step 5: the request must be `{"path": "<workspace-relative>"}` as JSON and
+    nothing else, and the URL must carry no query at all.
+
+    Refusing ANY query parameter is what makes "someone put the path back in the URL"
+    fail in CI rather than surface in an access log: every hop logs URLs, and the
+    body is the only place a path is not written down (ADR 0029 §6).
+    """
+    if request.url.query:
+        raise _shape_error("This endpoint takes no query parameters", status.HTTP_400_BAD_REQUEST)
+    content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
+    if content_type != "application/json":
+        raise _shape_error(
+            "The body must be application/json", status.HTTP_415_UNSUPPORTED_MEDIA_TYPE
+        )
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > limit:
+        raise _shape_error("The request body is too large", status.HTTP_413_CONTENT_TOO_LARGE)
+    body = b""
+    async for chunk in request.stream():
+        body += chunk
+        if len(body) > limit:
+            raise _shape_error("The request body is too large", status.HTTP_413_CONTENT_TOO_LARGE)
+    try:
+        parsed = json.loads(body)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _shape_error(
+            "The body is not valid JSON", status.HTTP_422_UNPROCESSABLE_CONTENT
+        ) from exc
+    if (
+        not isinstance(parsed, dict)
+        or set(parsed) != {"path"}
+        or not isinstance(parsed["path"], str)
+    ):
+        raise _shape_error(
+            'The body must be exactly {"path": "<workspace-relative path>"}',
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
+    return parsed["path"]
+
+
+@router.post("/binary-preview")
+async def binary_preview(
+    session_id: uuid.UUID,
+    request: Request,
+    user: User = Depends(require_action(FILE_BROWSE)),
+    session: AsyncSession = Depends(get_session),
+    registry: NodeConnectionRegistry = Depends(get_registry),
+) -> BinaryPreviewResponse:
+    """Show an allowlisted image or PDF in the console — never hand it over.
+
+    A POST for a read, on purpose: the workspace path travels in the body, so no URL
+    carries it and no access log records it (ADR 0029 §6). The order is fixed —
+    action, session scope (Viewer included, shell refused), node online, Central's
+    flag, the node's live capability, request shape, path, stream limit, open — so
+    an old daemon or a disabled flag is refused before a single frame is sent.
+    """
+    service = FileRelayService(session, registry=registry)
+    target = await service.binary_preview_target(actor=user, session_id=session_id)
+    path = await _preview_path(request, service.settings.file_preview_max_body_bytes)
+    result = await service.open_binary_preview(actor=user, target=target, path=path)
+    if isinstance(result, BinaryPreviewDenial):
+        # Commit FIRST: a sensitive denial's audit row was added to this session, and
+        # raising before the commit would discard it with the session (ADR 0029 §6).
+        await session.commit()
+        raise result.to_error()
+    return BinaryPreviewResponse(service, result)

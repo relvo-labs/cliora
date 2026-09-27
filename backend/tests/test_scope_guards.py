@@ -90,6 +90,11 @@ def test_scope_006_the_console_is_not_an_ide() -> None:
     anything that is already there. There is still no message that edits, renames
     or deletes — and after 2026-08-03 that is a product decision rather than a
     backlog item: those verbs belong to the CLI and the terminal.
+
+    Contract 1.11.0 (ADR 0029) adds six read-only preview messages. They open a
+    validated in-memory snapshot, pull it by chunk index and close it; none of them
+    carries a write, a path to save to, an offset into the live file, or anything
+    that edits. They show a file; they cannot save one.
     """
     filesystem = {name for name in _message_names() if name.startswith("filesystem-")}
     assert filesystem == {
@@ -102,6 +107,12 @@ def test_scope_006_the_console_is_not_an_ide() -> None:
         "filesystem-stored",
         "filesystem-download",
         "filesystem-downloaded",
+        "filesystem-preview-open",
+        "filesystem-preview-opened",
+        "filesystem-preview-chunk",
+        "filesystem-preview-data",
+        "filesystem-preview-close",
+        "filesystem-preview-closed",
     }
 
 
@@ -119,10 +130,15 @@ def test_scope_007_the_write_paths_are_both_additive() -> None:
     additive means the whole argument in ADR 0026 sec 3 needs redoing.
     """
     file_routes = {path for path in _route_paths() if "/files" in path}
+    # The binary preview is a READ expressed as POST, so that the workspace path
+    # travels in a body instead of a URL every proxy logs (ADR 0029 §6). It is not a
+    # write path: it is gated on file.browse, not file.upload, and it adds nothing.
+    read_as_post = ("POST", "/api/sessions/{session_id}/files/binary-preview")
+    assert read_as_post in mounted_routes()
     mutating = {
         (method, path)
         for method, path in mounted_routes()
-        if "/files" in path and method not in {"GET"}
+        if "/files" in path and method not in {"GET"} and (method, path) != read_as_post
     }
     assert file_routes, "the file surface disappeared; this guard is stale"
     assert mutating == {

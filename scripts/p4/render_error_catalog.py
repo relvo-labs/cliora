@@ -173,6 +173,18 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ("FILE_DOWNLOAD_DISABLED",),
     ),
     (
+        "Read-only binary preview",
+        (
+            "FILE_PREVIEW_UNSUPPORTED",
+            "FILE_PREVIEW_INVALID",
+            "FILE_PREVIEW_LIMIT",
+            "FILE_PREVIEW_DISABLED",
+            "FILE_PREVIEW_EXPIRED",
+            "FILE_PREVIEW_UNSUPPORTED_NODE",
+            "FILE_PREVIEW_BUSY",
+        ),
+    ),
+    (
         "Daemon update",
         (
             "UPDATE_NOT_ALLOWED",

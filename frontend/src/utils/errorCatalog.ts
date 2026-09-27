@@ -348,6 +348,51 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     retryable: false,
   },
 
+  // --- 唯讀二進位預覽（ADR 0029）--- 資料對照而已；預覽 UI 屬 BP-06。
+  // 沒有任何一項的下一步是「改下載」：安全上畫不出來的檔案不得改由其他路徑交出。
+  FILE_PREVIEW_UNSUPPORTED: {
+    cause:
+      "Node 依檔案內容判定的型別不是 PNG、JPEG、WebP、GIF 或 PDF；副檔名不參與判定。",
+    nextStep: "若是文字檔，請改用文字預覽。",
+    retryable: false,
+  },
+  FILE_PREVIEW_INVALID: {
+    cause:
+      "檔案表頭或結構檢查未通過，或在讀取期間被修改，因此沒有送出任何內容。",
+    nextStep: "請重新整理再試；仍失敗表示檔案本身已損毀。",
+    retryable: true,
+  },
+  FILE_PREVIEW_LIMIT: {
+    cause:
+      "像素數、邊長或中繼資料超過預覽上限；這個上限防止小檔案在解碼時耗盡 Node 或瀏覽器的資源。",
+    nextStep: "無法在瀏覽器預覽；請在該 Node 上以終端機處理。",
+    retryable: false,
+  },
+  FILE_PREVIEW_DISABLED: {
+    cause:
+      "此 Node 的設定關閉了圖片與 PDF 預覽（filesystem.binary_preview.enabled）。這與下載設定無關。",
+    nextStep: "請與該 Node 的擁有者確認設定。",
+    retryable: false,
+  },
+  // 中央專屬，不上 wire。
+  FILE_PREVIEW_UNSUPPORTED_NODE: {
+    cause:
+      "中央尚未開啟圖片與 PDF 預覽，或這個 Node 目前的連線沒有回報這項能力（版本較舊或已停用）。",
+    nextStep: "請改用文字預覽，或請管理者確認中央設定與 Node 版本。",
+    retryable: false,
+  },
+  FILE_PREVIEW_BUSY: {
+    cause: "同時進行中的預覽已達上限（每位使用者 2 個、每個 Node 4 個）。",
+    nextStep: "請等目前的預覽載入完成後再試。",
+    retryable: true,
+  },
+  FILE_PREVIEW_EXPIRED: {
+    cause:
+      "Node 已不再保有正在傳送的快照，通常是傳輸途中與 Node 的連線重建了。",
+    nextStep: "請重新開啟檔案。",
+    retryable: true,
+  },
+
   // --- Daemon update ---
   UPDATE_NOT_ALLOWED: {
     cause:

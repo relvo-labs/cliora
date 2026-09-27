@@ -62,3 +62,29 @@ async def test_registry_replace_returns_previous() -> None:
     # Removing the stale first connection must not drop the live one.
     await registry.remove(node_id, first)
     assert registry.is_connected(node_id)
+
+
+async def test_binary_preview_bit_belongs_to_the_live_connection() -> None:
+    """ADR 0029 §9: the authoritative gate is the registration of the connection that
+    is open *now*. A daemon that reconnects downgraded must be refused at once, not
+    after the next database write, and a closed connection carries no capability."""
+    registry = NodeConnectionRegistry(clock=FakeClock())
+    node_id = uuid.uuid4()
+    assert registry.binary_preview(node_id) is False  # no connection at all
+
+    first, _ = await registry.register(node_id, object())  # type: ignore[arg-type]
+    assert registry.binary_preview(node_id) is False  # connected, nothing reported yet
+    registry.set_binary_preview(first, True)
+    assert registry.binary_preview(node_id) is True
+
+    # A replacement connection starts with nothing, whatever the old one said.
+    second, previous = await registry.register(node_id, object())  # type: ignore[arg-type]
+    assert previous is first
+    assert registry.binary_preview(node_id) is False
+    # A late write on the superseded connection cannot switch the new one on.
+    registry.set_binary_preview(first, True)
+    assert registry.binary_preview(node_id) is False
+
+    registry.set_binary_preview(second, True)
+    await registry.remove(node_id, second)
+    assert registry.binary_preview(node_id) is False

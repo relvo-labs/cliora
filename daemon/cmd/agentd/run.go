@@ -64,6 +64,15 @@ func newRunCommand(configPath *string) *cobra.Command {
 					"runtime", id, "bypass", rc.BypassSandbox(), "source", source)
 			}
 			slog.Info("privileged_terminal", "enabled", cfg.Node.PrivilegedTerminal)
+			// Read-only image/PDF preview (ADR 0029, OD-5) is on unless switched off,
+			// so an upgraded node acquires it from the default. Central's own flag,
+			// off by default, still stands in front of it; the log says which applied.
+			previewSource := "config"
+			if cfg.BinaryPreviewFromDefault {
+				previewSource = "default"
+			}
+			slog.Info("binary_preview_switch",
+				"enabled", cfg.Filesystem.BinaryPreview.PreviewEnabled(), "source", previewSource)
 			// Sessions moved to their own tmux server (PV-04). Anything left on the
 			// default socket by an older daemon cannot be adopted — a tmux session
 			// belongs to its server — so the only useful thing to do is say so, because

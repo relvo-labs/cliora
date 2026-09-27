@@ -6,11 +6,11 @@
 
 | Ticket | 狀態 | 備註 |
 |---|---|---|
-| Phase 1 設計文件 | **本版提交（未 commit）** | ADR 0029（`proposed`）＋本目錄 |
-| `BP-01` 治理 | 未開始 | 等 #76 合併、#71 狀態確定、產品決策 OD-1…OD-11 |
-| `BP-02` 契約 | 未開始 | — |
-| `BP-03` daemon | 未開始 | — |
-| `BP-04` Central | 未開始 | — |
+| Phase 1 設計文件 | 完成（`c7b85c5`…`9de2cc7`，四次審查） | ADR 0029 + 本目錄 |
+| `BP-01` 治理 | **完成（工作樹，待 commit）** | ADR 0029 `accepted`（2026-09-27）；OD-1…OD-11 全部採建議預設（`01-…md` §6.1）；PRD `FR-FILE-012`＋三處註記；tech §11.6／§11.10；matrix generator＋重新產生；registry／links／census。**偏差**見 §1.1 |
+| `BP-02` 契約 | **完成（工作樹，待 commit）** | v1.11.0：六個 schema、`binary_preview` `const:true`、五個 wire 錯誤碼、21 個 fixture、凍結的 1.9.0 `node-register`（`contracts/v1/compat/`，digest 把關）與 `test_contract_compat.py`；Python／Go／TS 三個消費端（Go 另有兩個 response 分支與凍結的 1.9.0 型別表）；CHANGELOG。偏差 DV-8…DV-10 |
+| `BP-03` daemon | **完成（工作樹，待 commit）** | `files/preview*.go`（十一步、四種圖片走訪＋PDF 信封、D15 有界解壓、共用 32 MiB／4 handle 池、每連線 handle 表與 janitor）；`workspace.Root.OpenFileNonBlocking`（只新增）；`connection/preview_handlers.go`（open 2／chunk 4 worker，滿了即 `NODE_BUSY`；啟動 FIFO probe，失敗即省略欄位）；`config` 的 `filesystem.binary_preview.*`（只能調低）；metrics；停用時省略 `binary_preview`。`read.go`、`Root.OpenFile`、`go.mod` 無 diff。偏差 DV-11…DV-14 |
+| `BP-04` Central | **完成（工作樹，待 commit）** | `POST …/files/binary-preview`（路徑在 body、拒絕任何 query、只收 JSON `{path}`、≤24 KiB）；兩道閘（flag 預設關、**當下連線**的 `binary_preview`）在送任何 frame 之前；每使用者 2／每節點 4 條串流；拉取式串流（15／10／60 秒）與七個標頭、無 `Content-Disposition`；每種結束路徑都送 `preview_close`（shielded，1 秒）；敏感拒絕先 commit 再 raise；成功稽核 `file.binary_preview` 用獨立 session；`SessionCapabilities.can_preview_binary`；`nodes.binary_preview`／`last_registration_at`（migration `0022`，可降級）；錯誤目錄兩個 Central 碼。偏差 DV-15…DV-17 |
 | `BP-05` edge | 未開始 | — |
 | `BP-06` 前端生命週期＋圖片 | 未開始 | 依賴 #76 合併 |
 | `BP-07` 前端 PDF.js | 未開始 | — |
@@ -19,7 +19,29 @@
 | `BP-10` 實機 | 未開始 | — |
 | `BP-11` 推出 | 未開始 | — |
 
-**沒有任何功能已上線，沒有任何測試已寫。** 本版只有設計文件。
+**沒有任何功能已上線。** Central flag 預設關閉。
+
+### 1.1 實作偏差（與計畫文字不同之處，逐項記錄）
+
+| # | 計畫 | 實際 | 理由 |
+|---|---|---|---|
+| DV-1 | `01` §7 前置：#76 合併後才做 `BP-01` | #76 仍未合併時即完成 `BP-01`…`BP-04`（後端半部） | 協調者指示；後端不依賴 #76。`BP-06` 仍等 #76 |
+| DV-2 | README：#71 未合併則全部編號往前挪一號 | **不重排**；#71 已先合併，保留 0029／v1.11.0／`0022`／`FR-FILE-012`／`FR-CONN-006.AC-13` | 已接上 `0021`，合併 CHANGELOG、PRD、census 與 traceability |
+| DV-3 | `01` §5.3：`BP-01` 一次寫完每條 AC 的四條連結 | `BP-01` 只寫 `planned_by`／`specified_by`；`implemented_by`／`verified_by` 在實作該 AC 的階段才加，census 每階段一行 | validator 要求連結目標存在；指向尚未存在的檔案等於宣稱，不是連結 |
+| DV-4 | `01` §5：`FR-CONN-006.AC-13` 在 `BP-01` 計入 census | 以 `lifecycle: proposed` 登記，`BP-04` 加入預算時轉 active（+1 另起一行） | `FR-CONN-006` 是 `must`，沒有實作的 active criterion 會讓 coverage 變 blocking |
+| DV-5 | `01` §1：`BP-08` 非 FAIL 後才 `accepted` | 產品核准當天即 `accepted`；`BP-08` 改為發布閘門（FAIL 重開 ADR、阻擋 `BP-11`） | 協調者指示「ADR accepted with approval date」 |
+| DV-6 | `00` §5 `BP-01` write-set 不含 `docs/traceability/*.md` | 以 `make traceability-render` 重新產生 | master 自 NFR-007 起即 stale（base `157efe3` 上 `render --check` 失敗），不重新產生就無法讓 `traceability-validate` 綠 |
+| DV-7 | `01` §5.2：AC-15 的 `verification_profile` 為 `device` | `measurement` | schema 的 enum 沒有 `device`；NFR-006 的 390 px 檢查用的也是 `measurement` |
+| DV-8 | `00` §5：錯誤目錄屬 `BP-04` | 五個 **wire** 錯誤碼的目錄項（`error_catalog.py`、`render_error_catalog.py` 分節、`docs/error-catalog.md`）在 `BP-02` 加；Central 專屬的兩碼仍在 `BP-04` | `test_every_protocol_error_code_is_documented` 要求 wire enum 裡的每個碼都有目錄項，不加 `BP-02` 就不綠 |
+| DV-9 | 協調者：本次不改 `frontend/`（codec 除外） | `frontend/src/utils/errorCatalog.ts` 的 `GUIDANCE` 多五筆（純資料，無 UI） | `test_the_frontend_knows_every_code_it_can_receive` 要求兩邊的碼集合相同；協調者已接受純資料 frontend 項目 |
+| DV-10 | `test_scope_guards.py` 屬 `BP-04` | `test_scope_006` 的 schema 名稱集合在 `BP-02` 加入六個 preview 型別 | 該測試列舉 `schemas/messages/`；schema 一落地就要改 |
+| DV-11 | `03` §8：`connection.go` 只多三個 `case` | 另有：`Manager` 一個欄位與其初始化、`registerPayload` 改為先建 map 再呼叫 `reportBinaryPreview`、dispatch 開頭兩行（每連線 handle 表的建立與關閉）、`handleStop` 一行（`session.stop` hook） | 後三項都是計畫本身要求的掛點（`00` §5 的 register／stop hook、`03` §3 的每連線表）；其餘邏輯全在 `preview_handlers.go` |
+| DV-12 | `03` §4：三個型別「全部轉交 worker」 | `preview_open`、`preview_chunk` 走 worker；`preview_close` 留在 dispatch 上同步處理 | close 是 O(1) 的 map 刪除；放進有上限的 worker 就可能被 `NODE_BUSY` 拒絕，而 close 正是釋放 snapshot 的那一步 |
+| DV-13 | `03` 寫入集：`daemon/internal/files/testdata/preview/**` | 沒有新增二進位 fixture；全部由測試程式碼產生（`preview_fixtures_test.go`） | 每個 fixture 的性質寫在程式裡可審查；跨層共用的語料仍是 `BP-09` 的產生器 |
+| DV-14 | `03` §7 `TestPreviewPNGRealWorldICCPasses`：真實 Display P3 截圖 | 以決定性的 536 bytes 假描述檔（Display P3 的大小）代替；另有最壞情況（~1 MiB＋4×256 KiB）的合法 PNG | 本機沒有可授權放進 repo 的真實截圖；真實樣本的分布仍是 `BP-OM-13` |
+| DV-15 | 協調者：本次不改 `frontend/`（codec 除外） | 另加 `frontend/src/api/dto.ts` 的 `AUDIT_ACTIONS` 一筆、`utils/auditActions.ts` 標籤一筆與「工作區」篩選群組一筆、`utils/errorCatalog.ts` 兩筆（皆純資料，無 UI；`AuditView.test.ts` 要求每個動作恰好在一個群組） | `test_audit_actions_match_the_frontend_constants` 與 `test_the_frontend_knows_every_code_it_can_receive` 要求兩端集合相同；與 DV-9 同一處置，協調者已接受純資料 frontend 項目 |
+| DV-16 | `04` §1 第 5 步：415／413／422／400 | 四種都用既有的 `INVALID_ARGUMENT` 碼，只以 HTTP 狀態區分 | 都是「請求形狀不對」這一類；另開新碼只會多一條目錄項而沒有不同的下一步 |
+| DV-17 | `04` §7 `test_preview_does_not_imply_download` | 已補於 `backend/tests/db/test_files_binary_preview_api.py` | #71 已合併；雙向測試證實 preview 可用時下載仍可 403，下載可用時 preview 仍可 409 |
 
 ## 2. 外部相依的當下狀態（2026-09-27 核對）
 
@@ -45,7 +67,7 @@
 | `BP-OM-08` | ~~舊 Central 收到帶 `binary_preview` 的 `node.register` 時，是拒收該訊息還是斷線~~ **已由讀程式解答**：拒收該訊息且靜默（`codec.py:100-102` → `ws/nodes.py:199-202` 的 `continue`），不回覆、不持久化、連線照常；daemon 忽略 ack（`connection.go:474-475`）。由 `BP-04` 的 `test_invalid_register_is_silently_skipped` 與 `BP-02` 的相容測試釘住 | 回退程序（ADR §9） | `BP-02`／`BP-04`（測試確認） | 已解答，待測試 |
 | `BP-OM-09` | Central 是否為單一 process 服務一個節點的 WebSocket（串流上限用 process 內 semaphore 的前提） | 並發上限的實作方式 | `BP-04` | 定設計 |
 | `BP-OM-10` | canary 路徑（原文與 percent-encoded）在兩份 nginx access log、uvicorn／Central stdout、Central JSON log、稽核表、Railway HTTP／deploy log 中是否為零筆 | 「log 無路徑」宣稱；OD-11 | `BP-05`（步驟見 `04-…md` `BP-05`「發布閘門」） | **發布閘門** |
-| `BP-OM-11` | `RequestIdMiddleware`（`BaseHTTPMiddleware`，`middleware.py:41`）是否破壞 `StreamingResponse` 的背壓或斷線偵測 | ADR §6 第 6 步「真正的背壓」與 §15 取消 | `BP-04`（完整 middleware stack 下的測試） | 定設計 |
+| `BP-OM-11` | ~~`RequestIdMiddleware`（`BaseHTTPMiddleware`）是否破壞 `StreamingResponse` 的背壓或斷線偵測~~ **已量（2026-09-27，Starlette 0.49.1）**：背壓保留，但 `BaseHTTPMiddleware` 的 hand-off 多**一塊**預讀——慢速 client 還拿著第一塊時，Central 最多已要了兩塊（`test_stream_backpressure` 斷言 ≤ 2），所以每條串流在 Central 最多持有 **2 × 512 KiB**，不是 ADR 寫的一塊；client 斷線會取消串流，`preview_close` 恰好送一次，記 `CANCELLED`，沒有成功稽核（`test_disconnect_sends_close`）。兩者都以直接呼叫 ASGI app 的方式跑完整 middleware stack | ADR §6 第 6 步、§15 | `BP-04` | 已量；ADR §5「一塊」的記憶體敘述需在 `BP-08` 確認是否修訂 |
 | `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
 | `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
 | `BP-OM-14` | 池滿載時（兩個 16 MiB handle 各在送 chunk，或一個 16 MiB handle 加兩個進行中的 8 MiB open）daemon 的 RSS 與 GC 開銷 | `07-…md` §3 暫定的「基準＋48 MiB」 | `BP-09` | 定預設 |
@@ -62,13 +84,18 @@
 | E3 | `/api/` 回應可能溢寫到 nginx `proxy_temp` | `nginx.conf:174`、`railway/nginx.conf.template:159` | 文字預覽內容可能落在 edge 磁碟上 | 與 `BP-05` 同一組指令 |
 | E4 | `read.go:12` 的註解寫「`O_NOFOLLOW` open」，實際是跟隨 in-root 符號連結的 `os.Root.Open` | `read.go:12` 對照 `workspace/root.go:100-118` | 誤導後續設計，本 ADR 初版就照抄了這個錯誤 | 修正註解 |
 | E5 | generated permission matrix 缺 `file.upload`、`terminal.shell`、`tunnel.*`、`integration.manage` | `render_permission_matrix.py:29-40` 對照 `rbac.py` | 文件少列權限 | 見 `01-…md` §4 |
+| E6 | ORM models 與 migration 建出的 schema 不一致：12 個 index 與 1 個 unique constraint 只存在於 migration（`audit_logs`、`node_metric_samples`、`node_tunnels`、`terminal_sessions`、`workspace_favorites`） | base `157efe3` 上 `alembic.autogenerate.compare_metadata` 回報 14 筆差異；`test_schema.py` 只比對欄位名稱，看不到 | 任何以 autogenerate 產生的新 migration 都會試圖刪掉這些 index | 在 models 上宣告這些 index／constraint，並把 `test_schema.py` 升級為 `compare_metadata` 為空。`test_migration_0022_roundtrip` 暫時只檢查 `nodes` 表 |
+| E7 | `app/api/http/schemas.py` 有一個多餘的 `# type: ignore[arg-type]`；`make typecheck`（在 repo 根目錄跑 `mypy backend/app`）看不到，在 `backend/` 內以其 `pyproject.toml` 設定跑 `mypy app` 才報 | base `157efe3` 上 `cd backend && mypy app` → `schemas.py:518: Unused "type: ignore"`；同一時間 `make typecheck` 綠 | 兩種執行方式採用不同設定，閘門與開發者本機的結果不一致 | 移除該註解，並讓 `make typecheck` 使用 `backend/pyproject.toml` 的 mypy 設定 |
+| E8 | `make traceability-validate` 在 master 上是紅的：`docs/traceability/{matrix,coverage,mvp,owners}.md` 未重新產生；census 也少了 NFR-007 的 +7 | base `157efe3` 上 `scripts/trace render --check` 失敗；census 458≠451 | 同上 | 本期已順帶修正（DV-6 與 census 的 +7 行）；#71 也帶有同一修正，後合併者需解衝突 |
+| E9 | `TestClassifyLatencyBudget`（2 MiB 分類 ≤ 5 ms）在負載高的機器上會隨機失敗 | 本機 load ≈ 10／8 核時量到 5.47 ms；單獨重跑 1／3 次通過 | 牆鐘預算測試在共用 CI 上會 flake | 以多次取最小值或 `testing.B` 取代單次量測 |
+| E10 | 沒有 `session.view` 的使用者，對不存在的 session 得到 404、對存在的得到 403，可藉此探測 session id 是否存在 | `services/files.py` `_resolve()`：先 `get`（404）再 `authorize_file_browse`（403）；所有檔案路由共用 | 三個內建角色都持有 `session.view`，只影響自訂角色 | 先做 action 層以外的 view 判定再回 404，或兩者統一回 403 |
 
 ## 5. 本版文件中明確標為「未驗證」的假設
 
 - iOS canvas 面積上限 16 777 216 px 是常見報告的數字，不是實測（`BP-OM-01`）。
 - 以 Blob 呼叫 `createImageBitmap` 不受 `img-src` 約束（`BP-OM-02`）。
 - nginx 在預設設定下會把大回應溢寫到 `proxy_temp`，把超過 buffer 的請求 body 寫到 `client_body_temp`。依 nginx 文件如此，本部署未實測（`BP-OM-06`）。
-- `os.Root.OpenFile` 會把 `O_NONBLOCK` 原樣傳給 `openat`（`03-…md` §1；`TestOpenFileNonBlockingOnFifoReturns`）。
+- ~~`os.Root.OpenFile` 會把 `O_NONBLOCK` 原樣傳給 `openat`~~ **linux/amd64 已證實（2026-09-27，go1.26.0）**：`TestOpenFileNonBlockingOnFifoReturns` 對沒有寫入端的 FIFO 立即返回，fd 即該 FIFO；`TestStartupProbePassesOnThisPlatform` 同樣通過。**linux/arm64 未執行**（本機無模擬器，只跑了 `GOARCH=arm64 go vet`），由執行期 probe 把關：失敗即不回報 `binary_preview`。CI 的 arm64 執行仍待補。
 - PDF.js 的 WebAssembly 解碼器與 FontFace 在現行 CSP 下可用（`BP-OM-04`）。
 - PDF.js 的 `stopAtErrors: true` 不會誤拒常見的良性 PDF（`BP-09` 語料驗證）。
 - PDF.js 對只有權限密碼的 PDF 會不經提示開啟，對需要使用者密碼的 PDF 會呼叫 `onPassword`（`BP-07` E2E）。
@@ -76,7 +103,7 @@
 - FastAPI 0.120.1 的 yield dependency 相對於串流 body 的結束時機：本設計**不依賴**它，成功稽核用獨立 session（ADR §6 第 7 步）。
 - PDF.js 版本下限 **≥ 6.2.108**：CVE-2026-16633 已於 2026-09-27 以 GitHub Advisory API 查證；CVE-2024-4367 依公開紀錄。授權（Apache-2.0）與實際 pin 在 `BP-07` 核對，advisory 於 pin 當天與發布前再查一次。
 - `enableScripting` 由 pinned 版本的哪一層（display API 或 viewer）讀取，未驗證（`BP-07`）；結構性控制仍是不附 scripting bundle。
-- daemon 有可寫的私有狀態目錄可供啟動 probe 建 FIFO（`03-…md` §1）；實際路徑在 `BP-03` 核對。
+- ~~daemon 有可寫的私有狀態目錄可供啟動 probe 建 FIFO~~ **已核對**：probe 用 `tmux.ResolveConfigDir()`，也就是 systemd `RuntimeDirectory=agentd` 給的 `/run/agentd`（`$RUNTIME_DIRECTORY`；開發環境退回 `$XDG_RUNTIME_DIR/agentd` 或 `/tmp/agentd-<uid>`），與產生的 tmux 設定同一處；FIFO 名稱帶 ULID，用完即刪。建立失敗同樣 fail closed。
 
 ## 6. 設計審查處置（`c7b85c5` 的獨立審查，判定 BLOCKED）
 

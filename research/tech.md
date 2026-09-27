@@ -1275,7 +1275,7 @@ filesystem:
    —— 帶 ANSI 顏色的建置 log 是純文字檔。
 5. 副檔名與 MIME Type 只影響顯示（語法高亮），不參與安全判定。
 
-圖片、PDF、壓縮檔、執行檔第一階段不直接預覽。
+壓縮檔、執行檔不預覽。圖片與 PDF 不經本節的文字路徑，而由 §11.10 的唯讀二進位預覽處理（ADR 0029；2026-09-27 修訂，原文為「圖片、PDF、壓縮檔、執行檔第一階段不直接預覽。」）。
 
 不自動偵測或轉換非 UTF-8 編碼（Big5／GBK／Latin-1／UTF-16）：猜錯的代價是顯示看似
 損毀的亂碼。這類檔案回報為「編碼不支援」，由使用者在節點上自行轉碼。
@@ -1414,6 +1414,38 @@ CLI 的 cwd 即工作區。實測 `claude` 與 `codex` 都接受裸的相對路�
 版本前提與回收桶，而那三樣正是本設計不需要的東西。
 
 `0644` 是固定值：從瀏覽器拖進來的檔案不應該可執行。
+
+## 11.10 唯讀二進位預覽
+
+（2026-09-27 新增，ADR 0029，需求 `FR-FILE-012`，計畫 `plan/31`。本節只列骨架，細節與理由在 ADR，不複製。）
+
+白名單內的圖片（PNG、JPEG、WebP、GIF 首幀）與 PDF 在 console 內**畫出來**，不交出位元組的拷貝。
+它是獨立的一組操作 `filesystem.preview_*`，**不是** `filesystem.read` 的旗標：§11.5／§11.6 的文字路徑
+（2 MiB 上限、`FILE_BINARY`）一個位元組都不變。
+
+Node 端開啟順序（default-deny，ADR 0029 §3 的十一步）：
+
+1. 節點開關 `filesystem.binary_preview.enabled`。
+2. 對請求路徑做 `SensitiveClassification()`（與 §11.7 同一份）。
+3. 開啟前以 `StatIn` 檢查型別，不是一般檔案就不開啟。
+4. 經 `os.Root` 侷限、**非阻塞**開啟（FIFO 不會卡住 worker）；in-root 符號連結會被跟隨。
+5. 對 fd `fstat`：一般檔案，且與第 3 步是同一個檔案。
+6. 對 fd 的解析名稱再做一次 `SensitiveClassification()`。
+7. 讀 64 bytes 表頭，依 magic 判定型別；副檔名不參與。
+8. 依型別的大小上限（圖 8 MiB、PDF 16 MiB），超過就不再讀。
+9. 從同一 fd 有界讀整份，讀完再比對 size／mtime。
+10. 結構驗證：只走表頭與標記，不解碼像素、不解析 PDF 內容；壓縮中繼資料只量展開後大小。
+11. 登記記憶體快照 handle，之後以 512 KiB 分塊拉取。
+
+上限：圖片 8 MiB、16 777 216 像素、邊長 8192；PDF 16 MiB、200 頁（頁數由瀏覽器端 PDF.js 判定）。
+快照：每條連線最多 4 個 handle、與進行中的開啟共用 32 MiB；閒置 30 秒、絕對 120 秒到期；
+`preview_close` 立即釋放。處理不在 dispatch 迴圈上，而是有界 worker（開啟 2、分塊 4）。
+
+三道閘：中央 rollout flag `binary_preview_enabled`（預設關）、節點**當下連線**的 `node-register.binary_preview`
+（停用時省略，不送 `false`）、`file.browse` 加上 Session 可見性。任一不成立，入口隱藏、中央不送任何 frame。
+
+中央端點 `POST /api/sessions/{id}/files/binary-preview`，路徑在 JSON body，URL 不帶工作區路徑；
+回應為 `application/octet-stream` 串流，無 `Content-Disposition`，`Cache-Control: no-store`。
 
 ---
 

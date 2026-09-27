@@ -36,6 +36,10 @@ MAX_FILE_PAYLOAD = 8 * 1024 * 1024
 # session id and a path and keeps the tight limit — the asymmetry with
 # filesystem.store (where the request is the large half) is just which direction
 # the bytes go.
+# filesystem.preview_data (contract 1.11.0, ADR 0029) is the seventh, response
+# direction only, and again the bound does not move: its `data` is capped at
+# 512 KiB of raw bytes (699052 base64 characters). The preview requests and the
+# small preview responses keep 64 KiB.
 LARGE_FRAME_TYPES = frozenset(
     {
         "filesystem.entries",
@@ -44,6 +48,7 @@ LARGE_FRAME_TYPES = frozenset(
         "filesystem.upload",
         "filesystem.store",
         "filesystem.downloaded",
+        "filesystem.preview_data",
     }
 )
 HEADER_SIZE = 18

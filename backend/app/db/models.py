@@ -113,6 +113,21 @@ class Node(Base):
     file_download: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), index=True
     )
+    # True when this machine's last accepted registration reported read-only binary
+    # preview (ADR 0029). For display and fleet queries only: the gate on a request is
+    # the LIVE connection's report (`NodeConnection.binary_preview`), never this column.
+    binary_preview: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
+    # When Central last ACCEPTED a node.register from this node. Set only by
+    # persist_registration — heartbeats and runtime-status frames do not touch it —
+    # so it is the one signal that proves a registration landed. The Central
+    # rollback drill depends on it: daemon_version survives a restart unchanged and
+    # last_seen_at moves on every heartbeat, so neither can prove acceptance
+    # (ADR 0029 §9, plan/31/08 BP-11 §2).
+    last_registration_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # --- Daemon update state (P4-10, ADR 0017) ---
     # Explicit columns rather than keys inside `metadata`: "which nodes failed to

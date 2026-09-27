@@ -35,7 +35,7 @@ PRD_ROWS: list[tuple[str, str]] = [
     ("操作 Terminal / Operate terminal (writer)", rbac.TERMINAL_OPERATE),
     ("接管 Terminal / Take over the writer role", rbac.TERMINAL_TAKEOVER),
     ("終止 Session / Terminate session", rbac.SESSION_TERMINATE),
-    ("瀏覽檔案 / Browse & preview files", rbac.FILE_BROWSE),
+    ("瀏覽檔案 / Browse & preview files (text; images & PDF, view-only)", rbac.FILE_BROWSE),
     ("查看 Audit Log / View audit log", rbac.AUDIT_VIEW),
 ]
 
@@ -68,6 +68,15 @@ SCOPE_RULES: list[tuple[str, str]] = [
     (
         "file browse / search / preview",
         "`file.browse` **and** view access to the owning session",
+    ),
+    # ADR 0029 §7: a deliberate widening of `file.browse`, Viewer included, approved by
+    # the product owner 2026-09-27. Stated here so the widening is a line someone has
+    # to read rather than a default nobody noticed.
+    (
+        "binary preview (image / PDF, view-only)",
+        "`file.browse` **and** view access to the owning session **and** not a shell "
+        "session **and** the node's live registration reports `binary_preview` **and** "
+        "Central's `binary_preview_enabled` is on. Grants no download.",
     ),
     ("node management", "`node.manage`; nodes have no owner"),
 ]

@@ -147,6 +147,9 @@ export interface NodeDetail extends NodeSummary {
   // worried about exactly this switch. Absent-means-no on the wire, so an older
   // daemon reads as false and the console hides the control.
   file_download: boolean;
+  // Reported capability; current authorization still uses the live connection.
+  binary_preview?: boolean;
+  last_registration_at?: string | null;
   is_enabled: boolean;
   registered_at: string;
   runtimes: NodeRuntime[];
@@ -195,6 +198,8 @@ export interface SessionCapabilities {
   can_terminate: boolean;
   can_browse_files: boolean;
   can_upload_files: boolean;
+  // Central folds the rollout flag, live node report and file.browse scope together.
+  can_preview_binary?: boolean;
   // Already folds in the action, ownership and the node's own veto: the browser
   // renders it, it does not recombine it (ADR 0016/0021).
   can_open_shell: boolean;
@@ -501,6 +506,8 @@ export const AUDIT_ACTIONS = [
   "file.download",
   "file.sensitive_read_denied",
   "file.upload",
+  // 唯讀二進位預覽成功（ADR 0029，OD-6）。只有 kind／mime／size_bytes，不記路徑。
+  "file.binary_preview",
   "node.disable",
   "node.enable",
   "node.register",

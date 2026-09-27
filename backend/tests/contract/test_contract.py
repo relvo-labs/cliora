@@ -1,3 +1,4 @@
+import base64
 import json
 from pathlib import Path
 from uuid import UUID
@@ -5,7 +6,7 @@ from uuid import UUID
 import pytest
 
 from app.protocol import ProtocolError, decode_binary, decode_control, encode_binary
-from app.protocol.codec import MAX_FILE_PAYLOAD, MAX_PAYLOAD
+from app.protocol.codec import LARGE_FRAME_TYPES, MAX_FILE_PAYLOAD, MAX_PAYLOAD
 
 ROOT = Path(__file__).parents[3]
 FIXTURES = ROOT / "contracts/v1/fixtures"
@@ -204,3 +205,101 @@ def test_daemon_update_frames_keep_the_tight_control_bound() -> None:
     with pytest.raises(ProtocolError) as error:
         decode_control(_update_frame({"target_version": "1.0.0", "pad": "a" * MAX_PAYLOAD}))
     assert error.value.code == "FRAME_TOO_LARGE"
+
+
+# --- read-only binary preview, contract 1.11.0 (ADR 0029) ---
+
+PREVIEW_ID = "01K6B9R3V1EW7Q2M8N4X6Y0Z5T"
+SESSION_ID = "22222222-2222-4222-8222-222222222222"
+
+
+def _preview_frame(msg_type: str, payload: dict, *, success: bool | None = None) -> str:
+    frame: dict = {
+        "version": 1,
+        "type": msg_type,
+        "request_id": "01K0ABCDEFGHJKMNPQRSTVWXYZ",
+        "node_id": "11111111-1111-4111-8111-111111111111",
+        "timestamp": "2026-09-27T00:00:00Z",
+        "payload": payload,
+    }
+    if success is not None:
+        frame["success"] = success
+    return json.dumps(frame)
+
+
+def test_preview_data_is_the_only_preview_type_allowed_the_large_bound() -> None:
+    """Only the response that carries bytes gets the 8 MiB ceiling. The requests
+    and the small responses keep 64 KiB, so the preview family cannot be used to
+    smuggle an oversize control frame in either direction."""
+    assert "filesystem.preview_data" in LARGE_FRAME_TYPES
+    for small in (
+        "filesystem.preview_open",
+        "filesystem.preview_opened",
+        "filesystem.preview_chunk",
+        "filesystem.preview_close",
+        "filesystem.preview_closed",
+    ):
+        assert small not in LARGE_FRAME_TYPES, small
+
+
+@pytest.mark.parametrize(
+    ("msg_type", "payload"),
+    [
+        ("filesystem.preview_open", {"session_id": SESSION_ID, "path": "a" * 4000}),
+        ("filesystem.preview_chunk", {"session_id": SESSION_ID, "preview_id": PREVIEW_ID}),
+    ],
+)
+def test_preview_requests_keep_the_tight_control_bound(msg_type: str, payload: dict) -> None:
+    padded = {**payload, "pad": "a" * MAX_PAYLOAD}
+    with pytest.raises(ProtocolError) as error:
+        decode_control(_preview_frame(msg_type, padded))
+    assert error.value.code == "FRAME_TOO_LARGE"
+
+
+def test_a_full_preview_chunk_decodes_under_the_file_bound() -> None:
+    """512 KiB raw is 699052 base64 characters. The frame is ten times the 64 KiB
+    control bound and must still decode, or every full chunk would be dropped and
+    the stream would time out instead of answering."""
+    data = base64.b64encode(bytes(512 * 1024)).decode()
+    assert len(data) == 699052
+    frame = _preview_frame(
+        "filesystem.preview_data",
+        {"preview_id": PREVIEW_ID, "index": 31, "data": data},
+        success=True,
+    )
+    assert MAX_PAYLOAD < len(frame.encode()) < MAX_FILE_PAYLOAD
+    assert decode_control(frame).payload["data"] == data
+
+
+def test_preview_data_frame_must_claim_success() -> None:
+    frame = _preview_frame(
+        "filesystem.preview_data", {"preview_id": PREVIEW_ID, "index": 0, "data": "QUJD"}
+    )
+    with pytest.raises(ProtocolError) as error:
+        decode_control(frame)
+    assert error.value.code == "INVALID_MESSAGE"
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [{"mime": "image/png"}, {"raw": True}, {"offset": 0}, {"range": "0-1"}, {"password": "x"}],
+    ids=lambda extra: next(iter(extra)),
+)
+def test_preview_open_cannot_claim_anything(extra: dict) -> None:
+    payload = {"session_id": SESSION_ID, "path": "docs/a.png", **extra}
+    with pytest.raises(ProtocolError) as error:
+        decode_control(_preview_frame("filesystem.preview_open", payload))
+    assert error.value.code == "INVALID_MESSAGE"
+
+
+def test_binary_preview_false_is_invalid_so_a_disabled_daemon_must_omit_it() -> None:
+    """ADR 0029 §9: `false` is not a way to say "disabled"; omission is. The schema
+    is `const: true`, so a daemon bug that emits `false` fails here instead of on
+    the day Central is rolled back."""
+    raw = (FIXTURES / "valid/node-register.json").read_text()
+    frame = json.loads(raw)
+    frame["payload"]["binary_preview"] = False
+    with pytest.raises(ProtocolError):
+        decode_control(json.dumps(frame))
+    frame["payload"]["binary_preview"] = True
+    assert decode_control(json.dumps(frame)).payload["binary_preview"] is True

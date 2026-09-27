@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Contract 1.11.0 (ADR 0029). The request names a path and nothing else: no mime/kind/format (the daemon decides the type from magic bytes), no raw/encoding/mode (a second policy on one type), no offset/length/range (ranged reads of a live file), no disposition/filename (a preview must not look like a download), no password (OD-8).",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "path"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "path": {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": "^(?![/~])(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000-\\u001f]+$"}
+  }
+}
