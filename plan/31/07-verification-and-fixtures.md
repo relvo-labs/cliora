@@ -1,0 +1,67 @@
+# 07 — 驗證、語料與效能（`BP-09`）
+
+**寫入集：** `scripts/p31/gen_preview_fixtures.py`（新，產生器）、
+`daemon/internal/files/testdata/preview/`（**只放小檔**）、`frontend/tests/e2e/binary-preview*.spec.ts`
+（與 `BP-07` 共用，`BP-09` 補情境）、`backend/perf/`（新情境）。
+**前置：** `BP-08` 不是 `FAIL`。
+
+## 1. 高風險語料
+
+**原則：** 炸彈與大檔**不進 Git**，由產生器在測試時生成到暫存目錄。
+Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 seed），
+輸出附 SHA-256 清單，讓同一份語料可以在 CI 與實機重現。
+
+| 類別 | 檔案（產生或小樣本） | 預期 |
+|---|---|---|
+| 正常 | `ok.png`（1200×800）、`ok.jpg`（EXIF 方向 6）、`ok.webp`（lossy／lossless／VP8X 各一）、`ok.gif`（動畫 10 幀）、`ok-apng.png`、`ok.pdf`（40 頁）、`ok-cjk.pdf`（CID 字型繁中）、`ok-jpx.pdf` | 顯示；JPEG 方向正確；GIF／APNG 只有首幀；CJK 字形正確 |
+| 解壓縮炸彈 | `png-bomb-50k.png`（50000×50000，IDAT 約數 KB）、`png-ztxt-bomb.png`（壓縮 ancillary 超過 1 MiB）、`jpeg-sof-65535.jpg`、`jpeg-1000-scans.jpg`、`webp-16k.webp`（16383×16383）、`gif-frame-outside-screen.gif` | `FILE_PREVIEW_LIMIT`／`INVALID`；**瀏覽器收到 0 bytes** |
+| 邊界 | 4096×4096 PNG（恰好等於像素上限）、4097×4096、8192×2048、8193×1、8 MiB 整與 8 MiB＋1 的 JPEG、16 MiB 整與 ＋1 的 PDF、200 與 201 頁 PDF | 恰好等於上限的通過，超過一的拒絕 |
+| 格式錯誤 | 截斷 PNG（無 IEND）、IHDR 不在第一個、RIFF 大小不符的 WebP、無 `%%EOF` 的 PDF、`%PDF` 不在 offset 0、xref 損毀但信封正常的 PDF | daemon `malformed`；信封正常的交給 PDF.js → `render_failed` |
+| 加密 PDF | RC4-40、AES-128、AES-256；只有權限密碼（空使用者密碼）的 PDF | `encrypted`；空使用者密碼那份的行為**記錄下來**（PDF.js 可能直接開啟，交 OD-8 確認可否接受） |
+| 主動內容 PDF | 內含 JS（OpenAction）、URI 連結、Launch、GoToR、表單 submit、XFA、內嵌附件；CVE-2024-4367 PoC 形狀 | 惰性；無 navigation、popup、網路請求、script |
+| 錯誤 magic／多型檔 | `html-named.png`、`svg-named.png`、`pdf-named.jpg`、`png-named.pdf`、`zip-pdf-polyglot.pdf`、`text-named.pdf` | 依內容判定：HTML／SVG／text → `unsupported_type`；互換副檔名的 PNG／PDF 依真實型別顯示 |
+| 敏感名稱與路徑 | `.env.png`、`id_rsa.pdf`、`credentials-diagram.png`、`secrets-report.pdf`、`.ssh/diagram.png`、`photo.png → .env`（工作區內符號連結）、`link.pdf → ../outside.pdf`（外部符號連結） | `FILE_DENIED`；敏感者有稽核，不含路徑 |
+| 非一般檔案 | FIFO `pipe.png`、目錄 `dir.pdf/`、`/dev/zero` 的符號連結 | `not_regular` 或 `outside_root`；不卡住 |
+| 讀取中變動 | 讀取期間 append 的 PNG | `changed` |
+
+## 2. 角色與閘門矩陣（full-stack）
+
+| 使用者 | session | Central flag | 節點回報 | 預期 |
+|---|---|---|---|---|
+| Admin／Developer／Viewer | 可檢視的 CLI session | on | true | 200 |
+| Viewer | 別人的 session（無檢視權） | on | true | 403，與「不存在」同訊息 |
+| 任何人 | shell session | on | true | 403 |
+| 任何人 | 可檢視 | **off** | true | 409，零 frame |
+| 任何人 | 可檢視 | on | **false／缺席（舊 daemon）** | 409，零 frame；UI 是既有 `FILE_BINARY` 面板 |
+| （#71 合併後）任何人 | 可檢視 | on | `binary_preview:true, file_download:false` | 預覽 200，下載 403 |
+| （#71 合併後）任何人 | 可檢視 | on | `binary_preview:false, file_download:true` | 預覽 409，下載 200 |
+
+## 3. 效能與容量（`make perf` 新情境）
+
+| 量測 | 目標（初值，量完再定） |
+|---|---|
+| 390 px、4G 模擬下 3 MB PNG 到畫出 | p95 < 3 s（與 ADR 0015 的 ≤2 MB 文字預覽同級） |
+| 5 MB／40 頁 PDF 第一頁畫出 | p95 < 4 s |
+| 每節點 4 條並發串流時，終端 echo 延遲 | 增量 p95 < 100 ms（`BP-OM-05`） |
+| daemon RSS 在 4 個 16 MiB handle 時 | < 基準 + 40 MiB |
+| Central RSS 在 32 條並發串流時 | < 基準 + 32 MiB |
+| 取消後 daemon handle 歸零 | ≤ 30 s（TTL） |
+
+未達目標不是自動失敗，而是一個需要記錄的**發布決定**（ADR 0015 的既有規則）。
+
+## 4. 成功判準的證據
+
+`00-…md` §1 的十項，每一項要有可貼上的輸出：測試名稱與結果、Central log 摘錄（已去識別）、
+截圖路徑（**不進 Git**）。截圖與錄影不得含真實檔名、session 名稱或內容（#76 的公開規則）。
+
+## 5. 驗收清單
+
+- [ ] 產生器可重現，SHA-256 清單與 CI 一致。
+- [ ] §1 每一列都有自動化測試（daemon、Central 或 E2E 其中一層，並註明是哪一層）。
+- [ ] §2 矩陣 full-stack 綠（`E2E_FULL_STACK=1`）。
+- [ ] §3 每項有數字；未達標者有書面的發布決定。
+- [ ] 文字預覽、上傳、檔案樹、搜尋的既有測試未修改即綠。
+
+## 6. 不在範圍
+
+實機（`BP-10`）；模糊測試的長時間執行（`BP-03` 已跑，這裡只重播發現）。

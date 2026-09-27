@@ -1,0 +1,545 @@
+# ADR 0029 — Read-only binary preview: images and PDF, rendered in the console, never handed over
+
+- Status: **proposed** (design only, 2026-09-27; nothing in this ADR is implemented)
+- Date: 2026-09-27
+- Issue: #77 (`[Mobile][Files] 圖片與 PDF 的安全唯讀預覽（含 Viewer）`)
+- Depends on: #76 green first (the mobile file list and the existing text preview must
+  work before any new preview type is claimed; #77 acceptance item 1)
+- Amends (on acceptance): ADR 0015 (its binary default-deny keeps holding for
+  `filesystem.read`; this ADR adds a *separate* operation with its own allowlist),
+  `research/tech.md` §11.6 last paragraph ("圖片、PDF … 第一階段不直接預覽"),
+  `FR-FILE-004` (a binary file in the allowlist is no longer only "不支援預覽")
+- Related: ADR 0014 (`workspace.Root` confinement, reused unchanged), ADR 0016 (RBAC is
+  one table; resource scope), ADR 0017 (CSP with no external origin), ADR 0024 / 0026
+  (report-only node switches; "Central holds no byte"), ADR 0027 (tokens; no literal
+  colour), ADR 0028 **as proposed in open PR #71** (download; §16 below keeps the two
+  separate)
+- Requirements (proposed, not registered): `FR-FILE-012` (new), amendments listed in
+  `plan/31/01-decisions-and-governance.md` §2
+- Contract (proposed): v1.11.0, compatible. **Conditional numbering**: PR #71 claims
+  v1.10.0, migration `0021`, `FR-FILE-011` and `plan/30/`. If #71 is not merged first,
+  every number here shifts down by one at merge time; nothing else changes.
+- Plan: `plan/31/` (not `plan/30/`, which PR #71 occupies)
+
+## Context
+
+### What exists today (base `157efe3178999a8c35b34f55ee183d47842c63ec`)
+
+| Fact | Evidence |
+|---|---|
+| The only read operation, `filesystem.read`, is default-deny for binary. It runs a fixed order: sensitive name → confined `O_NOFOLLOW` open → regular-file check on the fd → sensitive check on the fd's resolved name → size cap → bounded read → binary / non-UTF-8 deny. It returns only UTF-8 text. | `daemon/internal/files/read.go:16-90` (sensitive `:18-20`, open `:25`, regular `:39-41`, resolved name `:49-55`, cap `:58-60`, bounded read `:64`, binary deny `:74-79`, text success `:82-89`) |
+| The preview cap is 2 MiB (`DefaultMaxPreviewSize`). | `docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` limits table; `research/prd.md` `FR-FILE-003` |
+| Central only relays `filesystem.read` and returns the daemon's in-band payload. | `backend/app/api/http/files.py:203-215`, `backend/app/services/files.py:323-349` |
+| Every filesystem op resolves the session and authorises `file.browse` **plus** view access to the owning session, refuses a shell session, and only then checks that the node is online. | `backend/app/services/files.py:182-198`, `backend/app/services/authz.py:154-165`, `:211-215` |
+| Viewer holds `file.browse`. | `backend/app/services/rbac.py:52`; `docs/permission-matrix.md:26` |
+| A sensitive-read denial is audited with classification and extension only, never path or content. | `backend/app/services/files.py:41`, `:482-523` |
+| `POST /images` is an **upload** (write, `file.upload`), not a preview. Its type allowlist and magic sniff are for writing. | `backend/app/api/http/files.py:76-159`; `daemon/internal/files/upload.go:68-90` (`SniffImage`) |
+| The daemon runs `filesystem.read` **inline on its single control-dispatch loop**, with no worker. That loop also handles terminal input frames. | `daemon/internal/connection/connection.go:480-523` (`handleFsRead` called at `:509`); `daemon/internal/connection/files_handlers.go:82-133` |
+| An old daemon **silently drops** a control frame whose type it does not know. There is no error reply, so Central would wait for `REQUEST_TIMEOUT`. | `daemon/internal/protocol/codec.go:87` (`allowedTypes` check) → `connection.go:491-494` (`continue` on decode error); the `switch` at `:495-523` has no `default` |
+| Filesystem responses may use the 8 MiB `MaxFilePayload`. Every other control frame keeps 64 KiB. | `daemon/internal/protocol/codec.go:18-40`; `backend/app/protocol/codec.py:21`, `:32` |
+| `node-register` is `additionalProperties:false`. Capability booleans are optional, and absent means "no". | `contracts/v1/schemas/messages/node-register.schema.json:3`, `:7-9`; `contracts/CHANGELOG.md` 1.8.0 / 1.9.0 |
+| Node posture booleans are persisted, `server_default=false`. | `backend/app/db/models.py:92-107` |
+| Server-computed capability flags drive the UI. | `backend/app/services/authz.py:315-316`; `frontend/src/views/SessionWorkspaceView.vue:472-499` |
+| The browser authenticates with a **Bearer header** injected by the fetch wrapper, not a cookie. | `frontend/src/api/client.ts:1`, `:654` |
+| The deployed CSP is `default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; … img-src 'self' data:; … object-src 'none'; …`. **`img-src` does not allow `blob:`**. | `deploy/nginx/nginx.conf:134`; `deploy/railway/nginx.conf.template:114` |
+| `/api/` is proxied with `proxy_buffering on` and no `proxy_max_temp_file_size`. | `deploy/nginx/nginx.conf:163-175`; `deploy/railway/nginx.conf.template:159` |
+| The frontend has no PDF library, the daemon has no image library beyond Go's standard library, and there is no Service Worker, IndexedDB or Cache Storage use in `frontend/src`. | `frontend/package.json` `dependencies`; `daemon/go.mod`; `rg serviceWorker\|indexedDB\|caches.open frontend/src` → no match |
+| The text preview pane is Monaco-only, and plan/29 explicitly keeps images as `FILE_BINARY`, "不渲染". | `frontend/src/components/file/PreviewPane.vue:30-34`; `plan/29/06-files-and-preview-mobile.md:61`, `:65` |
+| The audit metadata filter drops the key `bytes`. | `backend/app/services/audit.py:151-163` |
+| `docs/permission-matrix.md` is generated and checked; it must not be hand-edited. | `docs/permission-matrix.md:1-4`; `scripts/p4/render_permission_matrix.py:29-71`; `backend/tests/test_authz.py:351` |
+
+### What is being asked
+
+The product owner has asked for images and PDFs to be previewable on phones, and has
+confirmed that **Viewer**, through `file.browse`, may see them (#77). That widens what
+`file.browse` authorises, and #77 requires the widening to be recorded, not inherited
+silently. #77 also rules out three shortcuts: a `raw:true` flag on `filesystem.read`,
+borrowing PR #71's download API or permission to fake an inline preview, and
+"degrading" to sending the binary to the browser as a download when a safe preview is
+not possible.
+
+## Decision
+
+### 1. A dedicated operation, not a flag and not a download
+
+Add one operation family, `filesystem.preview_*` (§5), that is **read-only**, **typed** and
+**allowlisted**. `filesystem.read` does not change: no field is added to its schema. It
+is already `additionalProperties:false` (`contracts/v1/schemas/messages/filesystem-read.schema.json`),
+and a new golden invalid fixture, `filesystem-read-with-raw.json`, pins that so a
+future `raw:true` fails in all three consumers.
+
+Why a flag is wrong, for the same reason ADR 0028 §1 gives for download: one type would
+carry two policies, the binary deny at `read.go:74-79` would become conditional, and
+the reader of that handler would have to keep both columns in their head. The opposite
+direction matters too. The preview operation's allowlist check is **the** security
+control on this path. It must be the default, not an `if`.
+
+Why download is wrong: download (PR #71, ADR 0028 §4) returns an opaque attachment
+whose whole purpose is to leave the platform. Preview returns bytes that the console
+decodes and paints, and **offers no way to save them** (§11–§12). They are different
+grants with different node switches (§9, §16).
+
+### 2. The allowlist is closed and typed
+
+The type is decided by the **daemon, from magic bytes and a structural parse**. The
+extension and any client claim never decide it. The browser uses the extension only as
+a routing hint, choosing which endpoint to ask; the daemon's verdict overrules it.
+
+| Kind | MIME (wire enum) | Magic (offset 0) | v1 policy |
+|---|---|---|---|
+| image | `image/png` | `89 50 4E 47 0D 0A 1A 0A` | Static. APNG is accepted as PNG and shows its **default image only** (§11). |
+| image | `image/jpeg` | `FF D8 FF` | Static. EXIF orientation is applied at decode. Metadata is not shown. |
+| image | `image/webp` | `RIFF????WEBP` | Static. Animated WebP shows its first frame only. |
+| image | `image/gif` | `GIF87a` / `GIF89a` | **First frame only**, never animated. Pending product decision OD-1, and this is the recommended default. |
+| pdf | `application/pdf` | `%PDF-` | Paged, canvas-rendered, no active content (§12). |
+
+Explicitly **not** in v1, and refused as `FILE_PREVIEW_UNSUPPORTED` / `unsupported_type`:
+SVG (a script- and reference-bearing XML document, not a raster), HEIC/HEIF, AVIF, BMP,
+TIFF, ICO, JPEG XL, PSD, and every other format. New formats need an amendment to this
+ADR. "The browser can decode it" is not a reason to add one.
+
+### 3. Daemon validation order (default-deny, same discipline as `Read`)
+
+`files.PreviewOpen` sits beside `read.go` (and `download.go` if #71 lands) so the files
+can be read side by side:
+
+1. Node switch `filesystem.binary_preview.enabled` → else `FILE_PREVIEW_DISABLED`.
+2. `SensitiveClassification(relPath)` → `FILE_DENIED` + classification (reuse,
+   `read.go:18-20`).
+3. `root.OpenFile(relPath)` (confined, `O_NOFOLLOW`, ADR 0014). Errors map through the
+   existing `denyFromWorkspaceErr` (`read.go:95-112`), and outside-root collapses to
+   `FILE_DENIED`.
+4. `f.Stat()` on the **fd**, then `IsRegular()` → `not_regular`.
+5. `root.RealRel(f)` → `SensitiveClassification(realRel)`. An unresolved name is
+   denied (`read.go:49-55`). This check stays: an innocuous in-root symlink pointing at
+   `.env` must fail here.
+6. Read a 64-byte header from the same fd → sniff kind. Anything else is
+   `FILE_PREVIEW_UNSUPPORTED`.
+7. Kind-specific size cap on the fd snapshot size (§4) → `FILE_TOO_LARGE` + size. **No
+   content beyond the header is read.**
+8. Bounded read of the whole file from the same fd into memory (`LimitReader(cap+1)`).
+   Reading more than `size` bytes, or a re-`fstat` whose size or mtime differs, gives
+   `FILE_PREVIEW_INVALID` / `changed`.
+9. Structural validation (§4). Failure gives `FILE_PREVIEW_INVALID` / `malformed`, or
+   `FILE_PREVIEW_LIMIT` / `pixels|dimensions|complexity`, or
+   `FILE_PREVIEW_UNSUPPORTED` / `encrypted`.
+10. Register an in-memory snapshot handle (§5) and answer `filesystem.preview_opened`.
+
+File-level denials are **in-band** (`success:false` + `{code, reason}`), the same shape as
+`filesystem.content` (`contracts/v1/fixtures/valid/filesystem-content-denied.json`),
+because the console renders a denial pane. Node-level refusals, `FILE_PREVIEW_DISABLED`,
+`FILE_PREVIEW_EXPIRED` and `NODE_BUSY`, are error frames, because they say nothing about
+the file. Neither form ever carries content or an absolute path.
+
+Structural validation is a **bounded header and marker walk, not a decode**. The daemon
+never decompresses pixel data and never interprets PDF content streams. Go's standard
+`image/png`, `image/jpeg` and `image/gif` `DecodeConfig` read only headers. WebP needs a
+small hand-written RIFF/VP8/VP8L/VP8X header reader, because `golang.org/x/image` is not a
+dependency (`daemon/go.mod`) and this ADR adds none to the daemon.
+
+### 4. Limits
+
+All limits are daemon config with these defaults. The browser re-checks the ones it can
+see, as defence in depth.
+
+| Limit | Default (recommended, OD-2) | Enforced by | On breach |
+|---|---:|---|---|
+| Image file size | 8 MiB | daemon (fd size, before the full read) | `FILE_TOO_LARGE` + size + limit |
+| Image pixels (w × h) | 16 777 216 (= 4096²) | daemon from header; browser before decode | `FILE_PREVIEW_LIMIT` / `pixels` |
+| Image longest side | 8192 px | daemon; browser | `FILE_PREVIEW_LIMIT` / `dimensions` |
+| JPEG scans (SOS markers) | 64 | daemon marker walk | `FILE_PREVIEW_LIMIT` / `complexity` |
+| PNG chunks / compressed ancillary (`zTXt`, `iTXt`, `iCCP`) bytes | 4096 chunks / 1 MiB | daemon chunk walk (lengths and CRC-framed structure only) | `FILE_PREVIEW_LIMIT` / `complexity` |
+| GIF | first image descriptor must exist and lie within the logical screen | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
+| PDF file size | 16 MiB | daemon | `FILE_TOO_LARGE` |
+| PDF structure | `%PDF-` at offset 0; `%%EOF` in the last 1 KiB | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
+| PDF encryption | `/Encrypt` in the trailer or xref-stream dictionary (a heuristic, see below) | daemon best-effort; **PDF.js authoritative** (`PasswordException`) | `FILE_PREVIEW_UNSUPPORTED` / `encrypted` |
+| PDF pages | 200 | **browser** (`numPages` before any page renders) | frontend state `pdf_too_many_pages` |
+| PDF page render | canvas ≤ 16 777 216 px (scale clamped); 10 s per page | browser | `render_failed`, page-scoped |
+| Transfer budget | 60 s total; 10 s per chunk; 15 s open | Central | `REQUEST_TIMEOUT` (stream aborted) |
+| Concurrency | 2 opens and 4 live handles per daemon; 2 streams per user; 4 streams per node in Central | daemon + Central | `NODE_BUSY` / `FILE_PREVIEW_BUSY` (429) |
+| Daemon snapshot memory | ≤ 32 MiB total across handles | daemon | `NODE_BUSY` |
+
+Two notes on these limits:
+
+- **Why the page limit sits in the browser.** Counting PDF pages reliably requires
+  parsing cross-reference streams and object streams, which means inflating
+  FlateDecode data. That would put a PDF parser in the daemon, either a dependency
+  (for example pdfcpu) or a hand-written one, running outside any browser sandbox. The
+  daemon checks what can be checked from the file's envelope. PDF.js, inside the
+  browser's renderer sandbox and a Web Worker, is the authority on pages and encryption.
+  The `/Encrypt` scan is labelled a heuristic because a textual scan of the tail can be
+  fooled either way. It exists only to spare an obvious transfer.
+- **Why 16 777 216 px.** It is the maximum canvas area commonly reported for iOS Safari.
+  **This figure is unverified** and must be measured on devices as `BP-OM-01` before the
+  default is fixed.
+
+### 5. Transport: an in-memory snapshot, pulled in bounded chunks, never written to disk
+
+The contract (proposed v1.11.0) adds three request/response pairs that fit the existing
+request-correlation relay unchanged:
+
+| Request (Central → daemon) | Response (daemon → Central) | Notes |
+|---|---|---|
+| `filesystem.preview_open {session_id, path}` | `filesystem.preview_opened {success, preview_id, path, kind, mime, size, modified_at, chunk_size, chunk_count, width?, height?}` or `{success:false, path, error:{code, reason}}` | No `mime`, `kind`, `range`, `offset`, `raw` or `encoding` in the request. |
+| `filesystem.preview_chunk {session_id, preview_id, index}` | `filesystem.preview_data {preview_id, index, data}` | `data` is canonical base64 of ≤ 512 KiB, so `maxLength` is 699 052. `preview_data` joins `LargeFrameTypes`. Its request stays on the 64 KiB bound. |
+| `filesystem.preview_close {session_id, preview_id}` | `filesystem.preview_closed {preview_id}` | Idempotent. |
+
+- **Snapshot, not ranged reads of a live file.** The daemon reads the whole bounded file
+  once (§3 step 8), validates that exact buffer, and serves chunks from it. The bytes the
+  browser receives are therefore the bytes that were validated. This answers ADR 0028
+  §9's objection to ranged download ("what if the file changed between ranges") without
+  a version precondition: the file is never re-read.
+- **No disk.** The daemon holds the snapshot in memory. Central holds at most one chunk
+  per stream and writes nothing to disk, database, log line or metrics label (ADR 0024 §5
+  applied to this path). The browser holds bytes in memory only (§14).
+  The edge must not spool either: see §6.
+- **Handle lifecycle.** `preview_id` is a ULID generated by the daemon. It is bound to
+  `(session_id, this WebSocket connection)` and **never sent to the browser**. It is freed
+  on `preview_close`, after 30 s idle, after 120 s absolute, when the connection drops (the
+  table is per connection), and when its session stops. A chunk request whose
+  `session_id` does not match the handle's is refused `FILE_PREVIEW_EXPIRED`,
+  indistinguishable from a handle that does not exist.
+- **Off the dispatch loop.** Unlike `handleFsRead` (`connection.go:509`), preview
+  handlers run on a bounded worker pool (§4 concurrency). A 16 MiB read plus validation
+  must not stall terminal input and heartbeats on the same loop.
+- **Why base64 in JSON control frames and not a new binary frame kind.** Binary kinds are
+  an allowlist (1 = input, 2 = output) with a session-id header demuxed by the terminal
+  path (`contracts/v1/fixtures/manifest.json` `binary`). A third kind would touch the
+  terminal's hot path in all three consumers. Upload and download already chose base64
+  JSON, and the ~33 % overhead is bounded by the 512 KiB chunk.
+- **Why 512 KiB.** Preview frames share the WebSocket with terminal output. A smaller
+  chunk bounds head-of-line delay for the terminal. Terminal latency under preview load
+  is measured as `BP-OM-05`.
+
+### 6. Central endpoint: authorise every request, stream with a declared length
+
+```
+GET /api/sessions/{session_id}/files/binary-preview?path=<workspace-relative>
+```
+
+1. `require_action(FILE_BROWSE)`, then `_resolve()`: session exists, `authorize_file_browse`
+   (Viewer included; shell sessions refused), node connected (`services/files.py:182-198`).
+2. The rollout flag `binary_preview_enabled` must be on, and the **live** connection's
+   registration must report `binary_preview: true` (§9). Otherwise
+   `FILE_PREVIEW_UNSUPPORTED_NODE` (409), **before** any frame is sent.
+3. `_reject_rel_path(path)` (`services/files.py:90-121`).
+4. Per-user and per-node stream limit.
+5. `preview_open` (15 s). A denial maps to an `ApiError` whose code is the daemon's code
+   and whose `details` carry `{reason, size?, limit?}`. A sensitive denial is audited
+   through the existing `_maybe_audit_denied` (unchanged).
+6. On success, a `StreamingResponse` whose generator requests chunk *i + 1* only after
+   chunk *i* has been handed to the ASGI `send`. That is real pull-based backpressure,
+   unlike the single-frame case ADR 0028 rejects streaming for. The generator's `finally`
+   sends `preview_close` unless all chunks were served. A client disconnect cancels the
+   generator, and `_observe` already records `CANCELLED` (`services/files.py:220-224`).
+
+Response headers, as a set:
+
+| Header | Why |
+|---|---|
+| `Content-Type: application/octet-stream` | The console decodes by the sniffed MIME it received separately, so the body is never given a renderable type. |
+| `X-Content-Type-Options: nosniff` | Stops a browser from overruling the line above. |
+| `Content-Length: <size>` | A stream cut short (node lost, timeout) becomes a **network error** in `fetch`, never a partially painted image or PDF. |
+| `Cache-Control: no-store, private` and `Vary: Authorization` | No shared or browser HTTP cache keeps a user's file (cache poisoning, cross-user leakage). |
+| `Cross-Origin-Resource-Policy: same-origin` | No other origin can embed it. |
+| `Content-Security-Policy: sandbox; default-src 'none'` | If the response is ever navigated to, nothing in it runs. |
+| `X-Cliora-Preview-Mime`, `-Kind`, `-Width`, `-Height` | The daemon's verdict, which the renderer uses to pick a decoder. Values come from the wire enum only. |
+
+There is **no `Content-Disposition`**: this is not a download and must not look like one.
+Navigation cannot reach the endpoint anyway, because authentication is a Bearer header
+(`client.ts:654`). A RED test pins that a request carrying cookies but no
+`Authorization` header gets 401.
+
+**Edge buffering.** `location /api/` has `proxy_buffering on` with no
+`proxy_max_temp_file_size` (`nginx.conf:174`). Per nginx's documented defaults (**unverified
+in this deployment**), a proxied body larger than the in-memory buffers spills to
+`proxy_temp` files, which would break "no disk". A dedicated
+`location ~ ^/api/sessions/[^/]+/files/binary-preview$` sets `proxy_buffering off` (or
+`proxy_max_temp_file_size 0`) in both `deploy/nginx/nginx.conf` and
+`deploy/railway/nginx.conf.template`. Railway's own edge is an unknown (`BP-OM-06`). The
+existing text-preview path has the same spill exposure today; this ADR only records it.
+
+### 7. Authorisation: `file.browse`, per request, and what the widening is and is not
+
+- **Who.** Admin, Developer and **Viewer**: any holder of `file.browse` with view access
+  to the owning, non-shell session (`authz.py:154-165`). There is no new RBAC action. The
+  reasons are ADR 0028 §5's: three fixed roles cannot express "text but not images", and
+  splitting the action would split every "who read this workspace" query.
+- **When.** Every HTTP request is authorised from scratch. The browser never holds a
+  `preview_id`, so it cannot replay a chunk or continue a transfer after its authority
+  changed. Residual: a role revoked *during* a transfer is honoured at the next request,
+  at most 60 s (§4) later.
+- **The widening, stated plainly.** Before: `file.browse` let a Viewer see UTF-8 text up
+  to 2 MiB. After: it also lets a Viewer **see** allowlisted images and PDFs up to the §4
+  limits, rendered in the console. It does **not** grant download. The console offers no
+  save, share, open-in-new-tab, print or copy-image affordance for these previews (§11,
+  §12), and the node switch for preview is separate from #71's `file_download`. It is also
+  not DRM: pixels on a screen can be photographed, and devtools can read memory. The
+  boundary is "the platform is not the mechanism for taking a copy", the same property
+  ADR 0028 §3 uses.
+- The sensitive-name policy is **the same function, called twice** (§3 steps 2 and 5).
+  No preview-specific exemption exists or may be added.
+
+### 8. Session and node binding
+
+- Central resolves `session → node_id` once per HTTP request and sends every frame of
+  that transfer to that node only.
+- The daemon binds a handle to `session_id` and to its connection, as §5 describes. A
+  reconnect gives a new table, and old ids become `FILE_PREVIEW_EXPIRED`.
+- `session.stop` for a session drops its handles.
+- The browser request carries the **exact** session id currently shown. The frontend
+  drops any response for a session it no longer shows, using the rule that already
+  exists at `frontend/src/stores/files.ts:199-202` (§14).
+
+### 9. Capability negotiation: three gates, and an old daemon is never asked
+
+| Gate | Owner | Default | Absent means |
+|---|---|---|---|
+| `binary_preview_enabled` (Central setting, the rollout flag) | operator | **off** (OD-5) | off |
+| `node-register.binary_preview` (optional boolean) ← daemon config `filesystem.binary_preview.enabled` | node owner | daemon default `true` (OD-5) | **false**, which is what an old daemon sends |
+| `may_browse_files(user, session)` | RBAC | — | — |
+
+`SessionSummary.capabilities.can_preview_binary = flag ∧ live_registration.binary_preview ∧ may_browse_files`,
+computed next to `can_browse_files` (`authz.py:315-316`).
+
+- **The authoritative check uses the live connection's registration.** Today the
+  registry tracks connectivity only (`backend/app/services/registry.py:185`,
+  `is_connected`), so it must be **extended** to keep the `binary_preview` bit of the
+  registration that opened the current connection, and to forget it when that
+  connection closes. The persisted column (a proposed migration after #71's `0021`, `server_default=false`,
+  following `models.py:98-107`) is for display and fleet queries only. A daemon that
+  reconnects downgraded is therefore refused immediately, not after the next DB write.
+- **An old daemon never receives `filesystem.preview_*`.** It would drop the frame
+  silently (`codec.go:87`, `connection.go:491-494`) and the user would wait for a
+  timeout. Central refuses first, with `FILE_PREVIEW_UNSUPPORTED_NODE`.
+- **A new browser against an old Central** reads `can_preview_binary` as absent, so
+  false, and keeps today's `FILE_BINARY` denial pane (`PreviewDenied.vue`).
+- **A new daemon against an old Central.** `node-register` is `additionalProperties:false`
+  (`node-register.schema.json:3`), so an old Central would **reject** a registration that
+  carries `binary_preview`. Whether that rejection drops the connection has **not been
+  verified** in this phase. Deployment order is therefore fixed as
+  **contract → Central (+ frontend) with the flag off → daemons → flag on**, the same
+  constraint every additive `node-register` field has carried. `BP-02` adds a RED test
+  that demonstrates it.
+
+### 10. Audit and observability: no path, no content
+
+- **Sensitive denial**: the existing `file.sensitive_read_denied` with `{classification, extension}`
+  (`services/files.py:482-523`), unchanged and shared.
+- **Success** (OD-6, recommended **yes**): a new audit action `file.binary_preview` with
+  metadata `{kind, mime, size_bytes}` plus the usual user, session and node ids. There is
+  **no path, no filename, no extension and no content**. `bytes` must not be the key,
+  because the audit filter drops it (`audit.py:159`).
+
+  Why record success when text preview does not: this is a deliberate expansion of what
+  Viewers can see, and "did Viewers use it, on which sessions" has to be answerable
+  without a log that holds paths.
+- **Correlation log and metrics**: ids, `kind`, outcome code, reason, chunk count, bytes and
+  duration, through the existing `_observe` (`services/files.py:200-251`). Never the path,
+  never a digest of the content. Daemon metrics follow the `filesystem_*` naming
+  (`files_handlers.go:108-117`), with `op="preview_open|preview_chunk"`.
+
+### 11. Images: decoded to a canvas, never to an `<img>` with an object URL
+
+The renderer decodes with `createImageBitmap(new Blob([bytes], {type: mime}), {imageOrientation: "from-image"})`
+and paints to a `<canvas>`, which gets `role="img"` and an `aria-label` naming the file and
+its dimensions.
+
+- **The GIF first-frame policy falls out of the platform.** For an animated image,
+  `createImageBitmap` takes the format's default image, or else the first frame (HTML
+  Standard, "ImageBitmap"). APNG and animated WebP behave the same way. No per-format code
+  is needed.
+- **No `img-src` change.** Decoding a Blob in script is not a subresource fetch, so the
+  current `img-src 'self' data:` (`nginx.conf:134`) stands. **Unverified on iOS Safari**
+  (`BP-OM-02`). If a device needs an `<img>` fallback, the only permitted CSP change is
+  adding `blob:` to `img-src`, and it needs its own review.
+- **No save affordance.** A canvas gives no "save image", drag-out or "open image in new
+  tab" menu, where an `<img>` would. On iOS a long-press on `<img>` offers "Save to
+  Photos", which is a download under another name, and #77 forbids that. Long-press
+  behaviour on a canvas is measured as `BP-OM-03`.
+- Fit-to-width by default. Zoom uses buttons (＋ / − / fit) and pinch through pointer
+  events on the canvas container, clamped so the backing canvas never exceeds the §4
+  pixel limit. Page-level pinch zoom is not disabled (`index.html:10-11` does not set
+  `user-scalable=no`, and this ADR does not add it).
+
+### 12. PDF: PDF.js display layer only, in a worker, with no active content
+
+**Choice: `pdfjs-dist` (Mozilla PDF.js), core display API only**, lazy-loaded as its own
+chunk when the first PDF opens, the same way Monaco stays out of the initial bundle.
+Its evaluation:
+
+| Question | Finding | Status |
+|---|---|---|
+| Licence | Apache-2.0 | to confirm on the pinned version's `LICENSE` in `BP-07` |
+| Version | Pin an exact current release. **Floor ≥ 4.2.67**, the fix for CVE-2024-4367 (arbitrary JavaScript through a crafted font when `isEvalSupported` is true) | the exact pin is chosen in `BP-07` |
+| Third-party service | None. The library, worker, cMaps, standard fonts and any `.wasm` are self-hosted build assets | required |
+| Worker | module worker from a same-origin asset, allowed by `worker-src 'self' blob:` | expected to fit the current CSP |
+| `eval` / `new Function` | `isEvalSupported: false`. The CSP also has no `'unsafe-eval'`, a second layer | required |
+| WebAssembly decoders (JPX, ICC) in recent versions | same-origin `wasmUrl`, allowed by `script-src 'wasm-unsafe-eval'` (already present) and `connect-src 'self'` | **unverified** (`BP-OM-04`) |
+| Fonts | embedded fonts through the FontFace API from in-memory data; `font-src 'self' data:` already present | **unverified** (`BP-OM-04`) |
+| Browser floor | Recent releases target modern engines. Older iOS Safari may need the legacy build | **unverified**, and a product decision (OD-9) |
+| Bundle | not measured. Expect ~1 MB+ for the worker, in a lazy chunk | measured in `BP-07` |
+
+**Configuration (all required):** pass the bytes as `data` (no URL, so no range or stream
+fetching), with `isEvalSupported: false`, `enableXfa: false`,
+`annotationMode: AnnotationMode.ENABLE` (appearance streams are painted, forms are not
+interactive), `disableAutoFetch: true`, `disableStream: true`, `disableRange: true`,
+`stopAtErrors: true` for structural errors (**to verify** that this does not reject
+common benign PDFs), and self-hosted `cMapUrl`, `standardFontDataUrl` and `wasmUrl`.
+The PDF.js *viewer* application (`web/viewer.html`) is **not** used. It brings download,
+print, open-file, the scripting sandbox and an annotation DOM layer.
+
+**Active content.**
+
+- **JavaScript**: not executed. The display API does not run document JavaScript, and
+  the scripting bundle (`pdf.scripting` / sandbox) is not shipped.
+- **Links** (URI, Launch, GoToR, GoToE): no annotation layer DOM is created, so nothing
+  is clickable, and no navigation, `window.open` or fetch can originate from a document.
+  Internal GoTo links are also inert in v1 (OD-4).
+- **Forms / XFA**: not interactive, XFA disabled, nothing submitted.
+- **Embedded files and attachments**: not listed and not extractable.
+- **Encrypted documents**: refused with `encrypted`, and no password prompt in v1 (OD-8).
+- **Text layer / selection / search**: **not in v1** (OD-3). Pages are canvases with
+  `aria-label="第 n／N 頁"`.
+
+  The accessibility cost is real: a screen reader cannot read PDF text in v1. The
+  denial copy and the release note must say so.
+
+**Rendering.** A single page at a time plus one neighbour, with at most 3 live canvases,
+page-number navigation (prev / next / go-to), fit-to-width and zoom. The scale is clamped
+by the pixel limit, each page has a 10 s timeout, and a cancelled or timed-out render calls
+`RenderTask.cancel()`. `loadingTask.destroy()` / `pdf.destroy()` terminates the worker on
+close, on switch and on auth loss (§14).
+
+### 13. CSP
+
+**No change is expected.** The current policy (`nginx.conf:134`) already has `'self'`
+workers, `'wasm-unsafe-eval'`, `data:` fonts, `object-src 'none'` and no external origin,
+and this ADR adds no external origin, no `unsafe-eval`, no `blob:` in `img-src` and no
+`frame-src`. Every "no change" row is verified in `BP-07` by running the built bundle under
+the real header (`frontend/tests/e2e/theme.spec.ts:138` is the precedent for CSP-in-E2E).
+Any change it finds needs a separate review, and must never add a third-party origin.
+
+### 14. Memory, cache and cleanup: nothing outlives the session, the user or the file
+
+- **One owner.** A single composable (proposed `useBinaryPreview`) owns the
+  `AbortController`, the `Uint8Array`, the `ImageBitmap`, the PDF.js loading task or
+  document, and every canvas. A small store exposes `clear()` so that non-component
+  owners (auth loss) can dispose it. Large objects are `markRaw` and never reactive.
+- **No persistence and no shared cache**: no Service Worker, IndexedDB, Cache Storage,
+  `localStorage` or HTTP cache (`no-store`). The in-memory cache holds **only the preview
+  on screen**. Reopening fetches again. Monaco's 8-entry LRU does not extend to binaries,
+  because phone memory is the constraint.
+- **Object URLs: none by design** (§11, §12). If a device fallback ever needs one, the
+  same owner creates it and revokes it on every trigger below.
+- **Disposal triggers**, each of which clears **before** the next state renders (the
+  plan/29 MS-16 "先清再換" rule): preview path change; close; session id change;
+  component unmount; `can_preview_binary` becoming false; sign-out; a user-id change;
+  and, on identity-pending, aborting in-flight work only. The last three reuse the #76
+  auth-loss pattern: synchronous watchers on `isAuthenticated`, `user.id` and
+  `identityPending` that call the stores' public reset. That pattern currently exists on
+  **unmerged** branch `fix/mobile-file-browser-76` @ `a453bd4`
+  (`frontend/src/router/authLoss.ts:80-97`, `:104-123`, `:130-136`). This ADR depends on it
+  landing, not on its exact code.
+- **Disposal actions**: abort the fetch; `bitmap.close()`; set each canvas to 0 × 0;
+  `renderTask.cancel()`; `pdf.destroy()` (which terminates the worker); drop the
+  `Uint8Array`; reset the state.
+
+### 15. Cancellation and concurrency
+
+Browser abort (back, switching file or session, auth loss) → `fetch` abort → Starlette
+cancels the generator → `preview_close` → the daemon frees the snapshot. If the close is
+lost, the idle TTL frees it. An open that the browser abandoned before `preview_opened`
+arrived leaves a handle that only the TTL frees, bounded by the 4-handle and 32 MiB caps.
+A second open from the same tab aborts the first (supersede). Limits are listed in §4. All
+refusals are `NODE_BUSY` or 429, never a hang.
+
+### 16. Relationship to download (PR #71, ADR 0028 as proposed there)
+
+| | Binary preview (this ADR) | Download (PR #71) |
+|---|---|---|
+| Types | allowlist of 5 | anything non-sensitive |
+| Output | decoded and painted, no save affordance | opaque attachment saved to disk |
+| Node switch / report | `filesystem.binary_preview.enabled` / `binary_preview` | `filesystem.download.enabled` / `file_download` |
+| Audit | `file.binary_preview`, no path | `file.download`, with path |
+| Sensitive policy | the same function, twice | the same function, twice |
+
+Neither switch implies the other. A RED test runs both on one node in both combinations:
+preview works while download is disabled, and the reverse. The denial pane never
+offers download *because* preview failed. If #71 lands, the pane may offer it only under
+#71's own `can_download` condition, and never as a fallback for a preview that
+was refused as unsafe (`FILE_PREVIEW_LIMIT`, `FILE_PREVIEW_INVALID`), which #77 rules out.
+No message name, capability flag, config key, audit action or migration is shared.
+
+## Threat model
+
+Assets: workspace file bytes; the secrecy of sensitive files; the console origin (its
+tokens and DOM); Central, daemon and phone availability; the separation between users and
+between sessions.
+
+| # | Threat | Vector | Control (section) | Residual | RED test / fixture |
+|---|---|---|---|---|---|
+| T1 | PDF active content runs as the console | JavaScript, URI/Launch links, forms/XFA submit, embedded files | display API only, no scripting bundle, no annotation DOM, `enableXfa:false`, `isEvalSupported:false`, CSP with no `unsafe-eval` and `form-action 'self'` (§12, §13) | a PDF.js bug that escapes into the page. Mitigated by the pinned floor version, worker isolation and CSP | `pdf-with-js.pdf`, `pdf-with-uri-link.pdf`, `pdf-with-launch.pdf`, `pdf-with-form-submit.pdf`, `pdf-with-attachment.pdf`: nothing navigates, fetches, opens a window or creates an `<a>` |
+| T2 | Font-program code execution (CVE-2024-4367 class) | crafted FontMatrix | version floor ≥ 4.2.67, `isEvalSupported:false`, CSP | a future bug of the same class | the CVE's public proof-of-concept shape as a fixture: no script executes under the real CSP |
+| T3 | Decompression or pixel bomb | PNG 50 000 × 50 000 with a tiny IDAT; a JPEG with huge SOF dimensions or thousands of progressive scans; a GIF whose frame exceeds the logical screen | daemon header and marker walk with pixel, side and scan limits before transfer; the browser re-checks the headers before decode (§3, §4) | a browser decoder bug on a file inside the limits | `png-bomb-50k.png`, `jpeg-sof-65535.jpg`, `jpeg-1000-scans.jpg`, `gif-frame-outside-screen.gif`: all `FILE_PREVIEW_LIMIT`/`INVALID`, and none reaches the browser |
+| T4 | PDF resource exhaustion in the browser | 10 000 pages; huge MediaBox; a pathological content stream | page limit before render; clamped scale; per-page timeout plus cancel; worker terminated on leave (§4, §12) | one tab's worker slows until the timeout | `pdf-10000-pages.pdf`, `pdf-huge-mediabox.pdf`, `pdf-slow-content.pdf` |
+| T5 | Parser vulnerability in the daemon | malformed headers | header-only parsing in a memory-safe language, bounded buffers, no new daemon dependency, a fuzz target per sniffer (§3) | a panic, recovered per request | `go test -fuzz` targets for the PNG, JPEG, GIF, WebP and PDF envelope checks; truncated and garbage corpus |
+| T6 | Parser vulnerability in the browser | a valid-looking file that exploits the image or PDF decoder | the browser's own sandbox; PDF.js in a worker; allowlist of 5 formats; SVG excluded | an engine zero-day, out of our control | allowlist fixtures only; `.svg` is refused `unsupported_type` |
+| T7 | Wrong-magic or polyglot | `evil.png` that is HTML, SVG or PDF; a PDF+ZIP polyglot | the type comes from magic, not the extension; the body is `octet-stream` + `nosniff` + `CSP: sandbox`; decoding is chosen by the daemon's MIME; no `<iframe>`/`<object>`/`<embed>` (§2, §6) | a polyglot that is valid as its sniffed type renders as that type only | `html-named.png`, `svg-named.png`, `pdf-named.jpg`, `zip-pdf-polyglot.pdf` |
+| T8 | Sensitive-file exfiltration through the new path | `.env.png`; `id_rsa.pdf`; an in-root symlink `photo.png → .env`; a file under `.ssh/` | the same `SensitiveClassification`, twice, the second time on the fd's resolved name (§3, §7) | none beyond the policy's own coverage | `symlink-to-dotenv.png`, `dotenv-named.png`, `.ssh/diagram.png`, `secrets-report.pdf`: all `FILE_DENIED` and audited |
+| T9 | Escape from the workspace | `../`, an absolute path, a symlink out of the root, a FIFO or device | wire pattern, `_reject_rel_path`, `O_NOFOLLOW` confined open, regular-file check on the fd (§3, §6) | — | reuse the existing escape fixtures, plus `fifo.png`, `symlink-outside.pdf` |
+| T10 | Cache poisoning / cross-user leakage | shared proxy cache; browser HTTP cache; an in-memory cache keyed by path | `no-store, private` + `Vary: Authorization`; no Service Worker or IndexedDB; the only in-memory item is the current one, wiped on user change (§6, §14) | — | a test that user B, on the same tab after a user switch, sees no bytes from user A; header assertions |
+| T11 | Cross-session leakage | a late response for session A painted while B is shown; a `preview_id` reused across sessions | exact-session request and late-drop rule; handle bound to session and connection; the id never reaches the browser (§8, §5) | — | switch sessions mid-transfer: A's bytes are never painted; forged cross-session chunk → `FILE_PREVIEW_EXPIRED` |
+| T12 | Viewer privilege expansion beyond the grant | Viewer uses preview as download; Viewer reaches a shell session's files; preview enables download | no save affordance; shell refused (`authz.py:163-164`); separate switches; the widening recorded in PRD, release note and matrix (§7, §16) | screenshots and devtools (not DRM) | a role matrix for Viewer/Developer/Admin × allowed/denied; the cross-switch test from §16 |
+| T13 | DoS on node, Central or WebSocket | parallel opens; slowloris clients; huge PDFs; terminal starvation | concurrency limits, snapshot memory cap, TTL, 512 KiB chunks, worker pool off the dispatch loop, transfer budget (§4, §5, §15) | a legitimate user who hits the limits sees `NODE_BUSY` | a concurrency test (N+1 → 429 / `NODE_BUSY`); a slow reader aborted at 60 s; terminal echo latency under load (`BP-OM-05`) |
+| T14 | Old daemon or old Central mismatch | new Central sends an unknown type; new daemon registers with an old Central | gate on the live registration; deployment order (§9) | an operator deploying in the wrong order | a new Central with a fake old daemon never sends `preview_*`; an old schema rejects the new field (documents the order) |
+| T15 | Leaking a path or content through telemetry | logs, metrics labels, audit, error messages | ids, kind and counts only; `ApiError` messages are fixed strings (§10) | — | a log-capture test asserts that no path or filename substring appears for a request on `secret-project/plan.pdf` |
+| T16 | Silent degradation to download | a fallback that sends the file when rendering fails | no `Content-Disposition`; no save UI; the denial pane has no "download instead" for unsafe refusals (§6, §16) | — | a frontend test: on a `render_failed`/`LIMIT`/`INVALID` state no `<a download>` exists and no blob URL was created |
+
+## Consequences
+
+- Phones and desktops can view the five allowlisted types without leaving the console.
+  Whether desktop is included is OD-7; the recommendation is yes, through one renderer.
+- **What `file.browse` authorises widens, including for Viewer.** This must be the first
+  paragraph of the release note and must appear in the generated permission matrix. It
+  cannot be a footnote.
+- Three new moving parts that text preview never had: a daemon snapshot table with TTLs, a
+  streaming Central endpoint, and a PDF.js dependency with its own supply chain and
+  CVE-watch obligation. All three have explicit owners in `plan/31`.
+- The existing `FILE_BINARY` pane stays for everything outside the allowlist, and for
+  nodes, Centrals or browsers that do not report the capability.
+- A PDF is not accessible to screen readers in v1 (OD-3).
+- Deployment order becomes a documented constraint (§9).
+- **Not decided here:** thumbnails in the file list, SVG, HEIC/AVIF, animated GIF,
+  PDF text selection and search, password-protected PDFs, printing, video and audio,
+  Office documents, and any relaxation of the sensitive policy.
+
+## Alternatives considered and rejected
+
+| Option | Why not |
+|---|---|
+| `raw:true` (or `mode`, `encoding:"base64"`) on `filesystem.read` | One type with two policies; the binary deny becomes conditional (§1). #77 forbids it. |
+| Reuse PR #71's download endpoint and render its bytes inline | That is a different grant (take a copy) with a different switch and audit; it would make preview depend on download being enabled, and `octet-stream` + `attachment` is designed *not* to render (§16). #77 forbids it. |
+| Single frame, ≤ 4 MiB, no chunking (the #71 shape) | It caps PDFs at 4 MiB, holds a whole file per request in Central, and gives no backpressure. Chunking from a validated snapshot costs one handle table and removes all three problems (§5). |
+| Ranged reads of the live file (`offset`, `length`) | Bytes served could differ from bytes validated; it needs a version precondition (ADR 0028 §9, `plan/14`). The snapshot avoids that. |
+| New binary WebSocket frame kind for preview data | It touches the terminal's binary header demux in three consumers for a ~33 % saving (§5). |
+| Browser-side JSON with base64 body | +33 % over the air and a large string decode on a phone; a streamed binary body with `Content-Length` is smaller and fails closed. |
+| `<img src="blob:…">` / `data:` URLs | `blob:` needs a CSP change; both expose "save image" / "open in new tab" (download by another name), and object URLs need lifecycle management. Canvas avoids all three (§11). A device fallback only. |
+| Native browser PDF viewer (`<iframe>` / `<embed>` / `<object>` of a blob) | Android Chrome has no inline PDF viewer and would **download** instead (#77 forbids it); iOS behaviour differs by version; the native viewer runs document JS and makes links clickable; it needs `object-src`/`frame-src` relaxations. |
+| PDF.js full viewer app (`web/viewer.html`) | It ships download, print, open-file, the scripting sandbox and an annotation DOM (§12). |
+| Server-side rasterisation (daemon or Central renders PNG pages with MuPDF/Poppler/PDFium) | A native C parser outside any sandbox on the node or on Central, CGO or a sidecar binary, licences (MuPDF AGPL, Poppler GPL), node CPU, and still a PDF parser. It moves the parser-exploit risk from the browser sandbox to our servers. |
+| PDFium compiled to WebAssembly | Viable, but packaging is less mature and larger, and no smaller in attack surface than PDF.js. Revisit only if PDF.js fails `BP-OM-04`. |
+| Third-party viewer (Google Docs viewer, a SaaS) | It sends workspace content off-platform. Forbidden by #77 and ADR 0017's no-external-origin CSP. |
+| Daemon transcodes images to a sanitized PNG | It needs full decoders (WebP means a new `x/image` dependency), costs node CPU, changes the bytes, and moves decode risk out of the browser sandbox. It is a possible later hardening for exotic formats, not v1. |
+| A full PDF parser in the daemon to count pages | A dependency (pdfcpu) or a hand-written parser outside the browser sandbox, only to enforce a limit the renderer enforces authoritatively (§4). |
+| A new `file.preview` RBAC action (Viewer excluded) | The product owner explicitly wants Viewer included (#77). Fixed roles cannot express the difference, and it would split audit queries (§7). |
+| Serve any `image/*` the browser can decode | Pulls SVG (active content) and a long tail of decoders into the attack surface; the allowlist is the control (§2). |
+| Cache decoded previews (LRU, IndexedDB, Service Worker) | Cross-user and cross-session leakage, and poisoning on a shared phone; memory pressure on iOS (§14). |
+
+## Open decisions and unverified assumptions
+
+Product decisions, each with a recommended default, are in
+`plan/31/01-decisions-and-governance.md` §6 (OD-1 … OD-10). Technical unknowns that must be
+measured before a default is final are `BP-OM-01 … BP-OM-09` in
+`plan/31/09-implementation-status.md`. This ADR moves to `accepted` only after the product
+owner signs off on §7 (the widening) and on the ODs, and after `BP-08`'s security review.
