@@ -43,11 +43,29 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [relPath: string] }>();
 
 const store = useFilesStore();
+
+// A missing permission or an ended session both mean: bind nothing, request
+// nothing. The same rule `FileTree` applies, so the two widths cannot disagree
+// about whether a dead session is browsable (plan/29 MS-14).
+const browsable = computed(() => props.canBrowse && !props.disabledReason);
+
 const browser = useFileBrowser({
   sessionId: toRef(props, "sessionId"),
   rootLabel: toRef(props, "rootLabel"),
-  canBrowse: toRef(props, "canBrowse"),
+  canBrowse: browsable,
 });
+
+// `idle` has no picture of its own: bound means a load is about to start, and
+// unbound (with permission) means the session is still being confirmed. Either
+// way something is on its way, and an empty list would claim otherwise (#76).
+const loading = computed(
+  () => browser.state.value === "loading" || browser.state.value === "idle",
+);
+// A retry only where one can help. Forbidden is the server's answer about the
+// role, and asking again returns the same answer.
+const retryable = computed(
+  () => browser.state.value === "offline" || browser.state.value === "error",
+);
 
 // Searching replaces the listing rather than filtering it, because it is a
 // different question: the listing answers "what is in this folder", the search
@@ -71,8 +89,10 @@ function icon(entry: FileEntry) {
 
 <template>
   <div class="browser">
+    <!-- No retry here: neither a missing permission nor an ended session is
+         something asking again can change. -->
     <UiInlineNotice
-      v-if="!canBrowse"
+      v-if="!browsable"
       tone="warning"
       :message="disabledReason ?? '你的角色沒有瀏覽這個工作區的權限。'"
     />
@@ -150,10 +170,7 @@ function icon(entry: FileEntry) {
           </li>
         </ul>
 
-        <UiLoadingState
-          v-if="browser.state.value === 'loading'"
-          label="正在載入資料夾"
-        />
+        <UiLoadingState v-if="loading" label="正在載入資料夾" />
         <UiEmptyState
           v-else-if="browser.state.value === 'empty'"
           variant="empty"
@@ -168,7 +185,17 @@ function icon(entry: FileEntry) {
           "
           tone="error"
           :message="browser.message.value ?? '無法載入這個資料夾。'"
-        />
+        >
+          <template v-if="retryable" #actions>
+            <UiButton
+              variant="secondary"
+              data-action="retry"
+              @click="browser.refresh()"
+            >
+              重試
+            </UiButton>
+          </template>
+        </UiInlineNotice>
 
         <!-- A truncated level is never presented as a complete one. -->
         <div v-if="browser.truncated.value" class="more">

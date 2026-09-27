@@ -75,10 +75,26 @@ const canOpenShell = computed(
   () => capabilities.value?.can_open_shell === true,
 );
 
+// A session in a terminal state has no daemon-side workspace to browse.
+const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
+
 // The file panel keys off the session id; a null id (or a dead session) means it
 // binds nothing and issues no request.
+//
+// Only a live session the *latest* fetch confirmed (#76). `sessions.current`
+// outlives a failed refetch — a 403 leaves the previous payload in place — so
+// matching the id alone would keep the files store bound, and its listing
+// cached, for a session the server just refused. A terminal status unbinds for
+// the same reason: the tree, the phone browser and the preview all read this
+// one value, and the preview in particular is not mounted beside the browser on
+// a phone, so it cannot rely on the browser noticing. Unbinding wipes the store
+// and closes the preview (see the watcher before the session-switch one).
 const filesSessionId = computed(() =>
-  session.value?.id === props.id ? props.id : null,
+  resource.state.value === "success" &&
+  session.value?.id === props.id &&
+  !TERMINAL_STATUSES.has(session.value.status)
+    ? props.id
+    : null,
 );
 
 // Workspace root label: the folder name only. The node's absolute workspace path
@@ -89,8 +105,6 @@ const workspaceLabel = computed(() => {
   return parts.length ? parts[parts.length - 1] : "workspace";
 });
 
-// A session in a terminal state has no daemon-side workspace to browse.
-const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
 const filesDisabledReason = computed(() =>
   session.value && TERMINAL_STATUSES.has(session.value.status)
     ? "Session 已結束，檔案瀏覽不再可用。"
@@ -617,6 +631,33 @@ onMounted(async () => {
   }
 });
 
+// The preview lives only as long as the binding it was opened under (#76).
+//
+// When the binding drops *in place* — the session ended, or a refetch failed —
+// the preview closes through the ordinary route: the pane unmounts, which aborts
+// an in-flight read and disposes every Monaco model, and on a phone the user is
+// returned to the file panel, which now says why. That route pops the one
+// same-URL entry this view pushed, and only that one.
+//
+// When the *route* changed, the entry is disowned instead, exactly as the
+// session-switch watcher below does: calling `history.back()` in the middle of
+// a navigation is how a router ends up somewhere neither it nor the user chose.
+// Both sources are watched together so that the two cases cannot be told apart
+// by which watcher happened to run first.
+watch(
+  [() => props.id, filesSessionId],
+  ([id, files], [previousId, previousFiles]) => {
+    if (!previewPath.value || files === previousFiles) return;
+    if (id !== previousId) {
+      previewHistoryDepth = 0;
+      previewPath.value = null;
+      activeTab.value = "cli";
+      return;
+    }
+    if (files === null) closePreview();
+  },
+);
+
 // Switching to another session id re-attaches cleanly (dispose is handled by the
 // composable's scope teardown on unmount; here we just reconnect).
 watch(
@@ -633,6 +674,8 @@ watch(
       // The pushed history entry is disowned rather than popped: popping here
       // would fight the navigation that is already in progress.
       previewHistoryDepth = 0;
+      previewPath.value = null;
+      activeTab.value = "cli";
       mobileMode.value = "cli";
       await closeShell();
       await resource.run();

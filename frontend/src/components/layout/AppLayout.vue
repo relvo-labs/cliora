@@ -29,7 +29,9 @@ import { useBreakpoint } from "../../composables/useBreakpoint";
 import { useFocusTrap } from "../../composables/useFocusTrap";
 import { useAuthStore } from "../../stores/auth";
 import { useFavoritesStore } from "../../stores/favorites";
+import { useFilesStore } from "../../stores/files";
 import { usePreferencesStore } from "../../stores/preferences";
+import { useSessionsStore } from "../../stores/sessions";
 import UiIconButton from "../ui/UiIconButton.vue";
 import UiToastHost from "../ui/UiToastHost.vue";
 import AccountMenu from "./AccountMenu.vue";
@@ -42,6 +44,8 @@ defineProps<{ fill?: boolean }>();
 
 const auth = useAuthStore();
 const favorites = useFavoritesStore();
+const files = useFilesStore();
+const sessions = useSessionsStore();
 const preferences = usePreferencesStore();
 const router = useRouter();
 
@@ -116,12 +120,31 @@ const menuPanel = ref<HTMLElement>();
 useFocusTrap(menuPanel, menuOpen, { onEscape: () => (menuOpen.value = false) });
 
 async function logout(): Promise<void> {
-  await auth.logout();
-  // Favourites are per-user workspace paths held in memory. Without this, signing
-  // in as someone else on the same page load would briefly show the previous
-  // user's paths before the next fetch replaced them.
-  favorites.clear();
+  try {
+    await auth.logout();
+  } catch {
+    // Central did not confirm, but the client has already dropped the tokens
+    // (it clears them in `finally`), so this tab is signed out either way and
+    // saying otherwise would be the false state. Cleared again here so that
+    // stays true whatever the client does; the router guard would otherwise
+    // bounce the push below back into the app.
+    auth.clearTokens();
+  } finally {
+    // On success *and* failure (#76). Favourites are per-user workspace paths
+    // held in memory; without this, signing in as someone else on the same
+    // page load would briefly show the previous user's paths. The file cache
+    // is keyed by session id only, so the next user opening that session would
+    // otherwise be shown the previous user's listing without a request made
+    // for them.
+    favorites.clear();
+    files.clearForSession(null);
+  }
   await router.push({ name: "login" });
+  // The current session payload (name, workspace path) goes too, but only
+  // once the workspace has unmounted: clearing it under a mounted workspace
+  // would close an open phone preview through the history stack in the
+  // middle of this navigation.
+  sessions.reset();
 }
 </script>
 
