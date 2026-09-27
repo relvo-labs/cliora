@@ -89,7 +89,7 @@
 | 前端 | 回退前端版本 | 入口消失；既有 `FILE_BINARY` 面板 | 部署後 |
 | Central（回退版本） | **依序**：① Central flag off；② 每台節點設 `enabled:false` 並重啟 agentd（欄位被省略，舊 schema 接受），**或**回退 daemon；③ 在**新** Central 上確認每台的 `last_registration_at` 晚於重啟前的時間（證明停用後的註冊被接受）；④ 回退 Central；⑤ 在**舊** Central 上（沒有那個欄位）以名稱標記確認：把該節點的 `node.name` 暫時改成一次性標記再重啟，node list 出現該標記即證明被接受，舊 Central 只在接受註冊時寫入 `name`（`nodes.py:247`）；確認後改回原名 | 端點消失；節點照常註冊 | 部署後 |
 | Central（**錯誤示範**） | 在啟用中的新 daemon 仍連線時直接回退 Central | 這些節點的註冊被舊 Central **靜默略過**：看起來在線，但版本、runtime、workspace root 不更新。runbook 必須寫出這個症狀與修復方法（對那些節點做第 ② 步） | — |
-| Migration | `0022` downgrade | 只刪 `nodes.binary_preview`（report-only，無使用者資料） | — |
+| Migration | `0022` downgrade | 刪除 `0022` 加的**全部**：`ix_nodes_binary_preview` 索引、`nodes.binary_preview`、`nodes.last_registration_at`（都是 report-only，沒有使用者資料）。之後再 upgrade 必須乾淨、沒有 drift（`04-…md` `BP-04` §8 的 `test_migration_0022_roundtrip`）。注意：降級會移除回退演練第 ③ 步用的 `last_registration_at`，所以**先完成第 ③ 步，再降級** | — |
 
 **PDF.js 安全公告時：** flag off → 升版 → 重跑 `BP-07` §4 與 `BP-09` → flag on。runbook 要寫負責人。
 

@@ -14,7 +14,9 @@ Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 
 | 類別 | 檔案（產生或小樣本） | 預期 |
 |---|---|---|
 | 正常 | `ok.png`（1200×800）、`ok.jpg`（EXIF 方向 6）、`ok.webp`（lossy／lossless／VP8X 各一）、`ok.gif`（動畫 10 幀）、`ok-apng.png`、`ok.pdf`（40 頁）、`ok-cjk.pdf`（CID 字型繁中）、`ok-jpx.pdf` | 顯示；JPEG 方向正確；GIF／APNG 只有首幀；CJK 字形正確 |
-| 解壓縮炸彈 | `png-bomb-50k.png`（50000×50000，IDAT 約數 KB）、`png-ztxt-bomb.png`（壓縮 ancillary 超過 1 MiB）、`jpeg-sof-65535.jpg`、`jpeg-1000-scans.jpg`、`webp-16k.webp`（16383×16383）、`gif-frame-outside-screen.gif` | `FILE_PREVIEW_LIMIT`／`INVALID`；**瀏覽器收到 0 bytes** |
+| 解壓縮炸彈 | `png-bomb-50k.png`（50000×50000，IDAT 約數 KB）、`png-iccp-bomb.png`（約 1 KiB 的 `iCCP` 展開成 100 MiB）、`png-ztxt-bomb.png`（約 1 KiB 的 `zTXt` 展開成 100 MiB）、`png-itxt-compressed-bomb.png`、`png-many-ztxt.png`（65 個）、`apng-1001-frames.png`、`apng-frame-outside-canvas.png`、`jpeg-app-3mib.jpg`（APPn 合計 3 MiB）、`jpeg-icc-over-budget.jpg`（APP2 ICC 拼接後 1 MiB＋1）、`webp-iccp-over-budget.webp`、`webp-exif-xmp-over-budget.webp`、`webp-1001-anmf.webp`、`gif-ext-over-budget.gif`（comment／application extension 合計 1 MiB＋1）、`gif-1001-frames.gif`、`jpeg-sof-65535.jpg`、`jpeg-1000-scans.jpg`、`webp-16k.webp`（16383×16383）、`gif-frame-outside-screen.gif` | `FILE_PREVIEW_LIMIT`／`INVALID`；**瀏覽器收到 0 bytes** |
+| 真實世界的中繼資料 | `ok-screenshot-p3.png`（macOS 或 iOS 截圖，含 Display P3 `iCCP`）、`ok-editor-export.png`（編輯器匯出，含 `iCCP` 與 `iTXt` XMP）、`ok-camera.jpg`（EXIF＋APP2 ICC）、`ok-extended.webp`（VP8X＋`ICCP`＋`EXIF`） | 全部**通過**，而且送出的位元組與原檔 SHA-256 相同（只量不改）。這一列用來證明預算不會誤拒日常檔案（`BP-OM-13`） |
+| 中繼資料預算邊界 | `iCCP` 展開恰好 1 MiB 與 1 MiB＋1；壓縮附屬展開合計 2 MiB 與 2 MiB＋1；JPEG APPn 合計 2 MiB 與＋1；GIF extension 1 MiB 與＋1 | 恰好等於上限的通過，超過一的拒絕 |
 | 邊界 | 4096×4096 PNG（恰好等於像素上限）、4097×4096、8192×2048、8193×1、8 MiB 整與 8 MiB＋1 的 JPEG、16 MiB 整與 ＋1 的 PDF、200 與 201 頁 PDF | 恰好等於上限的通過，超過一的拒絕 |
 | 格式錯誤 | 截斷 PNG（無 IEND）、IHDR 不在第一個、RIFF 大小不符的 WebP、無 `%%EOF` 的 PDF、`%PDF` 不在 offset 0、xref 損毀但信封正常的 PDF | daemon `malformed`；信封正常的交給 PDF.js → `render_failed` |
 | 加密 PDF | RC4-40、AES-128、AES-256，**有使用者密碼**；同樣三種，**只有權限密碼（空使用者密碼）** | 有使用者密碼 → 前端 `pdf_password_required`，沒有密碼輸入框；只有權限密碼 → 依 OD-8 建議預設**正常唯讀顯示**（OD-8 若選 (b)，改為被拒）。daemon 對兩者都**不**判定加密，所以兩者都會傳到瀏覽器，這一點要寫在測試名稱與說明裡 |

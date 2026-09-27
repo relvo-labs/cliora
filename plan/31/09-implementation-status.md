@@ -47,6 +47,7 @@
 | `BP-OM-10` | canary 路徑（原文與 percent-encoded）在兩份 nginx access log、uvicorn／Central stdout、Central JSON log、稽核表、Railway HTTP／deploy log 中是否為零筆 | 「log 無路徑」宣稱；OD-11 | `BP-05`（步驟見 `04-…md` `BP-05`「發布閘門」） | **發布閘門** |
 | `BP-OM-11` | `RequestIdMiddleware`（`BaseHTTPMiddleware`，`middleware.py:41`）是否破壞 `StreamingResponse` 的背壓或斷線偵測 | ADR §6 第 6 步「真正的背壓」與 §15 取消 | `BP-04`（完整 middleware stack 下的測試） | 定設計 |
 | `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
+| `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
 
 ## 4. 審查中確認、但**不在本期修正**的既有缺陷
 
@@ -95,7 +96,8 @@
 |---|---|---|
 | v0.1 | `c7b85c5` | 初版設計 |
 | v0.2 | `7458141` | 回應第一次獨立審查（BLOCKED）：見 §6 |
-| v0.3 | （未 commit） | 回應 `7458141` 的再審查（BLOCKED），各項處置如下 |
+| v0.3 | `653ff61` | 回應 `7458141` 的再審查（BLOCKED），各項處置見下方第一張表 |
+| v0.4 | （未 commit） | 回應 `653ff61` 的第三次審查（BLOCKED），各項處置見下方第二張表 |
 
 | 發現 | 嚴重度 | 處置 | 改在哪裡 |
 |---|---|---|---|
@@ -105,3 +107,11 @@
 | 非阻塞 open 的後備方案會放棄卡住的 goroutine | P2 | **移除後備方案**：無法證實的 build target 不回報能力；執行期 probe 在 daemon 自己的 FIFO 上測試，失敗時自行解開並省略 `binary_preview`（fail closed） | ADR §3；`03` §1、§7；`06` Q18 |
 | PDF.js 版本下限未涵蓋 CVE-2026-16633 | P2 | **已查證並提高下限**：GitHub Advisory API 顯示 GHSA-hq66-cqwq-w95j 影響 `>= 5.6.83, < 6.2.108`，首個修正版 6.2.108。下限改為 ≥ 6.2.108，並明列於 `BP-07`；加上 `enableScripting: false`；advisory 重查列為 pin 與發布的閘門 | ADR §12、T2；`05` `BP-07` §1、§2；`06` §3 |
 | `root.Stat` 不存在；AC-05 的範圍超出 daemon 的信封檢查 | P3 | **修正**：改為 `StatIn`（`root.go:196-212`）；AC-05 限定為 Node 端信封拒絕，新增 AC-16 描述瀏覽器端解析／渲染失敗（census +16） | ADR §3；`00`、`03`、`06`、README；`01` §2.1、§5 |
+
+**v0.4（回應 `653ff61` 的第三次審查）**
+
+| 發現 | 嚴重度 | 處置 | 改在哪裡 |
+|---|---|---|---|
+| PNG 壓縮附屬 chunk（`iCCP`／`zTXt`／`iTXt`）只限壓縮後大小，沒有展開後上限 | P1 | **採用有界串流解壓（決策 D15，不列入 OD）**：以標準函式庫 `compress/zlib` 解壓到丟棄端，量展開後大小，超過預算就停；只量不改，不轉碼、不剝除；像素資料照舊不解壓。**不採用「一律拒絕」**，因為 `iCCP` 在 macOS／iOS 截圖與編輯器匯出中很常見，頻率未實測（`BP-OM-13`）。JPEG APPn／ICC、WebP `ICCP`／`EXIF`／`XMP `／`ANMF`、GIF extension／幀數、APNG 幀數一律以長度或數量設預算。新增炸彈、邊界與真實世界樣本的 RED fixture | ADR §3、§4、T3；`03` §2、§2.1、§7；`07` §1；`00` D15；本檔 `BP-OM-13` |
+| Migration `0022` 的降級只刪一個欄位 | P2 | **修正**：`downgrade()` 移除兩個欄位與索引；新增 `test_migration_0022_roundtrip`（upgrade → downgrade → upgrade，並以 `compare_metadata` 斷言沒有 drift），列入寫入集；回退表註明先完成 `last_registration_at` 的確認，再降級 | `04` 寫入集、§8；`08` §2；`00` 寫入集 |
+| 風險表仍以 `daemon_version` 作為註冊證據；nginx 範例只有 compose 的 upstream | P2 | **修正**：風險表改用 `last_registration_at` 與名稱標記；分別寫出 compose（具名 upstream）與 Railway（`set $cliora_upstream` 加 `$request_uri`，依 `resolver` 在執行期解析）兩份 stanza；兩份渲染後的設定都要 `nginx -t`：Railway 沿用既有 CI 步驟，compose 新增一步（`.github/workflows/ci.yml` 列入 `BP-05` 寫入集） | `00` 風險、寫入集；`04` `BP-05` |

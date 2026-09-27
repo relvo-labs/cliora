@@ -74,7 +74,7 @@ migration `0021`、`FR-FILE-011` 與 `node-register.file_download`。
 
 | 檔案 | 內容 |
 |---|---|
-| [`00-execution-plan.md`](00-execution-plan.md) | 成功定義、範圍、固定決策 D0–D14、階段 DAG、ticket 與 write-set、風險 |
+| [`00-execution-plan.md`](00-execution-plan.md) | 成功定義、範圍、固定決策 D0–D15、階段 DAG、ticket 與 write-set、風險 |
 | [`01-decisions-and-governance.md`](01-decisions-and-governance.md) | `BP-01`：ADR 核准、PRD／tech 修訂草案、traceability 與 permission-matrix 的**提議**變更、**產品決策 OD-1…OD-11** |
 | [`02-contract.md`](02-contract.md) | `BP-02`：契約 v1.11.0 schema、fixtures、CHANGELOG 提案、三個消費端 |
 | [`03-daemon.md`](03-daemon.md) | `BP-03`：`PreviewOpen` 十一步（含非阻塞開啟）、格式驗證、快照表、worker pool、設定 |

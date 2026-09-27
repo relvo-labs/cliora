@@ -60,11 +60,47 @@
 
 | 格式 | 檢查 | 實作 |
 |---|---|---|
-| PNG | 簽章；第一個 chunk 必須是 IHDR；寬高 ≤ 8192 且乘積 ≤ 16 777 216；chunk 走訪：每個 chunk 的長度 ≤ 剩餘位元組，總數 ≤ 4096，`zTXt`／`iTXt`／`iCCP` 壓縮長度合計 ≤ 1 MiB；必須看到 `IEND` | `image/png.DecodeConfig` 取尺寸，再加一個只看長度欄位的 chunk walker（**不驗 CRC、不解壓**） |
-| JPEG | SOI；marker 走訪到 EOI；SOF 的寬高；SOS 數 ≤ 64；segment 長度不得越界 | `image/jpeg.DecodeConfig` 取尺寸，再加 marker walker |
-| GIF | 簽章；邏輯螢幕尺寸；第一個 image descriptor 存在且落在邏輯螢幕內 | `image/gif.DecodeConfig`，再走到第一個 `0x2C` |
-| WebP | `RIFF` 大小欄位與檔案大小一致；`WEBP`；第一個 chunk 為 `VP8 `／`VP8L`／`VP8X`，依各自格式取 canvas 尺寸 | 手寫 reader，約 80 行，全部以 `len` 檢查保護 |
+| PNG | 簽章；第一個 chunk 必須是 IHDR；寬高 ≤ 8192 且乘積 ≤ 16 777 216；chunk 走訪：每個 chunk 的長度 ≤ 剩餘位元組，總數 ≤ 4096；必須看到 `IEND`；**附屬中繼資料依 §2.1 的展開後預算** | `image/png.DecodeConfig` 取尺寸，再加 chunk walker（不驗 CRC）。**像素資料（IDAT／fdAT）不解壓**；只有壓縮的附屬 chunk 會以串流方式解壓到丟棄端，用來量展開後大小（§2.1） |
+| JPEG | SOI；marker 走訪到 EOI；SOF 的寬高；SOS 數 ≤ 64；segment 長度不得越界；**APPn／COM 依 §2.1** | `image/jpeg.DecodeConfig` 取尺寸，再加 marker walker |
+| GIF | 簽章；邏輯螢幕尺寸；第一個 image descriptor 存在且落在邏輯螢幕內；**extension 依 §2.1** | `image/gif.DecodeConfig`，再走 block 結構到檔尾 |
+| WebP | `RIFF` 大小欄位與檔案大小一致；`WEBP`；第一個 chunk 為 `VP8 `／`VP8L`／`VP8X`，依各自格式取 canvas 尺寸；**`ICCP`／`EXIF`／`XMP `／`ANMF` 依 §2.1** | 手寫 reader，全部以 `len` 檢查保護 |
 | PDF | offset 0 為 `%PDF-1.[0-7]` 或 `%PDF-2.0`；最後 1 KiB 內有 `%%EOF`。**不做加密判定**：`/Encrypt` 掃描分不出需要密碼與只有權限密碼的 PDF，已從設計移除（ADR 0029 §4、OD-8） | 位元組比對。**不解析 xref、不 inflate** |
+
+### 2.1 附屬中繼資料：以**展開後**大小設預算（決策 D15）
+
+**問題（審查 P1-F）：** PNG 的 `iCCP`、`zTXt` 與壓縮的 `iTXt` 各自是獨立的 deflate 串流（PNG 規格）。
+只限制**壓縮後**長度，擋不住「1 KiB 壓縮資料展開成數百 MiB」。像素檢查會通過，而瀏覽器的解碼器在處理色彩描述檔時會把它展開。
+
+**兩個選項：**
+
+| 選項 | 代價 | 結論 |
+|---|---|---|
+| (a) 一律拒絕含壓縮附屬 chunk 的 PNG | 零解壓，最簡單。但 `iCCP` 在日常 PNG 裡**很常見**：macOS 與 iOS 的截圖通常內嵌 Display P3 描述檔，Photoshop、GIMP 等編輯器的匯出也常帶。拒絕它等於拒絕手機使用者最常開的那一類檔案（**頻率未實測**，`BP-OM-13`） | 不採用 |
+| **(b) 有界的串流解壓，只用來量大小** | daemon 以標準函式庫 `compress/zlib` 把 chunk 資料解壓到 `io.Discard`，外包一層 `LimitReader(預算＋1)`，超過就停，回 `FILE_PREVIEW_LIMIT`／`complexity`。**只量不改**：送出的仍是原始位元組，沒有轉碼、沒有剝除（剝除並重新送出也不允許）。不新增 Go 依賴。CPU 上限：每個串流的輸入 ≤ 1 MiB、輸出 ≤ 預算 | **採用** |
+
+這是技術決策，不是產品選擇：兩個選項對使用者唯一可見的差別，是 (a) 會拒絕大量正常截圖。所以**不列入 OD**。
+預算數字屬於固定的技術上限，與 OD-2 的使用者可見上限分開。
+
+**各格式的一致規則**（超過一律 `FILE_PREVIEW_LIMIT`／`complexity`，在傳輸**前**）：
+
+| 格式 | 項目 | 上限 | 怎麼量 |
+|---|---|---|---|
+| PNG | `iCCP` | 最多 1 個；壓縮 ≤ 1 MiB；**展開 ≤ 1 MiB** | 有界串流解壓 |
+| PNG | `zTXt`、壓縮的 `iTXt` | 合計最多 64 個；每個**展開 ≤ 256 KiB** | 有界串流解壓 |
+| PNG | 所有壓縮附屬 chunk | **展開合計 ≤ 2 MiB** | 累加 |
+| PNG | 未壓縮的 `tEXt`／`iTXt`／`eXIf` | 合計 ≤ 1 MiB | chunk 長度 |
+| PNG（APNG） | `acTL.num_frames`；每個 `fcTL` | ≤ 1000；區域必須落在 IHDR 畫布內 | 表頭。`fdAT` 不解壓，展開後大小由畫面尺寸決定 |
+| JPEG | APPn（0–15）＋ COM 的 segment | 合計 ≤ 2 MiB；marker 總數 ≤ 1024 | segment 長度欄位。JPEG 的中繼資料**沒有壓縮**，每個 segment 天生 ≤ 65 535 bytes |
+| JPEG | APP2 `ICC_PROFILE` 拼接後 | ≤ 1 MiB；序號必須連續 | 累加各段長度 |
+| JPEG | EOI 之後的資料（例如 MPF 內嵌預覽） | 不解析；由檔案大小上限（8 MiB）約束 | — |
+| WebP | `ICCP` | ≤ 1 MiB | chunk 長度（未壓縮） |
+| WebP | `EXIF` ＋ `XMP ` | 合計 ≤ 1 MiB | chunk 長度 |
+| WebP | `ANMF` | ≤ 1000 個；每一幀落在 canvas 內 | 表頭。`ALPH`／`VP8L` 的壓縮輸出由尺寸決定 |
+| GIF | 所有 extension（comment、application，包括 `ICCRGBG1` ICC、XMP）的 sub-block | 合計 ≤ 1 MiB | sub-block 長度（每塊 ≤ 255 bytes，未壓縮） |
+| GIF | image descriptor 數 | ≤ 1000；每一幀落在邏輯螢幕內 | block 走訪。LZW 像素資料不解壓，展開後大小由該幀尺寸決定 |
+
+**殘餘：** 瀏覽器解碼器對通過上述上限的檔案仍可能有自己的漏洞（ADR T6），這裡只保證中繼資料的記憶體有上限。
+像素資料的展開後大小仍由 §4 的像素上限約束，與本節無關。
 
 每個 sniffer 都有 `go test -fuzz` 目標，種子語料來自 `07-…md` §1。
 每個請求都以 `recover` 包住，panic 回 `FILE_PREVIEW_INVALID`/`malformed` 並計數，不讓 daemon 掛掉。
@@ -136,6 +172,13 @@ filesystem:
 | `TestPreviewAllowlistIsClosed` | SVG、BMP、TIFF、HEIC、ZIP、文字檔 → `unsupported_type`；副檔名與內容不符時以內容為準 |
 | `TestPreviewPixelBombRefused` | 50000×50000 PNG、SOF 65535×65535 JPEG → `FILE_PREVIEW_LIMIT`，且沒有 handle 被建立 |
 | `TestPreviewJPEGScanBomb` | 1000 個 SOS → `complexity` |
+| `TestPreviewPNGCompressedAncillaryBomb` | 約 1 KiB 的 `iCCP`（或 `zTXt`）展開成 100 MiB → `complexity`；**解壓讀取量 ≤ 預算＋1 byte**（以計數 writer 斷言），而且沒有 handle 被建立 |
+| `TestPreviewPNGAncillaryBudgetBoundary` | `iCCP` 展開恰好 1 MiB → 通過；1 MiB＋1 → 拒絕；65 個 `zTXt` → 拒絕；壓縮附屬展開合計 2 MiB＋1 → 拒絕 |
+| `TestPreviewPNGRealWorldICCPasses` | 真實的 Display P3 截圖（`ok-screenshot-p3.png`）通過，而且送出的位元組與原檔 SHA-256 相同（證明只量不改） |
+| `TestPreviewAPNGFrameBounds` | `num_frames` 1001 → 拒絕；`fcTL` 超出畫布 → 拒絕 |
+| `TestPreviewJPEGMetadataBounds` | APPn 合計 2 MiB＋1 → 拒絕；APP2 ICC 拼接後 1 MiB＋1 → 拒絕；ICC 序號不連續 → `malformed` |
+| `TestPreviewWebPMetadataBounds` | `ICCP` 1 MiB＋1、`EXIF`＋`XMP ` 1 MiB＋1、1001 個 `ANMF`、幀超出 canvas → 全部拒絕 |
+| `TestPreviewGIFExtensionBounds` | extension 合計 1 MiB＋1、1001 幀、幀超出邏輯螢幕 → 全部拒絕 |
 | `TestPreviewChangedDuringRead` | 讀取期間 append → `FILE_PREVIEW_INVALID`/`changed` |
 | `TestOpenFileNonBlockingOnFifoReturns` | 對沒有寫入端的 FIFO 呼叫 `Root.OpenFileNonBlocking`：100 ms 內返回（證明 `O_NONBLOCK` 有傳到 `openat`） |
 | `TestPreviewTwoFifosDoNotStarveWorkers` | 以兩個 open worker（上限 2）依序送 `fifo-a.png`、`fifo-b.png` 的預覽，兩者都回 `not_regular`；**之後**送第三個合法的 PNG 預覽，必須成功（不是 `NODE_BUSY`）；三者合計在 **2 秒 deadline** 內完成。在阻塞式實作下，前兩個會永遠佔住 worker，第三個拿到 `NODE_BUSY`，或整個測試逾時。測試的 cleanup 以寫端打開兩個 FIFO，讓阻塞實作的 goroutine 也能結束，不外洩 |

@@ -67,7 +67,7 @@
 - 放寬敏感檔案政策；修改 `filesystem.read`。
 - #76 本身的修補。本計畫**依賴**它先綠（#77 驗收第一項）。
 
-## 3. 固定基線決策（D0–D14）
+## 3. 固定基線決策（D0–D15）
 
 以下是 ADR 0029 的決策摘要，細節與理由在 ADR。標為 **OD** 的是產品決策，目前填的是建議預設。
 
@@ -91,6 +91,7 @@
 | D12 | PDF 用 `pdfjs-dist` 顯示層，worker 內解析，無腳本、無註解 DOM、無 XFA | §12 | 版本在 `BP-07` 定 |
 | D13 | 記憶體只留畫面上那一份；session／使用者／能力改變時同步清除 | §14 | — |
 | D14 | 預覽與下載開關、稽核、型別完全分開；預覽失敗不提供改下載 | §16 | — |
+| D15 | PNG 的壓縮附屬 chunk（`iCCP`／`zTXt`／壓縮 `iTXt`）以**展開後**大小設預算，以有界串流解壓量測，只量不改；JPEG／WebP／GIF 的中繼資料以長度欄位設預算。不拒絕帶 `iCCP` 的 PNG（截圖常見） | §3、§4 | `BP-OM-13` |
 
 ## 4. 階段 DAG
 
@@ -128,8 +129,8 @@
 | `BP-01` | 治理 | `docs/adr/0029-*.md`（狀態）、`research/prd.md`、`research/tech.md` §11.6、`traceability/requirements.json`、`traceability/links.json`、`scripts/p4/render_permission_matrix.py`、`docs/permission-matrix.md`（**只能重新產生**）、`scripts/traceability/tests/test_traceability.py`（census） | #76 |
 | `BP-02` | 契約 | `contracts/v1/schemas/**`、`contracts/v1/fixtures/**`、`contracts/CHANGELOG.md`、三個消費端的 codec（`backend/app/protocol/codec.py`、`daemon/internal/protocol/codec.go`、`frontend/src/protocol/decode.ts`）與其測試 | `BP-01` |
 | `BP-03` | daemon | `daemon/internal/files/preview*.go`（新）、`daemon/internal/connection/preview_handlers.go`（新）、`daemon/internal/workspace/root.go`（**只新增** `OpenFileNonBlocking`；既有 `OpenFile` 不改）、`connection.go` 的 dispatch 三行、register payload 的建構處（停用時省略欄位）、`daemon/internal/config/config.go`、`daemon/internal/metrics/metrics.go`、`daemon/internal/files/testdata/preview/**` | `BP-02` |
-| `BP-04` | Central | `backend/app/api/http/files.py`（新路由）、`backend/app/services/files.py`（新方法）、`backend/app/services/authz.py`（capability）、`backend/app/services/registry.py`（live 註冊讀取）、`backend/app/api/ws/nodes.py`（`_register_input` 解析 `binary_preview`、設定／清除 live bit）、`backend/app/api/http/schemas.py`（`SessionCapabilities.can_preview_binary`、`_capabilities`）、`backend/app/services/nodes.py`（含只在註冊時設定的 `last_registration_at`）、`backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_*.py`、`backend/app/api/http/nodes.py`、`backend/app/settings.py`、`backend/app/services/audit.py`、`backend/app/api/error_catalog.py`、`docs/error-catalog.md`（產生）、`backend/tests/**` 新檔 | `BP-02` |
-| `BP-05` | edge | `deploy/nginx/nginx.conf`、`deploy/railway/nginx.conf.template`（專用 location 與不含 query 的 log 格式）、對應的 railway parity 測試；`BP-OM-06`／`BP-OM-10` 的量測證據（外部） | `BP-04` |
+| `BP-04` | Central | `backend/app/api/http/files.py`（新路由）、`backend/app/services/files.py`（新方法）、`backend/app/services/authz.py`（capability）、`backend/app/services/registry.py`（live 註冊讀取）、`backend/app/api/ws/nodes.py`（`_register_input` 解析 `binary_preview`、設定／清除 live bit）、`backend/app/api/http/schemas.py`（`SessionCapabilities.can_preview_binary`、`_capabilities`）、`backend/app/services/nodes.py`（含只在註冊時設定的 `last_registration_at`）、`backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_*.py`（`downgrade()` 移除兩個欄位與索引）、`backend/app/api/http/nodes.py`、`backend/tests/db/test_migration_0022_roundtrip.py`（新）、`backend/app/settings.py`、`backend/app/services/audit.py`、`backend/app/api/error_catalog.py`、`docs/error-catalog.md`（產生）、`backend/tests/**` 新檔 | `BP-02` |
+| `BP-05` | edge | `deploy/nginx/nginx.conf`、`deploy/railway/nginx.conf.template`（專用 location 與不含 query 的 log 格式，兩份各自的 upstream 寫法）、對應的 railway parity 測試、`.github/workflows/ci.yml`（compose 設定的 `nginx -t`）；`BP-OM-06`／`BP-OM-10` 的量測證據（外部） | `BP-04` |
 | `BP-06` | 前端生命週期＋圖片 | `frontend/src/composables/useBinaryPreview.ts`（新）、`frontend/src/stores/binaryPreview.ts`（新）、`frontend/src/components/file/ImagePreview.vue`（新）、`PreviewPane.vue`（路由分支）、`PreviewDenied.vue`（新分支文案）、`frontend/src/api/client.ts`＋`dto.ts`（新方法與型別）、`frontend/src/router/authLoss.ts`（**一行**：`wipeUserScoped` 加呼叫） | `BP-04`、#76 已合併 |
 | `BP-07` | 前端 PDF | `frontend/package.json`＋lockfile（**唯一新依賴** `pdfjs-dist`）、`frontend/vite.config.*`（worker／asset）、`frontend/src/components/file/PdfPreview.vue`（新）、`frontend/src/pdf/setup.ts`（新）、`frontend/tests/e2e/binary-preview*.spec.ts`（新） | `BP-06` |
 | `BP-08` | 安全審查 | `docs/security-review-p31.md`（新）；對實作唯讀 | `BP-07` |
@@ -151,7 +152,7 @@ sign-out／user 切換／identity pending 三條路徑觸發」這個**性質**�
 | PDF.js 新 CVE | pin 精確版本；`BP-11` 的 runbook 要寫 CVE watch 責任人與緊急關閉程序（flag off） |
 | 預覽封包擠壓終端延遲 | 512 KiB 分塊加每節點 4 串流上限；`BP-OM-05` 在負載下量 echo 延遲 |
 | #71 與本計畫同時改 `services/files.py`、`files.py`、`codec`、manifest、`error_catalog`、`PreviewDenied.vue` | 本計畫在 #71 合併**之後**才開 `BP-02`；若 #71 被放棄，依 README 的條件式編號重排 |
-| 部署順序錯誤（新 daemon 先上） | runbook 明文順序；`BP-02` 的 RED 測試證明舊 schema 拒收新欄位；舊 Central 的拒收是**靜默**的（`ws/nodes.py:199-202`），runbook 要教操作者用 node list 的 `daemon_version` 確認 |
+| 部署順序錯誤（新 daemon 先上） | runbook 明文順序；`BP-02` 的 RED 測試證明舊 schema 拒收新欄位；舊 Central 的拒收是**靜默**的（`ws/nodes.py:199-202`），runbook 教操作者以註冊專屬的訊號確認：新 Central 上看 `last_registration_at` 是否晚於重啟時間；舊 Central 上看一次性的 `node.name` 標記是否出現。**不用 `daemon_version`**，版本不變的重啟不會證明任何事（`08-…md` §1、§2） |
 | Central 版本回退時，啟用中的新 daemon 註冊不上 | 停用時省略欄位（`const: true`）；回退程序先停用或回退 daemon（`08-…md` `BP-11` §2）；凍結 schema 相容測試 |
 | 工作區路徑進入 access log | 路徑只在 POST body；edge 用 `$request_method $uri` 格式；canary 驗證（`BP-OM-10`）是發布閘門 |
 | 工作區 FIFO 卡住 worker | 先 `StatIn`、非阻塞開啟、fd `fstat`；「兩個 FIFO＋第三個合法請求」的 deadline 測試 |

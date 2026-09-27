@@ -13,7 +13,7 @@
 | `backend/app/api/ws/nodes.py` | `_register_input` 解析 `binary_preview`（`:91-114`）；`node.register` 分支設定 live bit（`:203-209`）；連線關閉時清除 |
 | `backend/app/services/registry.py` | 保存「當下連線」的 `binary_preview`；現在只有 `is_connected`（`:185`） |
 | `backend/app/services/nodes.py` | `RegisterNodeInput.binary_preview`；持久化與變更稽核（`:283-305` 模式） |
-| `backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_node_binary_preview.py` | 顯示用欄位 `nodes.binary_preview`；以及**回退演練用**的 `nodes.last_registration_at`（timestamptz，nullable，無 backfill），**只**在 `persist_registration` 設定（`nodes.py:240` 起；heartbeat 路徑 `:324`、`:353` 不碰它）。不是 wire／契約變更 |
+| `backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_node_binary_preview.py` | **`downgrade()` 必須移除 `upgrade()` 加的全部東西**：`ix_nodes_binary_preview` 索引、`nodes.binary_preview`、`nodes.last_registration_at`（與 `0020_node_file_upload.py:56-58` 同一形狀）。顯示用欄位 `nodes.binary_preview`；以及**回退演練用**的 `nodes.last_registration_at`（timestamptz，nullable，無 backfill），**只**在 `persist_registration` 設定（`nodes.py:240` 起；heartbeat 路徑 `:324`、`:353` 不碰它）。不是 wire／契約變更 |
 | `backend/app/api/http/schemas.py`（`NodeDetail`，`:356-372`）、`backend/app/api/http/nodes.py`（`:93` 附近） | 以唯讀欄位回傳 `last_registration_at` |
 | `backend/app/settings.py`、`backend/app/services/audit.py`、`backend/app/api/error_catalog.py`、`docs/error-catalog.md`（產生） | flag、預算、稽核動作、錯誤碼 |
 | 測試 | `backend/tests/db/test_files_binary_preview_api.py`（新）、`backend/tests/db/test_node_register_binary_preview.py`（新）、`backend/tests/test_authz.py`、`backend/tests/test_relay_timeouts.py`、`backend/tests/test_scope_guards.py` |
@@ -159,7 +159,7 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 ### 8. 驗收清單
 
 - [ ] §7 全綠；`make test-db` 綠。
-- [ ] Migration `0022` 可升可降；降級只刪欄位（report-only，無資料損失）。
+- [ ] Migration `0022` 可升可降：`test_migration_0022_roundtrip`（新，`backend/tests/db/`）依序 upgrade head → downgrade 到上一版 → 斷言兩個欄位與索引**都不存在** → 再 upgrade head → 斷言都存在 → 以 alembic 的 `compare_metadata` 比對 models 與實際 schema，**差異必須為空**（沒有 drift）。`backend/tests` 目前沒有任何 migration 來回測試（已查），這是新的測試形狀，列入寫入集。降級只刪 report-only 欄位，沒有使用者資料損失。
 - [ ] `docs/error-catalog.md` 由 `render_error_catalog.py --check` 確認未漂移。
 - [ ] `backend/app/api/http/files.py:203-215` 的 `/content` 沒有 diff。
 - [ ] `sessions.py` 的五個呼叫端沒有簽名改動。
@@ -176,7 +176,8 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 ## `BP-05` Edge（nginx）
 
 **寫入集：** `deploy/nginx/nginx.conf`、`deploy/railway/nginx.conf.template`（http 層多一個 `log_format`，
-加上一個專用 location），以及 `make railway-check` 對應的 parity 測試。量測證據放在外部，並回填 `09-…md`。
+加上一個專用 location，兩份各自的 upstream 寫法），`make railway-check` 對應的 parity 測試，以及
+`.github/workflows/ci.yml`（新增 compose 設定的 `nginx -t` 步驟）。量測證據放在外部，並回填 `09-…md`。
 
 **為什麼要有這一張：**
 
@@ -191,15 +192,26 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 nginx 先記下最長的前綴匹配，再檢查 regex，regex 命中就優先；`location /api/` 不是 `^~`，所以這條 regex 會勝出。
 位置放在 `/api/` 旁邊，是為了閱讀：
 
+兩份設定的 upstream 解析方式本來就不同（`scripts/railway/check-edge-parity.sh:5-9` 明說這是刻意的），
+所以 stanza 要各寫一份。兩份的 http 層都加同一個格式：
+
 ```nginx
-# http 層：永遠不用 $request 或 $args
+# http 層（兩份設定都加）：永遠不用 $request 或 $args
 log_format cliora_noquery '$remote_addr - $status "$request_method $uri" '
                           'rt=$request_time up=$upstream_response_time '
                           'nginx_req_id=$request_id';
+```
 
+**compose：`deploy/nginx/nginx.conf`**。沿用具名 upstream `cliora_backend`（`:72-73`）與 `/api/` 的 header 設定（`:163-175`）：
+
+```nginx
 location ~ ^/api/sessions/[0-9a-fA-F-]{36}/files/binary-preview$ {
     proxy_pass http://cliora_backend;
-    # … 與 /api/ 相同的 header 設定 …
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     access_log /var/log/nginx/access.log cliora_noquery;
     client_max_body_size 24k;        # 與 Central 的 body 上限一致
     client_body_buffer_size 32k;     # ≥ 上一行，所以帶路徑的 body 永遠留在記憶體，不寫 client_body_temp
@@ -208,6 +220,42 @@ location ~ ^/api/sessions/[0-9a-fA-F-]{36}/files/binary-preview$ {
     proxy_read_timeout 75s;          # 大於 Central 的 60 秒整體預算
 }
 ```
+
+**Railway：`deploy/railway/nginx.conf.template`**。沿用 `/api/` 的變數式 upstream（`:148-160`，`set` 在 `:149`）：
+`set` 加上 `proxy_pass http://$var$request_uri` 的寫法，讓 nginx 透過 `resolver ${NGINX_LOCAL_RESOLVERS}`（`:101`）
+在執行期重新解析 Central 的私網位址。沿用 TLS 在 Railway 前端終止時固定的 `X-Forwarded-Proto https`：
+
+```nginx
+location ~ ^/api/sessions/[0-9a-fA-F-]{36}/files/binary-preview$ {
+    set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+    proxy_pass http://$cliora_upstream$request_uri;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    access_log /var/log/nginx/access.log cliora_noquery;
+    client_max_body_size 24k;
+    client_body_buffer_size 32k;
+    proxy_buffering off;
+    proxy_max_temp_file_size 0;
+    proxy_read_timeout 75s;
+}
+```
+
+`${…}` 由映像的 envsubst 在容器啟動時代入（`deploy/railway/README.md:14`）。`$request_method`、`$uri`
+這類 nginx 變數不是已定義的環境變數，不會被代入，與既有的 `log_format cliora` 相同。
+`$request_uri` 會帶 query string，但 Central 對這條路由拒絕任何 query（`BP-04` §1 第 5 步），所以不會有 query 被轉送。
+
+**兩份渲染後的設定都要真的被 nginx 接受：**
+
+- **Railway：** 既有的 CI 步驟已經把 template envsubst 後跑 `nginx -t`（`.github/workflows/ci.yml:128-140`，
+  `nginx:1.27-alpine`）。本票只要求它在新 location 加入後仍然綠。
+- **compose：** 目前**沒有** CI 步驟驗證 `deploy/nginx/nginx.conf`。本票在同一個 job 新增一步：以同一個映像
+  `docker run --rm --add-host backend:127.0.0.1 -v "$PWD/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" … nginx:1.27-alpine nginx -t`。
+  `--add-host` 是因為 nginx 在載入時就要解析具名 upstream 的 `backend`。TLS 憑證路徑若是 `-t` 的前提，以測試用的自簽檔掛入；
+  **實際需要哪些掛載，在實作時依設定檔核對**。
+- 兩步都要**先紅**：在新 location 裡故意放一個錯字，確認兩步都失敗，再修正。
 
 路徑已經不在 URL 裡（`BP-04` §1），所以 `cliora_noquery` 是**縱深防禦**：日後若有人加了一個 query 參數，它也不會被寫下來。
 
@@ -237,6 +285,6 @@ location ~ ^/api/sessions/[0-9a-fA-F-]{36}/files/binary-preview$ {
 
 證據（去識別化的指令與輸出）寫進 `09-…md` §3。**任何一處非零或未證實，該拓樸的 flag 不得開啟。**
 
-**驗收：** `make railway-check` 綠；上面四步有證據。
+**驗收：** `make railway-check` 綠；兩份渲染後設定的 `nginx -t` 在 CI 都綠；上面四步有證據。
 
 **不在範圍：** 既有 `/content`、`/tree`、`/search` 的 query string 進 log 與 `proxy_temp` 溢寫。這裡只記錄，另開議題處理。

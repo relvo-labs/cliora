@@ -1,6 +1,9 @@
 # ADR 0029 — Read-only binary preview: images and PDF, rendered in the console, never handed over
 
 - Status: **proposed** (design only, 2026-09-27; nothing in this ADR is implemented)
+- Revised a third time: 2026-09-27, after the review of `653ff61` (BLOCKED). Changes:
+  expanded-byte budget for compressed PNG metadata and length budgets for other formats'
+  metadata (§3, §4, T3).
 - Revised again: 2026-09-27, after the re-review of `7458141` (BLOCKED). Changes: flag
   off on any edge that is not proven (§6, OD-11); `preview_close` always sent (§5, §6);
   registration-specific rollback proof (§9); fail-closed open probe (§3); PDF.js floor
@@ -178,7 +181,19 @@ because the console renders a denial pane. Node-level refusals, `FILE_PREVIEW_DI
 the file. Neither form ever carries content or an absolute path.
 
 Structural validation is a **bounded header and marker walk, not a decode**. The daemon
-never decompresses pixel data and never interprets PDF content streams. Go's standard
+never decompresses pixel data and never interprets PDF content streams. The one
+exception is compressed **metadata**: PNG `iCCP`, `zTXt` and compressed `iTXt` are
+separate deflate streams, so a 1 KiB chunk can expand to hundreds of MiB while every
+pixel check passes. The daemon inflates each one with the standard library's
+`compress/zlib` into a discard sink behind `LimitReader(budget + 1)`, only to measure
+its expanded size. It sends the original bytes unchanged, never transcodes, and never
+strips a chunk and forwards the rest. Rejecting every PNG that carries compressed
+metadata was the alternative. It was not chosen because `iCCP` is common in ordinary
+images: macOS and iOS screenshots usually embed a Display P3 profile, and editor exports
+often carry one. That prevalence is **unmeasured** (`BP-OM-13`). JPEG APPn/COM segments,
+WebP `ICCP`/`EXIF`/`XMP ` and GIF extensions are uncompressed, so they are bounded by
+their length fields. The per-format budgets are in `plan/31/03-daemon.md` §2.1 (decision
+D15). They are fixed technical ceilings, not a product option. Go's standard
 `image/png`, `image/jpeg` and `image/gif` `DecodeConfig` read only headers. WebP needs a
 small hand-written RIFF/VP8/VP8L/VP8X header reader, because `golang.org/x/image` is not a
 dependency (`daemon/go.mod`) and this ADR adds none to the daemon.
@@ -194,7 +209,8 @@ see, as defence in depth.
 | Image pixels (w × h) | 16 777 216 (= 4096²) | daemon from header; browser before decode | `FILE_PREVIEW_LIMIT` / `pixels` |
 | Image longest side | 8192 px | daemon; browser | `FILE_PREVIEW_LIMIT` / `dimensions` |
 | JPEG scans (SOS markers) | 64 | daemon marker walk | `FILE_PREVIEW_LIMIT` / `complexity` |
-| PNG chunks / compressed ancillary (`zTXt`, `iTXt`, `iCCP`) bytes | 4096 chunks / 1 MiB | daemon chunk walk (lengths and CRC-framed structure only) | `FILE_PREVIEW_LIMIT` / `complexity` |
+| PNG chunks | ≤ 4096 chunks; one `iCCP` ≤ 1 MiB **expanded**; ≤ 64 `zTXt`/compressed `iTXt`, each ≤ 256 KiB **expanded**; all compressed ancillary ≤ 2 MiB **expanded**; uncompressed text/`eXIf` ≤ 1 MiB; APNG ≤ 1000 frames within the canvas | daemon chunk walk plus bounded streaming inflate of compressed **metadata only** (never IDAT/fdAT) | `FILE_PREVIEW_LIMIT` / `complexity` |
+| JPEG / WebP / GIF metadata | JPEG APPn+COM ≤ 2 MiB and assembled ICC ≤ 1 MiB; WebP `ICCP` ≤ 1 MiB and `EXIF`+`XMP ` ≤ 1 MiB, ≤ 1000 `ANMF` frames within the canvas; GIF extensions ≤ 1 MiB, ≤ 1000 frames within the screen | daemon length-field walk (all uncompressed) | `FILE_PREVIEW_LIMIT` / `complexity` |
 | GIF | first image descriptor must exist and lie within the logical screen | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
 | PDF file size | 16 MiB | daemon | `FILE_TOO_LARGE` |
 | PDF structure | `%PDF-` at offset 0; `%%EOF` in the last 1 KiB | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
@@ -672,7 +688,7 @@ between sessions.
 |---|---|---|---|---|---|
 | T1 | PDF active content runs as the console | JavaScript, URI/Launch links, forms/XFA submit, embedded files | display API only, no scripting bundle, no annotation DOM, `enableXfa:false`, `isEvalSupported:false`, CSP with no `unsafe-eval` and `form-action 'self'` (§12, §13) | a PDF.js bug that escapes into the page. Mitigated by the pinned floor version, worker isolation and CSP | `pdf-with-js.pdf`, `pdf-with-uri-link.pdf`, `pdf-with-launch.pdf`, `pdf-with-form-submit.pdf`, `pdf-with-attachment.pdf`: nothing navigates, fetches, opens a window or creates an `<a>` |
 | T2 | Known PDF.js code-execution bugs (CVE-2024-4367 font class; CVE-2026-16633 scripting class) | crafted FontMatrix; document scripting | pin ≥ 6.2.108 and patched for every published advisory; `isEvalSupported:false`; `enableScripting:false`; no scripting bundle; CSP without inline or eval script | a future bug of the same class | the CVE's public proof-of-concept shape as a fixture: no script executes under the real CSP |
-| T3 | Decompression or pixel bomb | PNG 50 000 × 50 000 with a tiny IDAT; a JPEG with huge SOF dimensions or thousands of progressive scans; a GIF whose frame exceeds the logical screen | daemon header and marker walk with pixel, side and scan limits before transfer; the browser re-checks the headers before decode (§3, §4) | a browser decoder bug on a file inside the limits | `png-bomb-50k.png`, `jpeg-sof-65535.jpg`, `jpeg-1000-scans.jpg`, `gif-frame-outside-screen.gif`: all `FILE_PREVIEW_LIMIT`/`INVALID`, and none reaches the browser |
+| T3 | Decompression or pixel bomb | PNG 50 000 × 50 000 with a tiny IDAT; a JPEG with huge SOF dimensions or thousands of progressive scans; a GIF whose frame exceeds the logical screen; a ~1 KiB PNG `iCCP`/`zTXt` that inflates to hundreds of MiB; oversized JPEG/WebP/GIF metadata | daemon header and marker walk with pixel, side and scan limits, plus expanded-byte budgets for compressed PNG metadata and length budgets for other metadata, all before transfer; the browser re-checks the headers before decode (§3, §4) | a browser decoder bug on a file inside the limits | `png-bomb-50k.png`, `jpeg-sof-65535.jpg`, `jpeg-1000-scans.jpg`, `gif-frame-outside-screen.gif`, `png-iccp-bomb.png`, `png-ztxt-bomb.png`, `jpeg-icc-over-budget.jpg`, `webp-iccp-over-budget.webp`, `gif-ext-over-budget.gif`: all `FILE_PREVIEW_LIMIT`/`INVALID`, and none reaches the browser |
 | T4 | PDF resource exhaustion in the browser | 10 000 pages; huge MediaBox; a pathological content stream | page limit before render; clamped scale; per-page timeout plus cancel; worker terminated on leave (§4, §12) | one tab's worker slows until the timeout | `pdf-10000-pages.pdf`, `pdf-huge-mediabox.pdf`, `pdf-slow-content.pdf` |
 | T5 | Parser vulnerability in the daemon | malformed headers | header-only parsing in a memory-safe language, bounded buffers, no new daemon dependency, a fuzz target per sniffer (§3) | a panic, recovered per request | `go test -fuzz` targets for the PNG, JPEG, GIF, WebP and PDF envelope checks; truncated and garbage corpus |
 | T6 | Parser vulnerability in the browser | a valid-looking file that exploits the image or PDF decoder | the browser's own sandbox; PDF.js in a worker; allowlist of 5 formats; SVG excluded | an engine zero-day, out of our control | allowlist fixtures only; `.svg` is refused `unsupported_type` |
