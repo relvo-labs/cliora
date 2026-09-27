@@ -89,6 +89,7 @@ def _detail(node: Node, registry: NodeConnectionRegistry, settings: Settings) ->
         privileged_terminal=node.privileged_terminal,
         image_upload=node.image_upload,
         file_upload=node.file_upload,
+        file_download=node.file_download,
         is_enabled=node.is_enabled,
         registered_at=node.registered_at,
         runtimes=[

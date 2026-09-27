@@ -14,8 +14,22 @@ import { computed } from "vue";
 
 import type { PreviewDenial } from "../../composables/useMonacoModel";
 
-const props = defineProps<{ denial: PreviewDenial; relPath: string }>();
-const emit = defineEmits<{ refresh: [] }>();
+const props = defineProps<{
+  denial: PreviewDenial;
+  relPath: string;
+  // Whether download is available at all here (permission AND the node's own
+  // report, resolved upstairs). This pane is the most useful place it can appear:
+  // a binary file is precisely the case where "show it" was never the question.
+  canDownload?: boolean;
+  downloading?: boolean;
+}>();
+const emit = defineEmits<{ refresh: []; download: [] }>();
+
+// The download ceiling, in bytes. Larger than the 2 MiB preview cap, which is why
+// FILE_TOO_LARGE is not one verdict but two: a 3 MiB file cannot be previewed and
+// can be downloaded, and telling that user to go and use a terminal would be
+// wrong (ADR 0028 §3).
+const MAX_DOWNLOAD_BYTES = 4 * 1024 * 1024;
 
 // Coarse classifications the daemon may attach to FILE_DENIED (never a path).
 const REASONS: Record<string, string> = {
@@ -44,13 +58,22 @@ function formatBytes(size: number | undefined): string {
 const view = computed(() => {
   const d = props.denial;
   switch (d.code) {
-    case "FILE_TOO_LARGE":
+    case "FILE_TOO_LARGE": {
+      // Two ceilings, and they are not the same number. Between them sits a band
+      // of files that cannot be shown and can be taken away.
+      const downloadable = d.size !== undefined && d.size <= MAX_DOWNLOAD_BYTES;
       return {
         icon: HardDrive,
         title: "檔案過大，超過預覽上限",
         detail: `檔案大小 ${formatBytes(d.size)}，預覽上限 2 MiB。`,
-        next: "請在 Node 上以終端機檢視此檔案；MVP 不提供完整載入或下載。",
+        next: downloadable
+          ? "此檔案仍在下載上限（4 MiB）之內，可以直接下載後用本機工具開啟。"
+          : "超過下載上限（4 MiB），請在 Node 上以終端機處理此檔案。",
+        // The offer has to be withdrawn for the files it would fail on, or the
+        // button becomes the thing that teaches users the size limit.
+        offerDownload: downloadable,
       };
+    }
     case "FILE_BINARY": {
       const meta = `大小 ${formatBytes(d.size)}${
         d.modifiedAt
@@ -66,14 +89,19 @@ const view = computed(() => {
           icon: FileQuestion,
           title: "無法以 UTF-8 顯示此檔案",
           detail: `檔案看起來是文字，但不是 UTF-8 編碼（例如 Big5、GBK、Shift-JIS 或 UTF-16）。${meta}。`,
-          next: "請在 Node 上以 iconv 轉為 UTF-8，或直接以終端機檢視。",
+          next: "可以下載後用本機工具轉碼，或在 Node 上以 iconv 轉為 UTF-8。",
+          offerDownload: true,
         };
       }
       return {
         icon: Ban,
         title: "不支援預覽此檔案",
         detail: `偵測為二進位內容（${d.mime ?? "application/octet-stream"}），${meta}。`,
-        next: "僅顯示檔案資訊，不載入內容。",
+        // Not previewable is not the same as not obtainable, and this is the pane
+        // where that distinction is worth the most: a PNG or a .parquet is a file
+        // the user has every reason to want and no reason to want rendered here.
+        next: "此處僅顯示檔案資訊，不載入內容；下載可取得完整檔案。",
+        offerDownload: true,
       };
     }
     case "FILE_PERMISSION_DENIED":
@@ -82,6 +110,7 @@ const view = computed(() => {
         title: "無讀取權限",
         detail: "執行 daemon 的使用者沒有讀取此檔案的權限。",
         next: "請洽 Node 管理者調整檔案權限，或改用其他檔案。",
+        offerDownload: false,
       };
     case "FILE_NOT_FOUND":
       return {
@@ -89,13 +118,19 @@ const view = computed(() => {
         title: "檔案已不存在或無法存取",
         detail: "此路徑目前無法存取。",
         next: "請重新整理檔案樹以取得最新內容。",
+        offerDownload: false,
       };
     default:
       return {
         icon: ShieldAlert,
         title: "此檔案為敏感類型，預設不可預覽",
         detail: `分類：${REASONS[d.reason ?? ""] ?? "敏感或不確定的檔案類型"}。內容完全未被讀取或傳輸。`,
-        next: "此為安全政策預設拒絕；必要時請由 Node 管理者於 daemon 設定調整敏感規則。",
+        // Deliberately unchanged by download: the node applies the SAME
+        // SensitiveClassification on both paths, so this file is refused either
+        // way, and offering the button here would be the one place the UI implied
+        // otherwise (ADR 0028 §3).
+        next: "此為安全政策預設拒絕；下載同樣被拒，必要時請由 Node 管理者於 daemon 設定調整敏感規則。",
+        offerDownload: false,
       };
   }
 });
@@ -108,9 +143,24 @@ const view = computed(() => {
     <p class="path">{{ relPath }}</p>
     <p class="detail">{{ view.detail }}</p>
     <p class="next">下一步：{{ view.next }}</p>
-    <button type="button" class="ghost" @click="emit('refresh')">
-      重新檢查
-    </button>
+    <div class="actions">
+      <button type="button" class="ghost" @click="emit('refresh')">
+        重新檢查
+      </button>
+      <!-- Offered only where it can actually succeed. The sensitive, permission
+           and not-found verdicts set no `offerDownload`, because the node refuses
+           those on the download path too (by the same function) and a button that
+           reproduces the refusal is worse than no button. -->
+      <button
+        v-if="canDownload && view.offerDownload"
+        type="button"
+        class="ghost"
+        :disabled="downloading"
+        @click="emit('download')"
+      >
+        {{ downloading ? "下載中…" : "下載檔案" }}
+      </button>
+    </div>
   </div>
 </template>
 
@@ -152,6 +202,11 @@ h3 {
 }
 .next {
   color: var(--text-on-terminal-dim);
+}
+.actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 .ghost {
   margin-top: 4px;

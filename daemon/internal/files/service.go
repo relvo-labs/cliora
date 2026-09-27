@@ -18,6 +18,7 @@ type Service struct {
 	excludedDirs map[string]bool
 	search       config.SearchConfig
 	upload       config.UploadConfig
+	download     config.DownloadConfig
 	maxPreview   int64
 	entryLimit   int
 	now          func() time.Time
@@ -44,6 +45,7 @@ func NewService(cfg *config.Config, now func() time.Time) *Service {
 		excludedDirs: excluded,
 		search:       cfg.Filesystem.Search,
 		upload:       cfg.Filesystem.Upload,
+		download:     cfg.Filesystem.Download,
 		maxPreview:   cfg.Filesystem.MaxPreviewSize,
 		entryLimit:   DefaultEntryLimit,
 		now:          now,

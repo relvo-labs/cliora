@@ -16,14 +16,27 @@ Two write paths exist, both gated on `file.upload`, which Viewer does not hold:
 
 The contrast is deliberate and is not a redundancy: a pasted screenshot does not
 need a name, and `requirements.txt`'s name is its entire meaning.
+
+One read path returns bytes rather than JSON:
+
+* GET /download hands back the exact contents of one file (ADR 0028). It is gated
+  on `file.browse` like the rest of this module, because a download is a read -
+  but it is a *separate endpoint* from /content rather than a flag on it, since
+  the two apply different policies to the same file: /content refuses binary and
+  caps at the preview size, /download refuses neither and still refuses every
+  sensitive file /content does. The response is always application/octet-stream
+  with nosniff, so the platform never asks a browser to render node content
+  inside the console's own origin.
 """
 
 from __future__ import annotations
 
+import posixpath
 import uuid
 from typing import Any
+from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
@@ -198,6 +211,85 @@ async def upload_file(
     # store_file writes the audit entry; commit it with the response.
     await session.commit()
     return payload
+
+
+def _content_disposition(rel_path: str) -> str:
+    """Build an `attachment` disposition for a workspace-relative path.
+
+    Two forms, and both are needed. `filename=` carries an ASCII fallback for
+    clients that do not implement RFC 5987; `filename*=` carries the real,
+    percent-encoded UTF-8 name. Sending only the first would rename every non-ASCII
+    file on the way out; sending only the second would leave older clients with no
+    name at all.
+
+    The ASCII fallback is built by dropping non-ASCII characters rather than by
+    transliterating them, because a name is either exactly right or it is a
+    fallback, and a fallback that looks like a translation invites someone to trust
+    it. Quotes, backslashes and control characters go too - they are the header
+    injection surface here, and `quote` only protects the starred form.
+
+    Dropping characters can leave a stub rather than a name: `年度統計.csv` reduces
+    to `.csv`, which is not a shortened filename but a different kind of thing - a
+    dotfile, and one whose extension a client would then be unable to see. So when
+    nothing is left of the stem, `download` stands in for it and the extension is
+    kept: `download.csv`. The extension is the half of a fallback name that is
+    actually load-bearing, because it is what decides which application opens the
+    file; the stem is what the starred form is for.
+    """
+    name = posixpath.basename(rel_path) or "download"
+    kept = "".join(ch for ch in name if 0x20 <= ord(ch) < 0x7F and ch not in '"\\')
+    stem, dot, extension = kept.rpartition(".")
+    if not dot:
+        ascii_name = kept.strip(" .") or "download"
+    else:
+        ascii_name = (stem.strip(" .") or "download") + "." + (extension.strip(" ") or "bin")
+    return f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{quote(name, safe='')}"
+
+
+@router.get("/download")
+async def download_file(
+    session_id: uuid.UUID,
+    path: str = Query(min_length=1, max_length=4096),
+    user: User = Depends(require_action(FILE_BROWSE)),
+    session: AsyncSession = Depends(get_session),
+    registry: NodeConnectionRegistry = Depends(get_registry),
+) -> Response:
+    """Return the exact bytes of one file in the session workspace.
+
+    A plain `Response` rather than a `StreamingResponse`, and that is honest about
+    what happens: the relay answers in one correlated frame, so the whole file is
+    already in memory by the time this function has anything to return. Streaming
+    the handover would look like backpressure without providing any, and the thing
+    that actually bounds memory here is the 4 MiB ceiling on the node.
+
+    The three headers are a set and none of them is decoration:
+
+    * `application/octet-stream` - never a sniffed or node-supplied type, so the
+      platform cannot be talked into serving an HTML file from a workspace as a
+      renderable document on its own origin.
+    * `nosniff` - which is what stops a browser from ignoring the line above.
+    * `attachment` - so the file is saved rather than displayed, for the same reason.
+
+    RBAC is `file.browse`, so a Viewer may download. That is deliberate (ADR 0028
+    §5) and it widens what `file.browse` means; the release note says so in its
+    first paragraph rather than in a footnote.
+    """
+    service = FileRelayService(session, registry=registry)
+    rel_path, data = await service.download_file(actor=user, session_id=session_id, path=path)
+    # download_file writes the audit entry; commit it with the response.
+    await session.commit()
+    return Response(
+        content=data,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": _content_disposition(rel_path),
+            "X-Content-Type-Options": "nosniff",
+            # The bytes are the user's file, not a cacheable platform resource, and
+            # a shared cache holding a workspace file keyed only by URL would serve
+            # it to the next session that asked for the same path.
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 @router.get("/content")

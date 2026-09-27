@@ -100,6 +100,8 @@ def test_scope_006_the_console_is_not_an_ide() -> None:
         "filesystem-uploaded",
         "filesystem-store",
         "filesystem-stored",
+        "filesystem-download",
+        "filesystem-downloaded",
     }
 
 

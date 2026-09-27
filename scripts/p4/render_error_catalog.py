@@ -169,6 +169,10 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "File download",
+        ("FILE_DOWNLOAD_DISABLED",),
+    ),
+    (
         "Daemon update",
         (
             "UPDATE_NOT_ALLOWED",

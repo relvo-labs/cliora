@@ -42,11 +42,18 @@ var LargeFrameTypes = map[string]bool{
 	// which is 5.33 MiB of base64 and still inside the 8 MiB already granted
 	// above. Its response, filesystem.stored, is a path and two scalars.
 	"filesystem.store": true,
+	// filesystem.downloaded is the mirror of filesystem.store (ADR 0028): the
+	// same 4 MiB of bytes travelling the other way, so the bound does not move
+	// for it either. Note which half is large in each pair - on the upload paths
+	// it is the request, here it is the response - which is exactly what
+	// "direction the bytes go" means. Its request, filesystem.download, is a
+	// session id and a path and stays on the tight 64 KiB bound.
+	"filesystem.downloaded": true,
 }
 
 const HeaderSize = 18
 
-var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
+var allowedTypes = map[string]bool{"session.start": true, "session.started": true, "session.start_failed": true, "session.attach": true, "session.attached": true, "session.stop": true, "session.stopped": true, "session.list": true, "session.list_result": true, "session.recover": true, "session.status_changed": true, "terminal.resize": true, "terminal.detach": true, "terminal.gap": true, "terminal.exited": true, "terminal.error": true, "terminal.control_acquire": true, "terminal.control_release": true, "filesystem.list": true, "filesystem.entries": true, "filesystem.read": true, "filesystem.content": true, "filesystem.search": true, "filesystem.search_result": true, "filesystem.upload": true, "filesystem.uploaded": true, "filesystem.store": true, "filesystem.stored": true, "filesystem.download": true, "filesystem.downloaded": true, "node.challenge": true, "node.auth": true, "node.authenticated": true, "node.heartbeat": true, "node.register": true, "node.registered": true, "node.system_info": true, "node.runtime_status": true, "node.shutdown": true, "daemon.version": true, "daemon.doctor": true, "daemon.doctor_result": true, "daemon.update": true, "daemon.update_result": true, "tunnel.open": true, "tunnel.opened": true, "tunnel.close": true, "tunnel.closed": true, "tunnel.status": true, "error": true}
 
 type Envelope struct {
 	Version   int             `json:"version"`
@@ -160,6 +167,35 @@ type fsStoreFields struct {
 	Data      string    `json:"data"`
 }
 
+// fsDownloadFields is deliberately identical in shape to fsReadFields: a
+// download names a file and nothing else. DisallowUnknownFields is what makes
+// `offset`, `length`, `range`, `encoding` and `disposition` rejections rather
+// than ignored extras - the caller cannot ask for part of a file, and cannot
+// influence how the browser will be told to treat the bytes (ADR 0028 sec 2).
+type fsDownloadFields struct {
+	SessionID uuid.UUID `json:"session_id"`
+	Path      string    `json:"path"`
+}
+
+// fsDownloadedFields is the response, and it is the first daemon -> Central
+// response type ValidateControl has a case for. The daemon never receives one,
+// so the case looks dead - it is not. BuildResponse hands its frame back through
+// this validator's decode path, and the golden manifest is run by all three
+// consumers against every fixture, request and response alike. Without a case
+// here, `invalid/filesystem-downloaded-with-mime.json` would be rejected by
+// Python and TypeScript and quietly accepted by Go, which is precisely the
+// drift the shared fixtures exist to catch.
+//
+// No Mime, and its absence is the decision: Central answers every download as
+// application/octet-stream with nosniff, so there is no content type for the
+// node to influence (ADR 0028 sec 4).
+type fsDownloadedFields struct {
+	Path       string `json:"path"`
+	Size       int64  `json:"size"`
+	ModifiedAt string `json:"modified_at"`
+	Data       string `json:"data"`
+}
+
 type fsSearchFields struct {
 	SessionID  uuid.UUID `json:"session_id"`
 	Keyword    string    `json:"keyword"`
@@ -235,6 +271,11 @@ type registerFields struct {
 	// workspace (contract 1.9.0, ADR 0026 §9). Separate from ImageUpload because
 	// the two grants are different sizes; absent means "no", never "unknown".
 	FileUpload *bool `json:"file_upload,omitempty"`
+	// FileDownload reports that this node hands workspace files back to a browser
+	// (contract 1.10.0, ADR 0028 §6). A third field rather than a reuse of either
+	// upload flag: those say what may be written into this machine, this one says
+	// what may be read out of it. Absent means "no", same as the other two.
+	FileDownload *bool `json:"file_download,omitempty"`
 }
 type heartbeatFields struct {
 	DaemonVersion  string       `json:"daemon_version"`
@@ -370,6 +411,21 @@ func validRelPath(s string) bool {
 // filesystem-upload.schema.json. Checking it before decoding means an
 // over-limit frame is refused without allocating the decoded copy.
 const MaxUploadBase64 = 5592408
+
+// MaxDownloadBytes is the largest file the download path will carry, in raw
+// bytes (ADR 0028). It equals the upload ceiling deliberately: one number bounds
+// both directions, so "what fits through Cliora" has a single answer, and
+// MaxUploadBase64 above is already the base64 length of exactly this many bytes.
+const MaxDownloadBytes = 4 * 1024 * 1024
+
+// timestamp is the same UTC shape the envelope's own `timestamp` is pinned to.
+// The download response is the first payload whose modified_at Go checks, because
+// it is the first response type this validator has a case for - see the comment
+// on fsDownloadedFields for why that case exists at all.
+var timestamp = regexp.MustCompile(
+	`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,6})?Z$`)
+
+func validTimestamp(v string) bool { return timestamp.MatchString(v) }
 
 // MaxStoreFilenameBytes bounds a stored filename. Bytes, not runes: the wire
 // schema's maxLength counts code points, so an 88-character CJK name is 256
@@ -665,6 +721,19 @@ func ValidateControl(raw []byte) error {
 		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
 			!validRelPath(p.Directory) || !validStoreFilename(p.Filename) ||
 			!validStoreData(p.Data) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.download":
+		var p fsDownloadFields
+		if strictUnmarshal(env.Payload, &p) != nil || p.SessionID == uuid.Nil ||
+			!validRelPath(p.Path) {
+			return errors.New("INVALID_MESSAGE")
+		}
+	case "filesystem.downloaded":
+		var p fsDownloadedFields
+		if strictUnmarshal(env.Payload, &p) != nil || !validRelPath(p.Path) ||
+			p.Size < 0 || p.Size > MaxDownloadBytes ||
+			!validTimestamp(p.ModifiedAt) || !validStoreData(p.Data) {
 			return errors.New("INVALID_MESSAGE")
 		}
 	case "tunnel.open":

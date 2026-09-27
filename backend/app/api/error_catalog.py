@@ -600,6 +600,18 @@ CATALOG: dict[str, ErrorEntry] = dict(
             "None from the browser; the node's owner controls this setting.",
             origin=DAEMON,
         ),
+        # --- File download (ADR 0028) ---
+        _entry(
+            "FILE_DOWNLOAD_DISABLED",
+            status.HTTP_403_FORBIDDEN,
+            "This node does not hand workspace files back",
+            "The node's config sets filesystem.download.enabled to false. Whether "
+            "its workspace files may be read out to a browser is the node's "
+            "decision, not the platform's — and it is a separate decision from "
+            "whether the node accepts uploads.",
+            "None from the browser; the node's owner controls this setting.",
+            origin=DAEMON,
+        ),
         # --- Daemon update (P4-10) ---
         _entry(
             "UPDATE_NOT_ALLOWED",

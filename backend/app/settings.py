@@ -103,6 +103,11 @@ class Settings(BaseSettings):
     # rather than a browser that waits forever.
     file_upload_timeout_seconds: float = 20
     file_search_timeout_seconds: float = 15
+    # Longer than a read for the mirror-image reason to the upload timeout: the
+    # node reads up to 4 MiB off disk and base64s it before replying, where a
+    # preview is capped at 2 MiB of text. Still bounded, so a wedged node surfaces
+    # as REQUEST_TIMEOUT rather than a browser that waits forever (ADR 0028).
+    file_download_timeout_seconds: float = 20
 
     # --- P4 audit retention (ADR 0016) ---
     # Expiry is applied by an explicit operator command

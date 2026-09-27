@@ -1113,6 +1113,83 @@
       ]
     },
     {
+      "id": "FR-FILE-011",
+      "kind": "functional",
+      "title": "檔案下載",
+      "source": {
+        "path": "research/prd.md",
+        "anchor": "fr-file-011"
+      },
+      "lifecycle": "active",
+      "applicability": [
+        "mvp"
+      ],
+      "criticality": "should",
+      "owner": "central",
+      "criteria": [
+        {
+          "id": "FR-FILE-011.AC-01",
+          "source_anchor": "fr-file-011-ac-01",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-011.AC-02",
+          "source_anchor": "fr-file-011-ac-02",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-011.AC-03",
+          "source_anchor": "fr-file-011-ac-03",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-011.AC-04",
+          "source_anchor": "fr-file-011-ac-04",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-011.AC-05",
+          "source_anchor": "fr-file-011-ac-05",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-011.AC-06",
+          "source_anchor": "fr-file-011-ac-06",
+          "verification_profile": "automated",
+          "risk": "critical"
+        },
+        {
+          "id": "FR-FILE-011.AC-07",
+          "source_anchor": "fr-file-011-ac-07",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-011.AC-08",
+          "source_anchor": "fr-file-011-ac-08",
+          "verification_profile": "automated",
+          "risk": "high"
+        },
+        {
+          "id": "FR-FILE-011.AC-09",
+          "source_anchor": "fr-file-011-ac-09",
+          "verification_profile": "automated",
+          "risk": "medium"
+        },
+        {
+          "id": "FR-FILE-011.AC-10",
+          "source_anchor": "fr-file-011-ac-10",
+          "verification_profile": "automated",
+          "risk": "critical"
+        }
+      ]
+    },
+    {
       "id": "FR-INSTALL-001",
       "kind": "functional",
       "title": "建立 Enrollment Token",

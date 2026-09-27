@@ -19,7 +19,18 @@ const props = defineProps<{
   sessionId: string | null;
   // Set by the tree when a file row is activated; null closes the preview.
   relPath: string | null;
+  // Whether this node hands files back at all (ADR 0028 §6). The control is
+  // hidden rather than disabled when false, the same rule the upload affordances
+  // follow: a button that is always going to fail is worse than no button.
+  canDownload?: boolean;
+  // True while this pane's file is being fetched, so the control can say so.
+  downloading?: boolean;
 }>();
+
+// The view owns the download, not this pane. Two reasons: the denial pane below
+// offers the same action for a file this pane cannot render, and the composable's
+// abort has to outlive a preview that closes mid-download.
+const emit = defineEmits<{ download: [relPath: string] }>();
 
 const host = ref<HTMLElement | null>(null);
 const copied = ref(false);
@@ -73,6 +84,13 @@ async function copy(): Promise<void> {
 }
 
 const showEditor = computed(() => preview.state.value === "ready");
+// Downloadable whenever a path is open, including one the editor refused to
+// render: "cannot be shown here" and "cannot be handed over" are different
+// questions, and the denial pane is where the second one gets answered
+// (ADR 0028 §3).
+const canDownloadNow = computed(
+  () => props.canDownload === true && Boolean(preview.currentPath.value),
+);
 const fileName = computed(
   () => preview.currentPath.value?.split("/").pop() ?? "",
 );
@@ -121,6 +139,15 @@ const fileName = computed(
         >
           重新整理
         </button>
+        <button
+          v-if="canDownloadNow"
+          type="button"
+          :disabled="downloading"
+          :title="`下載 ${fileName}`"
+          @click="emit('download', preview.currentPath.value!)"
+        >
+          {{ downloading ? "下載中…" : "下載" }}
+        </button>
       </div>
     </header>
 
@@ -162,7 +189,10 @@ const fileName = computed(
         v-else-if="preview.state.value === 'denied' && preview.denial.value"
         :denial="preview.denial.value"
         :rel-path="preview.currentPath.value ?? ''"
+        :can-download="canDownloadNow"
+        :downloading="downloading"
         @refresh="preview.refresh()"
+        @download="emit('download', preview.currentPath.value!)"
       />
     </div>
   </section>

@@ -340,6 +340,13 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "請改名後再上傳。",
     retryable: false,
   },
+  // --- File download (ADR 0028) ---
+  FILE_DOWNLOAD_DISABLED: {
+    cause:
+      "該 Node 的設定關閉了檔案下載（filesystem.download.enabled: false）。這與上傳的兩個開關是分開的：接受檔案寫入，不等於同意把工作區的檔案交出去。",
+    nextStep: "瀏覽器端無法改變這件事；請洽該 Node 的擁有者。",
+    retryable: false,
+  },
 
   // --- Daemon update ---
   UPDATE_NOT_ALLOWED: {

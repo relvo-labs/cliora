@@ -105,6 +105,14 @@ class Node(Base):
     file_upload: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=text("false"), index=True
     )
+    # True when this machine hands workspace files back to a browser (ADR 0028). A
+    # third column rather than a reuse of either upload flag, because it is the only
+    # one of the three about bytes *leaving* the machine — and "which of my nodes
+    # will send source files to a browser" is the fleet-level question an operator
+    # asks after an exfiltration scare, so it has to be indexable.
+    file_download: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=text("false"), index=True
+    )
 
     # --- Daemon update state (P4-10, ADR 0017) ---
     # Explicit columns rather than keys inside `metadata`: "which nodes failed to

@@ -28,7 +28,10 @@ const LABELS: Record<string, string> = {
   "session.terminate": "終止 Session",
   "session.failed": "Session 失敗",
   "file.sensitive_read_denied": "敏感檔讀取被拒",
-  "file.upload": "投放圖片",
+  // 「投放圖片」是 ADR 0024 的原意，ADR 0026 之後這個動作同時涵蓋一般檔案上傳，
+  // 標籤跟著改；要分辨兩者請看 metadata 的 source（image | file）。
+  "file.upload": "上傳檔案",
+  "file.download": "下載檔案",
   "authz.denied": "授權被拒",
   // 埠轉發（ADR 0022）。整合層與隧道層分開記，因為它們回答的是不同的問題：
   // 「誰決定本組織使用這個服務、用誰的帳號」與「誰把哪台機器的哪個 port 對外」。
@@ -104,8 +107,11 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
   {
     // A successful drop is ordinary session activity, not a security event —
     // filing it under Security would bury the refusals that are (ADR 0024 W3).
+    // A successful download sits here for the same reason a successful upload
+    // does: it is ordinary session activity. The refusals next door under
+    // Security are the ones that must stay easy to find (ADR 0028 §7).
     title: "工作區 / Workspace",
-    actions: ["file.upload"],
+    actions: ["file.upload", "file.download"],
   },
 ];
 

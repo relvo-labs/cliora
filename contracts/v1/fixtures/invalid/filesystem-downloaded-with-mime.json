@@ -1,0 +1,1 @@
+{"version": 1, "type": "filesystem.downloaded", "request_id": "01K0ABCDEFGHJKMNPQRSTVWX26", "node_id": "00000000-0000-4000-8000-000000000001", "timestamp": "2026-09-16T09:00:00Z", "success": true, "payload": {"path": "a.html", "size": 6, "modified_at": "2026-09-16T09:00:00Z", "data": "YSxiCjEsMgo=", "mime": "text/html"}}

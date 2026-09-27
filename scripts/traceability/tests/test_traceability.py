@@ -119,9 +119,24 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # the gap these eight close, and it is why three of them are `measurement`
     # rather than `automated`: whether a theme switch keeps a live session, and
     # whether a page overflows at 390px, are claims about a real browser.
+    # 2026-09-16: +7 that this ledger never recorded. NFR-007 (mobile operability,
+    # plan/29, commit 22827cb) registered seven criteria without updating the census
+    # below, so the gate has been failing on master since that merge. Writing the
+    # correction as its own line rather than folding it into the next one is the
+    # point: a running total that silently absorbs a discrepancy stops being a
+    # census and becomes a number someone edits until the test passes.
+    #
+    # 2026-09-16: +10 for workspace file download (plan/30, ADR 0028) —
+    # FR-FILE-011.AC-01..AC-10. All ten are verifiable, so `blocking` stays 0.
+    # Four are `critical` risk and it is worth saying which, because they are not
+    # the obvious ones: the sensitive policy in the read-out direction (AC-02), the
+    # absence of range fields on the wire (AC-05), the octet-stream/nosniff response
+    # (AC-06), and Central keeping no byte (AC-10). Getting the feature wrong makes
+    # it not work; getting those four wrong sends a secret off the node or runs
+    # workspace content in the console's own origin.
     assert result["summary"] == {
-        "total": 451,
-        "verifiable": 318,
+        "total": 468,
+        "verifiable": 335,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,
