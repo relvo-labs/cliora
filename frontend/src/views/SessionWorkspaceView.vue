@@ -357,6 +357,32 @@ watch(
   { immediate: true },
 );
 
+// Who a shell being opened belongs to (#76 review 5). The shell's id is only
+// known once `openShell` answers, so a way out taken while that request is out
+// — an in-place route change, unmount, unload, losing the user — finds nothing
+// for `closeShell` to close. Each of those moves this generation instead, and
+// an answer that arrives for an earlier one is an orphan: it is terminated
+// through the ordinary API and never becomes this page's shell. Without this
+// the late answer installed session A's shell under B's page, and the shell
+// ticket fence, which trusts `shellSession`, let it connect.
+let shellOwner = 0;
+function disownPendingShell(): void {
+  shellOwner += 1;
+}
+
+// Losing the user — signed out, or `/me` naming someone else — is a way out of
+// this page too, even before the auth-loss handler's navigation unmounts it:
+// a shell still being opened is no longer anyone's here (#76 review 5). A
+// merely *unconfirmed* identity is not: the page may come back as it was, and
+// the suspension above already keeps the shell from connecting meanwhile.
+watch(
+  () => auth.isAuthenticated && !auth.discarding,
+  (ownUser) => {
+    if (!ownUser) disownPendingShell();
+  },
+  { flush: "sync" },
+);
+
 // Started on first use, not on page load: a shell nobody opened would still
 // consume a slot against the node and user session caps (D8).
 async function openShellTab(): Promise<void> {
@@ -367,6 +393,9 @@ async function openShellTab(): Promise<void> {
     shellTerminal.focus();
     return;
   }
+  const owner = shellOwner;
+  const parentId = props.id;
+  const owned = () => owner === shellOwner;
   shellState.value = "starting";
   shellError.value = "";
   try {
@@ -375,13 +404,26 @@ async function openShellTab(): Promise<void> {
     // 24×80 and letting the first fit correct it made bash redraw its prompt at
     // a different width in front of the user (plan/09 LY-04).
     await nextTick();
+    if (!owned()) return;
     const size = shellTerminal.proposeSize() ?? { rows: 24, columns: 80 };
-    const created = await api().openShell(props.id, size);
+    const created = await api().openShell(parentId, size);
+    if (!owned()) {
+      // Best effort, like `closeShell`: the parent binding and the idle
+      // timeout still collect it if this is refused (after a sign-out, say).
+      api()
+        .terminateSession(created.id)
+        .catch(() => {});
+      return;
+    }
     shellSession.value = created;
     shellState.value = "ready";
     await nextTick();
+    // Closed during that tick: `closeShell` already terminated it.
+    if (!owned() || shellSession.value?.id !== created.id) return;
     void shellTerminal.connect(created.id);
   } catch (caught) {
+    // A stale request's failure belongs to a page that is gone.
+    if (!owned()) return;
     shellState.value = "error";
     shellError.value =
       caught instanceof ApiError ? caught.message : "無法開啟系統終端機。";
@@ -414,6 +456,7 @@ async function closeShell(): Promise<void> {
 //
 // 1. Navigating inside the app (Back, the sidebar): the component unmounts.
 onBeforeUnmount(() => {
+  disownPendingShell();
   void closeShell();
 });
 
@@ -425,6 +468,7 @@ onBeforeUnmount(() => {
 //    when the page is put in the back/forward cache, and a restored page that still
 //    believed it had this terminal would show its dead scrollback.
 function terminateShellOnUnload(): void {
+  disownPendingShell();
   const open = shellSession.value;
   if (!open) return;
   shellSession.value = null;
@@ -438,7 +482,17 @@ onBeforeUnmount(() =>
 );
 
 const host = ref<HTMLElement | null>(null);
-const terminateOpen = ref(false);
+// The session the terminate dialog names, captured when it opened (#76 review
+// 5). The dialog used to show `session?.name` and confirm `props.id`, which an
+// in-place route change pulls apart: it could name A while terminating B. Now
+// it shows and terminates the one session it was opened for, is closed when the
+// route id changes, and a confirmation is refused unless the route still is
+// that session.
+const terminateTarget = ref<{ id: string; name: string } | null>(null);
+function askTerminate(): void {
+  if (!workspaceLive.value || !session.value) return;
+  terminateTarget.value = { id: session.value.id, name: session.value.name };
+}
 const actionError = ref("");
 const busy = ref(false);
 
@@ -758,11 +812,24 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
+// The one owner of "load this route's session, then connect its CLI" (#76
+// review 5). Mount, an in-place route change and the veil's Retry all come
+// through here, so a load that succeeds — on whichever attempt — is followed by
+// exactly one `connect`, and a load that fails is followed by none. Connecting
+// after a failed load used to leave a request the ticket fence never answers
+// (the workspace is not live), and a later successful Retry, which only
+// refetched, then had nothing to start the terminal: it sat at `connecting`,
+// which offers no reconnect.
+async function loadSession(): Promise<void> {
+  const id = props.id;
   await resource.run();
-  if (resource.state.value === "success") {
-    void terminal.connect(props.id);
-  }
+  // Superseded while loading (A → B → C): the later load connects.
+  if (props.id !== id || !workspaceLive.value) return;
+  void terminal.connect(id);
+}
+
+onMounted(() => {
+  void loadSession();
 });
 
 // The preview lives only as long as the binding it was opened under (#76).
@@ -832,11 +899,11 @@ watch(
       // shell is closed synchronously too: `closeShell` disconnects before
       // its own first await.
       terminal.disconnect();
+      disownPendingShell();
+      terminateTarget.value = null;
       await closeShell();
-      await resource.run();
-      // Superseded while waiting (A → B → C): the later change connects.
       if (props.id !== next) return;
-      void terminal.connect(next);
+      await loadSession();
     }
   },
 );
@@ -918,14 +985,29 @@ watch(
 );
 
 async function confirmTerminate(): Promise<void> {
+  const target = terminateTarget.value;
+  if (!target || target.id !== props.id || !workspaceLive.value) {
+    terminateTarget.value = null;
+    return;
+  }
   busy.value = true;
   actionError.value = "";
   try {
-    await sessions.terminate(props.id);
-    terminateOpen.value = false;
+    await sessions.terminate(target.id);
+    if (props.id === target.id) {
+      terminateTarget.value = null;
+    } else if (resource.data.value?.id === props.id) {
+      // The route moved on while the request was out. The store keeps the
+      // terminated payload as `current`; the page now belongs to another
+      // session, whose own payload is put back (or, still loading, lands
+      // when it arrives).
+      sessions.current = resource.data.value;
+    }
   } catch (caught) {
-    actionError.value =
-      caught instanceof ApiError ? caught.message : "Terminate failed.";
+    if (props.id === target.id) {
+      actionError.value =
+        caught instanceof ApiError ? caught.message : "Terminate failed.";
+    }
   } finally {
     busy.value = false;
   }
@@ -962,7 +1044,7 @@ async function confirmTerminate(): Promise<void> {
         :compact="compactHeader"
         @takeover="terminal.takeover()"
         @reconnect="terminal.retry()"
-        @terminate="terminateOpen = true"
+        @terminate="askTerminate()"
       />
 
       <!-- Notices, not toasts. A failure that removes itself is a failure the
@@ -1386,25 +1468,25 @@ async function confirmTerminate(): Promise<void> {
         <ErrorNotice
           v-else
           :error="resource.error.value"
-          @retry="resource.run()"
+          @retry="loadSession()"
         />
       </div>
     </div>
 
     <ConfirmDialog
-      :open="terminateOpen"
+      :open="terminateTarget !== null"
       :busy="busy"
       danger
       title="終止此 Session？"
       confirm-label="確認終止"
       @confirm="confirmTerminate"
-      @cancel="terminateOpen = false"
+      @cancel="terminateTarget = null"
     >
       <!-- The name is shown and marked up as a name. A `message: string` prop
            could only concatenate it into prose, where it reads as part of the
            sentence rather than as the thing about to be stopped. -->
       <p>
-        將終止 <code>{{ session?.name }}</code
+        將終止 <code>{{ terminateTarget?.name }}</code
         >，此 Node 上的 CLI 程序會被停止。已產生的輸出不會保留。
       </p>
     </ConfirmDialog>

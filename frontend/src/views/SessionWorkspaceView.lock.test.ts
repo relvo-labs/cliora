@@ -386,6 +386,7 @@ const OTHER = "55555555-5555-4555-8555-555555555555";
 function stubSwitchApi() {
   const heldSession = new Map<string, ReturnType<typeof deferred<void>>>();
   const heldAttach = new Map<string, ReturnType<typeof deferred<void>>>();
+  const failing = new Set<string>();
   const attachSession = vi.fn(async (id: string) => {
     await heldAttach.get(id)?.promise;
     return { ticket: `ticket-${id}` };
@@ -393,6 +394,9 @@ function stubSwitchApi() {
   vi.spyOn(auth, "api").mockReturnValue({
     getSession: vi.fn(async (id: string) => {
       await heldSession.get(id)?.promise;
+      if (failing.delete(id)) {
+        throw new ApiError("UPSTREAM_BROKE", "no", 502, "r");
+      }
       return session(id);
     }),
     getNode: vi.fn(async () => {
@@ -413,6 +417,10 @@ function stubSwitchApi() {
       const gate = deferred<void>();
       heldSession.set(id, gate);
       return () => gate.resolve();
+    },
+    /** The next fetch of this session fails with a retryable error. */
+    failSessionOnce(id: string) {
+      failing.add(id);
     },
     holdAttach(id: string) {
       const gate = deferred<void>();
@@ -547,5 +555,80 @@ describe("SessionWorkspaceView — 原地切換 session：舊 session 的終端�
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     expect(socketsFor(OTHER)).toHaveLength(1);
     expect(socketsFor(ID)).toHaveLength(0);
+  });
+});
+
+// --- A failed session fetch, then Retry (#76 review 5) ----------------------
+//
+// The CLI connects after a *successful* load of the route's session, whichever
+// path produced it: mount, an in-place route change, or the veil's Retry.
+// Exactly once: one socket for the session, none for anything else.
+
+async function retryFromVeil(wrapper: ReturnType<typeof mount>): Promise<void> {
+  await wrapper.get(".veil button.retry").trigger("click");
+  await flushPromises();
+}
+
+describe("SessionWorkspaceView — session 載入失敗後重試：CLI 只連線一次（#76）", () => {
+  it("A 已連線，切到 B 失敗後重試成功：只開一個 B 的 socket", async () => {
+    const api = stubSwitchApi();
+    const { wrapper, appRouter } = await render();
+    const a = await connectedAsWriter();
+
+    api.failSessionOnce(OTHER);
+    await appRouter.push(`/sessions/${OTHER}`);
+    await flushPromises();
+    expect(a.readyState).toBe(MockSocket.CLOSED);
+    expect(wrapper.get(".grid").attributes("inert")).toBeDefined();
+    expect(api.attachesFor(OTHER)).toBe(0);
+
+    await retryFromVeil(wrapper);
+    await vi.waitFor(() => expect(socketsFor(OTHER)).toHaveLength(1));
+    socketsFor(OTHER)[0].open();
+    expect(wrapper.get(".grid").attributes("inert")).toBeUndefined();
+
+    await pastFirstRetry();
+    expect(socketsFor(OTHER)).toHaveLength(1);
+    expect(socketsFor(OTHER)[0].readyState).toBe(MockSocket.OPEN);
+    expect(api.attachesFor(OTHER)).toBe(1);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it("A 從未開出 socket（ticket 還在路上），切到 B 失敗後重試成功：只開一個 B 的 socket，A 的 ticket 遲到也不開", async () => {
+    const api = stubSwitchApi();
+    const releaseA = api.holdAttach(ID);
+    const { wrapper, appRouter } = await render();
+    await vi.waitFor(() => expect(api.attachesFor(ID)).toBe(1));
+
+    api.failSessionOnce(OTHER);
+    await appRouter.push(`/sessions/${OTHER}`);
+    await flushPromises();
+
+    await retryFromVeil(wrapper);
+    await vi.waitFor(() => expect(socketsFor(OTHER)).toHaveLength(1));
+    socketsFor(OTHER)[0].open();
+    releaseA();
+    await flushPromises();
+
+    await pastFirstRetry();
+    expect(socketsFor(ID)).toHaveLength(0);
+    expect(socketsFor(OTHER)).toHaveLength(1);
+    expect(socketsFor(OTHER)[0].readyState).toBe(MockSocket.OPEN);
+    expect(api.attachesFor(OTHER)).toBe(1);
+  });
+
+  it("第一次載入就失敗，重試成功：開一個 socket", async () => {
+    const api = stubSwitchApi();
+    api.failSessionOnce(ID);
+    const { wrapper } = await render();
+    expect(sockets).toHaveLength(0);
+    expect(api.attachesFor(ID)).toBe(0);
+
+    await retryFromVeil(wrapper);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+    await pastFirstRetry();
+    expect(sockets).toHaveLength(1);
+    expect(api.attachesFor(ID)).toBe(1);
   });
 });

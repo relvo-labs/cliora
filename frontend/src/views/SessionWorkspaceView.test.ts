@@ -103,8 +103,11 @@ vi.mock("../components/file/PreviewPane.vue", () => {
   });
 });
 
+import ConfirmDialog from "../components/common/ConfirmDialog.vue";
+import SessionHeader from "../components/session/SessionHeader.vue";
 import * as auth from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
+import { useSessionsStore } from "../stores/sessions";
 import SessionWorkspaceView from "./SessionWorkspaceView.vue";
 
 const ID = "44444444-4444-4444-8444-444444444444";
@@ -548,6 +551,94 @@ describe("SessionWorkspaceView — system terminal (WT-08)", () => {
     await flushPromises();
     expect(attach).not.toHaveBeenCalled();
   });
+
+  // #76 review 5: the shell's id is only known once `openShell` answers, so a
+  // way out taken while that request is out finds nothing to close. The answer
+  // is checked against the owner that asked for it; a shell whose owner has
+  // left is terminated and never becomes this page's shell.
+  describe("an open answered after its owner has left", () => {
+    const OTHER = "66666666-6666-4666-8666-666666666666";
+    function holdOpen(): (created: SessionDetail) => void {
+      let answer!: (created: SessionDetail) => void;
+      shellApi.openShell.mockImplementationOnce(
+        () => new Promise((resolve) => (answer = resolve)),
+      );
+      return (created) => answer(created);
+    }
+    const shell = () => ({ ...session(), id: SHELL_ID, runtime: "shell" });
+    async function openHeld() {
+      const answer = holdOpen();
+      const wrapper = await render(withShell());
+      await wrapper.findAll('[role="tab"]')[1].trigger("click");
+      await flushPromises();
+      expect(shellApi.openShell).toHaveBeenCalledOnce();
+      return { wrapper, answer };
+    }
+    function expectOrphanTerminated(): void {
+      expect(term.connect).not.toHaveBeenCalledWith(SHELL_ID);
+      expect(shellApi.terminateSession).toHaveBeenCalledWith(SHELL_ID);
+    }
+
+    it("in-place route change: A's shell is terminated, not installed or connected under B", async () => {
+      const { wrapper, answer } = await openHeld();
+      await wrapper.setProps({ id: OTHER });
+      await flushPromises();
+      // Nothing was known yet, so there was nothing to close.
+      expect(shellApi.terminateSession).not.toHaveBeenCalled();
+
+      answer(shell());
+      await flushPromises();
+      expectOrphanTerminated();
+      // Not this page's shell: no ticket for it either.
+      const attach = (
+        auth.api() as unknown as { attachSession: ReturnType<typeof vi.fn> }
+      ).attachSession;
+      attach.mockClear();
+      void ticketProviders[0](SHELL_ID);
+      await flushPromises();
+      expect(attach).not.toHaveBeenCalled();
+      expect(wrapper.find("#panel-terminal .shell-status").exists()).toBe(
+        false,
+      );
+    });
+
+    it("unmount: the shell is terminated, not connected", async () => {
+      const { wrapper, answer } = await openHeld();
+      wrapper.unmount();
+      await flushPromises();
+      answer(shell());
+      await flushPromises();
+      expectOrphanTerminated();
+    });
+
+    it("sign-out: the shell is terminated, not connected", async () => {
+      const { answer } = await openHeld();
+      auth.useAuthStore().clearTokens();
+      await flushPromises();
+      answer(shell());
+      await flushPromises();
+      expectOrphanTerminated();
+    });
+
+    it("a stale open that fails does not put an error on the new page's tab", async () => {
+      let fail!: () => void;
+      shellApi.openShell.mockImplementationOnce(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = () =>
+              reject(new ApiError("SHELL_FAILED", "stale failure", 500, "r"));
+          }),
+      );
+      const wrapper = await render(withShell());
+      await wrapper.findAll('[role="tab"]')[1].trigger("click");
+      await flushPromises();
+      await wrapper.setProps({ id: OTHER });
+      await flushPromises();
+      fail();
+      await flushPromises();
+      expect(wrapper.text()).not.toContain("stale failure");
+    });
+  });
 });
 
 // --- General file upload (FU-06, ADR 0026) --------------------------------
@@ -855,5 +946,94 @@ describe("SessionWorkspaceView — 行動模式外殼（plan/29 MS-07～MS-09）
     await flushPromises();
     expect(back).not.toHaveBeenCalled();
     expect(wrapper.find("#panel-cli").exists()).toBe(true);
+  });
+});
+
+// --- The terminate dialog across an in-place route change (#76 review 5) ----
+//
+// The dialog names a session; confirming must terminate *that* session and no
+// other. It closes when the route id changes, and a confirmation that arrives
+// anyway is refused unless the route still is the session it named.
+describe("SessionWorkspaceView — 終止確認對話框只作用在它顯示的 session（#76）", () => {
+  const OTHER = "66666666-6666-4666-8666-666666666666";
+
+  function perId(hold: Set<string> = new Set()) {
+    const releases = new Map<string, () => void>();
+    const getSession = vi.fn(async (id: string) => {
+      if (hold.has(id)) {
+        await new Promise<void>((resolve) => releases.set(id, resolve));
+      }
+      return session({ id, name: id === ID ? "session-a" : "session-b" });
+    });
+    return { getSession, release: (id: string) => releases.get(id)?.() };
+  }
+  async function askToTerminate(wrapper: ReturnType<typeof mount>) {
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    const dialog = wrapper.findComponent(ConfirmDialog);
+    expect(dialog.props("open")).toBe(true);
+    return dialog;
+  }
+
+  it("在 A 打開，切到 B（B 還在載入）：對話框關閉，確認也不會終止 B", async () => {
+    const central = perId(new Set([OTHER]));
+    const wrapper = await render(central.getSession);
+    const dialog = await askToTerminate(wrapper);
+    expect(dialog.text()).toContain("session-a");
+
+    await wrapper.setProps({ id: OTHER });
+    await flushPromises();
+    expect(dialog.props("open")).toBe(false);
+
+    // A confirmation that still arrives is refused.
+    dialog.vm.$emit("confirm");
+    await flushPromises();
+    expect(shellApi.terminateSession).not.toHaveBeenCalled();
+
+    central.release(OTHER);
+    await flushPromises();
+    dialog.vm.$emit("confirm");
+    await flushPromises();
+    expect(shellApi.terminateSession).not.toHaveBeenCalled();
+  });
+
+  it("在 A 打開並確認：終止 A（回歸）", async () => {
+    const central = perId();
+    const wrapper = await render(central.getSession);
+    const dialog = await askToTerminate(wrapper);
+    dialog.vm.$emit("confirm");
+    await flushPromises();
+    expect(shellApi.terminateSession).toHaveBeenCalledOnce();
+    expect(shellApi.terminateSession).toHaveBeenCalledWith(ID);
+    expect(dialog.props("open")).toBe(false);
+  });
+
+  it("確認 A 的終止進行中切到 B：終止的是 A，回來的 A 不會蓋掉 B 的畫面", async () => {
+    const central = perId();
+    const wrapper = await render(central.getSession);
+    const dialog = await askToTerminate(wrapper);
+    let finish!: () => void;
+    shellApi.terminateSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () =>
+            resolve(
+              session({ id: ID, name: "session-a", status: "terminated" }),
+            );
+        }),
+    );
+    dialog.vm.$emit("confirm");
+    await flushPromises();
+    expect(shellApi.terminateSession).toHaveBeenCalledWith(ID);
+
+    await wrapper.setProps({ id: OTHER });
+    await flushPromises();
+    expect(useSessionsStore().current?.id).toBe(OTHER);
+
+    finish();
+    await flushPromises();
+    expect(shellApi.terminateSession).toHaveBeenCalledOnce();
+    expect(useSessionsStore().current?.id).toBe(OTHER);
+    expect(wrapper.find(".veil").exists()).toBe(false);
   });
 });
