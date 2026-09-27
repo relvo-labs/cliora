@@ -30,11 +30,12 @@
 | `FR-FILE-012.AC-02` | 型別由 Node 依檔案內容判定；白名單為 PNG、JPEG、WebP、GIF、PDF，其餘一律「不支援預覽」 | critical |
 | `FR-FILE-012.AC-03` | `FR-FILE-005` 的敏感檔案規則適用，且與文字預覽共用同一份判定；對請求路徑與實際開啟檔案的解析名稱各判定一次 | critical |
 | `FR-FILE-012.AC-04` | 上限（檔案大小、像素、邊長、PDF 頁數）超出時明確拒絕並顯示原因，不得逾時或部分顯示 | high |
-| `FR-FILE-012.AC-05` | 結構異常、內容與宣稱型別不符者一律拒絕；需要密碼才能開啟的 PDF 由渲染器拒絕且**不提示輸入密碼**（只有權限密碼的 PDF 依 OD-8 處理）；錯誤不含內容或絕對路徑 | high |
+| `FR-FILE-012.AC-05` | **Node 端信封拒絕：** magic 與宣稱型別不符、表頭結構異常（圖片表頭／標記走訪；PDF 的 `%PDF-` 與 `%%EOF`）、超出大小上限者，在傳輸**前**拒絕，並回可辨識的原因；錯誤不含內容或絕對路徑。**不**宣稱 Node 能驗證 PDF 內部結構 | high |
+| `FR-FILE-012.AC-16` | **瀏覽器端解析／渲染失敗：** 通過信封檢查、但解碼或渲染失敗（損毀的 xref、壞掉的影像資料、需要密碼的 PDF）時，顯示明確的錯誤狀態（`render_failed`／`pdf_password_required`），不當掉頁面、不顯示部分內容、不提示輸入密碼，而且已取得的位元組立即清除（只有權限密碼的 PDF 依 OD-8 處理） | high |
 | `FR-FILE-012.AC-06` | GIF 只顯示第一幀（OD-1） | medium |
 | `FR-FILE-012.AC-07` | PDF 不執行腳本、不啟用連結、表單或附件；不使用第三方服務 | critical |
 | `FR-FILE-012.AC-08` | 平台不提供任何存檔入口；回應不得以可渲染型別或附件形式交付 | critical |
-| `FR-FILE-012.AC-09` | 中央、edge 與瀏覽器不保存預覽內容：不落磁碟、DB、log、metrics label、HTTP 快取或瀏覽器持久儲存；工作區路徑不出現在任何 URL，因而不進任何 access log。本條在 `BP-OM-06`／`BP-OM-10` 對所有部署拓樸量完之前**不得對外宣稱**（ADR 0029 §6 發布閘門；證實不了的部分依 OD-11 限定範圍） | critical |
+| `FR-FILE-012.AC-09` | 中央、edge 與瀏覽器不保存預覽內容：不落磁碟、DB、log、metrics label、HTTP 快取或瀏覽器持久儲存；工作區路徑不出現在任何 URL，因而不進任何 access log。**端到端適用，包括 Cliora 前面的任何 edge**。在某個部署拓樸上，`BP-OM-06`／`BP-OM-10` 證實之前，該拓樸的 Central flag **保持關閉**（ADR 0029 §6 發布閘門、OD-11）。只有產品負責人**明確修訂本條**，才能在某個 edge 未證實的情況下開啟 | critical |
 | `FR-FILE-012.AC-10` | 切換 Session、登出或換使用者時，畫面與記憶體中的預覽內容於同一刻清除 | critical |
 | `FR-FILE-012.AC-11` | 不支援此功能的 Node 或中央不得啟用入口；中央不得向未回報能力的 Node 送出預覽請求 | high |
 | `FR-FILE-012.AC-12` | Node 可停用並回報；中央另有 rollout 開關；兩者任一關閉即隱藏入口 | medium |
@@ -103,7 +104,7 @@
 `source_anchor`，也就是 PRD 裡要先有錨點。本期不改 PRD（§2），所以**本期不登記**，
 理由與 #71 衝突相同。`BP-01` 核准後一次做完：
 
-1. PRD 加入 §2 的錨點（`fr-file-012`、`fr-file-012-ac-01…15`、`fr-conn-006-ac-13`）。
+1. PRD 加入 §2 的錨點（`fr-file-012`、`fr-file-012-ac-01…16`、`fr-conn-006-ac-13`）。
 2. `requirements.json` 新增 `FR-FILE-012`，`lifecycle: "active"`（核准即 active），
    `owner` 依 AC：01／11／12／13 為 `central`，02／03／04／05 為 `daemon`，
    06／07／08／10／15 為 `frontend`，09／14 為 `central`。
@@ -112,7 +113,7 @@
 3. `links.json` 每條 AC 四條連結（planned_by → `plan/31/…`、specified_by → ADR 0029 §、
    implemented_by、verified_by）。implemented_by 與 verified_by **必須指向不同檔案**
    （#71 同一原則）。
-4. `scripts/traceability/tests/test_traceability.py` 的 census：**+15**（`FR-FILE-012`）**+1**
+4. `scripts/traceability/tests/test_traceability.py` 的 census：**+16**（`FR-FILE-012`）**+1**
    （`FR-CONN-006.AC-13`），**分開寫一行**，並附來源。
    #71 已記錄 master 上的 census 在 `NFR-007`（+7）後就是紅的，而且 #71 自己修了它。
    若 #71 沒合併，這裡要先把那 +7 補上，寫成第三行，不要併進本期的數字。
@@ -134,7 +135,7 @@
 | OD-8 | 加密 PDF，**尤其是只有權限密碼（空使用者密碼）的 PDF** | (a) 需要密碼才能開啟的拒絕、不提示；只有權限密碼的照常唯讀顯示；(b) 任何加密 PDF 都拒絕，包括只有權限密碼的；(c) 提供密碼輸入 | **(a)** | 唯一能不靠 daemon 內 PDF parser 就執行的規則，是渲染器的「PDF.js 要求密碼 → 拒絕」。daemon 的 `/Encrypt` 掃描分不出兩種加密，已從設計移除（ADR §4），**不宣稱傳輸前偵測加密**。權限位元只限制列印、複製與編輯，從不限制顯示，而預覽本來就不提供這三個動作，所以 (a) 沒有給出作者保留的東西。(b) 只能在位元組到了瀏覽器之後才判定，而且要靠 PDF.js 對「無密碼即可開啟的加密文件」的訊號，那個 API 未驗證（`BP-OM-12`）。(c) 會多一個秘密輸入面（log、記憶體、自動填入），不做。**不論選哪一個**：需要密碼的 PDF 會先傳到瀏覽器才被拒絕，隨即清除。 |
 | OD-9 | 瀏覽器最低版本 | (a) PDF.js 現代版，舊瀏覽器顯示「不支援」；(b) 用 legacy build 涵蓋更舊的 iOS | **(a)，待 `BP-OM-07` 量完再確認** | legacy build 較大，而且要多一套 polyfill 審查。若量測顯示產品支援清單內的裝置跑不動現代版，就改 (b)。 |
 | OD-10 | 格式清單 | 目前五種；是否加 HEIC／AVIF／SVG | **只有五種；HEIC／AVIF／SVG 都不加** | SVG 是可帶腳本的文件，不是點陣圖。HEIC 在 Android Chrome 無原生解碼，加了等於只在 iOS 能用。AVIF 的解碼器攻擊面較新。任何新增都要修訂 ADR。 |
-| OD-11 | Railway edge 的 log／暫存行為若無法證實（`BP-OM-06`／`BP-OM-10`） | (a) Railway 部署在 canary log 搜尋為零之後才可開 flag；「不落地」宣稱限定為 Cliora 經營的元件，並點名 Railway edge 不在內；(b) Railway 部署在全部證實之前不開 flag；(c) 不管 Railway，照常宣稱 | **(a)** | 路徑已不在任何 URL（ADR §6），所以 log 這一半在 Railway 上**可以量**：操作者看得到 Railway 的 HTTP log，canary 搜尋是可執行的閘門。真正量不到的只有 Railway edge 是否把 body 暫存到磁碟，而現有的文字預覽內容今天已經經過同一個 edge。所以誠實的作法是限定宣稱，而不是擋住發布。(c) 違反 ADR §6 的發布閘門，不是選項。 |
+| OD-11 | Railway（或任何 edge）的 log／暫存行為若無法證實（`BP-OM-06`／`BP-OM-10`） | (a) 該拓樸的 Central flag **保持關閉**，直到兩項都證實：沒有 body 或回應落地、log 沒有路徑；(b) 在 canary log 搜尋為零之後開啟，並把「不落地」限定為 Cliora 經營的元件、點名該 edge 不在內；(c) 不管 edge，照常宣稱 | **(a) 保持關閉** | `FR-FILE-012.AC-09` 是端到端的「不落地」。(b) 會在一個沒有證實的 edge 上出貨，直接違反它，所以 (b) **不是發布時的選擇**：必須先由產品負責人明確修訂 AC-09，寫明哪個元件不在保證內（`BP-01` 的修訂流程），之後才可以選。(c) 違反 ADR §6 的發布閘門，不是選項。代價：Railway 部署在量測完成前看不到圖片／PDF 預覽，文字預覽不受影響。 |
 
 **不是開放題、但需要簽核的一項：** Viewer 包含在內。#77 已明確表達，
 這裡要的是 PRD `FR-AUTH-002.AC-11` 註記（§2.2）與 release note 第一段的簽核，不是再討論一次。
@@ -157,7 +158,7 @@
 
 - [ ] ADR 0029 狀態 `accepted`，日期與簽核人寫在 ADR 標頭。
 - [ ] OD-1…OD-11 每題都有書面答案，並回填 ADR 0029 相關段落（若答案不是建議預設）。
-- [ ] PRD `FR-FILE-012`（15 條）、`FR-FILE-004` 註記、`FR-AUTH-002.AC-11` 註記、`FR-CONN-006.AC-13`。
+- [ ] PRD `FR-FILE-012`（16 條）、`FR-FILE-004` 註記、`FR-AUTH-002.AC-11` 註記、`FR-CONN-006.AC-13`。
 - [ ] `research/tech.md` §11.6 末段修訂與新 §11.10。
 - [ ] generator 修改並重新產生 `docs/permission-matrix.md`；`--check` 綠。
 - [ ] `requirements.json`／`links.json`／census；`make traceability` 五階段綠。

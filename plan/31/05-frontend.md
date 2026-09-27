@@ -148,7 +148,7 @@ PDF（`BP-07`）、縮圖、動畫、任何存檔入口。
 
 | 項目 | 要產出的證據 |
 |---|---|
-| 版本 | 當時最新的穩定版，**≥ 4.2.67**（CVE-2024-4367），寫進 `package.json` 精確版本，不用 `^` |
+| 版本 | 當時最新、且**已修補所有已公開 PDF.js advisory** 的穩定版，寫進 `package.json` 精確版本，不用 `^`。截至 2026-09-27 為 **≥ 6.2.108**，明列兩則：CVE-2024-4367／GHSA-wgrm-67xf-hhpq（4.2.67 修正）、**CVE-2026-16633／GHSA-hq66-cqwq-w95j**（受影響 `>= 5.6.83, < 6.2.108`；在啟用 scripting、預設即啟用，且沒有限制 `script-src` 的 CSP 時可執行任意 script；2026-09-27 以 GitHub Advisory API 查證）。**閘門：** pin 當天與 `BP-11` 發布前各查一次 GitHub Advisory Database 與 `npm audit`，有未修補的 advisory 就不得出貨 |
 | 授權 | 該版本 `LICENSE` 為 Apache-2.0；transitive 依賴清單與各自授權 |
 | 已知漏洞 | `npm audit` 與 GitHub advisory 查詢結果 |
 | 大小 | 主 chunk 的增量必須為 0（lazy import）；lazy chunk 與 worker 的實際大小 |
@@ -163,6 +163,7 @@ PDF（`BP-07`）、縮圖、動畫、任何存檔入口。
 getDocument({
   data: bytes,                 // 不給 URL：沒有 range／stream 請求
   isEvalSupported: false,
+  enableScripting: false,      // CVE-2026-16633 類；由哪一層讀取此選項要在 pin 的版本上確認
   enableXfa: false,
   disableAutoFetch: true,
   disableStream: true,

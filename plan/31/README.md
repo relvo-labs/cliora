@@ -63,7 +63,7 @@ migration `0021`、`FR-FILE-011` 與 `node-register.file_download`。
    uvicorn 的 access log 也帶 query string。所以路徑放在 POST body，不放在 `?path=`（ADR §6）；
    「不落地」與「log 無路徑」在 `BP-OM-06`／`BP-OM-10` 量完之前**不得對外宣稱**。
 7. **在 dispatch 或 worker 上做會卡住的 open。** 現行 `Root.OpenFile` 是阻塞式 `os.Root.Open`
-   （`workspace/root.go:109-118`），遇到 FIFO 會一直等寫入端。預覽改用先 `Stat`、再以非阻塞方式開啟、
+   （`workspace/root.go:109-118`），遇到 FIFO 會一直等寫入端。預覽改用先 `StatIn`、再以非阻塞方式開啟、
    最後對 fd 做 `fstat` 的順序（ADR §3）。
 8. **讓停用的 daemon 送 `binary_preview: false`。** 舊 Central 的嚴格 schema 看到這個 key 就拒收，
    而且是靜默拒收（`ws/nodes.py:199-202`），Central 回退後節點就再也註冊不上。停用時要**省略**這個欄位（ADR §9）。

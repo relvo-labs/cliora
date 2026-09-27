@@ -17,7 +17,7 @@ evidence（file:line）、asset、exploit precondition、impact、fix、verifica
 4. 描述是否與程式碼行為一致？特別是「open 會跟隨 in-root 符號連結」（不是 `O_NOFOLLOW`），
    以及「加密判定只在渲染器」（daemon 沒有加密啟發式）。文件把啟發式寫成保證，本身就算一個發現。
 
-## 2. 必答的十六題
+## 2. 必答的十八題
 
 | # | 題目 | 通過條件 |
 |---|---|---|
@@ -34,13 +34,15 @@ evidence（file:line）、asset、exploit precondition、impact、fix、verifica
 | 11 | DoS：並發、慢速 client、巨檔、終端飢餓？ | 各上限有測試；`BP-OM-05` 有量測 |
 | 12 | 路徑或內容是否出現在 log、metrics、稽核、錯誤訊息？ | `test_log_has_no_path` 與成功稽核 key 集合測試 |
 | 13 | 工作區路徑是否出現在**任何** URL，因而進入 nginx、uvicorn 或 Railway 的 access log？ | 路由拒絕 query 參數；前端只用 POST body；兩份 nginx 的專用 location 用 `cliora_noquery`；`BP-OM-10` canary 搜尋在每一處皆為零筆 |
-| 14 | 帶路徑的請求 body 或回應 body 是否可能被 edge 寫到暫存檔？ | `client_body_buffer_size` ≥ `client_max_body_size`；`proxy_buffering off`＋`proxy_max_temp_file_size 0`；`BP-OM-06` 證據；Railway edge 依 OD-11 限定宣稱 |
-| 15 | FIFO、socket、裝置能否佔住 preview worker？ | 先 `Stat`、`O_NONBLOCK` 開啟、fd `fstat`＋`SameFile`；`TestPreviewTwoFifosDoNotStarveWorkers` 在阻塞式實作下會紅（mutation check：把 `OpenFileNonBlocking` 換回 `OpenFile`） |
+| 14 | 帶路徑的請求 body 或回應 body 是否可能被 edge 寫到暫存檔？ | `client_body_buffer_size` ≥ `client_max_body_size`；`proxy_buffering off`＋`proxy_max_temp_file_size 0`；`BP-OM-06` 證據；未證實的拓樸 flag 保持關閉（OD-11） |
+| 15 | FIFO、socket、裝置能否佔住 preview worker？ | 先 `StatIn`、`O_NONBLOCK` 開啟、fd `fstat`＋`SameFile`；`TestPreviewTwoFifosDoNotStarveWorkers` 在阻塞式實作下會紅（mutation check：把 `OpenFileNonBlocking` 換回 `OpenFile`） |
 | 16 | Central 回退是否可行而且可測？ | 停用時省略欄位（`const: true`，`false` 無效）；凍結 schema 相容測試；`test_invalid_register_is_silently_skipped` 釘住故障形態；staging 回退演練有證據 |
+| 17 | 完成的串流是否立即釋放 daemon snapshot？ | 每一種結束路徑都送 `preview_close`；N+1 次連續預覽測試綠；把成功路徑的 close 移除後測試必須變紅（mutation check） |
+| 18 | 非阻塞 open 無法證實時是否 fail closed？ | `TestStartupProbeFailsClosed`；程式中沒有在工作區路徑上被放棄的 goroutine |
 
 ## 3. 依賴與授權審查（`pdfjs-dist`）
 
-- 確認 pin 的版本 ≥ 4.2.67；確認 `LICENSE` 為 Apache-2.0 並列入第三方授權清單。
+- 確認 pin 的版本**已修補所有已公開的 PDF.js advisory**。截至 2026-09-27 為 **≥ 6.2.108**：CVE-2024-4367／GHSA-wgrm-67xf-hhpq 在 4.2.67 修正；CVE-2026-16633／GHSA-hq66-cqwq-w95j（`>= 5.6.83, < 6.2.108`）於 2026-09-27 以 GitHub Advisory API 查證。pin 當天與發布前**各查一次** advisory database（閘門）；確認 `LICENSE` 為 Apache-2.0 並列入第三方授權清單。
 - transitive 依賴逐一列出授權，出現 copyleft 就停。
 - 確認 bundle 中沒有 `web/viewer`、`pdf.sandbox`、scripting。
 - 指定 CVE watch 的負責人與頻率（寫進 `BP-11` 的 runbook）；

@@ -58,7 +58,8 @@
 **寫入集：** `docs/release-note-binary-preview.md`、`docs/runbooks/binary-preview.md`、
 各環境的 Central 設定。**前置：** `BP-10` 完成、`BP-08` 非 `FAIL`，而且**發布閘門** `BP-OM-06`（暫存檔）與
 `BP-OM-10`（canary log 搜尋）在**每一種**要出貨的部署拓樸上都已結案（`04-…md` `BP-05`）。
-某個拓樸結案不了，該拓樸的 flag 就不開，或依 OD-11 限定宣稱。
+某個拓樸結案不了，**該拓樸的 flag 就保持關閉**（OD-11 建議預設）。要在未證實的 edge 上開啟，必須先有產品負責人對
+`FR-FILE-012.AC-09` 的明確修訂，不是發布當下的判斷。
 
 ### 1. 推出順序（ADR 0029 §9，順序本身就是控制）
 
@@ -71,7 +72,9 @@
      additionalProperties:false，會拒收這個 key，而且是靜默的（ws/nodes.py:199-202）。
      節點看起來在線，註冊內容卻不更新（BP-02 RED 測試 4）。
      在步驟 1 之前就要先升級 daemon 的話，先把該節點設為 enabled:false（欄位會被省略）。
-   確認方式：node list 裡每台節點的 daemon_version 都已更新。
+   確認方式：記下重啟前的時間 T0，重啟後每台節點的 last_registration_at > T0
+   （新欄位，migration 0022，只在 persist_registration 設定）。不用 daemon_version：
+   版本不變的重啟也會讓它看起來「已更新」。
 3. staging 打開 flag，跑 07-…md §2 的矩陣。
 4. production 打開 flag。可先只對部分環境打開；Central flag 是全域的，
    不提供以使用者或角色為單位的開關（那會變成第二套 RBAC）。
@@ -84,7 +87,7 @@
 | Central flag | `binary_preview_enabled=false` 並重啟 | 所有入口隱藏；端點 409；進行中的串流在下一塊時中止 | 重啟後即時 |
 | 單一節點 | `filesystem.binary_preview.enabled: false`，重啟 agentd | 該節點重新註冊時**省略**欄位（等於 false）；Central 立即 409（看當下連線） | 重連後即時 |
 | 前端 | 回退前端版本 | 入口消失；既有 `FILE_BINARY` 面板 | 部署後 |
-| Central（回退版本） | **依序**：① Central flag off；② 每台節點設 `enabled:false` 並重啟 agentd（欄位被省略，舊 schema 接受），**或**回退 daemon；③ 在 node list 確認每台的 `daemon_version` 在重連後有更新（證明註冊被接受）；④ 回退 Central | 端點消失；節點照常註冊 | 部署後 |
+| Central（回退版本） | **依序**：① Central flag off；② 每台節點設 `enabled:false` 並重啟 agentd（欄位被省略，舊 schema 接受），**或**回退 daemon；③ 在**新** Central 上確認每台的 `last_registration_at` 晚於重啟前的時間（證明停用後的註冊被接受）；④ 回退 Central；⑤ 在**舊** Central 上（沒有那個欄位）以名稱標記確認：把該節點的 `node.name` 暫時改成一次性標記再重啟，node list 出現該標記即證明被接受，舊 Central 只在接受註冊時寫入 `name`（`nodes.py:247`）；確認後改回原名 | 端點消失；節點照常註冊 | 部署後 |
 | Central（**錯誤示範**） | 在啟用中的新 daemon 仍連線時直接回退 Central | 這些節點的註冊被舊 Central **靜默略過**：看起來在線，但版本、runtime、workspace root 不更新。runbook 必須寫出這個症狀與修復方法（對那些節點做第 ② 步） | — |
 | Migration | `0022` downgrade | 只刪 `nodes.binary_preview`（report-only，無使用者資料） | — |
 
@@ -93,8 +96,8 @@
 **rollback 演練（本票驗收的一部分）：** 在 staging 依序執行：
 (1) flag off，截取「UI 隱藏」與「端點 409、零 frame」的證據；
 (2) 單一節點停用，截取「註冊不含 `binary_preview`、端點 409」的證據；
-(3) 完整的 Central 版本回退（上表 ①→④），截取「停用的新 daemon 被 1.10.0 Central 接受，`daemon_version` 有更新」的證據；
-(4) 反例：一台**啟用中**的新 daemon 連到回退後的 Central，確認症狀與 runbook 描述一致，再用第 ② 步修復。
+(3) 完整的 Central 版本回退（上表 ①→⑤），**全程 `daemon_version` 不變**。截取「新 Central 上 `last_registration_at` 前進」與「舊 Central 上名稱標記出現」兩份證據；
+(4) 反例：一台**啟用中**的新 daemon 帶著名稱標記連到回退後的 Central，node list **不出現**該標記（註冊被靜默略過），症狀與 runbook 描述一致，再用第 ② 步修復。
 
 ### 3. Release note（第一段固定）
 
@@ -106,7 +109,7 @@
 第二段：兩個開關與推出順序。第三段：已知限制，包括 PDF 內文無法被螢幕報讀器讀取（OD-3）、
 GIF 只顯示首幀（OD-1）、需要密碼的 PDF 不支援（OD-8；只有權限密碼的照常顯示）、格式清單（OD-10）與上限（OD-2）。
 「不落地」與「log 無路徑」只能依 `BP-OM-06`／`BP-OM-10` 的實測結果寫，而且要寫明適用哪些部署拓樸；
-Railway edge 若量不到，就照 OD-11 點名它不在宣稱範圍內。**不得**寫成無條件的保證。
+某個拓樸未證實，該拓樸就不開 flag，release note 也就不涉及它（OD-11）。**不得**寫成無條件的保證。
 第四段：Central 版本回退要先停用或回退 daemon（§2），以及做錯時的症狀。
 
 ### 4. Runbook

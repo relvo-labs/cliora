@@ -40,9 +40,12 @@ Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 
 
 另加兩項非角色的 full-stack 檢查：
 
-- **Central 回退演練**：停用的新 daemon（欄位省略）連到 1.10.0 的 Central，註冊被接受（node list 的
-  `daemon_version` 有更新）；啟用的新 daemon 連到同一個 Central，註冊被靜默略過（`daemon_version` 不更新）。
-  後者是**預期中的失敗**，用來證明 runbook 的順序是必要的。
+- **Central 回退演練**（`daemon_version` 全程不變）：停用的新 daemon（欄位省略）帶著一次性的 `node.name` 標記
+  連到 1.10.0 的 Central，node list 出現該標記，證明註冊被接受；啟用的新 daemon 帶另一個標記連到同一個 Central，
+  標記**不出現**（註冊被靜默略過）。後者是**預期中的失敗**，用來證明 runbook 的順序是必要的。
+  在新 Central 上則以 `last_registration_at` 前進作為證據。
+- **Snapshot 釋放**：連續 N+1＝5 次成功預覽，全部成功而且不等 TTL；每次結束後 daemon 的
+  `filesystem_preview_handles` gauge 回到 0；取消與錯誤路徑也回到 0。
 - **Canary log 搜尋**（`BP-OM-10`）：依 `04-…md` `BP-05`「發布閘門」的步驟，在兩種部署拓樸上都做。
 
 ## 3. 效能與容量（`make perf` 新情境）

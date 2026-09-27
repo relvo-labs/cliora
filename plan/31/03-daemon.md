@@ -18,7 +18,7 @@
 |---|---|---|
 | 1 | 節點開關 | 已停用的機器仍會被讀 |
 | 2 | 對**請求路徑**做 `SensitiveClassification` | 平台會去開啟它已決定不顯示的檔案 |
-| 3 | **開啟前的型別檢查**：`root.Stat(rel)`（經同一個 `os.Root`，in-root 符號連結會被跟隨、逃出的會被拒）；不是一般檔案就 `not_regular`，**不開啟** | FIFO、socket、裝置節點會被 `open` 碰到（裝置的 open 可能有副作用） |
+| 3 | **開啟前的型別檢查**：`root.StatIn(rel)`（`workspace/root.go:196-212`，內部呼叫 `os.Root.Stat`；in-root 符號連結會被跟隨、逃出的會被拒）；不是一般檔案就 `not_regular`，**不開啟** | FIFO、socket、裝置節點會被 `open` 碰到（裝置的 open 可能有副作用） |
 | 4 | **侷限的非阻塞開啟**：新的 `Root.OpenFileNonBlocking(rel)` = `os.Root.OpenFile(clean, O_RDONLY\|O_NONBLOCK\|O_NOCTTY, 0)`；錯誤經 `denyFromWorkspaceErr`（`read.go:95-112`） | 在第 3 步之後被換成 FIFO 的路徑會讓 open **一直等寫入端**，把 worker 佔住（現行 `Root.OpenFile` 是阻塞式 `os.Root.Open`，`workspace/root.go:109-118`） |
 | 5 | 在 **fd** 上 `Stat`：`IsRegular`，並以 `os.SameFile` 比對第 3 步的結果 | 第 3 與第 4 步之間被換掉的檔案會通過 |
 | 6 | `RealRel(f)` 後再做一次 `SensitiveClassification` | open **會跟隨** in-root 符號連結（不是 `O_NOFOLLOW`），所以 `photo.png → .env` 只有在這一步才會被擋 |
@@ -41,8 +41,17 @@
 建立裝置節點需要 `CAP_MKNOD`，非 root 的 `agentd` 沒有（ADR 0023）；即使如此 worker 也不會被卡住。
 
 **未驗證：** `os.Root.OpenFile` 會把 `O_NONBLOCK` 原樣傳給 `openat`，而且 Go 對非阻塞的一般檔案 fd 讀取行為正常。
-`TestOpenFileNonBlockingOnFifoReturns` 在實作第一步就要證明這一點；證明不了，就改用
-「`Stat` 預檢＋在獨立 goroutine 開啟並設 deadline，逾時就放棄該 goroutine、以寫端打開 FIFO 使其返回」的後備方案，並回報設計變更。
+`TestOpenFileNonBlockingOnFifoReturns` 在實作第一步就要證明這一點，而且要在每一個支援的 build target
+（`linux/amd64`、`linux/arm64`）的 CI 上跑。
+
+**證明不了就 fail closed，沒有後備方案。** 在工作區路徑上「放棄一個卡在 `open` 的 goroutine」會隨著請求次數累積，所以**不採用**。
+
+- **Build target 層：** 某個 target 上這條測試不過，那個 target 就不編入預覽功能：`binary_preview` 不回報，Central 永遠不送 `preview_*`。
+  要開放這個 target，需要另外設計並審查一個有界的替代方案。
+- **執行期：** daemon 啟動時在**自己的**私有狀態目錄（不是工作區）建一個 FIFO，以 `OpenFileNonBlocking` 開啟。
+  100 ms 內沒返回，就由 probe 自己開寫端，讓那個 open 返回。兩端都由 daemon 擁有，所以一定解得開，不會留下 goroutine。
+  接著記錄失敗，並在註冊時**省略** `binary_preview`（與停用同一個形狀，`02-…md` §2）。
+  測試：`TestStartupProbeFailsClosed`，以 hook 模擬 open 不返回，斷言 register 沒有該 key，而且沒有 goroutine 殘留。
 
 第 2 與第 6 步是同一個檢查做兩次，**兩次都不能省**，理由見右欄。
 拒絕一律 in-band（`Denied` + `Code` + `Reason`），與 `ReadResult` 同形狀；錯誤訊息是固定字串。
@@ -134,7 +143,9 @@ filesystem:
 | `TestPreviewSocketAndSymlinkToDevice` | unix socket → `not_regular`；指向 `/dev/zero` 的符號連結 → `outside_root`（被 `os.Root` 拒絕） |
 | `TestPreviewFollowsInRootSymlinkThenRechecks` | `ok-link.png → images/ok.png` 會被顯示（證明是跟隨，不是 `O_NOFOLLOW`）；`photo.png → .env` → `FILE_DENIED` |
 | `TestPreviewHandleBoundToSession` | 用 session B 的 id 拉 session A 的 handle → `EXPIRED` |
-| `TestPreviewHandleExpiresAndFrees` | 30 秒閒置後 handle 數歸零（fake clock） |
+| `TestPreviewCloseFreesImmediately` | 讀完全部 chunk 後收到 `preview_close` → handle 數**立即**歸零，snapshot bytes 歸零（gauge），不等 TTL |
+| `TestPreviewSuccessiveOpensBeyondHandleLimit` | fake clock **凍結**（TTL 不可能觸發）：連續 N+1＝5 次「open → 讀完 → close」全部成功，沒有任何一次 `NODE_BUSY`；每次 close 之後 handle 數為 0 |
+| `TestPreviewHandleExpiresAndFrees` | **只作為 backstop**：close 遺失時，30 秒閒置後 handle 數歸零（fake clock） |
 | `TestPreviewHandlesDroppedOnDisconnect` | 連線結束 → 表清空 |
 | `TestPreviewDoesNotBlockDispatch` | 一個 16 MiB 的 open 進行中，terminal input frame 仍在 50 ms 內被處理 |
 | `TestPreviewBusyIsImmediate` | 第三個並發 open 立即 `NODE_BUSY`，不排隊 |

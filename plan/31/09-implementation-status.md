@@ -72,7 +72,9 @@
 - PDF.js 對只有權限密碼的 PDF 會不經提示開啟，對需要使用者密碼的 PDF 會呼叫 `onPassword`（`BP-07` E2E）。
 - Starlette／uvicorn 的 `StreamingResponse` 在完整 middleware stack 下會把 client 的背壓傳回 generator（`BP-OM-11`）。
 - FastAPI 0.120.1 的 yield dependency 相對於串流 body 的結束時機：本設計**不依賴**它，成功稽核用獨立 session（ADR §6 第 7 步）。
-- PDF.js 的 CVE 下限（4.2.67）與授權（Apache-2.0）依公開資料；審查者已對照 Mozilla 的 CVE-2024-4367 紀錄，實際 pin 的版本在 `BP-07` 核對。
+- PDF.js 版本下限 **≥ 6.2.108**：CVE-2026-16633 已於 2026-09-27 以 GitHub Advisory API 查證；CVE-2024-4367 依公開紀錄。授權（Apache-2.0）與實際 pin 在 `BP-07` 核對，advisory 於 pin 當天與發布前再查一次。
+- `enableScripting` 由 pinned 版本的哪一層（display API 或 viewer）讀取，未驗證（`BP-07`）；結構性控制仍是不附 scripting bundle。
+- daemon 有可寫的私有狀態目錄可供啟動 probe 建 FIFO（`03-…md` §1）；實際路徑在 `BP-03` 核對。
 
 ## 6. 設計審查處置（`c7b85c5` 的獨立審查，判定 BLOCKED）
 
@@ -86,3 +88,20 @@
 | 「拒絕加密 PDF」超出可執行範圍 | P2 | **改設計**：移除 daemon 的 `/Encrypt` 啟發式；OD-8 明確處理只有權限密碼的 PDF（建議：照常唯讀顯示），需要密碼者由渲染器拒絕且不提示；AC 文字改為可執行的規則；`encrypted` 不再是 wire reason | ADR §3、§4、§12；`01` AC-05、OD-8；`02` §3、§4；`03` §2；`05`；`07`；`08` |
 | `test_success_audit_has_no_path` 過嚴 | P3 | **修正**：允許 `request_id`／`source`，同時列出禁止的 key，並檢查值不含 canary 片段 | ADR §10；`04` §7 |
 | 量測閘門（`BP-OM-01/02/04/06/07/09`） | — | `BP-OM-06` 升為**發布閘門**，新增 `BP-OM-10`（發布閘門）、`BP-OM-11`、`BP-OM-12` | 本檔 §3 |
+
+## 7. 變更紀錄
+
+| 版本 | commit | 內容 |
+|---|---|---|
+| v0.1 | `c7b85c5` | 初版設計 |
+| v0.2 | `7458141` | 回應第一次獨立審查（BLOCKED）：見 §6 |
+| v0.3 | （未 commit） | 回應 `7458141` 的再審查（BLOCKED），各項處置如下 |
+
+| 發現 | 嚴重度 | 處置 | 改在哪裡 |
+|---|---|---|---|
+| OD-11 的建議預設允許在未證實的 edge 上出貨，與端到端的 AC-09 衝突 | P1 | **改預設**：未證實的拓樸（Railway 或任何 edge）flag **保持關閉**；「限定宣稱」改為必須由產品負責人明確修訂 AC-09 才能選。AC-09、OD-11、推出條件、發布閘門與 release note 文字一致化 | ADR §6；`01` AC-09、OD-11；`00` 風險；`04` `BP-05`；`06` Q14；`08` `BP-11` |
+| 成功的串流不送 `preview_close`，snapshot 佔住 handle 直到 TTL | P1 | **修正**：`finally` 在成功、錯誤、取消三種路徑都送 close；TTL 只作 backstop。新增 RED：N+1 次連續成功預覽（時鐘凍結）、close 後 handle 立即歸零、取消與錯誤路徑也釋放 | ADR §5、§6；`03` §7；`04` §1、§7；`06` Q17；`07` |
+| 回退演練以 `daemon_version` 作為註冊被接受的證據 | P2 | **修正**：新 Central 用新欄位 `nodes.last_registration_at`（migration `0022`，只在 `persist_registration` 設定，API 唯讀回傳，不是契約變更，已加入 `BP-04` 寫入集與測試）；舊 Central 沒有該欄位，改用一次性的 `node.name` 標記（舊 Central 只在接受註冊時寫入 `name`）。演練全程 `daemon_version` 不變 | ADR §9；`00`／`04` 寫入集；`04` §7；`07`；`08` §1、§2 |
+| 非阻塞 open 的後備方案會放棄卡住的 goroutine | P2 | **移除後備方案**：無法證實的 build target 不回報能力；執行期 probe 在 daemon 自己的 FIFO 上測試，失敗時自行解開並省略 `binary_preview`（fail closed） | ADR §3；`03` §1、§7；`06` Q18 |
+| PDF.js 版本下限未涵蓋 CVE-2026-16633 | P2 | **已查證並提高下限**：GitHub Advisory API 顯示 GHSA-hq66-cqwq-w95j 影響 `>= 5.6.83, < 6.2.108`，首個修正版 6.2.108。下限改為 ≥ 6.2.108，並明列於 `BP-07`；加上 `enableScripting: false`；advisory 重查列為 pin 與發布的閘門 | ADR §12、T2；`05` `BP-07` §1、§2；`06` §3 |
+| `root.Stat` 不存在；AC-05 的範圍超出 daemon 的信封檢查 | P3 | **修正**：改為 `StatIn`（`root.go:196-212`）；AC-05 限定為 Node 端信封拒絕，新增 AC-16 描述瀏覽器端解析／渲染失敗（census +16） | ADR §3；`00`、`03`、`06`、README；`01` §2.1、§5 |

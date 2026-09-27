@@ -13,7 +13,8 @@
 | `backend/app/api/ws/nodes.py` | `_register_input` 解析 `binary_preview`（`:91-114`）；`node.register` 分支設定 live bit（`:203-209`）；連線關閉時清除 |
 | `backend/app/services/registry.py` | 保存「當下連線」的 `binary_preview`；現在只有 `is_connected`（`:185`） |
 | `backend/app/services/nodes.py` | `RegisterNodeInput.binary_preview`；持久化與變更稽核（`:283-305` 模式） |
-| `backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_node_binary_preview.py` | 顯示用欄位 |
+| `backend/app/db/models.py`、`backend/app/db/migrations/versions/0022_node_binary_preview.py` | 顯示用欄位 `nodes.binary_preview`；以及**回退演練用**的 `nodes.last_registration_at`（timestamptz，nullable，無 backfill），**只**在 `persist_registration` 設定（`nodes.py:240` 起；heartbeat 路徑 `:324`、`:353` 不碰它）。不是 wire／契約變更 |
+| `backend/app/api/http/schemas.py`（`NodeDetail`，`:356-372`）、`backend/app/api/http/nodes.py`（`:93` 附近） | 以唯讀欄位回傳 `last_registration_at` |
 | `backend/app/settings.py`、`backend/app/services/audit.py`、`backend/app/api/error_catalog.py`、`docs/error-catalog.md`（產生） | flag、預算、稽核動作、錯誤碼 |
 | 測試 | `backend/tests/db/test_files_binary_preview_api.py`（新）、`backend/tests/db/test_node_register_binary_preview.py`（新）、`backend/tests/test_authz.py`、`backend/tests/test_relay_timeouts.py`、`backend/tests/test_scope_guards.py` |
 
@@ -58,7 +59,7 @@ Content-Type: application/json
 | 9 | 有拒絕結果時：路由**先 `await session.commit()`**，**再** raise `ApiError(code, 固定訊息, status, details={reason, size?, limit?})`。與現有 `/content` 路由 commit `read_file` 加入的稽核是同一模式（`files.py:212-215`）。反過來做，稽核列會隨 session 關閉而消失：`AuditService.record` 只把列加進 session（`audit.py:204-210`），`get_session` 也不會自己 commit（`db/engine.py:96-98`） | 對應 HTTP 狀態（下表） |
 | 10 | `StreamingResponse`：逐塊 `preview_chunk`（每塊 10 秒，整體 60 秒） | 串流中斷 → 連線被截斷，`Content-Length` 不符讓瀏覽器得到 network error |
 | 11 | 最後一塊送出之後：以**獨立的短 session**（`get_database().session()`）寫入成功稽核並 commit，與 RBAC 拒絕 middleware 同一模式（`middleware.py:126-127`、`:171`）。不用 request 的 session，因為它相對於串流 body 的生命週期取決於 FastAPI（0.120.1）的 dependency 結束時機，本設計不依賴它 | 寫入失敗只計數並記 log |
-| 12 | generator 的 `finally`：若還沒送完，就送 `preview_close`（不等待結果，1 秒上限） | — |
+| 12 | generator 的 `finally`：**一律**送 `preview_close`，包括成功送完最後一塊、節點或逾時錯誤、client 取消三種情況（不等待結果，1 秒上限）。完成的串流因此會立即釋放 daemon 的 snapshot；daemon 的閒置 TTL 只是 close 遺失時的 backstop（ADR 0029 §5、§6） | — |
 
 HTTP 狀態對照：`FILE_DENIED` 403、`FILE_NOT_FOUND` 404、`FILE_PERMISSION_DENIED` 403、
 `FILE_TOO_LARGE` 413、`FILE_PREVIEW_UNSUPPORTED` 415、`FILE_PREVIEW_INVALID` 422、
@@ -133,6 +134,7 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 | `test_flag_off_is_never_asked` | flag 關 → 409，同樣零 frame |
 | `test_reconnect_flips_gate_and_capability` | 以 `binary_preview:true` 註冊 → `GET /api/sessions/{id}` 的 `capabilities.can_preview_binary` 為 true，且預覽 200；斷線 → 以**省略欄位**的 register 重連 → capability **與**端點**同時**變成 false／409（不必等 DB）；再以 true 重連 → 兩者都恢復。每一步都斷言兩處一致 |
 | `test_capability_on_every_session_response` | `sessions.py` 五個回傳點（`:72`、`:90`、`:101`、`:118`、`:155`）都帶 `can_preview_binary`，而且值相同 |
+| `test_last_registration_at_is_registration_specific` | 同一版本重新註冊 → `last_registration_at` 前進；只有 heartbeat → 不變；schema 不符而被略過的 register → 不變 |
 | `test_invalid_register_is_silently_skipped` | 釘住**現行**行為（也就是舊 Central 回退時的故障形態）：schema 不符的 `node.register` → 不持久化、不回 `node.registered`、連線仍在（`ws/nodes.py:199-202`）。這條測試讓 runbook 的「回退前先停用 daemon」有依據 |
 | `test_path_never_in_url` | 帶任何 query 參數（包括 `?path=`）→ 400；前端 `fetchBinaryPreview` 產生的 URL 不含路徑（`BP-06` 另有前端測試） |
 | `test_requires_json_body` | `text/plain` → 415；body 超過 24 KiB → 413；多一個 key → 422 |
@@ -141,6 +143,8 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 | `test_cookie_without_bearer_is_401` | 帶 cookie、不帶 `Authorization` → 401 |
 | `test_stream_backpressure` | **完整 middleware stack** 下，慢速 client：Central 在前一塊被消費前不送下一個 `preview_chunk`（`BP-OM-11`） |
 | `test_disconnect_sends_close` | 同上 stack，client 中途斷線 → fake daemon 收到 `preview_close`；`_observe` 記 `CANCELLED` |
+| `test_close_sent_on_success_and_error` | 成功送完 → fake daemon 收到恰好一次 `preview_close`；第 2 塊逾時或節點回錯 → 同樣收到 close |
+| `test_successive_previews_beyond_handle_limit` | fake daemon 嚴格實作 4 個 handle 上限，而且**沒有 TTL**：同一使用者依序完成 N+1＝5 次預覽，全部 200；每次串流結束後 fake daemon 的 handle 數為 0 |
 | `test_truncated_stream_is_error` | 第 3 塊時節點斷線 → 回應長度小於 `Content-Length` |
 | `test_budget_total` | 60 秒整體預算到期 → 中止並送 close |
 | `test_busy_limits` | 同一使用者第 3 條串流 → 429 |
@@ -228,10 +232,10 @@ location ~ ^/api/sessions/[0-9a-fA-F-]{36}/files/binary-preview$ {
 3. **暫存檔。** 預覽 16 MiB PDF 與 24 KiB 上限附近的 body 時，監看 `proxy_temp_path` 與 `client_body_temp_path`：
    沒有新檔（`inotifywait` 或前後 `find -newer` 比對）。
 4. **Railway edge。** Railway 在我們的 nginx 前面還有自己的 edge。它會不會把 body 暫存到磁碟，我們量不到；
-   它記不記路徑，第 2 步量得到。量不到的部分依 **OD-11** 處理：建議預設是限定宣稱範圍並點名 Railway edge，
-   而不是無條件宣稱。
+   它記不記路徑，第 2 步量得到。量不到或不合格的部分依 **OD-11** 的建議預設處理：**該拓樸的 flag 保持關閉**。
+   要在未證實的 edge 上開啟，必須先由產品負責人明確修訂 `FR-FILE-012.AC-09`，這不是發布當下的決定。
 
-證據（去識別化的指令與輸出）寫進 `09-…md` §3。**任何一處非零，`BP-11` 不得開始。**
+證據（去識別化的指令與輸出）寫進 `09-…md` §3。**任何一處非零或未證實，該拓樸的 flag 不得開啟。**
 
 **驗收：** `make railway-check` 綠；上面四步有證據。
 
