@@ -76,7 +76,7 @@
 | 選項 | 代價 | 結論 |
 |---|---|---|
 | (a) 一律拒絕含壓縮附屬 chunk 的 PNG | 零解壓，最簡單。但 `iCCP` 在日常 PNG 裡**很常見**：macOS 與 iOS 的截圖通常內嵌 Display P3 描述檔，Photoshop、GIMP 等編輯器的匯出也常帶。拒絕它等於拒絕手機使用者最常開的那一類檔案（**頻率未實測**，`BP-OM-13`） | 不採用 |
-| **(b) 有界的串流解壓，只用來量大小** | daemon 以標準函式庫 `compress/zlib` 把 chunk 資料解壓到 `io.Discard`，外包一層 `LimitReader(預算＋1)`，超過就停，回 `FILE_PREVIEW_LIMIT`／`complexity`。**只量不改**：送出的仍是原始位元組，沒有轉碼、沒有剝除（剝除並重新送出也不允許）。不新增 Go 依賴。CPU 上限：每個串流的輸入 ≤ 1 MiB、輸出 ≤ 預算 | **採用** |
+| **(b) 有界的串流解壓，只用來量大小** | daemon 以標準函式庫 `compress/zlib` 把 chunk 資料解壓到 `io.Discard`，外包一層 `LimitReader(預算＋1)`，超過就停，回 `FILE_PREVIEW_LIMIT`／`complexity`。**只量不改**：送出的仍是原始位元組，沒有轉碼、沒有剝除（剝除並重新送出也不允許）。不新增 Go 依賴。CPU 上限：每個串流的**壓縮輸入**與**展開輸出**都有逐 chunk 上限（下表：`iCCP` 1 MiB／1 MiB；每個 `zTXt`／壓縮 `iTXt` 256 KiB／256 KiB），所有壓縮附屬 chunk 的輸入合計 ≤ 2 MiB、輸出合計 ≤ 2 MiB。所以一個檔案的解壓工作不超過 2 MiB 輸入加 2 MiB 輸出，與 8 MiB 的整檔上限無關 | **採用** |
 
 這是技術決策，不是產品選擇：兩個選項對使用者唯一可見的差別，是 (a) 會拒絕大量正常截圖。所以**不列入 OD**。
 預算數字屬於固定的技術上限，與 OD-2 的使用者可見上限分開。
@@ -86,8 +86,8 @@
 | 格式 | 項目 | 上限 | 怎麼量 |
 |---|---|---|---|
 | PNG | `iCCP` | 最多 1 個；壓縮 ≤ 1 MiB；**展開 ≤ 1 MiB** | 有界串流解壓 |
-| PNG | `zTXt`、壓縮的 `iTXt` | 合計最多 64 個；每個**展開 ≤ 256 KiB** | 有界串流解壓 |
-| PNG | 所有壓縮附屬 chunk | **展開合計 ≤ 2 MiB** | 累加 |
+| PNG | `zTXt`、壓縮的 `iTXt` | 合計最多 64 個；每個**壓縮 ≤ 256 KiB**、**展開 ≤ 256 KiB** | chunk 長度（壓縮，解壓前先檢查）＋有界串流解壓 |
+| PNG | 所有壓縮附屬 chunk | **壓縮合計 ≤ 2 MiB**、**展開合計 ≤ 2 MiB** | 累加。壓縮合計在解壓前就檢查，超過的檔案一個 byte 都不解壓 |
 | PNG | 未壓縮的 `tEXt`／`iTXt`／`eXIf` | 合計 ≤ 1 MiB | chunk 長度 |
 | PNG（APNG） | `acTL.num_frames`；每個 `fcTL` | ≤ 1000；區域必須落在 IHDR 畫布內 | 表頭。`fdAT` 不解壓，展開後大小由畫面尺寸決定 |
 | JPEG | APPn（0–15）＋ COM 的 segment | 合計 ≤ 2 MiB；marker 總數 ≤ 1024 | segment 長度欄位。JPEG 的中繼資料**沒有壓縮**，每個 segment 天生 ≤ 65 535 bytes |
@@ -120,7 +120,7 @@ type previewHandle struct {
 ```
 
 - **每條 WebSocket 連線一張表**，連線結束時整張丟掉。重連後舊 id 一律 `FILE_PREVIEW_EXPIRED`。
-- 上限：同時 4 個 handle、合計 32 MiB。超過就在**步驟 7 之前**回 `NODE_BUSY`，不先讀檔。
+- 上限：同時 4 個 handle、合計 32 MiB。**32 MiB 是 handle 與進行中 open 共用的一個池**：open 在第 8 步通過大小檢查時，以 fd 的快照大小**預留**額度，然後才做第 9 步的整檔讀取。預留不到就立即回 `NODE_BUSY`，不先讀檔。預留在成功時轉給 handle，在任何拒絕或錯誤時當場歸還。所以任何時刻，已驗證的快照加上讀取中的緩衝合計 ≤ 32 MiB。
 - 閒置 30 秒、絕對 120 秒到期，由單一 janitor goroutine 回收，它隨連線的 context 結束。
 - `session.stop` 會清掉該 session 的所有 handle（在既有的 stop 路徑加一個 hook）。
 - `preview_chunk`／`preview_close` 的 `session_id` 與 handle 不符時，回應與「不存在」完全相同。
@@ -173,7 +173,9 @@ filesystem:
 | `TestPreviewPixelBombRefused` | 50000×50000 PNG、SOF 65535×65535 JPEG → `FILE_PREVIEW_LIMIT`，且沒有 handle 被建立 |
 | `TestPreviewJPEGScanBomb` | 1000 個 SOS → `complexity` |
 | `TestPreviewPNGCompressedAncillaryBomb` | 約 1 KiB 的 `iCCP`（或 `zTXt`）展開成 100 MiB → `complexity`；**解壓讀取量 ≤ 預算＋1 byte**（以計數 writer 斷言），而且沒有 handle 被建立 |
-| `TestPreviewPNGAncillaryBudgetBoundary` | `iCCP` 展開恰好 1 MiB → 通過；1 MiB＋1 → 拒絕；65 個 `zTXt` → 拒絕；壓縮附屬展開合計 2 MiB＋1 → 拒絕 |
+| `TestPreviewPNGAncillaryBudgetBoundary` | `iCCP` 展開恰好 1 MiB → 通過；1 MiB＋1 → 拒絕；65 個 `zTXt` → 拒絕；壓縮附屬展開合計 2 MiB＋1 → 拒絕；單一 `zTXt` 壓縮 256 KiB＋1 → 拒絕，而且**解壓讀取量為 0**（在解壓前擋下）；壓縮附屬輸入合計 2 MiB＋1 → 拒絕，解壓讀取量為 0 |
+| `TestPreviewConcurrentWorstCaseMetadata` | **兩個 worker 同時**驗證最貴的合法 PNG：8 MiB 整檔，壓縮附屬輸入與展開都**恰好**在上限（`iCCP` 1 MiB／1 MiB，其餘由 `zTXt` 補滿到 2 MiB／2 MiB）。同時有一個 fake session 持續以 50 ms 間隔收發 terminal frame，心跳照常送出。另以 `GOMAXPROCS=1` 跑一次，模擬單核小 VM。斷言：(1) 每個驗證在 **1 s 內**完成；(2) terminal echo 延遲的增量 **p95 < 50 ms**；(3) 心跳間隔偏離不超過 **1 s**（`heartbeat_interval_seconds` 為 10，`backend/app/settings.py:65`）；(4) 第三個同時的 open 立即 `NODE_BUSY`。三個數字都是**暫定**，以 `BP-OM-05` 的實測結果定案；未達標是要記錄的發布決定，不是自動放行 |
+| `TestPreviewPoolReservesInProgressOpens` | 一個 16 MiB handle 存在時，兩個 8 MiB open 同時進行 → 兩者都被允許（池恰好 32 MiB）；兩個 16 MiB handle 存在時再 open 一個 16 MiB → 立即 `NODE_BUSY`，**讀取量為 0**；進行中的 open 被拒絕後，預留立即歸還 |
 | `TestPreviewPNGRealWorldICCPasses` | 真實的 Display P3 截圖（`ok-screenshot-p3.png`）通過，而且送出的位元組與原檔 SHA-256 相同（證明只量不改） |
 | `TestPreviewAPNGFrameBounds` | `num_frames` 1001 → 拒絕；`fcTL` 超出畫布 → 拒絕 |
 | `TestPreviewJPEGMetadataBounds` | APPn 合計 2 MiB＋1 → 拒絕；APP2 ICC 拼接後 1 MiB＋1 → 拒絕；ICC 序號不連續 → `malformed` |

@@ -209,7 +209,7 @@ see, as defence in depth.
 | Image pixels (w × h) | 16 777 216 (= 4096²) | daemon from header; browser before decode | `FILE_PREVIEW_LIMIT` / `pixels` |
 | Image longest side | 8192 px | daemon; browser | `FILE_PREVIEW_LIMIT` / `dimensions` |
 | JPEG scans (SOS markers) | 64 | daemon marker walk | `FILE_PREVIEW_LIMIT` / `complexity` |
-| PNG chunks | ≤ 4096 chunks; one `iCCP` ≤ 1 MiB **expanded**; ≤ 64 `zTXt`/compressed `iTXt`, each ≤ 256 KiB **expanded**; all compressed ancillary ≤ 2 MiB **expanded**; uncompressed text/`eXIf` ≤ 1 MiB; APNG ≤ 1000 frames within the canvas | daemon chunk walk plus bounded streaming inflate of compressed **metadata only** (never IDAT/fdAT) | `FILE_PREVIEW_LIMIT` / `complexity` |
+| PNG chunks | ≤ 4096 chunks; one `iCCP` ≤ 1 MiB **expanded**; ≤ 64 `zTXt`/compressed `iTXt`, each ≤ 256 KiB compressed and ≤ 256 KiB **expanded**; all compressed ancillary ≤ 2 MiB compressed (checked before any inflate) and ≤ 2 MiB **expanded**; uncompressed text/`eXIf` ≤ 1 MiB; APNG ≤ 1000 frames within the canvas | daemon chunk walk plus bounded streaming inflate of compressed **metadata only** (never IDAT/fdAT) | `FILE_PREVIEW_LIMIT` / `complexity` |
 | JPEG / WebP / GIF metadata | JPEG APPn+COM ≤ 2 MiB and assembled ICC ≤ 1 MiB; WebP `ICCP` ≤ 1 MiB and `EXIF`+`XMP ` ≤ 1 MiB, ≤ 1000 `ANMF` frames within the canvas; GIF extensions ≤ 1 MiB, ≤ 1000 frames within the screen | daemon length-field walk (all uncompressed) | `FILE_PREVIEW_LIMIT` / `complexity` |
 | GIF | first image descriptor must exist and lie within the logical screen | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
 | PDF file size | 16 MiB | daemon | `FILE_TOO_LARGE` |
@@ -220,7 +220,7 @@ see, as defence in depth.
 | PDF page render | canvas ≤ 16 777 216 px (scale clamped); 10 s per page | browser | `render_failed`, page-scoped |
 | Transfer budget | 60 s total; 10 s per chunk; 15 s open | Central | `REQUEST_TIMEOUT` (stream aborted) |
 | Concurrency | 2 opens and 4 live handles per daemon; 2 streams per user; 4 streams per node in Central | daemon + Central | `NODE_BUSY` / `FILE_PREVIEW_BUSY` (429) |
-| Daemon snapshot memory | ≤ 32 MiB total across handles | daemon | `NODE_BUSY` |
+| Daemon snapshot memory | ≤ 32 MiB total across handles **and in-progress opens**; an open reserves its size before the full read | daemon | `NODE_BUSY` |
 
 Two notes on these limits:
 

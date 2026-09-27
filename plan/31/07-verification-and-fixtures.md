@@ -57,7 +57,8 @@ Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 
 | 390 px、4G 模擬下 3 MB PNG 到畫出 | p95 < 3 s（與 ADR 0015 的 ≤2 MB 文字預覽同級） |
 | 5 MB／40 頁 PDF 第一頁畫出 | p95 < 4 s |
 | 每節點 4 條並發串流時，終端 echo 延遲 | 增量 p95 < 100 ms（`BP-OM-05`） |
-| daemon RSS 在 4 個 16 MiB handle 時 | < 基準 + 40 MiB |
+| 兩個同時的最貴中繼資料驗證（`03-…md` `TestPreviewConcurrentWorstCaseMetadata` 的 full-stack 版） | 每個驗證 < 1 s；終端 echo 增量 p95 < 50 ms；心跳偏離 < 1 s（皆暫定，`BP-OM-05`） |
+| daemon RSS 在池滿載時（兩種允許的組合：① 兩個 16 MiB handle 各有一條串流正在送 chunk；② 一個 16 MiB handle 加上兩個進行中的 8 MiB open，各自正在做 D15 的中繼資料解壓） | < 基準 + **48 MiB**（**暫定**）：資料池 32 MiB（handle 與進行中 open 共用，`03-…md` §3）＋最多 4 個 chunk 的 base64 編碼緩衝（約 2.7 MiB）＋兩個解壓器的暫存＋GC 餘裕。`BP-OM-14` 實測後定案。另外斷言：在池滿時再 open 一個 → `NODE_BUSY`，RSS 不再上升 |
 | Central RSS 在 32 條並發串流時 | < 基準 + 32 MiB |
 | 取消後 daemon handle 歸零 | ≤ 30 s（TTL） |
 

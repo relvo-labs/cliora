@@ -39,7 +39,7 @@
 | `BP-OM-02` | 在現行 CSP（`img-src 'self' data:`）下，iOS／Android 的 `createImageBitmap(Blob)` 是否可用、是否受 `img-src` 約束；`imageOrientation` 與 resize 選項的支援 | 是否需要 `img-src blob:` 的 fallback（需另行審查） | `BP-06` | 定設計 |
 | `BP-OM-03` | iOS Safari 與 Android Chrome 長按 `<canvas>` 是否出現存檔選單 | 「沒有存檔入口」這個宣稱 | `BP-06`；`BP-10` #2 | 定宣稱 |
 | `BP-OM-04` | 選定的 PDF.js 版本在現行 CSP 下：worker、wasm、FontFace、cMap 是否全部可用而無 violation | 是否需要改 CSP（需另行審查） | `BP-07` 第一天 | 定設計 |
-| `BP-OM-05` | 每節點 4 條預覽串流時，終端 echo 延遲的增量 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
+| `BP-OM-05` | 每節點 4 條預覽串流時，以及兩個同時的最貴 D15 中繼資料驗證時，終端 echo 延遲的增量與心跳偏離 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
 | `BP-OM-06` | 每種部署拓樸上，preview 的請求 body 或回應 body 是否被寫到任何檔案：nginx 的 `proxy_temp`／`client_body_temp`，以及 Railway edge | 「不落地」宣稱；OD-11 | `BP-05` | **發布閘門** |
 | `BP-OM-07` | PDF.js 現代 build 在產品支援清單裡最舊的 iOS／Android 瀏覽器上是否可用 | OD-9 | `BP-07`；`BP-10` | 定預設 |
 | `BP-OM-08` | ~~舊 Central 收到帶 `binary_preview` 的 `node.register` 時，是拒收該訊息還是斷線~~ **已由讀程式解答**：拒收該訊息且靜默（`codec.py:100-102` → `ws/nodes.py:199-202` 的 `continue`），不回覆、不持久化、連線照常；daemon 忽略 ack（`connection.go:474-475`）。由 `BP-04` 的 `test_invalid_register_is_silently_skipped` 與 `BP-02` 的相容測試釘住 | 回退程序（ADR §9） | `BP-02`／`BP-04`（測試確認） | 已解答，待測試 |
@@ -48,6 +48,7 @@
 | `BP-OM-11` | `RequestIdMiddleware`（`BaseHTTPMiddleware`，`middleware.py:41`）是否破壞 `StreamingResponse` 的背壓或斷線偵測 | ADR §6 第 6 步「真正的背壓」與 §15 取消 | `BP-04`（完整 middleware stack 下的測試） | 定設計 |
 | `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
 | `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
+| `BP-OM-14` | 池滿載時（兩個 16 MiB handle 各在送 chunk，或一個 16 MiB handle 加兩個進行中的 8 MiB open）daemon 的 RSS 與 GC 開銷 | `07-…md` §3 暫定的「基準＋48 MiB」 | `BP-09` | 定預設 |
 
 ## 4. 審查中確認、但**不在本期修正**的既有缺陷
 
@@ -97,7 +98,7 @@
 | v0.1 | `c7b85c5` | 初版設計 |
 | v0.2 | `7458141` | 回應第一次獨立審查（BLOCKED）：見 §6 |
 | v0.3 | `653ff61` | 回應 `7458141` 的再審查（BLOCKED），各項處置見下方第一張表 |
-| v0.4 | （未 commit） | 回應 `653ff61` 的第三次審查（BLOCKED），各項處置見下方第二張表 |
+| v0.4 | `bad3a2b` | 回應 `653ff61` 的第三次審查（BLOCKED），各項處置見下方第二張表 |
 
 | 發現 | 嚴重度 | 處置 | 改在哪裡 |
 |---|---|---|---|
@@ -107,6 +108,7 @@
 | 非阻塞 open 的後備方案會放棄卡住的 goroutine | P2 | **移除後備方案**：無法證實的 build target 不回報能力；執行期 probe 在 daemon 自己的 FIFO 上測試，失敗時自行解開並省略 `binary_preview`（fail closed） | ADR §3；`03` §1、§7；`06` Q18 |
 | PDF.js 版本下限未涵蓋 CVE-2026-16633 | P2 | **已查證並提高下限**：GitHub Advisory API 顯示 GHSA-hq66-cqwq-w95j 影響 `>= 5.6.83, < 6.2.108`，首個修正版 6.2.108。下限改為 ≥ 6.2.108，並明列於 `BP-07`；加上 `enableScripting: false`；advisory 重查列為 pin 與發布的閘門 | ADR §12、T2；`05` `BP-07` §1、§2；`06` §3 |
 | `root.Stat` 不存在；AC-05 的範圍超出 daemon 的信封檢查 | P3 | **修正**：改為 `StatIn`（`root.go:196-212`）；AC-05 限定為 Node 端信封拒絕，新增 AC-16 描述瀏覽器端解析／渲染失敗（census +16） | ADR §3；`00`、`03`、`06`、README；`01` §2.1、§5 |
+| v0.5 | （未 commit） | 關閉第四次審查（`bad3a2b`，PASS_WITH_FOLLOWUPS）的三個文件追蹤項，見下方第三張表 |
 
 **v0.4（回應 `653ff61` 的第三次審查）**
 
@@ -115,3 +117,11 @@
 | PNG 壓縮附屬 chunk（`iCCP`／`zTXt`／`iTXt`）只限壓縮後大小，沒有展開後上限 | P1 | **採用有界串流解壓（決策 D15，不列入 OD）**：以標準函式庫 `compress/zlib` 解壓到丟棄端，量展開後大小，超過預算就停；只量不改，不轉碼、不剝除；像素資料照舊不解壓。**不採用「一律拒絕」**，因為 `iCCP` 在 macOS／iOS 截圖與編輯器匯出中很常見，頻率未實測（`BP-OM-13`）。JPEG APPn／ICC、WebP `ICCP`／`EXIF`／`XMP `／`ANMF`、GIF extension／幀數、APNG 幀數一律以長度或數量設預算。新增炸彈、邊界與真實世界樣本的 RED fixture | ADR §3、§4、T3；`03` §2、§2.1、§7；`07` §1；`00` D15；本檔 `BP-OM-13` |
 | Migration `0022` 的降級只刪一個欄位 | P2 | **修正**：`downgrade()` 移除兩個欄位與索引；新增 `test_migration_0022_roundtrip`（upgrade → downgrade → upgrade，並以 `compare_metadata` 斷言沒有 drift），列入寫入集；回退表註明先完成 `last_registration_at` 的確認，再降級 | `04` 寫入集、§8；`08` §2；`00` 寫入集 |
 | 風險表仍以 `daemon_version` 作為註冊證據；nginx 範例只有 compose 的 upstream | P2 | **修正**：風險表改用 `last_registration_at` 與名稱標記；分別寫出 compose（具名 upstream）與 Railway（`set $cliora_upstream` 加 `$request_uri`，依 `resolver` 在執行期解析）兩份 stanza；兩份渲染後的設定都要 `nginx -t`：Railway 沿用既有 CI 步驟，compose 新增一步（`.github/workflows/ci.yml` 列入 `BP-05` 寫入集） | `00` 風險、寫入集；`04` `BP-05` |
+
+**v0.5（關閉第四次審查 `bad3a2b` 的追蹤項，PASS_WITH_FOLLOWUPS）**
+
+| 發現 | 嚴重度 | 處置 | 改在哪裡 |
+|---|---|---|---|
+| D15 缺少並發最壞情況的資源測試 | P2 | **已補**：`TestPreviewConcurrentWorstCaseMetadata`，兩個 worker 同時驗證最貴的合法 PNG，並有 terminal 流量與心跳；另以 `GOMAXPROCS=1` 跑一次。暫定目標：驗證 < 1 s、echo 增量 p95 < 50 ms、心跳偏離 < 1 s，以 `BP-OM-05` 定案。full-stack 版列入 `07` §3 | `03` §7；`07` §3；本檔 `BP-OM-05` |
+| 容量目標「4 個 16 MiB handle」超出 32 MiB 的 handle 池，無法執行 | P2 | **已修正**：改用兩種允許的組合，RSS 目標改為暫定的「基準＋48 MiB」並計入進行中的 open（`BP-OM-14`）。同時把 32 MiB 明定為 handle 與進行中 open **共用**的預留池，並新增 `TestPreviewPoolReservesInProgressOpens` | `03` §3、§7；`07` §3；本檔 `BP-OM-14` |
+| D15 宣稱「每個串流輸入 ≤ 1 MiB」，但只有 `iCCP` 有這個上限 | P3 | **已修正**：新增逐 chunk 的壓縮輸入上限（`zTXt`／壓縮 `iTXt` 各 ≤ 256 KiB）與壓縮輸入合計 ≤ 2 MiB，兩者都在解壓**前**檢查；邊界測試斷言超限時解壓讀取量為 0 | `03` §2.1、§7 |
