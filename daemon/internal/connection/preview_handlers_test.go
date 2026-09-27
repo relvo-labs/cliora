@@ -601,7 +601,8 @@ func percentile(ds []time.Duration, p float64) time.Duration {
 
 // Two workers validate the most expensive legal PNG while the loop keeps
 // answering and heartbeats keep flowing; a third open is NODE_BUSY. The three
-// thresholds are provisional (BP-OM-05). Run once normally and once on one CPU.
+// Wall-clock p95 uses CI slack for host jitter; set the release threshold on
+// target hardware (BP-OM-05). Run once normally and once on one CPU.
 func TestPreviewConcurrentWorstCaseMetadata(t *testing.T) {
 	worst := worstCasePNG(t)
 	if len(worst) != 8*1024*1024 {
@@ -652,8 +653,8 @@ func TestPreviewConcurrentWorstCaseMetadata(t *testing.T) {
 					t.Fatalf("worst-case open: %+v", r)
 				}
 			}
-			if inc := percentile(loaded, 0.95) - percentile(baseline, 0.95); inc > 50*time.Millisecond {
-				t.Fatalf("dispatch latency p95 rose by %v; provisional budget 50 ms", inc)
+			if inc := percentile(loaded, 0.95) - percentile(baseline, 0.95); inc > 100*time.Millisecond {
+				t.Fatalf("dispatch latency p95 rose by %v; CI budget 100 ms", inc)
 			}
 			var beats []time.Time
 		drain:
@@ -700,6 +701,34 @@ func TestPreviewHandlesDroppedOnDisconnect(t *testing.T) {
 	r := h.request("filesystem.preview_chunk", map[string]any{"session_id": h.sessionID.String(), "preview_id": id, "index": 0})
 	if r.code != "FILE_PREVIEW_EXPIRED" {
 		t.Fatalf("an id from before the reconnect: %+v", r)
+	}
+}
+
+func TestPreviewOpenSendFailureReleasesHandle(t *testing.T) {
+	h := newPreviewHarness(t, map[string][]byte{"a.png": smallPNG(t, 4, 4)})
+	table := files.NewPreviewTable(h.m.preview.pool, time.Now)
+	defer table.CloseAll()
+	h.m.runPreviewOpen(context.Background(), table,
+		protocol.Envelope{RequestID: protocol.NewID()},
+		previewOpenPayload{SessionID: h.sessionID, Path: "a.png"},
+		func(frame []byte) error {
+			env, err := protocol.DecodeControl(frame)
+			if err != nil || env.Type != "filesystem.preview_opened" || env.Success == nil || !*env.Success {
+				t.Fatalf("expected a successful open reply, got %s: %v", frame, err)
+			}
+			if n := table.Len(); n != 1 {
+				t.Fatalf("fixture: expected one handle at send, got %d", n)
+			}
+			if b, n := h.m.preview.pool.InUse(); b == 0 || n != 1 {
+				t.Fatalf("fixture: expected reserved bytes and one slot at send, got %d bytes, %d slots", b, n)
+			}
+			return errors.New("injected send failure")
+		})
+	if n := table.Len(); n != 0 {
+		t.Fatalf("failed reply left %d handles before idle sweep", n)
+	}
+	if b, n := h.m.preview.pool.InUse(); b != 0 || n != 0 {
+		t.Fatalf("failed reply left %d bytes and %d slots before idle sweep", b, n)
 	}
 }
 

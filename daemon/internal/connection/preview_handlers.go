@@ -274,7 +274,9 @@ func (m *Manager) runPreviewOpen(
 	metrics.Observe(metrics.FilesystemPreviewBytes, float64(res.Size), map[string]string{"kind": res.Kind})
 	m.previewOutcome("preview_open", "OK")
 	m.logPreview(env.RequestID, p.SessionID, res.Kind, "OK", res.Size, started)
-	_ = send(frame)
+	if send(frame) != nil {
+		table.Close(p.SessionID, id)
+	}
 }
 
 func (m *Manager) handlePreviewChunk(

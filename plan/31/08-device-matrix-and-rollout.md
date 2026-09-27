@@ -63,6 +63,11 @@
 
 ### 1. 推出順序（ADR 0029 §9，順序本身就是控制）
 
+開啟 staging 或 production flag 前，Central 容量估算要計入已量得的
+`BaseHTTPMiddleware` 預讀：每條活躍串流最多 **2 × 512 KiB = 1 MiB 原始資料**，
+每節點 4 條並發串流即最多 **4 MiB 原始資料**；依同時活躍串流數放大，另計
+base64 編碼、frame 與其他應用程式開銷（`09` 的 `BP-OM-11`）。
+
 ```text
 1. 合併契約 1.11.0、Central（含 migration 0022）、前端、edge 設定。
    binary_preview_enabled = false（OD-5）。UI 因 can_preview_binary=false 而隱藏。

@@ -61,13 +61,13 @@
 | `BP-OM-02` | 在現行 CSP（`img-src 'self' data:`）下，iOS／Android 的 `createImageBitmap(Blob)` 是否可用、是否受 `img-src` 約束；`imageOrientation` 與 resize 選項的支援 | 是否需要 `img-src blob:` 的 fallback（需另行審查） | `BP-06` | 定設計 |
 | `BP-OM-03` | iOS Safari 與 Android Chrome 長按 `<canvas>` 是否出現存檔選單 | 「沒有存檔入口」這個宣稱 | `BP-06`；`BP-10` #2 | 定宣稱 |
 | `BP-OM-04` | 選定的 PDF.js 版本在現行 CSP 下：worker、wasm、FontFace、cMap 是否全部可用而無 violation | 是否需要改 CSP（需另行審查） | `BP-07` 第一天 | 定設計 |
-| `BP-OM-05` | 每節點 4 條預覽串流時，以及兩個同時的最貴 D15 中繼資料驗證時，終端 echo 延遲的增量與心跳偏離 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
+| `BP-OM-05` | 每節點 4 條預覽串流時，以及兩個同時的最貴 D15 中繼資料驗證時，終端 echo 延遲的增量與心跳偏離；**發布門檻在目標硬體實測後設定**，CI 的 p95 容差只用於偵測明顯退步 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
 | `BP-OM-06` | 每種部署拓樸上，preview 的請求 body 或回應 body 是否被寫到任何檔案：nginx 的 `proxy_temp`／`client_body_temp`，以及 Railway edge | 「不落地」宣稱；OD-11 | `BP-05` | **發布閘門** |
 | `BP-OM-07` | PDF.js 現代 build 在產品支援清單裡最舊的 iOS／Android 瀏覽器上是否可用 | OD-9 | `BP-07`；`BP-10` | 定預設 |
 | `BP-OM-08` | ~~舊 Central 收到帶 `binary_preview` 的 `node.register` 時，是拒收該訊息還是斷線~~ **已由讀程式解答**：拒收該訊息且靜默（`codec.py:100-102` → `ws/nodes.py:199-202` 的 `continue`），不回覆、不持久化、連線照常；daemon 忽略 ack（`connection.go:474-475`）。由 `BP-04` 的 `test_invalid_register_is_silently_skipped` 與 `BP-02` 的相容測試釘住 | 回退程序（ADR §9） | `BP-02`／`BP-04`（測試確認） | 已解答，待測試 |
 | `BP-OM-09` | Central 是否為單一 process 服務一個節點的 WebSocket（串流上限用 process 內 semaphore 的前提） | 並發上限的實作方式 | `BP-04` | 定設計 |
 | `BP-OM-10` | canary 路徑（原文與 percent-encoded）在兩份 nginx access log、uvicorn／Central stdout、Central JSON log、稽核表、Railway HTTP／deploy log 中是否為零筆 | 「log 無路徑」宣稱；OD-11 | `BP-05`（步驟見 `04-…md` `BP-05`「發布閘門」） | **發布閘門** |
-| `BP-OM-11` | ~~`RequestIdMiddleware`（`BaseHTTPMiddleware`）是否破壞 `StreamingResponse` 的背壓或斷線偵測~~ **已量（2026-09-27，Starlette 0.49.1）**：背壓保留，但 `BaseHTTPMiddleware` 的 hand-off 多**一塊**預讀——慢速 client 還拿著第一塊時，Central 最多已要了兩塊（`test_stream_backpressure` 斷言 ≤ 2），所以每條串流在 Central 最多持有 **2 × 512 KiB**，不是 ADR 寫的一塊；client 斷線會取消串流，`preview_close` 恰好送一次，記 `CANCELLED`，沒有成功稽核（`test_disconnect_sends_close`）。兩者都以直接呼叫 ASGI app 的方式跑完整 middleware stack | ADR §6 第 6 步、§15 | `BP-04` | 已量；ADR §5「一塊」的記憶體敘述需在 `BP-08` 確認是否修訂 |
+| `BP-OM-11` | ~~`RequestIdMiddleware`（`BaseHTTPMiddleware`）是否破壞 `StreamingResponse` 的背壓或斷線偵測~~ **已量（2026-09-27，Starlette 0.49.1）**：背壓保留，但 `BaseHTTPMiddleware` 的 hand-off 多**一塊**預讀——慢速 client 還拿著第一塊時，Central 最多已要了兩塊（`test_stream_backpressure` 斷言 ≤ 2），所以每條串流在 Central 最多持有 **2 × 512 KiB = 1 MiB 原始資料**，另有編碼與 frame 開銷；已更新 ADR §5 與 `08` §`BP-11` 推出容量估算。client 斷線會取消串流，`preview_close` 恰好送一次，記 `CANCELLED`，沒有成功稽核（`test_disconnect_sends_close`）。兩者都以直接呼叫 ASGI app 的方式跑完整 middleware stack | ADR §6 第 6 步、§15 | `BP-04` | 已量並修訂容量敘述 |
 | `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
 | `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
 | `BP-OM-14` | 池滿載時（兩個 16 MiB handle 各在送 chunk，或一個 16 MiB handle 加兩個進行中的 8 MiB open）daemon 的 RSS 與 GC 開銷 | `07-…md` §3 暫定的「基準＋48 MiB」 | `BP-09` | 定預設 |
