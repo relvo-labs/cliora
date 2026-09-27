@@ -1,6 +1,10 @@
 # ADR 0029 — Read-only binary preview: images and PDF, rendered in the console, never handed over
 
 - Status: **proposed** (design only, 2026-09-27; nothing in this ADR is implemented)
+- Revised: 2026-09-27, after the independent design review of `c7b85c5` (BLOCKED). Changes:
+  path in a POST body rather than a query string (§6); non-blocking confined open (§3);
+  field omitted when disabled, for Central rollback (§9); audit commit and session (§6, §10);
+  encryption decided by the renderer only (§4, OD-8).
 - Date: 2026-09-27
 - Issue: #77 (`[Mobile][Files] 圖片與 PDF 的安全唯讀預覽（含 Viewer）`)
 - Depends on: #76 green first (the mobile file list and the existing text preview must
@@ -27,7 +31,14 @@
 
 | Fact | Evidence |
 |---|---|
-| The only read operation, `filesystem.read`, is default-deny for binary. It runs a fixed order: sensitive name → confined `O_NOFOLLOW` open → regular-file check on the fd → sensitive check on the fd's resolved name → size cap → bounded read → binary / non-UTF-8 deny. It returns only UTF-8 text. | `daemon/internal/files/read.go:16-90` (sensitive `:18-20`, open `:25`, regular `:39-41`, resolved name `:49-55`, cap `:58-60`, bounded read `:64`, binary deny `:74-79`, text success `:82-89`) |
+| The only read operation, `filesystem.read`, is default-deny for binary. It runs a fixed order: sensitive name → confined `os.Root` open → regular-file check on the fd → sensitive check on the fd's resolved name → size cap → bounded read → binary / non-UTF-8 deny. It returns only UTF-8 text. | `daemon/internal/files/read.go:16-90` (sensitive `:18-20`, open `:25`, regular `:39-41`, resolved name `:49-55`, cap `:58-60`, bounded read `:64`, binary deny `:74-79`, text success `:82-89`) |
+| The read open is **not** `O_NOFOLLOW`, although the comment at `read.go:12` says it is. `Root.OpenFile` calls `os.Root.Open`, which refuses `..` and any symlink that escapes the root but **follows a symlink that stays inside it**. That is exactly why the second sensitive check runs on `RealRel(f)`. Only the write path passes `O_NOFOLLOW`. | `daemon/internal/workspace/root.go:100-118` (read), `:152-159` (write) |
+| That open is **blocking**. `os.Root.Open` is a plain `O_RDONLY` open, so on a FIFO it waits for a writer before `f.Stat()` can reject it. Because `handleFsRead` runs on the dispatch loop, the **existing** text preview of a workspace FIFO stalls the whole node's control loop. This is pre-existing and is not fixed by this ADR; §3 must not copy it. | `root.go:109-118`; `read.go:25`, `:35-41`; `connection.go:509` |
+| Both edges log the full request line, **query string included**, to disk. | `deploy/nginx/nginx.conf:52-55`, `deploy/railway/nginx.conf.template:64-67` (`"$request"`) |
+| Central's own access log also includes the query string. uvicorn 0.35.0 logs `get_path_with_query_string(scope)`, and Central is started without `--no-access-log`. | uvicorn `==0.35.0` pinned at `backend/pyproject.toml:11`; in that release `uvicorn/protocols/utils.py:52-56` and `uvicorn/protocols/http/h11_impl.py:473-477` (same in `httptools_impl.py:476-480`); `deploy/backend.Dockerfile:147`; `deploy/railway/central.railway.json:17` |
+| The existing file API already puts workspace paths and search keywords in query strings, so both access logs record them today, even though Central carefully logs only a keyword digest. This is pre-existing and is recorded here, not fixed. | `backend/app/api/http/files.py:44-73`, `:203-207`; `backend/app/services/files.py:300-304` |
+| A `node.register` that fails Central's schema is **silently skipped**: `decode_control` raises, the WebSocket route `continue`s, nothing is persisted and no `node.registered` is sent. The connection stays up, and the daemon ignores acks, so neither side reports it. | `backend/app/protocol/codec.py:100-102`; `backend/app/api/ws/nodes.py:199-209`; `daemon/internal/connection/connection.go:472-475` |
+| `AuditService.record` only adds a row to the caller's session, and adds `request_id` to the metadata. A route that raises before committing loses the row. The existing preview route commits explicitly, and the RBAC-denial middleware writes on its own short-lived session. | `backend/app/services/audit.py:196-210`; `backend/app/api/http/files.py:212-215`; `backend/app/api/middleware.py:117-129`, `:153-157`, `:171` |
 | The preview cap is 2 MiB (`DefaultMaxPreviewSize`). | `docs/adr/0015-p3-filesystem-limits-and-preview-policy.md` limits table; `research/prd.md` `FR-FILE-003` |
 | Central only relays `filesystem.read` and returns the daemon's in-band payload. | `backend/app/api/http/files.py:203-215`, `backend/app/services/files.py:323-349` |
 | Every filesystem op resolves the session and authorises `file.browse` **plus** view access to the owning session, refuses a shell session, and only then checks that the node is online. | `backend/app/services/files.py:182-198`, `backend/app/services/authz.py:154-165`, `:211-215` |
@@ -106,24 +117,45 @@ can be read side by side:
 1. Node switch `filesystem.binary_preview.enabled` → else `FILE_PREVIEW_DISABLED`.
 2. `SensitiveClassification(relPath)` → `FILE_DENIED` + classification (reuse,
    `read.go:18-20`).
-3. `root.OpenFile(relPath)` (confined, `O_NOFOLLOW`, ADR 0014). Errors map through the
-   existing `denyFromWorkspaceErr` (`read.go:95-112`), and outside-root collapses to
-   `FILE_DENIED`.
-4. `f.Stat()` on the **fd**, then `IsRegular()` → `not_regular`.
-5. `root.RealRel(f)` → `SensitiveClassification(realRel)`. An unresolved name is
-   denied (`read.go:49-55`). This check stays: an innocuous in-root symlink pointing at
-   `.env` must fail here.
-6. Read a 64-byte header from the same fd → sniff kind. Anything else is
+3. **Pre-open type check.** `root.Stat(relPath)`, through the same `os.Root`, so it
+   resolves in-root symlinks and refuses escaping ones like the open does. Anything but a
+   regular file → `FILE_DENIED` / `not_regular`, **without opening it**. This spares a
+   FIFO, socket or device node the open call and its side effects. It is advisory
+   because it races with step 4, and step 5 is the binding check.
+4. **Confined non-blocking open.** A new `Root.OpenFileNonBlocking(rel)` calls
+   `os.Root.OpenFile(clean, O_RDONLY|O_NONBLOCK|O_NOCTTY, 0)`. Confinement is identical to
+   `Root.OpenFile` (`root.go:100-118`): `..` and escaping symlinks are refused, and in-root
+   symlinks are **followed**. The open is **not** `O_NOFOLLOW`. A symlink whose target
+   stays in the root is caught by step 6, not by the open. `O_NONBLOCK` makes a FIFO
+   swapped in after step 3 return immediately instead of waiting for a writer. It has no
+   effect on reads from a regular file. Errors map through the existing
+   `denyFromWorkspaceErr` (`read.go:95-112`), and outside-root collapses to `FILE_DENIED`.
+   The existing blocking `Root.OpenFile` is left unchanged for `Read`. The pre-existing
+   FIFO stall on the text path is a separate issue (Context).
+5. `f.Stat()` on the **fd**, then `IsRegular()` → `not_regular`, and `os.SameFile` against
+   step 3's result → `FILE_PREVIEW_INVALID` / `changed` if the path was swapped between
+   the two.
+6. `root.RealRel(f)` → `SensitiveClassification(realRel)`. An unresolved name is
+   denied (`read.go:49-55`). This is the check that makes following in-root symlinks
+   safe: an innocuous `photo.png → .env` must fail here.
+7. Read a 64-byte header from the same fd → sniff kind. Anything else is
    `FILE_PREVIEW_UNSUPPORTED`.
-7. Kind-specific size cap on the fd snapshot size (§4) → `FILE_TOO_LARGE` + size. **No
+8. Kind-specific size cap on the fd snapshot size (§4) → `FILE_TOO_LARGE` + size. **No
    content beyond the header is read.**
-8. Bounded read of the whole file from the same fd into memory (`LimitReader(cap+1)`).
+9. Bounded read of the whole file from the same fd into memory (`LimitReader(cap+1)`).
    Reading more than `size` bytes, or a re-`fstat` whose size or mtime differs, gives
    `FILE_PREVIEW_INVALID` / `changed`.
-9. Structural validation (§4). Failure gives `FILE_PREVIEW_INVALID` / `malformed`, or
-   `FILE_PREVIEW_LIMIT` / `pixels|dimensions|complexity`, or
-   `FILE_PREVIEW_UNSUPPORTED` / `encrypted`.
-10. Register an in-memory snapshot handle (§5) and answer `filesystem.preview_opened`.
+10. Structural validation (§4). Failure gives `FILE_PREVIEW_INVALID` / `malformed`, or
+    `FILE_PREVIEW_LIMIT` / `pixels|dimensions|complexity`. The daemon makes **no
+    encryption judgement** (§4, OD-8).
+11. Register an in-memory snapshot handle (§5) and answer `filesystem.preview_opened`.
+
+Residual on the open: a character or block device node **inside** the workspace that
+appears between step 3 and step 4 is still opened, non-blocking, before step 5 rejects it.
+Creating one needs `CAP_MKNOD`, which the non-root `agentd` user does not hold (ADR 0023).
+A privileged node's sudo-capable user could create one, and that user can already do
+anything to the node. The worker is never held hostage either way, because a
+non-blocking open does not wait.
 
 File-level denials are **in-band** (`success:false` + `{code, reason}`), the same shape as
 `filesystem.content` (`contracts/v1/fixtures/valid/filesystem-content-denied.json`),
@@ -152,7 +184,8 @@ see, as defence in depth.
 | GIF | first image descriptor must exist and lie within the logical screen | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
 | PDF file size | 16 MiB | daemon | `FILE_TOO_LARGE` |
 | PDF structure | `%PDF-` at offset 0; `%%EOF` in the last 1 KiB | daemon | `FILE_PREVIEW_INVALID` / `malformed` |
-| PDF encryption | `/Encrypt` in the trailer or xref-stream dictionary (a heuristic, see below) | daemon best-effort; **PDF.js authoritative** (`PasswordException`) | `FILE_PREVIEW_UNSUPPORTED` / `encrypted` |
+| PDF that needs a password to open | PDF.js asks for a password (`onPassword` / `PasswordException`) | **browser only**; no prompt is shown, and the load is destroyed | frontend state `pdf_password_required` |
+| PDF encrypted with an empty user password (permissions only) | opens without a password | not refused (OD-8 recommended default) | renders view-only |
 | PDF pages | 200 | **browser** (`numPages` before any page renders) | frontend state `pdf_too_many_pages` |
 | PDF page render | canvas ≤ 16 777 216 px (scale clamped); 10 s per page | browser | `render_failed`, page-scoped |
 | Transfer budget | 60 s total; 10 s per chunk; 15 s open | Central | `REQUEST_TIMEOUT` (stream aborted) |
@@ -167,8 +200,19 @@ Two notes on these limits:
   (for example pdfcpu) or a hand-written one, running outside any browser sandbox. The
   daemon checks what can be checked from the file's envelope. PDF.js, inside the
   browser's renderer sandbox and a Web Worker, is the authority on pages and encryption.
-  The `/Encrypt` scan is labelled a heuristic because a textual scan of the tail can be
-  fooled either way. It exists only to spare an obvious transfer.
+- **Why the daemon makes no encryption verdict.** An earlier draft had it scan the file's
+  tail for `/Encrypt`. That scan cannot tell a password-protected PDF from a
+  permissions-only one (encrypted with an empty user password), and a textual scan can be
+  fooled either way. It could not enforce either possible rule, so it is removed rather
+  than presented as a check. The one rule that is enforceable without a PDF parser in the
+  daemon is the renderer's: **a PDF that requires a password is refused and never
+  prompted for**. A permissions-only PDF opens in any viewer, because permission bits
+  restrict printing, copying and editing, never display. The preview offers none of those
+  actions, so rendering it grants nothing its author withheld. Refusing it would instead
+  be OD-8's alternative (b), which is enforceable only after the bytes have reached the
+  browser. The cost is that a password-protected PDF is transferred to the browser before
+  it is refused. The viewer is authorised to read that file, cannot decrypt it, and the
+  bytes are disposed immediately (§14).
 - **Why 16 777 216 px.** It is the maximum canvas area commonly reported for iOS Safari.
   **This figure is unverified** and must be measured on devices as `BP-OM-01` before the
   default is fixed.
@@ -185,7 +229,7 @@ request-correlation relay unchanged:
 | `filesystem.preview_close {session_id, preview_id}` | `filesystem.preview_closed {preview_id}` | Idempotent. |
 
 - **Snapshot, not ranged reads of a live file.** The daemon reads the whole bounded file
-  once (§3 step 8), validates that exact buffer, and serves chunks from it. The bytes the
+  once (§3 step 9), validates that exact buffer, and serves chunks from it. The bytes the
   browser receives are therefore the bytes that were validated. This answers ADR 0028
   §9's objection to ranged download ("what if the file changed between ranges") without
   a version precondition: the file is never re-read.
@@ -211,27 +255,75 @@ request-correlation relay unchanged:
   chunk bounds head-of-line delay for the terminal. Terminal latency under preview load
   is measured as `BP-OM-05`.
 
-### 6. Central endpoint: authorise every request, stream with a declared length
+### 6. Central endpoint: the path travels in a body, never in a URL
 
 ```
-GET /api/sessions/{session_id}/files/binary-preview?path=<workspace-relative>
+POST /api/sessions/{session_id}/files/binary-preview
+Content-Type: application/json
+{"path": "<workspace-relative>"}          (body ≤ 24 KiB, enough for a 4096-code-point
+                                          UTF-8 path; unknown keys and any query string rejected)
 ```
+
+**Why a POST body and not `?path=`.** A URL is written down by every hop that logs
+requests. Today that includes both nginx configs (`"$request"`, `nginx.conf:52-55`,
+`railway/nginx.conf.template:64-67`), uvicorn's access log, which includes the query
+string (Context), Railway's edge, which we do not configure (`BP-OM-10`), and any future
+proxy, CDN or WAF. Suppressing logging at each hop would make "no path in any log" depend
+on every hop staying configured, including one we cannot configure. A request body is not
+logged by nginx's format, by uvicorn, or by the RBAC-denial middleware, which records the
+URL path only (`middleware.py:153-157`). With the path in the body, the URL carries
+nothing but the session id, which every other session route already logs.
+
+Three options were weighed:
+
+| Option | Path in any URL? | Cost | Verdict |
+|---|---|---|---|
+| `GET ?path=` + `access_log off` / query-less format at every hop | yes, unless every hop is configured | Correctness depends on configuration we do not fully control (the Railway edge). A query-less format also hides the path from Railway's HTTP logs only if Railway itself logs no query, which is unknown. | rejected as the primary control; kept as defence in depth (below) |
+| **`POST` + JSON body** | **no** | A read expressed as POST: not cacheable (wanted: `no-store` anyway) and not retried by proxies (wanted). The RBAC-denial middleware now counts an action-level 403 here as a "mutation" denial (`middleware.py:156`), but all three roles hold `file.browse`, so an action-level refusal cannot happen for a real role. A scope refusal was audited for GET as well. | **chosen** |
+| `POST` → opaque handle, then `GET /…/{handle}` | no (the handle is opaque) | Central-side handle state, which may not be shared across processes (`BP-OM-09`); replay and binding rules for the handle; a second round trip. Its only gain is a GET-able URL, which would enable `<img src>`, and §11 does not want that. | rejected |
+
+**CSRF.** Authentication is a Bearer header added by script (`client.ts:654`). A cross-site
+form or `fetch` carries no credentials, so it is refused with 401, and a JSON
+`Content-Type` would need a CORS preflight that Central does not grant (no
+`CORSMiddleware` in `backend/app`). The route also **requires** `Content-Type:
+application/json` and refuses other bodies with 415, so a `text/plain` "simple request"
+cannot reach the handler either.
+
+**Defence in depth at the edge.** The dedicated nginx location (below) logs with its own
+format, `'$remote_addr - $status "$request_method $uri" rt=… nginx_req_id=$request_id'`.
+It never uses `$request` or `$args`, so a query parameter added by mistake later is still
+not written down.
+
+Processing:
 
 1. `require_action(FILE_BROWSE)`, then `_resolve()`: session exists, `authorize_file_browse`
    (Viewer included; shell sessions refused), node connected (`services/files.py:182-198`).
 2. The rollout flag `binary_preview_enabled` must be on, and the **live** connection's
    registration must report `binary_preview: true` (§9). Otherwise
    `FILE_PREVIEW_UNSUPPORTED_NODE` (409), **before** any frame is sent.
-3. `_reject_rel_path(path)` (`services/files.py:90-121`).
+3. Parse the body (JSON object with exactly `path`), then `_reject_rel_path(path)`
+   (`services/files.py:90-121`).
 4. Per-user and per-node stream limit.
-5. `preview_open` (15 s). A denial maps to an `ApiError` whose code is the daemon's code
-   and whose `details` carry `{reason, size?, limit?}`. A sensitive denial is audited
-   through the existing `_maybe_audit_denied` (unchanged).
+5. `preview_open` (15 s). On an in-band denial the service returns a **denial result**
+   instead of raising. A sensitive denial is recorded through the existing
+   `_maybe_audit_denied` (unchanged). The route then **commits the session** and only
+   afterwards raises the `ApiError`, whose code is the daemon's code and whose `details`
+   carry `{reason, size?, limit?}`. This mirrors the existing content route, which commits
+   the audit entry `read_file` added (`files.py:212-215`). Raising first would discard the
+   row, because `AuditService.record` only adds it to the session (`audit.py:204-210`) and
+   `get_session` does not commit (`db/engine.py:96-98`).
 6. On success, a `StreamingResponse` whose generator requests chunk *i + 1* only after
    chunk *i* has been handed to the ASGI `send`. That is real pull-based backpressure,
-   unlike the single-frame case ADR 0028 rejects streaming for. The generator's `finally`
-   sends `preview_close` unless all chunks were served. A client disconnect cancels the
-   generator, and `_observe` already records `CANCELLED` (`services/files.py:220-224`).
+   unlike the single-frame case ADR 0028 rejects streaming for. It is **unverified through
+   `RequestIdMiddleware`**, a `BaseHTTPMiddleware` (`middleware.py:41`) that sits between
+   the route and the server (`BP-OM-11`). The generator's `finally` sends `preview_close`
+   unless all chunks were served. A client disconnect cancels the generator, and `_observe`
+   already records `CANCELLED` (`services/files.py:220-224`).
+7. The success audit (§10) is written **inside the generator after the last chunk**, on its
+   **own short-lived session** (`get_database().session()`), the same pattern the
+   RBAC-denial middleware uses (`middleware.py:126-127`, `:171`). It is not written on the
+   request-scoped session, whose lifetime relative to a streamed body depends on
+   FastAPI's dependency-exit timing (FastAPI 0.120.1 here) and is not relied on.
 
 Response headers, as a set:
 
@@ -246,18 +338,39 @@ Response headers, as a set:
 | `X-Cliora-Preview-Mime`, `-Kind`, `-Width`, `-Height` | The daemon's verdict, which the renderer uses to pick a decoder. Values come from the wire enum only. |
 
 There is **no `Content-Disposition`**: this is not a download and must not look like one.
-Navigation cannot reach the endpoint anyway, because authentication is a Bearer header
-(`client.ts:654`). A RED test pins that a request carrying cookies but no
+Navigation cannot reach the endpoint anyway: it is a POST, and authentication is a Bearer
+header (`client.ts:654`). A RED test pins that a request carrying cookies but no
 `Authorization` header gets 401.
 
 **Edge buffering.** `location /api/` has `proxy_buffering on` with no
 `proxy_max_temp_file_size` (`nginx.conf:174`). Per nginx's documented defaults (**unverified
 in this deployment**), a proxied body larger than the in-memory buffers spills to
 `proxy_temp` files, which would break "no disk". A dedicated
-`location ~ ^/api/sessions/[^/]+/files/binary-preview$` sets `proxy_buffering off` (or
-`proxy_max_temp_file_size 0`) in both `deploy/nginx/nginx.conf` and
-`deploy/railway/nginx.conf.template`. Railway's own edge is an unknown (`BP-OM-06`). The
-existing text-preview path has the same spill exposure today; this ADR only records it.
+`location ~ ^/api/sessions/[^/]+/files/binary-preview$` sets `proxy_buffering off` and
+`proxy_max_temp_file_size 0`, the query-less log format above, and
+`client_max_body_size 24k` with `client_body_buffer_size 32k`. The request body is where the
+path now travels, and nginx writes a body larger than its buffer to `client_body_temp`, so
+the buffer must exceed the limit. These go in both
+`deploy/nginx/nginx.conf` and `deploy/railway/nginx.conf.template`. The existing
+text-preview path has the same spill exposure today; this ADR only records it.
+
+**Release gate: the no-persistence and no-path-in-logs claims.** Neither claim may appear
+in the PRD, the release note or the UI until **both** of the following hold for **every**
+deployment topology that ships, meaning the compose/nginx deployment and Railway:
+
+1. `BP-OM-06` shows that no preview byte lands in `proxy_temp` (or any other file) at
+   the nginx edge, and that the Railway edge in front of it neither spools the body to
+   disk nor logs it.
+2. `BP-OM-10` shows that no workspace path appears in any access log. A canary request
+   whose path contains a distinctive marker (for example
+   `bp-canary-<random>/機密-<random>.pdf`) is sent, and that marker is then searched for,
+   **both raw and percent-encoded**, in: the nginx access log of each topology,
+   uvicorn/Central stdout, Central's JSON correlation log, the audit table, and Railway's
+   HTTP and deploy logs. Every search must return zero hits.
+
+If Railway cannot be shown to comply, the release note must scope both claims to the
+components Cliora operates and name the Railway edge as outside them (OD-11). The claims
+are not made unqualified.
 
 ### 7. Authorisation: `file.browse`, per request, and what the widening is and is not
 
@@ -277,7 +390,7 @@ existing text-preview path has the same spill exposure today; this ADR only reco
   not DRM: pixels on a screen can be photographed, and devtools can read memory. The
   boundary is "the platform is not the mechanism for taking a copy", the same property
   ADR 0028 §3 uses.
-- The sensitive-name policy is **the same function, called twice** (§3 steps 2 and 5).
+- The sensitive-name policy is **the same function, called twice** (§3 steps 2 and 6).
   No preview-specific exemption exists or may be added.
 
 ### 8. Session and node binding
@@ -296,11 +409,29 @@ existing text-preview path has the same spill exposure today; this ADR only reco
 | Gate | Owner | Default | Absent means |
 |---|---|---|---|
 | `binary_preview_enabled` (Central setting, the rollout flag) | operator | **off** (OD-5) | off |
-| `node-register.binary_preview` (optional boolean) ← daemon config `filesystem.binary_preview.enabled` | node owner | daemon default `true` (OD-5) | **false**, which is what an old daemon sends |
+| `node-register.binary_preview` (optional, **`const: true`**) ← daemon config `filesystem.binary_preview.enabled` | node owner | daemon default `true` (OD-5) | **false**. This is what an old daemon sends, and what a new daemon sends when disabled (below) |
 | `may_browse_files(user, session)` | RBAC | — | — |
 
-`SessionSummary.capabilities.can_preview_binary = flag ∧ live_registration.binary_preview ∧ may_browse_files`,
-computed next to `can_browse_files` (`authz.py:315-316`).
+`SessionCapabilities.can_preview_binary = flag ∧ live_registration.binary_preview ∧ may_browse_files`.
+It is computed in `authz.session_capabilities` next to `can_browse_files`
+(`authz.py:309-316`), and reaches every session response through
+`SessionCapabilities` / `_capabilities` (`backend/app/api/http/schemas.py:90-110`,
+`:164-169`), which every `SessionSummary` / `SessionDetail` passes through
+(`schemas.py:150`, `:160`; call sites `backend/app/api/http/sessions.py:72`, `:90`, `:101`,
+`:118`, `:155`). `_capabilities` reads the live bit from the process registry
+(`get_node_registry()`, the accessor `FileRelayService` already uses) and the flag from
+settings, so no call site changes signature. The live bit is set where `node.register` is
+parsed (`backend/app/api/ws/nodes.py:91-114` `_register_input`, `:203-209`) and cleared
+when that connection closes.
+
+**The field is omitted when disabled, never sent as `false`.** A new daemon whose switch is
+off sends a `node-register` **byte-identical in shape to 1.10.0's**. The schema makes that a
+wire rule rather than a habit: `binary_preview` is `{"const": true}`, so `false` is
+**invalid** in all three consumers and a daemon bug that emits it fails the shared
+fixtures. The reason is rollback. An old Central's strict schema rejects the *key*
+regardless of its value, and it does so silently (Context: the register is skipped, the
+connection stays up, nothing is persisted). A disabled daemon therefore has to look like
+an old one.
 
 - **The authoritative check uses the live connection's registration.** Today the
   registry tracks connectivity only (`backend/app/services/registry.py:185`,
@@ -314,22 +445,43 @@ computed next to `can_browse_files` (`authz.py:315-316`).
   timeout. Central refuses first, with `FILE_PREVIEW_UNSUPPORTED_NODE`.
 - **A new browser against an old Central** reads `can_preview_binary` as absent, so
   false, and keeps today's `FILE_BINARY` denial pane (`PreviewDenied.vue`).
-- **A new daemon against an old Central.** `node-register` is `additionalProperties:false`
-  (`node-register.schema.json:3`), so an old Central would **reject** a registration that
-  carries `binary_preview`. Whether that rejection drops the connection has **not been
-  verified** in this phase. Deployment order is therefore fixed as
+- **A new, enabled daemon against an old Central.** `node-register` is
+  `additionalProperties:false` (`node-register.schema.json:3`), so the old Central's
+  validator rejects the message (`codec.py:100-102`). The WebSocket route skips it with no
+  reply (`ws/nodes.py:199-202`), and the daemon ignores acks anyway (`connection.go:474-475`).
+  The failure is **silent and partial**: the node shows as connected, but its
+  registration, meaning daemon version, runtimes, workspace roots and posture, is not
+  updated. This was established by reading code (it resolves the former `BP-OM-08`) and is
+  confirmed by a test in `BP-02`. It is why the forward order is fixed as
   **contract → Central (+ frontend) with the flag off → daemons → flag on**, the same
-  constraint every additive `node-register` field has carried. `BP-02` adds a RED test
-  that demonstrates it.
+  constraint every additive `node-register` field has carried.
+- **Rolling Central back.** The old Central accepts a new daemon **only if that daemon
+  omits the field**. The documented rollback is therefore:
+  (1) turn the Central flag off, which is instant and needs no daemon change;
+  (2) to go further and roll back the Central **version**, first set
+  `filesystem.binary_preview.enabled: false` on every node and restart `agentd`, **or**
+  roll those daemons back;
+  (3) confirm each node's registration was accepted, meaning its `daemon_version` updates
+  in the node list after reconnect;
+  (4) then roll back Central.
+  Rolling back Central with enabled new daemons still connected is the silent-staleness
+  failure above, and the runbook says so. Tests that make this rollback checkable:
+  `TestRegisterOmitsBinaryPreviewWhenDisabled` (daemon); a compat test in `BP-02` that
+  validates a disabled daemon's register payload against a **frozen copy of the pre-1.11
+  `node-register` schema**, which must be accepted, and an enabled one, which must be
+  rejected; and a staging rollback drill (`plan/31/08-device-matrix-and-rollout.md` `BP-11` §2).
 
 ### 10. Audit and observability: no path, no content
 
 - **Sensitive denial**: the existing `file.sensitive_read_denied` with `{classification, extension}`
   (`services/files.py:482-523`), unchanged and shared.
 - **Success** (OD-6, recommended **yes**): a new audit action `file.binary_preview` with
-  metadata `{kind, mime, size_bytes}` plus the usual user, session and node ids. There is
-  **no path, no filename, no extension and no content**. `bytes` must not be the key,
-  because the audit filter drops it (`audit.py:159`).
+  caller-supplied metadata `{kind, mime, size_bytes}` plus the usual user, session and node
+  ids. `AuditService.record` adds the correlation key `request_id`, or `source` when there
+  is none (`audit.py:196-201`), and that key is allowed. There is **no path, no filename,
+  no extension and no content**. `bytes` must not be the key, because the audit filter
+  drops it (`audit.py:159`). The success row is written on its own short-lived session
+  after the last chunk (§6 step 7).
 
   Why record success when text preview does not: this is a deliberate expansion of what
   Viewers can see, and "did Viewers use it, on which sessions" has to be answerable
@@ -398,7 +550,11 @@ print, open-file, the scripting sandbox and an annotation DOM layer.
   Internal GoTo links are also inert in v1 (OD-4).
 - **Forms / XFA**: not interactive, XFA disabled, nothing submitted.
 - **Embedded files and attachments**: not listed and not extractable.
-- **Encrypted documents**: refused with `encrypted`, and no password prompt in v1 (OD-8).
+- **Encrypted documents** (OD-8): a PDF that needs a password to open is refused as
+  `pdf_password_required`. The `onPassword` callback destroys the loading task
+  instead of prompting, so no password field ever exists. A permissions-only PDF
+  (empty user password) renders view-only. No layer claims to detect encryption before
+  transfer (§4).
 - **Text layer / selection / search**: **not in v1** (OD-3). Pages are canvases with
   `aria-label="第 n／N 頁"`.
 
@@ -487,14 +643,15 @@ between sessions.
 | T6 | Parser vulnerability in the browser | a valid-looking file that exploits the image or PDF decoder | the browser's own sandbox; PDF.js in a worker; allowlist of 5 formats; SVG excluded | an engine zero-day, out of our control | allowlist fixtures only; `.svg` is refused `unsupported_type` |
 | T7 | Wrong-magic or polyglot | `evil.png` that is HTML, SVG or PDF; a PDF+ZIP polyglot | the type comes from magic, not the extension; the body is `octet-stream` + `nosniff` + `CSP: sandbox`; decoding is chosen by the daemon's MIME; no `<iframe>`/`<object>`/`<embed>` (§2, §6) | a polyglot that is valid as its sniffed type renders as that type only | `html-named.png`, `svg-named.png`, `pdf-named.jpg`, `zip-pdf-polyglot.pdf` |
 | T8 | Sensitive-file exfiltration through the new path | `.env.png`; `id_rsa.pdf`; an in-root symlink `photo.png → .env`; a file under `.ssh/` | the same `SensitiveClassification`, twice, the second time on the fd's resolved name (§3, §7) | none beyond the policy's own coverage | `symlink-to-dotenv.png`, `dotenv-named.png`, `.ssh/diagram.png`, `secrets-report.pdf`: all `FILE_DENIED` and audited |
-| T9 | Escape from the workspace | `../`, an absolute path, a symlink out of the root, a FIFO or device | wire pattern, `_reject_rel_path`, `O_NOFOLLOW` confined open, regular-file check on the fd (§3, §6) | — | reuse the existing escape fixtures, plus `fifo.png`, `symlink-outside.pdf` |
+| T9 | Escape from the workspace, or a special file | `../`, an absolute path, a symlink out of the root, a FIFO, socket or device | wire pattern, `_reject_rel_path`, `os.Root` confinement (escaping symlinks refused, in-root ones followed and then re-checked through `RealRel`), pre-open `Stat` type check, **non-blocking** open, regular-file and `SameFile` check on the fd (§3) | a device node created between `Stat` and open needs `CAP_MKNOD` (§3) | reuse the existing escape fixtures, plus `symlink-outside.pdf`; **two FIFOs opened concurrently, then a third legitimate request, all complete under a 2 s deadline**; a FIFO swapped in between `Stat` and open is still refused without blocking |
 | T10 | Cache poisoning / cross-user leakage | shared proxy cache; browser HTTP cache; an in-memory cache keyed by path | `no-store, private` + `Vary: Authorization`; no Service Worker or IndexedDB; the only in-memory item is the current one, wiped on user change (§6, §14) | — | a test that user B, on the same tab after a user switch, sees no bytes from user A; header assertions |
 | T11 | Cross-session leakage | a late response for session A painted while B is shown; a `preview_id` reused across sessions | exact-session request and late-drop rule; handle bound to session and connection; the id never reaches the browser (§8, §5) | — | switch sessions mid-transfer: A's bytes are never painted; forged cross-session chunk → `FILE_PREVIEW_EXPIRED` |
 | T12 | Viewer privilege expansion beyond the grant | Viewer uses preview as download; Viewer reaches a shell session's files; preview enables download | no save affordance; shell refused (`authz.py:163-164`); separate switches; the widening recorded in PRD, release note and matrix (§7, §16) | screenshots and devtools (not DRM) | a role matrix for Viewer/Developer/Admin × allowed/denied; the cross-switch test from §16 |
 | T13 | DoS on node, Central or WebSocket | parallel opens; slowloris clients; huge PDFs; terminal starvation | concurrency limits, snapshot memory cap, TTL, 512 KiB chunks, worker pool off the dispatch loop, transfer budget (§4, §5, §15) | a legitimate user who hits the limits sees `NODE_BUSY` | a concurrency test (N+1 → 429 / `NODE_BUSY`); a slow reader aborted at 60 s; terminal echo latency under load (`BP-OM-05`) |
-| T14 | Old daemon or old Central mismatch | new Central sends an unknown type; new daemon registers with an old Central | gate on the live registration; deployment order (§9) | an operator deploying in the wrong order | a new Central with a fake old daemon never sends `preview_*`; an old schema rejects the new field (documents the order) |
+| T14 | Old daemon or old Central mismatch, including rollback | new Central sends an unknown type; an enabled new daemon registers with an old or rolled-back Central, and its registration is silently skipped | gate on the live registration; deployment order; the field is omitted when disabled (`const: true`), so a disabled daemon registers with an old Central (§9) | an operator rolling Central back without disabling or rolling back daemons first | a new Central with a fake old daemon never sends `preview_*`; the frozen pre-1.11 schema accepts a disabled daemon's register and rejects an enabled one; `false` is invalid; staging rollback drill |
 | T15 | Leaking a path or content through telemetry | logs, metrics labels, audit, error messages | ids, kind and counts only; `ApiError` messages are fixed strings (§10) | — | a log-capture test asserts that no path or filename substring appears for a request on `secret-project/plan.pdf` |
 | T16 | Silent degradation to download | a fallback that sends the file when rendering fails | no `Content-Disposition`; no save UI; the denial pane has no "download instead" for unsafe refusals (§6, §16) | — | a frontend test: on a `render_failed`/`LIMIT`/`INVALID` state no `<a download>` exists and no blob URL was created |
+| T17 | Workspace path written to an access log | `?path=` in a URL recorded by nginx `$request`, uvicorn's access log, the Railway edge or a future proxy | the path travels in a POST body; the dedicated nginx location logs `$request_method $uri` only; release gate on `BP-OM-06` / `BP-OM-10` (§6) | the Railway edge, until measured; the **pre-existing** GET file routes (`/content`, `/tree`, `/search`) still log paths and keywords (Context) | canary path with a distinctive marker, searched raw and percent-encoded in both nginx logs, uvicorn/Central stdout, the Central JSON log, the audit table and Railway's logs: zero hits |
 
 ## Consequences
 
@@ -509,7 +666,14 @@ between sessions.
 - The existing `FILE_BINARY` pane stays for everything outside the allowlist, and for
   nodes, Centrals or browsers that do not report the capability.
 - A PDF is not accessible to screen readers in v1 (OD-3).
-- Deployment order becomes a documented constraint (§9).
+- Deployment order becomes a documented constraint, and rolling Central's version back
+  requires disabling or rolling back the daemons first (§9).
+- The preview endpoint is a POST for a read. That is deliberate (§6), and it differs from
+  every other file route.
+- Three **pre-existing** defects are recorded and left for separate issues: the text
+  preview's blocking FIFO open on the dispatch loop, workspace paths and search keywords
+  in GET query strings reaching both access logs, and the edge's `proxy_temp` spill
+  exposure. This ADR does not fix them and does not repeat them.
 - **Not decided here:** thumbnails in the file list, SVG, HEIC/AVIF, animated GIF,
   PDF text selection and search, password-protected PDFs, printing, video and audio,
   Office documents, and any relaxation of the sensitive policy.
@@ -534,12 +698,16 @@ between sessions.
 | A full PDF parser in the daemon to count pages | A dependency (pdfcpu) or a hand-written parser outside the browser sandbox, only to enforce a limit the renderer enforces authoritatively (§4). |
 | A new `file.preview` RBAC action (Viewer excluded) | The product owner explicitly wants Viewer included (#77). Fixed roles cannot express the difference, and it would split audit queries (§7). |
 | Serve any `image/*` the browser can decode | Pulls SVG (active content) and a long tail of decoders into the attack surface; the allowlist is the control (§2). |
+| `GET ?path=` with access logging suppressed or query-less at every hop | Keeps the path out of logs only as long as every hop stays configured, including the Railway edge, which Cliora does not configure (§6). Kept as defence in depth, not as the control. |
+| `POST` → opaque short-lived handle → `GET /…/{handle}` | Central handle state across processes (`BP-OM-09`), replay and binding rules, a second round trip; its only gain is a GET-able URL, which §11 does not want (§6). |
+| Daemon `/Encrypt` scan to refuse encrypted PDFs before transfer | It cannot tell password-protected from permissions-only, and a textual scan is fooled both ways, so it would present a heuristic as a guarantee (§4). |
+| Send `binary_preview: false` when disabled | An old Central rejects the key regardless of value, silently, so a disabled daemon could not register after a Central rollback (§9). |
 | Cache decoded previews (LRU, IndexedDB, Service Worker) | Cross-user and cross-session leakage, and poisoning on a shared phone; memory pressure on iOS (§14). |
 
 ## Open decisions and unverified assumptions
 
 Product decisions, each with a recommended default, are in
-`plan/31/01-decisions-and-governance.md` §6 (OD-1 … OD-10). Technical unknowns that must be
-measured before a default is final are `BP-OM-01 … BP-OM-09` in
+`plan/31/01-decisions-and-governance.md` §6 (OD-1 … OD-11). Technical unknowns that must be
+measured before a default is final are `BP-OM-01 … BP-OM-11` in
 `plan/31/09-implementation-status.md`. This ADR moves to `accepted` only after the product
 owner signs off on §7 (the widening) and on the ODs, and after `BP-08`'s security review.

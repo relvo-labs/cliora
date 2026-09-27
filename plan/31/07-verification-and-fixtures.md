@@ -17,11 +17,12 @@ Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 
 | 解壓縮炸彈 | `png-bomb-50k.png`（50000×50000，IDAT 約數 KB）、`png-ztxt-bomb.png`（壓縮 ancillary 超過 1 MiB）、`jpeg-sof-65535.jpg`、`jpeg-1000-scans.jpg`、`webp-16k.webp`（16383×16383）、`gif-frame-outside-screen.gif` | `FILE_PREVIEW_LIMIT`／`INVALID`；**瀏覽器收到 0 bytes** |
 | 邊界 | 4096×4096 PNG（恰好等於像素上限）、4097×4096、8192×2048、8193×1、8 MiB 整與 8 MiB＋1 的 JPEG、16 MiB 整與 ＋1 的 PDF、200 與 201 頁 PDF | 恰好等於上限的通過，超過一的拒絕 |
 | 格式錯誤 | 截斷 PNG（無 IEND）、IHDR 不在第一個、RIFF 大小不符的 WebP、無 `%%EOF` 的 PDF、`%PDF` 不在 offset 0、xref 損毀但信封正常的 PDF | daemon `malformed`；信封正常的交給 PDF.js → `render_failed` |
-| 加密 PDF | RC4-40、AES-128、AES-256；只有權限密碼（空使用者密碼）的 PDF | `encrypted`；空使用者密碼那份的行為**記錄下來**（PDF.js 可能直接開啟，交 OD-8 確認可否接受） |
+| 加密 PDF | RC4-40、AES-128、AES-256，**有使用者密碼**；同樣三種，**只有權限密碼（空使用者密碼）** | 有使用者密碼 → 前端 `pdf_password_required`，沒有密碼輸入框；只有權限密碼 → 依 OD-8 建議預設**正常唯讀顯示**（OD-8 若選 (b)，改為被拒）。daemon 對兩者都**不**判定加密，所以兩者都會傳到瀏覽器，這一點要寫在測試名稱與說明裡 |
 | 主動內容 PDF | 內含 JS（OpenAction）、URI 連結、Launch、GoToR、表單 submit、XFA、內嵌附件；CVE-2024-4367 PoC 形狀 | 惰性；無 navigation、popup、網路請求、script |
 | 錯誤 magic／多型檔 | `html-named.png`、`svg-named.png`、`pdf-named.jpg`、`png-named.pdf`、`zip-pdf-polyglot.pdf`、`text-named.pdf` | 依內容判定：HTML／SVG／text → `unsupported_type`；互換副檔名的 PNG／PDF 依真實型別顯示 |
 | 敏感名稱與路徑 | `.env.png`、`id_rsa.pdf`、`credentials-diagram.png`、`secrets-report.pdf`、`.ssh/diagram.png`、`photo.png → .env`（工作區內符號連結）、`link.pdf → ../outside.pdf`（外部符號連結） | `FILE_DENIED`；敏感者有稽核，不含路徑 |
-| 非一般檔案 | FIFO `pipe.png`、目錄 `dir.pdf/`、`/dev/zero` 的符號連結 | `not_regular` 或 `outside_root`；不卡住 |
+| 非一般檔案 | FIFO `fifo-a.png`、`fifo-b.png`（沒有寫入端）、unix socket `sock.pdf`、目錄 `dir.pdf/`、指向 `/dev/zero` 的符號連結 | `not_regular` 或 `outside_root`。**兩個 FIFO 的預覽送出並回應之後，第三個合法 PNG 預覽必須成功，三者合計 2 秒內完成**（daemon 層 `TestPreviewTwoFifosDoNotStarveWorkers`，full-stack 再跑一次） |
+| 符號連結語意 | `ok-link.png → images/ok.png`（in-root）、`photo.png → .env`（in-root，敏感） | 前者**顯示**（open 會跟隨 in-root 連結）；後者在 `RealRel` 二次判定被拒 |
 | 讀取中變動 | 讀取期間 append 的 PNG | `changed` |
 
 ## 2. 角色與閘門矩陣（full-stack）
@@ -35,6 +36,14 @@ Git 裡只放 ≤ 64 KiB 的小樣本。產生器是 deterministic 的（固定 
 | 任何人 | 可檢視 | on | **false／缺席（舊 daemon）** | 409，零 frame；UI 是既有 `FILE_BINARY` 面板 |
 | （#71 合併後）任何人 | 可檢視 | on | `binary_preview:true, file_download:false` | 預覽 200，下載 403 |
 | （#71 合併後）任何人 | 可檢視 | on | `binary_preview:false, file_download:true` | 預覽 409，下載 200 |
+| 任何人 | 可檢視 | on | 以 true 註冊 → 斷線 → 以省略欄位重連 | `can_preview_binary` 與端點**同時**變成 false／409 |
+
+另加兩項非角色的 full-stack 檢查：
+
+- **Central 回退演練**：停用的新 daemon（欄位省略）連到 1.10.0 的 Central，註冊被接受（node list 的
+  `daemon_version` 有更新）；啟用的新 daemon 連到同一個 Central，註冊被靜默略過（`daemon_version` 不更新）。
+  後者是**預期中的失敗**，用來證明 runbook 的順序是必要的。
+- **Canary log 搜尋**（`BP-OM-10`）：依 `04-…md` `BP-05`「發布閘門」的步驟，在兩種部署拓樸上都做。
 
 ## 3. 效能與容量（`make perf` 新情境）
 

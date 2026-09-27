@@ -1,6 +1,6 @@
 # 02 — 契約 v1.11.0（`BP-02`）
 
-**寫入集：** `contracts/v1/schemas/**`、`contracts/v1/fixtures/**`、`contracts/CHANGELOG.md`，
+**寫入集：** `contracts/v1/schemas/**`、`contracts/v1/fixtures/**`、`contracts/v1/compat/**`（新，凍結的舊 schema，見 §2）、`contracts/CHANGELOG.md`，
 以及三個消費端的 codec 與其測試（`backend/app/protocol/codec.py`、
 `daemon/internal/protocol/codec.go`、`frontend/src/protocol/decode.ts`）。
 
@@ -43,14 +43,25 @@
 
 ## 2. 回報欄位
 
-`node-register.binary_preview`：選用布林，**缺席即 false**，與 `image_upload`／`file_upload`／
-`file_download` 同一規則。Report-only：節點陳述姿態，平台不能選擇。
+`node-register.binary_preview`：選用，schema 為 **`{"const": true}`**；**缺席即 false**。
+Report-only：節點陳述姿態，平台不能選擇。
+
+**停用時省略，永不送 `false`。** 這是與 `image_upload`／`file_upload`／`file_download`（一般布林）
+刻意不同的地方，理由是 Central 回退（ADR 0029 §9）：舊 Central 的 `node-register` 是
+`additionalProperties:false`，它拒收的是**這個 key**，不看值。而且是靜默拒收：
+`codec.py:100-102` 拋錯，`ws/nodes.py:199-202` 直接 `continue`，不回覆、不持久化，連線照常。
+所以停用的新 daemon 必須在 wire 上與舊 daemon 長得一樣。`const: true` 讓「送了 `false`」
+在三個消費端都是**無效訊息**，daemon 的錯誤會在共用 fixture 上變紅，而不是等到回退那天才被發現。
+
+**凍結的舊 schema：** `contracts/v1/compat/node-register.pre-1.11.schema.json` 是 1.10.0
+（或 #71 未合併時的 1.9.0）`node-register.schema.json` 的逐字複本，只給相容測試用，**永不修改**；
+檔頭註明來源 commit。
 
 ## 3. 錯誤碼（加進 envelope 的 `error.code` enum，`control-envelope.schema.json:18`）
 
 | Code | 何時 | 出現方式 | 下一步 |
 |---|---|---|---|
-| `FILE_PREVIEW_UNSUPPORTED` | 型別不在白名單（reason `unsupported_type`）、加密 PDF（`encrypted`） | in-band | 無；非白名單型別可試文字預覽 |
+| `FILE_PREVIEW_UNSUPPORTED` | 型別不在白名單（reason `unsupported_type`） | in-band | 無；非白名單型別可試文字預覽 |
 | `FILE_PREVIEW_INVALID` | 結構異常（`malformed`）、讀取期間檔案改變（`changed`） | in-band | 重新整理；仍失敗就是檔案壞了 |
 | `FILE_PREVIEW_LIMIT` | 像素（`pixels`）、邊長（`dimensions`）、複雜度（`complexity`） | in-band | 無；用終端機處理 |
 | `FILE_PREVIEW_DISABLED` | 節點開關關閉，但 Central 的快取還以為開著 | error frame | 洽節點擁有者 |
@@ -82,6 +93,10 @@ Central 專屬、不上 wire：`FILE_PREVIEW_UNSUPPORTED_NODE`（409）、`FILE_
 | `invalid/filesystem-preview-data-non-base64.json` | 只接受標準字母表 |
 | `invalid/filesystem-preview-data-oversize.json` | 超過 699052 字元 |
 | `invalid/node-register-binary-preview-non-boolean.json` | 回報欄位型別 |
+| `invalid/node-register-binary-preview-false.json` | **停用時必須省略，`false` 無效**（ADR 0029 §9） |
+
+加密不是 wire 上的拒絕原因：daemon 不做加密判定，需要密碼的 PDF 由前端以 `pdf_password_required` 呈現
+（ADR 0029 §4、OD-8）。所以 `FILE_PREVIEW_UNSUPPORTED` 沒有 `encrypted` 這個 reason，也沒有對應 fixture。
 
 三個消費端都跑同一份 `manifest.json`。Go 端要為 `preview_opened` 與 `preview_data`
 這兩個 **response** 型別加驗證分支（#71 為 `downloaded` 開了先例）；少了它，
@@ -101,9 +116,12 @@ Central 專屬、不上 wire：`FILE_PREVIEW_UNSUPPORTED_NODE`（409）、`FILE_
 - **The `mime` enum is the allowlist**: png, jpeg, webp, gif, pdf. SVG is refused by schema.
 - **`filesystem.preview_data` is the seventh type allowed the 8 MiB bound** (response
   direction only); its `data` is capped at 512 KiB of raw bytes, so the bound does not move.
-- **`binary_preview` is optional and absent means "no"**; a Central must never send a
-  `filesystem.preview_*` frame to a node whose live registration did not report it,
-  because older daemons drop unknown types without replying.
+- **`binary_preview` is optional, `const: true`, and absent means "no"**. A disabled daemon
+  *omits* it rather than sending `false`, so that its registration is still accepted by an
+  older Central, whose strict schema rejects the key itself, silently. Unlike
+  `image_upload` / `file_upload`, `false` is invalid (`invalid/node-register-binary-preview-false.json`).
+- A Central must never send a `filesystem.preview_*` frame to a node whose live
+  registration did not report it, because older daemons drop unknown types without replying.
 - New error codes: `FILE_PREVIEW_UNSUPPORTED`, `FILE_PREVIEW_INVALID`, `FILE_PREVIEW_LIMIT`,
   `FILE_PREVIEW_DISABLED`, `FILE_PREVIEW_EXPIRED`.
 ```
@@ -116,16 +134,23 @@ Central 專屬、不上 wire：`FILE_PREVIEW_UNSUPPORTED_NODE`（409）、`FILE_
 2. `invalid/filesystem-read-with-raw.json` 在**現行** schema 下就應該是綠的，
    因為已經是 `additionalProperties:false`。它是**守門**測試，不是 RED；把它寫進測試名稱。
 3. 新 schema 寫好、Go 端還沒加 response 驗證分支 → `opened-svg` 在 Go 必須紅。
-4. **部署順序證明：** 用 1.10.0 的 `node-register.schema.json` 驗 `valid/node-register-binary-preview.json`
-   → 必須被拒。這條測試把「先升 Central、再升 daemon」從 runbook 的一句話變成一個會失敗的事實。
-   舊 Central 被拒後連線會不會斷，屬於 `BP-OM-08`。
+4. **部署與回退的相容證明**（Python，`backend/tests/test_contract_compat.py`，新）：以
+   `contracts/v1/compat/node-register.pre-1.11.schema.json` 驗證：
+   - `valid/node-register-binary-preview.json`（啟用）→ **必須被拒**。這讓「先升 Central、再升 daemon」
+     從 runbook 的一句話變成一個會失敗的事實。
+   - `valid/node-register.json`（停用的新 daemon 應送出的形狀，也就是沒有這個欄位）→ **必須被接受**。
+     這讓「停用即可接回舊 Central」成為可測的性質。
+   - daemon 端另有 `TestRegisterOmitsBinaryPreviewWhenDisabled`（`03-…md` §7）：停用時建構出的 register
+     payload 與上面那份 fixture 形狀相同，而且**沒有** `binary_preview` 這個 key。
+   舊 Central 拒收後的行為已由讀程式確認（靜默略過、連線不斷，原 `BP-OM-08`）；
+   `BP-04` 另有一條 Central 端測試把它釘住：送一個 schema 不符的 `node.register`，斷言沒有持久化、沒有回覆、連線仍在。
 5. 舊 daemon 的 `allowedTypes`（`codec.go:87`）不含新型別 → 以舊版本的 decoder 解
    `valid/filesystem-preview-open.json` 必須失敗，證明「會被靜默丟棄」這個前提。
 
 ## 7. 驗收清單
 
 - [ ] 六個 schema、`node-register` 一個欄位、envelope 五個錯誤碼。
-- [ ] §4 的 20 個 fixture 進 manifest；`make contract` 三個消費端綠。
+- [ ] §4 的 21 個 fixture 進 manifest；凍結 schema 與其來源 commit 註記；`make contract` 三個消費端綠。
 - [ ] `LargeFrameTypes`／`LARGE_FRAME_TYPES` 只加 `filesystem.preview_data`；有測試斷言
       `preview_open`／`preview_chunk` 仍是 64 KiB。
 - [ ] `TestPreviewChunkFitsFrameBound`：`chunk_size` 的 base64 加上 envelope 小於 `MaxFilePayload`。

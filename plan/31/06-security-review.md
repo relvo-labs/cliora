@@ -8,14 +8,16 @@ evidence（file:line）、asset、exploit precondition、impact、fix、verifica
 
 ## 1. 逐項審查威脅模型
 
-以 ADR 0029 的 T1–T16 為清單，每一項都要回答三題：
+以 ADR 0029 的 T1–T17 為清單，每一項都要回答四題：
 
 1. 控制是否**真的存在於程式碼**？附 file:line，不接受引用 ADR 或計畫當證據。
 2. RED 測試是否**真的會在控制被移除時變紅**？做法是暫時註解掉控制、跑測試、看它紅，
    然後還原（mutation check），並把結果記下來。
 3. 殘餘風險是否與 ADR 所寫一致？
+4. 描述是否與程式碼行為一致？特別是「open 會跟隨 in-root 符號連結」（不是 `O_NOFOLLOW`），
+   以及「加密判定只在渲染器」（daemon 沒有加密啟發式）。文件把啟發式寫成保證，本身就算一個發現。
 
-## 2. 必答的十二題
+## 2. 必答的十六題
 
 | # | 題目 | 通過條件 |
 |---|---|---|
@@ -25,12 +27,16 @@ evidence（file:line）、asset、exploit precondition、impact、fix、verifica
 | 4 | 炸彈是否在**傳輸前**被擋？ | 像素、邊長、掃描數在 daemon 端檢查，拒絕時 `bytes=0` |
 | 5 | 節點內容能否在 console 網域被渲染或執行？ | 七個標頭為一組；前端沒有 `<img src=blob>`、`iframe`、`object`、`embed`、viewer、scripting |
 | 6 | PDF 主動內容是否全部惰性？ | `setup.ts` 選項鎖定；E2E `pdf_active_content_inert` 在真實 CSP 下綠 |
-| 7 | 中央、edge、瀏覽器是否留下位元組？ | 磁碟、DB、log、metrics label、HTTP 快取、SW、IndexedDB 皆無；nginx 兩個指令存在 |
+| 7 | 中央、edge、瀏覽器是否留下位元組？ | 磁碟、DB、log、metrics label、HTTP 快取、SW、IndexedDB 皆無；nginx 專用 location 的指令存在（`04-…md` `BP-05`） |
 | 8 | 跨 session／跨使用者能否看到別人的預覽？ | session 切換、登出、換使用者三條路徑都有同步清除的測試 |
 | 9 | 舊 daemon 會不會收到新型別？ | `test_old_daemon_is_never_asked` 斷言零 frame |
 | 10 | Viewer 是否只多了「看」，沒有多「取得」？ | 沒有任何存檔入口；預覽與下載的開關互不影響的測試存在 |
 | 11 | DoS：並發、慢速 client、巨檔、終端飢餓？ | 各上限有測試；`BP-OM-05` 有量測 |
 | 12 | 路徑或內容是否出現在 log、metrics、稽核、錯誤訊息？ | `test_log_has_no_path` 與成功稽核 key 集合測試 |
+| 13 | 工作區路徑是否出現在**任何** URL，因而進入 nginx、uvicorn 或 Railway 的 access log？ | 路由拒絕 query 參數；前端只用 POST body；兩份 nginx 的專用 location 用 `cliora_noquery`；`BP-OM-10` canary 搜尋在每一處皆為零筆 |
+| 14 | 帶路徑的請求 body 或回應 body 是否可能被 edge 寫到暫存檔？ | `client_body_buffer_size` ≥ `client_max_body_size`；`proxy_buffering off`＋`proxy_max_temp_file_size 0`；`BP-OM-06` 證據；Railway edge 依 OD-11 限定宣稱 |
+| 15 | FIFO、socket、裝置能否佔住 preview worker？ | 先 `Stat`、`O_NONBLOCK` 開啟、fd `fstat`＋`SameFile`；`TestPreviewTwoFifosDoNotStarveWorkers` 在阻塞式實作下會紅（mutation check：把 `OpenFileNonBlocking` 換回 `OpenFile`） |
+| 16 | Central 回退是否可行而且可測？ | 停用時省略欄位（`const: true`，`false` 無效）；凍結 schema 相容測試；`test_invalid_register_is_silently_skipped` 釘住故障形態；staging 回退演練有證據 |
 
 ## 3. 依賴與授權審查（`pdfjs-dist`）
 

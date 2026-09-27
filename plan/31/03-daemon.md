@@ -2,6 +2,7 @@
 
 **寫入集：** `daemon/internal/files/preview.go`、`preview_image.go`、`preview_pdf.go`、
 `preview_handles.go`（皆新）與其 `_test.go`、`daemon/internal/files/testdata/preview/**`；
+`daemon/internal/workspace/root.go`（**只新增** `OpenFileNonBlocking` 與其測試）；register payload 的建構處（停用時省略欄位）；
 `daemon/internal/connection/preview_handlers.go`（新）；`connection.go` dispatch 的三個
 `case`；`daemon/internal/config/config.go`；`daemon/internal/metrics/metrics.go`。
 
@@ -9,7 +10,7 @@
 
 **不新增任何 Go 依賴**（`daemon/go.mod` 不變）。
 
-## 1. `PreviewOpen` 的十個步驟
+## 1. `PreviewOpen` 的十一個步驟
 
 刻意放在 `read.go` 旁邊（若 #71 已合併，也在 `download.go` 旁邊），三份要能並排讀。
 
@@ -17,16 +18,33 @@
 |---|---|---|
 | 1 | 節點開關 | 已停用的機器仍會被讀 |
 | 2 | 對**請求路徑**做 `SensitiveClassification` | 平台會去開啟它已決定不顯示的檔案 |
-| 3 | `root.OpenFile`（侷限、`O_NOFOLLOW`，ADR 0014）；錯誤經 `denyFromWorkspaceErr`（`read.go:95-112`） | 符號連結可以指出工作區；outside-root 會洩漏存在與否 |
-| 4 | 在 **fd** 上 `Stat` 並檢查 `IsRegular` | FIFO 會讓讀取永遠不返回 |
-| 5 | `RealRel(f)` 後再做一次 `SensitiveClassification` | 工作區內無害名字的符號連結指向 `.env` 就能被畫出來 |
-| 6 | 從同一 fd 讀 64 bytes 表頭，依 magic 判定 kind | 副檔名說了算 |
-| 7 | 依 kind 的大小上限檢查 fd 的快照大小 | 16 MiB 以上的檔案被整份讀進記憶體 |
-| 8 | 從同一 fd 有界讀整份（`LimitReader(cap+1)`），讀完再 `Stat` 一次比對 size／mtime | 驗證的位元組與送出的位元組不同 |
-| 9 | 結構驗證（§2） | 炸彈與損毀檔送到瀏覽器 |
-| 10 | 登記快照 handle（§3），回 `preview_opened` | — |
+| 3 | **開啟前的型別檢查**：`root.Stat(rel)`（經同一個 `os.Root`，in-root 符號連結會被跟隨、逃出的會被拒）；不是一般檔案就 `not_regular`，**不開啟** | FIFO、socket、裝置節點會被 `open` 碰到（裝置的 open 可能有副作用） |
+| 4 | **侷限的非阻塞開啟**：新的 `Root.OpenFileNonBlocking(rel)` = `os.Root.OpenFile(clean, O_RDONLY\|O_NONBLOCK\|O_NOCTTY, 0)`；錯誤經 `denyFromWorkspaceErr`（`read.go:95-112`） | 在第 3 步之後被換成 FIFO 的路徑會讓 open **一直等寫入端**，把 worker 佔住（現行 `Root.OpenFile` 是阻塞式 `os.Root.Open`，`workspace/root.go:109-118`） |
+| 5 | 在 **fd** 上 `Stat`：`IsRegular`，並以 `os.SameFile` 比對第 3 步的結果 | 第 3 與第 4 步之間被換掉的檔案會通過 |
+| 6 | `RealRel(f)` 後再做一次 `SensitiveClassification` | open **會跟隨** in-root 符號連結（不是 `O_NOFOLLOW`），所以 `photo.png → .env` 只有在這一步才會被擋 |
+| 7 | 從同一 fd 讀 64 bytes 表頭，依 magic 判定 kind | 副檔名說了算 |
+| 8 | 依 kind 的大小上限檢查 fd 的快照大小 | 16 MiB 以上的檔案被整份讀進記憶體 |
+| 9 | 從同一 fd 有界讀整份（`LimitReader(cap+1)`），讀完再 `Stat` 一次比對 size／mtime | 驗證的位元組與送出的位元組不同 |
+| 10 | 結構驗證（§2） | 炸彈與損毀檔送到瀏覽器 |
+| 11 | 登記快照 handle（§3），回 `preview_opened` | — |
 
-第 2 與第 5 步是同一個檢查做兩次，**兩次都不能省**，理由見右欄。
+**關於符號連結的正確描述：** 預覽的 open 與文字預覽相同，都是經 `os.Root` 的侷限解析：
+`..` 與逃出根目錄的符號連結被拒，**留在根目錄內的符號連結會被跟隨**（`root.go:100-108` 的註解寫得正確；
+`read.go:12` 的「`O_NOFOLLOW` open」字樣不正確，只有寫入路徑 `CreateExclusive` 帶 `O_NOFOLLOW`，`root.go:152-159`）。
+所以真正擋住「無害名字指向敏感檔」的是第 6 步的 `RealRel` 二次判定，而不是 open 的旗標。
+
+**`Root.OpenFileNonBlocking` 只新增，不取代。** 既有的 `Root.OpenFile` 與 `Read` 不改。
+文字預覽今天在 dispatch 迴圈上以阻塞方式開啟 FIFO（`read.go:25` → `connection.go:509`），會卡住整個節點的控制迴圈，
+這是**既有缺陷**，另開議題以同一個 helper 修正，不併入本期（`09-…md` §4）。
+
+**殘餘：** 在第 3 與第 4 步之間，工作區**內**出現的字元／區塊裝置節點仍會被以非阻塞方式開啟一次，然後在第 5 步被拒。
+建立裝置節點需要 `CAP_MKNOD`，非 root 的 `agentd` 沒有（ADR 0023）；即使如此 worker 也不會被卡住。
+
+**未驗證：** `os.Root.OpenFile` 會把 `O_NONBLOCK` 原樣傳給 `openat`，而且 Go 對非阻塞的一般檔案 fd 讀取行為正常。
+`TestOpenFileNonBlockingOnFifoReturns` 在實作第一步就要證明這一點；證明不了，就改用
+「`Stat` 預檢＋在獨立 goroutine 開啟並設 deadline，逾時就放棄該 goroutine、以寫端打開 FIFO 使其返回」的後備方案，並回報設計變更。
+
+第 2 與第 6 步是同一個檢查做兩次，**兩次都不能省**，理由見右欄。
 拒絕一律 in-band（`Denied` + `Code` + `Reason`），與 `ReadResult` 同形狀；錯誤訊息是固定字串。
 
 ## 2. 結構驗證：只走表頭與標記，不解碼
@@ -37,7 +55,7 @@
 | JPEG | SOI；marker 走訪到 EOI；SOF 的寬高；SOS 數 ≤ 64；segment 長度不得越界 | `image/jpeg.DecodeConfig` 取尺寸，再加 marker walker |
 | GIF | 簽章；邏輯螢幕尺寸；第一個 image descriptor 存在且落在邏輯螢幕內 | `image/gif.DecodeConfig`，再走到第一個 `0x2C` |
 | WebP | `RIFF` 大小欄位與檔案大小一致；`WEBP`；第一個 chunk 為 `VP8 `／`VP8L`／`VP8X`，依各自格式取 canvas 尺寸 | 手寫 reader，約 80 行，全部以 `len` 檢查保護 |
-| PDF | offset 0 為 `%PDF-1.[0-7]` 或 `%PDF-2.0`；最後 1 KiB 內有 `%%EOF`；在最後 64 KiB 內做 `/Encrypt` 的**啟發式**掃描 | 位元組比對。**不解析 xref、不 inflate** |
+| PDF | offset 0 為 `%PDF-1.[0-7]` 或 `%PDF-2.0`；最後 1 KiB 內有 `%%EOF`。**不做加密判定**：`/Encrypt` 掃描分不出需要密碼與只有權限密碼的 PDF，已從設計移除（ADR 0029 §4、OD-8） | 位元組比對。**不解析 xref、不 inflate** |
 
 每個 sniffer 都有 `go test -fuzz` 目標，種子語料來自 `07-…md` §1。
 每個請求都以 `recover` 包住，panic 回 `FILE_PREVIEW_INVALID`/`malformed` 並計數，不讓 daemon 掛掉。
@@ -89,7 +107,8 @@ filesystem:
   （與 `UploadFromDefault`、`FileUploadFromDefault` 同一種處理）。
 - 上限只能**調低**，不能調高：大於編譯期常數的值在載入時拒絕並報錯。
   因為 `chunk_count ≤ 32` 與 `size ≤ 16 MiB` 是契約（`02-…md` §1），調高設定不會讓 wire 接受。
-- 回報：`node-register.binary_preview = enabled`。
+- 回報：啟用時送 `node-register.binary_preview: true`；**停用時整個 key 省略，永不送 `false`**
+  （schema 為 `const: true`，`02-…md` §2）。停用的新 daemon 因此能向舊 Central 註冊，Central 版本回退才可行（ADR 0029 §9）。
 
 ## 6. Metrics 與 log
 
@@ -109,7 +128,11 @@ filesystem:
 | `TestPreviewPixelBombRefused` | 50000×50000 PNG、SOF 65535×65535 JPEG → `FILE_PREVIEW_LIMIT`，且沒有 handle 被建立 |
 | `TestPreviewJPEGScanBomb` | 1000 個 SOS → `complexity` |
 | `TestPreviewChangedDuringRead` | 讀取期間 append → `FILE_PREVIEW_INVALID`/`changed` |
-| `TestPreviewFifoAndDevice` | FIFO → `not_regular`，而且**不會卡住**（測試本身有 2 秒 deadline） |
+| `TestOpenFileNonBlockingOnFifoReturns` | 對沒有寫入端的 FIFO 呼叫 `Root.OpenFileNonBlocking`：100 ms 內返回（證明 `O_NONBLOCK` 有傳到 `openat`） |
+| `TestPreviewTwoFifosDoNotStarveWorkers` | 以兩個 open worker（上限 2）依序送 `fifo-a.png`、`fifo-b.png` 的預覽，兩者都回 `not_regular`；**之後**送第三個合法的 PNG 預覽，必須成功（不是 `NODE_BUSY`）；三者合計在 **2 秒 deadline** 內完成。在阻塞式實作下，前兩個會永遠佔住 worker，第三個拿到 `NODE_BUSY`，或整個測試逾時。測試的 cleanup 以寫端打開兩個 FIFO，讓阻塞實作的 goroutine 也能結束，不外洩 |
+| `TestPreviewFifoSwappedAfterStat` | 以 hook 在第 3 步之後把一般檔換成 FIFO：open 立即返回，第 5 步回 `not_regular` 或 `changed`，不會卡住 |
+| `TestPreviewSocketAndSymlinkToDevice` | unix socket → `not_regular`；指向 `/dev/zero` 的符號連結 → `outside_root`（被 `os.Root` 拒絕） |
+| `TestPreviewFollowsInRootSymlinkThenRechecks` | `ok-link.png → images/ok.png` 會被顯示（證明是跟隨，不是 `O_NOFOLLOW`）；`photo.png → .env` → `FILE_DENIED` |
 | `TestPreviewHandleBoundToSession` | 用 session B 的 id 拉 session A 的 handle → `EXPIRED` |
 | `TestPreviewHandleExpiresAndFrees` | 30 秒閒置後 handle 數歸零（fake clock） |
 | `TestPreviewHandlesDroppedOnDisconnect` | 連線結束 → 表清空 |
@@ -117,14 +140,15 @@ filesystem:
 | `TestPreviewBusyIsImmediate` | 第三個並發 open 立即 `NODE_BUSY`，不排隊 |
 | `TestPreviewSnapshotEqualsValidatedBytes` | 所有 chunk 串起來與驗證時的 buffer 位元組相同 |
 | `TestReadStillDeniesBinary` | **同一張 PNG** 走 `Read` 仍是 `FILE_BINARY`：文字預覽語意不變 |
-| `TestPreviewDisabledSwitch` | `enabled:false` → `FILE_PREVIEW_DISABLED`，且 `node-register` 回報 false |
+| `TestPreviewDisabledSwitch` | `enabled:false` → `FILE_PREVIEW_DISABLED` |
+| `TestRegisterOmitsBinaryPreviewWhenDisabled` | `enabled:false` 時建構的 register payload **沒有** `binary_preview` 這個 key，形狀等同 `contracts/v1/fixtures/valid/node-register.json`；`enabled:true` 時為 `true`；任何情況下都不會出現 `false` |
 | Fuzz：`FuzzSniffPNG`／`JPEG`／`GIF`／`WebP`／`PDFEnvelope` | 不 panic、不越界、不超時 |
 
 還要跑 `go test -race ./...`。handle 表是並發資料結構，race 測試是必要條件，不是加分。
 
 ## 8. 驗收清單
 
-- [ ] §1 十步與 §2 格式表逐項有測試。
+- [ ] §1 十一步與 §2 格式表逐項有測試；`Root.OpenFile` 與 `read.go` 沒有 diff。
 - [ ] §7 全部綠；`go test -race ./...` 綠；每個 fuzz 目標至少跑 10 分鐘，無發現。
 - [ ] `daemon/go.mod` 沒有新依賴。
 - [ ] `connection.go` 只多了三個 `case`，全部轉交 worker。

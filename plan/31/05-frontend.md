@@ -46,7 +46,8 @@ daemon 回 `FILE_PREVIEW_UNSUPPORTED`/`unsupported_type` 時（例如 `notes.pdf
 loading task 與 document（`BP-07`）、所有 canvas。大物件全部 `markRaw`／`shallowRef`，
 不進 Pinia 的 reactive state。
 
-**取得：** `fetch` 帶 `signal`，以 `ReadableStream` 讀取，累計長度不得超過
+**取得：** `POST /api/sessions/{id}/files/binary-preview`，路徑放在 JSON body `{"path": …}`，
+**URL 不帶任何 query**（ADR 0029 §6：URL 會進 access log）。`fetch` 帶 `signal`，以 `ReadableStream` 讀取，累計長度不得超過
 `Content-Length` 與 `X-Cliora-Preview-*` 宣告的上限。讀完後長度必須等於 `Content-Length`，
 否則當成 `transfer_failed`。進度（已收／總量）透過 `aria-live="polite"` 以節流方式宣告。
 
@@ -89,7 +90,7 @@ object URL：**設計上不建立**。若日後裝置 fallback 需要，由同�
 | `invalid` | `FILE_PREVIEW_INVALID`/`malformed` | 「檔案可能損毀」；**不提供下載** |
 | `changed` | `FILE_PREVIEW_INVALID`/`changed` | 「檔案正在變動」，提供重試 |
 | `unsupported` | `FILE_PREVIEW_UNSUPPORTED`/`unsupported_type` | 「改用文字預覽」（§1） |
-| `encrypted` | `/encrypted` 或 PDF.js `PasswordException` | 「此 PDF 已加密，預覽不支援」（OD-8） |
+| `pdf_password_required` | PDF.js 要求密碼（`loadingTask.onPassword` 被呼叫，或 `PasswordException`） | 「此 PDF 需要密碼才能開啟，預覽不支援」（OD-8）。**不顯示密碼輸入框**；`onPassword` 直接 `loadingTask.destroy()`，不呼叫它的 callback |
 | `pdf_too_many_pages` | `numPages` > 上限 | 顯示頁數與上限 |
 | `render_failed` | 瀏覽器解碼或渲染失敗 | 「此瀏覽器無法顯示這個檔案」；**不提供下載** |
 | `unsupported_browser` | 沒有 `createImageBitmap`，或 PDF.js 無法載入 | 說明是瀏覽器限制（OD-9） |
@@ -108,6 +109,7 @@ GIF 在 `ready` 時加一行標示：「動畫僅顯示第一幀」（OD-1）。
 | 測試 | 斷言 |
 |---|---|
 | `routes_by_capability_then_hint` | 三列路由表 |
+| `path_travels_in_body` | `fetchBinaryPreview` 送出的是 POST、`Content-Type: application/json`，URL 以 `/binary-preview` 結尾且**沒有 `?`**，路徑只出現在 body |
 | `session_switch_mid_transfer_never_paints` | A 的回應在切到 B 之後才到 → canvas 從未被畫、狀態是 B 的 |
 | `auth_loss_clears_in_same_tick` | 觸發 `isAuthenticated=false` → 同一個同步呼叫內 `bitmap.close` 已呼叫、canvas 0×0 |
 | `user_switch_clears` | `user.id` 由 u1 → u2 → 已 dispose |
@@ -172,7 +174,15 @@ getDocument({
   wasmUrl: SELF_HOSTED_WASM,   // 版本若有此選項
 });
 // 渲染時 annotationMode: AnnotationMode.ENABLE；不建立 AnnotationLayer／TextLayer
+loadingTask.onPassword = () => { void loadingTask.destroy(); state = "pdf_password_required"; };
+// 不呼叫 onPassword 的 updatePassword callback：本期沒有任何密碼輸入（OD-8）
 ```
+
+**加密的處理（OD-8 建議預設）：** 只有「需要密碼才能開啟」的 PDF 會被拒絕，而且是由渲染器拒絕。
+只有權限密碼（空使用者密碼）的 PDF 可以不經提示開啟，照常唯讀顯示。權限位元只限制列印、複製與編輯，
+而預覽本來就不提供這三者。daemon **不**做加密判定（ADR 0029 §4），所以前端文案不得宣稱「已在伺服器端偵測加密」。
+若 OD-8 改選 (b)（任何加密都拒絕），需要一個 PDF.js 對「無密碼即可開啟的加密文件」的訊號；
+該 API 未驗證（`BP-OM-12`），要在本票第一天確認，確認不了就回報，不以啟發式替代。
 
 - 以 lint 規則或測試禁止 `pdfjs-dist/web/*`（viewer）與 `pdf.sandbox`／scripting 的 import。
 - 靜態資產（`cmaps/`、`standard_fonts/`、`wasm/`）在 build 時由 `vite.config.ts` 裡的
@@ -201,7 +211,8 @@ getDocument({
 | unit | `page_limit_before_render` | `numPages=10000` → 沒有任何 `page.render` 被呼叫 |
 | E2E（真實 CSP） | `pdf_active_content_inert` | 內含 JS、URI 連結、Launch、表單 submit、附件的 PDF：沒有 navigation、沒有 popup、沒有額外網路請求、DOM 裡沒有 `<a>` |
 | E2E（真實 CSP） | `no_csp_violation` | 開一份 CJK PDF 與一份含 JPX 影像的 PDF，`securitypolicyviolation` 事件數為 0 |
-| E2E | `encrypted_pdf_refused` | 顯示 `encrypted`，沒有密碼輸入框 |
+| E2E | `password_pdf_refused` | RC4-40／AES-128／AES-256 且有使用者密碼的 PDF：顯示 `pdf_password_required`，DOM 裡**沒有** `input[type=password]`，worker 已終止 |
+| E2E | `permissions_only_pdf_renders` | 空使用者密碼、只有權限密碼的 PDF：正常顯示第 1 頁，且沒有列印／複製／存檔入口（OD-8 建議預設；若 OD-8 選 (b)，這條改為斷言被拒） |
 | E2E | `cve_2024_4367_shape` | 公開 PoC 形狀的字型：沒有 script 執行（監聽 `window` 上的標記變數） |
 | E2E | `bundle_initial_chunk_unchanged` | 首頁的 JS 大小與基準相同（PDF.js 只在 lazy chunk） |
 
