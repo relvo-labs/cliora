@@ -193,6 +193,213 @@ describe("FileBrowser — 逐層瀏覽", () => {
   });
 });
 
+// --- #76: the mobile browser has to bind the store itself ------------------
+//
+// Every case above goes through `stubApi`, which binds the files store to the
+// session *before* the component mounts. On a phone nothing does that: the
+// desktop `useFileTree` is the one that calls `store.useSession`, and below
+// 768px it is not mounted. So a fresh session opened on a phone showed the
+// breadcrumb and an empty list — no request, no loading, no error — while
+// every test here was green. The cases below start from a fresh Pinia and
+// never pre-bind.
+
+const A = "44444444-4444-4444-8444-444444444444";
+const B = "55555555-5555-4555-8555-555555555555";
+const A_ROOT = [entry({ name: "README.md", rel_path: "README.md" })];
+const B_ROOT = [entry({ name: "b-only.txt", rel_path: "b-only.txt" })];
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((r) => (resolve = r));
+  return { promise, resolve };
+}
+
+function unboundApi(overrides: Record<string, unknown> = {}) {
+  const listFileTree = vi.fn(async (id: string, params: { path: string }) => ({
+    path: params.path,
+    truncated: false,
+    entries: id === B ? B_ROOT : A_ROOT,
+  }));
+  vi.spyOn(auth, "api").mockReturnValue({
+    listFileTree,
+    ...overrides,
+  } as never);
+  return listFileTree;
+}
+
+describe("FileBrowser — 沒有預先綁定的新 session（#76）", () => {
+  it("session 從 null 變成可瀏覽時，以該 session 載入根目錄並顯示檔案", async () => {
+    const listFileTree = unboundApi();
+    // The workspace view mounts the panel before the session payload has
+    // confirmed anything: no id, no capability.
+    const wrapper = render({ sessionId: null, canBrowse: false });
+    await flushPromises();
+    expect(listFileTree).not.toHaveBeenCalled();
+
+    await wrapper.setProps({ sessionId: A, canBrowse: true });
+    await flushPromises();
+
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    expect(listFileTree.mock.calls[0][0]).toBe(A);
+    expect(listFileTree.mock.calls[0][1]).toMatchObject({ path: "." });
+    expect(wrapper.text()).toContain("README.md");
+    expect(useFilesStore().sessionId).toBe(A);
+  });
+
+  it("一開始就帶著可瀏覽的 session 掛載，也會載入", async () => {
+    const listFileTree = unboundApi();
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    expect(wrapper.text()).toContain("README.md");
+  });
+
+  it("請求進行中顯示載入狀態，而不是一片空白", async () => {
+    const pending = deferred<unknown>();
+    unboundApi({ listFileTree: vi.fn(() => pending.promise) });
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    expect(wrapper.get('[aria-busy="true"]').attributes("aria-label")).toBe(
+      "正在載入資料夾",
+    );
+  });
+
+  it("session 已結束：說明原因、不發請求、也不給沒用的重試", async () => {
+    const listFileTree = unboundApi();
+    const wrapper = render({
+      sessionId: A,
+      canBrowse: true,
+      disabledReason: "Session 已結束，檔案瀏覽不再可用。",
+    });
+    await flushPromises();
+    expect(listFileTree).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("Session 已結束");
+    expect(wrapper.text()).not.toContain("重試");
+    expect(useFilesStore().sessionId).toBeNull();
+  });
+
+  it("沒有瀏覽權限：不發請求，且不留下任何 session 綁定", async () => {
+    const listFileTree = unboundApi();
+    const wrapper = render({ sessionId: A, canBrowse: false });
+    await flushPromises();
+    expect(listFileTree).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("沒有瀏覽這個工作區的權限");
+    expect(useFilesStore().sessionId).toBeNull();
+  });
+
+  it("失去權限時清掉已載入的內容", async () => {
+    unboundApi();
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    expect(wrapper.text()).toContain("README.md");
+
+    await wrapper.setProps({ canBrowse: false });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("README.md");
+    expect(useFilesStore().sessionId).toBeNull();
+    expect(useFilesStore().dirs).toEqual({});
+  });
+
+  it("session 結束時清掉已載入的內容", async () => {
+    unboundApi();
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    await wrapper.setProps({ disabledReason: "Session 已結束" });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("README.md");
+    expect(useFilesStore().dirs).toEqual({});
+  });
+
+  it("換 session 後，前一個 session 遲到的回應不會落地", async () => {
+    const late = deferred<unknown>();
+    const listFileTree = vi.fn((id: string, params: { path: string }) =>
+      id === A
+        ? late.promise
+        : Promise.resolve({
+            path: params.path,
+            truncated: false,
+            entries: B_ROOT,
+          }),
+    );
+    unboundApi({ listFileTree });
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+
+    await wrapper.setProps({ sessionId: B });
+    await flushPromises();
+    // A's answer arrives after the switch. The abort already fired; a stub
+    // that ignores the signal still resolves, which is the harder case.
+    late.resolve({ path: ".", truncated: false, entries: A_ROOT });
+    await flushPromises();
+
+    expect(listFileTree.mock.calls.map((c) => c[0])).toEqual([A, B]);
+    expect(wrapper.text()).toContain("b-only.txt");
+    expect(wrapper.text()).not.toContain("README.md");
+    expect(useFilesStore().sessionId).toBe(B);
+  });
+
+  it("快取屬於單一 session：切回原 session 會重新向它要資料", async () => {
+    const listFileTree = unboundApi();
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    await wrapper.setProps({ sessionId: B });
+    await flushPromises();
+    expect(wrapper.text()).not.toContain("README.md");
+    await wrapper.setProps({ sessionId: A });
+    await flushPromises();
+
+    expect(listFileTree.mock.calls.map((c) => c[0])).toEqual([A, B, A]);
+    expect(wrapper.text()).toContain("README.md");
+    expect(wrapper.text()).not.toContain("b-only.txt");
+  });
+
+  it("載入失敗時顯示錯誤並提供重試，重試成功後列出檔案", async () => {
+    const { ApiError } = await import("../../api/client");
+    const listFileTree = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiError("RELAY_TIMEOUT", "逾時", 504, "r1"))
+      .mockResolvedValue({ path: ".", truncated: false, entries: A_ROOT });
+    unboundApi({ listFileTree });
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+
+    expect(wrapper.find('[role="alert"]').text()).toContain("逾時");
+    await wrapper.get('[data-action="retry"]').trigger("click");
+    await flushPromises();
+
+    expect(listFileTree).toHaveBeenCalledTimes(2);
+    expect(listFileTree.mock.calls[1][0]).toBe(A);
+    expect(wrapper.text()).toContain("README.md");
+  });
+
+  it("權限被伺服器拒絕（403）時說明，而且不給重試", async () => {
+    const { ApiError } = await import("../../api/client");
+    unboundApi({
+      listFileTree: vi
+        .fn()
+        .mockRejectedValue(new ApiError("FORBIDDEN", "no", 403, "r1")),
+    });
+    const wrapper = render({ sessionId: A });
+    await flushPromises();
+    expect(wrapper.text()).toContain("You do not have permission");
+    expect(wrapper.find('[data-action="retry"]').exists()).toBe(false);
+  });
+
+  it("卸載再掛載（切模式、跨寬度）保留同一個 session 的綁定與快取", async () => {
+    const listFileTree = unboundApi();
+    const first = render({ sessionId: A });
+    await flushPromises();
+    first.unmount();
+    expect(useFilesStore().sessionId).toBe(A);
+
+    const second = render({ sessionId: A });
+    await flushPromises();
+    // Served from the cache the first mount filled: same session, no refetch.
+    expect(listFileTree).toHaveBeenCalledTimes(1);
+    expect(second.text()).toContain("README.md");
+  });
+});
+
 describe("FileBrowser — 搜尋範圍不能被誤讀", () => {
   it("永遠說明搜尋的是整個工作區的檔名", async () => {
     stubApi();

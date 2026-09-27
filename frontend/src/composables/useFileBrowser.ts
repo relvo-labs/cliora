@@ -11,12 +11,20 @@
 // use for any of them — and unused-but-present concepts are the ones the next
 // change assumes someone depends on.
 //
-// No fetching lives here. `stores/files.ts` already loads per directory, keyed
-// by workspace-relative path, and already aborts and wipes on a session change;
-// that behaviour is load-bearing (addendum §2) and this composable is a reader
-// of it.
+// No fetching logic lives here. `stores/files.ts` already loads per directory,
+// keyed by workspace-relative path, and already aborts and wipes on a session
+// change; that behaviour is load-bearing (addendum §2) and this composable
+// uses it rather than re-implementing it.
+//
+// It does have to *bind* the store, though, exactly as `useFileTree.bind` does
+// (#76). The store refuses to load anything until `useSession` has named a
+// session, and on a phone `useFileTree` is not mounted, so nothing else will.
+// Relying on the desktop tree to have bound it first is what left a fresh
+// session on a phone with a breadcrumb and an empty list, no request sent.
+// Binding is idempotent for the same id, so a width change that swaps this
+// component for the tree keeps the cache; a different id, or none, wipes it.
 
-import { computed, ref, watch, type Ref } from "vue";
+import { computed, onScopeDispose, ref, watch, type Ref } from "vue";
 
 import type { FileEntry } from "../api/dto";
 import { ROOT_PATH, useFilesStore, type DirState } from "../stores/files";
@@ -32,6 +40,10 @@ export interface FileBrowserOptions {
   sessionId: Ref<string | null>;
   /** Folder name for the workspace root, not a full path (ADR 0014). */
   rootLabel: Ref<string>;
+  /**
+   * False when the role lacks file.browse *or* the session can no longer be
+   * browsed (ended). Either way nothing is bound and nothing is requested.
+   */
   canBrowse: Ref<boolean>;
 }
 
@@ -39,25 +51,46 @@ export function useFileBrowser(options: FileBrowserOptions) {
   const store = useFilesStore();
   const cwd = ref(ROOT_PATH);
 
-  // A session change resets the location as well as the data. The store wipes
+  // The one session the store may hold data for, or none. Losing permission
+  // or the session ending unbinds, which wipes, so no listing outlives the
+  // right to see it.
+  const boundId = computed(() =>
+    options.canBrowse.value ? options.sessionId.value : null,
+  );
+
+  // Bind, then load — in one watcher, so the order cannot depend on how two
+  // watchers happen to be scheduled.
+  //
+  // A binding change resets the location as well as the data. The store wipes
   // its own contents; if `cwd` survived, the new session would open on a path
   // that belonged to the old one — which is the one thing a
   // workspace-relative path must never do.
   watch(
-    () => options.sessionId.value,
-    () => {
-      cwd.value = ROOT_PATH;
-    },
-  );
-
-  watch(
-    [() => options.sessionId.value, () => options.canBrowse.value, cwd],
-    ([sessionId, canBrowse, path]) => {
-      if (!sessionId || !canBrowse) return;
-      void store.loadDir(path);
+    [boundId, cwd],
+    ([sessionId, path], previous) => {
+      // On the immediate first run `previous` holds no id, so this binds too.
+      if (sessionId !== previous?.[0]) {
+        store.useSession(sessionId);
+        if (path !== ROOT_PATH) {
+          // Re-enters this watcher with the same id and the root path.
+          cwd.value = ROOT_PATH;
+          return;
+        }
+      }
+      if (sessionId) void store.loadDir(path);
     },
     { immediate: true },
   );
+
+  // Leaving the view (mode switch, preview, width change) cancels this
+  // browser's in-flight listings; the binding and the cache stay, so coming
+  // back to the same session is served from cache. Same contract as
+  // `useFileTree`, and it runs before a sibling mounts in the same patch, so it
+  // cannot cancel the sibling's own requests.
+  onScopeDispose(() => store.abortInflight());
+
+  /** True while bound to a session that may be browsed. */
+  const bound = computed(() => boundId.value !== null);
 
   const node = computed(() => store.dirs[cwd.value]);
   const state = computed<DirState>(() => node.value?.state ?? "idle");
@@ -119,7 +152,9 @@ export function useFileBrowser(options: FileBrowserOptions) {
     return entry;
   }
 
+  /** Re-read the current level; also the retry after a failed load. */
   function refresh(): void {
+    if (!bound.value) return;
     void store.loadDir(cwd.value, { force: true });
   }
 
@@ -136,6 +171,7 @@ export function useFileBrowser(options: FileBrowserOptions) {
   }
 
   return {
+    bound,
     cwd,
     crumbs,
     atRoot,

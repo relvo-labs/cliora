@@ -81,7 +81,14 @@ export function isAbortError(error: unknown): boolean {
 export interface TokenStore {
   accessToken(): string | null;
   refreshToken(): string | null;
-  setTokens(pair: TokenPair): void;
+  /**
+   * `reason` says where the pair came from. A `refresh` pair is always derived
+   * from the pair installed at that moment (see `refresh()`), so it names the
+   * same user; a `login` pair may name anyone. The auth store needs the
+   * difference to keep an identity check it is running valid across a
+   * rotation that check itself caused (#76).
+   */
+  setTokens(pair: TokenPair, reason?: "login" | "refresh"): void;
   clear(): void;
 }
 
@@ -127,7 +134,7 @@ export class ApiClient {
       false,
     );
     const body = (await this.parse(res)) as LoginResponse;
-    this.tokens.setTokens(body.tokens);
+    this.tokens.setTokens(body.tokens, "login");
     return body;
   }
 
@@ -677,7 +684,7 @@ export class ApiClient {
         const parsed = (await res.json()) as TokenPair;
         const currentRefreshToken = this.tokens.refreshToken();
         if (currentRefreshToken === refreshToken) {
-          this.tokens.setTokens(parsed);
+          this.tokens.setTokens(parsed, "refresh");
           return true;
         }
         if (currentRefreshToken === null) {

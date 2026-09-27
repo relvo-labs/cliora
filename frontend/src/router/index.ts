@@ -6,6 +6,7 @@ import {
 } from "vue-router";
 
 import { useAuthStore } from "../stores/auth";
+import { installAuthLossHandler } from "./authLoss";
 
 export const routes: RouteRecordRaw[] = [
   {
@@ -113,8 +114,13 @@ export function registerGuards(router: Router): void {
   });
 }
 
+export { installAuthLossHandler };
+
 export function createAppRouter(): Router {
   const router = createRouter({ history: createWebHistory(), routes });
   registerGuards(router);
+  // The guard covers a navigation made while signed out; this covers being
+  // signed out while no navigation is happening (#76).
+  installAuthLossHandler(router);
   return router;
 }

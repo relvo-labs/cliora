@@ -39,7 +39,7 @@ import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
 import { useFocusTrap } from "../composables/useFocusTrap";
 import { useTerminalSession } from "../composables/useTerminalSession";
-import { api } from "../stores/auth";
+import { api, useAuthStore } from "../stores/auth";
 import {
   INSPECTOR_MAX,
   INSPECTOR_MIN,
@@ -50,6 +50,7 @@ import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 
 const props = defineProps<{ id: string }>();
+const auth = useAuthStore();
 const sessions = useSessionsStore();
 // Reached directly for one thing only: refreshing the directory an upload landed
 // in. The tree owns its own loading; this is the one event it cannot see.
@@ -75,10 +76,51 @@ const canOpenShell = computed(
   () => capabilities.value?.can_open_shell === true,
 );
 
+// A session in a terminal state has no daemon-side workspace to browse.
+const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
+
+// Ended, by either witness (#76 review). The payload's status is only as fresh
+// as the last fetch; the terminal socket's `terminal.exited` /
+// `session.stopped` is usually the first — and often the only — news that the
+// session is over, and no refetch follows it. Either one is enough. The
+// socket's `exited` is sticky for the session it belongs to (no reconnect is
+// scheduled after it) and a switch to another id reconnects, which leaves it.
+const sessionEnded = computed(
+  () =>
+    terminal.status.value === "exited" ||
+    (session.value !== null && TERMINAL_STATUSES.has(session.value.status)),
+);
+
 // The file panel keys off the session id; a null id (or a dead session) means it
 // binds nothing and issues no request.
+//
+// Only a live session the *latest* fetch confirmed (#76). `sessions.current`
+// outlives a failed refetch — a 403 leaves the previous payload in place — so
+// matching the id alone would keep the files store bound, and its listing
+// cached, for a session the server just refused. A terminal status unbinds for
+// the same reason: the tree, the phone browser and the preview all read this
+// one value, and the preview in particular is not mounted beside the browser on
+// a phone, so it cannot rely on the browser noticing. Unbinding wipes the store
+// and closes the preview (see the watcher before the session-switch one).
+//
+// And only while this tab is signed in as the user it was opened for: the file
+// cache is keyed by session id alone, so it must not outlive the user it was
+// fetched for. The auth-loss handler wipes the store and leaves the route;
+// unbinding here as well means nothing in this view can ask for it again in
+// the meantime.
+//
+// An *unconfirmed* identity (a cross-tab token swap, `/me` outstanding) does
+// not unbind — unbinding wipes, and `/me` may yet name the same user, in which
+// case the page comes back exactly as it was. It is covered and made inert by
+// `App.vue` instead, and the handler aborts in-flight file work.
 const filesSessionId = computed(() =>
-  session.value?.id === props.id ? props.id : null,
+  auth.isAuthenticated &&
+  !auth.discarding &&
+  resource.state.value === "success" &&
+  session.value?.id === props.id &&
+  !sessionEnded.value
+    ? props.id
+    : null,
 );
 
 // Workspace root label: the folder name only. The node's absolute workspace path
@@ -89,10 +131,8 @@ const workspaceLabel = computed(() => {
   return parts.length ? parts[parts.length - 1] : "workspace";
 });
 
-// A session in a terminal state has no daemon-side workspace to browse.
-const TERMINAL_STATUSES = new Set(["exited", "failed", "terminated"]);
 const filesDisabledReason = computed(() =>
-  session.value && TERMINAL_STATUSES.has(session.value.status)
+  session.value && sessionEnded.value
     ? "Session 已結束，檔案瀏覽不再可用。"
     : undefined,
 );
@@ -203,15 +243,107 @@ watch(activeTab, async (tab) => {
   }
 });
 
+// --- Terminals while the user is not confirmed (#76) -----------------------
+//
+// Signed out, or signed in as someone `/me` has not confirmed yet: neither
+// terminal may send a byte. `App.vue` already makes the page inert, which stops
+// the keyboard reaching xterm; this stops the socket existing at all.
+//
+// `disconnect()` closes the socket, but the composable's own close handler then
+// schedules a reconnect, and a reconnect is only a new ticket away. So the
+// ticket is what is gated: every (re)connect of either terminal asks this
+// function, and while the identity is unconfirmed it refuses without calling
+// Central. The composable backs off and keeps asking; nothing reaches the
+// relay. A ticket requested *before* the suspension and answered after it is
+// refused too, by the epoch check. No transport code changes: this is the seam
+// the composable was given a ticket provider for.
+//
+// When the same user is confirmed again, both reconnect at once with fresh
+// tickets (and a fresh authorization check). A different user never resumes
+// here: the page is left and unmounted, which disposes both.
+//
+// The same seam fences the *session* a ticket is for (#76 review 4). The route
+// component is reused when `/sessions/:id` changes, and the composable has no
+// notion of a superseded connect: an attach request for session A answered
+// after the switch to B would open a socket to A under B's page, and the B view
+// would type into it. So each terminal gets its own provider that knows which
+// session is current for it, and a ticket is handed over only if, when it
+// arrives, it is still for that session *and* is the latest one that terminal
+// asked for.
+//
+// A request that fails either check is abandoned, not refused: its promise
+// never settles. A refusal means "try again soon" to the composable — it would
+// schedule a reconnect, and that reconnect closes whatever socket is current,
+// which for a superseded request is the good one. Leaving it unanswered opens
+// nothing and schedules nothing; the newer request (or the route change that
+// made it stale) owns the terminal from here. The ticket Central already minted
+// for it is single-use and short-lived, and simply expires.
+let identityEpoch = 0;
+const abandoned = (): Promise<never> => new Promise<never>(() => {});
+function fencedTicket(
+  isCurrent: (sessionId: string) => boolean,
+): (sessionId: string) => Promise<string> {
+  let latest = 0;
+  return async (sessionId) => {
+    const request = ++latest;
+    const stale = () => request !== latest || !isCurrent(sessionId);
+    // Not current before anything is asked: Central is not even called.
+    if (stale()) return abandoned();
+    const epoch = identityEpoch;
+    if (!auth.identityConfirmed) throw new Error("terminal suspended");
+    let ticket: string;
+    try {
+      ticket = (await api().attachSession(sessionId)).ticket;
+    } catch (caught) {
+      // A superseded request's failure is not the terminal's failure either.
+      if (stale()) return abandoned();
+      throw caught;
+    }
+    if (stale()) return abandoned();
+    if (epoch !== identityEpoch || !auth.identityConfirmed) {
+      throw new Error("terminal suspended");
+    }
+    return ticket;
+  };
+}
+// The main CLI: the route's session, and only once the latest fetch confirmed
+// that very id (a session whose payload failed to load gets no ticket either).
+const cliTicket = fencedTicket(
+  (sessionId) => sessionId === props.id && workspaceLive.value,
+);
+// The system terminal: the shell this page opened, while it is open. Closing
+// it (by tab, unload, or route change) clears it first, so a reconnect for a
+// shell that is being terminated never asks Central for a ticket.
+const shellTicket = fencedTicket(
+  (sessionId) => sessionId === shellSession.value?.id,
+);
+let terminalsSuspended = !auth.identityConfirmed;
+watch(
+  () => auth.identityConfirmed,
+  (confirmed) => {
+    if (!confirmed && !terminalsSuspended) {
+      terminalsSuspended = true;
+      identityEpoch += 1;
+      // An ended session's terminal is left as it is: disconnecting would turn
+      // `exited` into `disconnected` and rebind the files of a dead session.
+      if (terminal.status.value !== "exited") terminal.disconnect();
+      if (shellSession.value) shellTerminal.disconnect();
+    } else if (confirmed && terminalsSuspended) {
+      terminalsSuspended = false;
+      if (terminal.status.value !== "exited") terminal.retry();
+      if (shellSession.value) shellTerminal.retry();
+    }
+  },
+  // Synchronous: suspended inside the very call that cleared or replaced the
+  // tokens, not on the next render.
+  { flush: "sync" },
+);
+
 // --- System terminal (FR-SHELL-001) ---------------------------------------
 //
 // A second, independent instance of the same composable: the shell is an
 // ordinary session over the same relay, so nothing about the transport differs.
-const shellTerminal = useTerminalSession((sessionId) =>
-  api()
-    .attachSession(sessionId)
-    .then((res) => res.ticket),
-);
+const shellTerminal = useTerminalSession(shellTicket);
 const shellSession = ref<SessionDetail | null>(null);
 const shellHost = ref<HTMLElement | null>(null);
 const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
@@ -225,6 +357,32 @@ watch(
   { immediate: true },
 );
 
+// Who a shell being opened belongs to (#76 review 5). The shell's id is only
+// known once `openShell` answers, so a way out taken while that request is out
+// — an in-place route change, unmount, unload, losing the user — finds nothing
+// for `closeShell` to close. Each of those moves this generation instead, and
+// an answer that arrives for an earlier one is an orphan: it is terminated
+// through the ordinary API and never becomes this page's shell. Without this
+// the late answer installed session A's shell under B's page, and the shell
+// ticket fence, which trusts `shellSession`, let it connect.
+let shellOwner = 0;
+function disownPendingShell(): void {
+  shellOwner += 1;
+}
+
+// Losing the user — signed out, or `/me` naming someone else — is a way out of
+// this page too, even before the auth-loss handler's navigation unmounts it:
+// a shell still being opened is no longer anyone's here (#76 review 5). A
+// merely *unconfirmed* identity is not: the page may come back as it was, and
+// the suspension above already keeps the shell from connecting meanwhile.
+watch(
+  () => auth.isAuthenticated && !auth.discarding,
+  (ownUser) => {
+    if (!ownUser) disownPendingShell();
+  },
+  { flush: "sync" },
+);
+
 // Started on first use, not on page load: a shell nobody opened would still
 // consume a slot against the node and user session caps (D8).
 async function openShellTab(): Promise<void> {
@@ -235,6 +393,9 @@ async function openShellTab(): Promise<void> {
     shellTerminal.focus();
     return;
   }
+  const owner = shellOwner;
+  const parentId = props.id;
+  const owned = () => owner === shellOwner;
   shellState.value = "starting";
   shellError.value = "";
   try {
@@ -243,13 +404,26 @@ async function openShellTab(): Promise<void> {
     // 24×80 and letting the first fit correct it made bash redraw its prompt at
     // a different width in front of the user (plan/09 LY-04).
     await nextTick();
+    if (!owned()) return;
     const size = shellTerminal.proposeSize() ?? { rows: 24, columns: 80 };
-    const created = await api().openShell(props.id, size);
+    const created = await api().openShell(parentId, size);
+    if (!owned()) {
+      // Best effort, like `closeShell`: the parent binding and the idle
+      // timeout still collect it if this is refused (after a sign-out, say).
+      api()
+        .terminateSession(created.id)
+        .catch(() => {});
+      return;
+    }
     shellSession.value = created;
     shellState.value = "ready";
     await nextTick();
+    // Closed during that tick: `closeShell` already terminated it.
+    if (!owned() || shellSession.value?.id !== created.id) return;
     void shellTerminal.connect(created.id);
   } catch (caught) {
+    // A stale request's failure belongs to a page that is gone.
+    if (!owned()) return;
     shellState.value = "error";
     shellError.value =
       caught instanceof ApiError ? caught.message : "無法開啟系統終端機。";
@@ -282,6 +456,7 @@ async function closeShell(): Promise<void> {
 //
 // 1. Navigating inside the app (Back, the sidebar): the component unmounts.
 onBeforeUnmount(() => {
+  disownPendingShell();
   void closeShell();
 });
 
@@ -293,6 +468,7 @@ onBeforeUnmount(() => {
 //    when the page is put in the back/forward cache, and a restored page that still
 //    believed it had this terminal would show its dead scrollback.
 function terminateShellOnUnload(): void {
+  disownPendingShell();
   const open = shellSession.value;
   if (!open) return;
   shellSession.value = null;
@@ -306,7 +482,17 @@ onBeforeUnmount(() =>
 );
 
 const host = ref<HTMLElement | null>(null);
-const terminateOpen = ref(false);
+// The session the terminate dialog names, captured when it opened (#76 review
+// 5). The dialog used to show `session?.name` and confirm `props.id`, which an
+// in-place route change pulls apart: it could name A while terminating B. Now
+// it shows and terminates the one session it was opened for, is closed when the
+// route id changes, and a confirmation is refused unless the route still is
+// that session.
+const terminateTarget = ref<{ id: string; name: string } | null>(null);
+function askTerminate(): void {
+  if (!workspaceLive.value || !session.value) return;
+  terminateTarget.value = { id: session.value.id, name: session.value.name };
+}
 const actionError = ref("");
 const busy = ref(false);
 
@@ -324,15 +510,31 @@ const resource = useAsyncResource<SessionDetail>(async () => {
 // The theme and font size are passed in rather than read from a store inside
 // the composable, so it stays testable without Pinia — the same reason the
 // ticket provider is injected.
-const terminal = useTerminalSession(
-  (sessionId) =>
-    api()
-      .attachSession(sessionId)
-      .then((res) => res.ticket),
-  { themeId: preferences.theme, fontSize: preferences.terminalFontSize },
-);
+const terminal = useTerminalSession(cliTicket, {
+  themeId: preferences.theme,
+  fontSize: preferences.terminalFontSize,
+});
 
 const session = computed(() => sessions.current);
+
+// The workspace on screen is the route's session, loaded by the latest fetch.
+// False from the very tick `/sessions/:id` changes in place — `sessions.current`
+// still holds the session that was left until the new one arrives — and while
+// any fetch is outstanding or failed. While false the veil covers the page and
+// everything under it is inert (#76 review 4): a veil is only paint, and the
+// old session's terminal, header actions and file panel stayed focusable and
+// typeable behind it.
+const workspaceLive = computed(
+  () => resource.state.value === "success" && session.value?.id === props.id,
+);
+// Bound on every sibling of the veil. `inert` takes a subtree out of the
+// focus order, pointer and keyboard input and the accessibility tree;
+// `aria-hidden` repeats the last part for engines that predate it. An absent
+// key rather than `false`, as in `App.vue`: where an engine has no `inert`
+// property Vue writes the attribute as a string, and `inert="false"` is inert.
+const behindVeil = computed(() =>
+  workspaceLive.value ? {} : { inert: true, "aria-hidden": "true" as const },
+);
 
 // 這台 Node 的執行姿態（ADR 0023）。使用者按下 Enter 之前，資訊要在他眼前 —— 不是藏在
 // Node 詳情頁裡。額外一次請求、且失敗不影響工作區：拿不到姿態時什麼都不顯示，
@@ -610,12 +812,62 @@ watch(
   { immediate: true },
 );
 
-onMounted(async () => {
+// The one owner of "load this route's session, then connect its CLI" (#76
+// review 5). Mount, an in-place route change and the veil's Retry all come
+// through here, so a load that succeeds — on whichever attempt — is followed by
+// exactly one `connect`, and a load that fails is followed by none. Connecting
+// after a failed load used to leave a request the ticket fence never answers
+// (the workspace is not live), and a later successful Retry, which only
+// refetched, then had nothing to start the terminal: it sat at `connecting`,
+// which offers no reconnect.
+async function loadSession(): Promise<void> {
+  const id = props.id;
   await resource.run();
-  if (resource.state.value === "success") {
-    void terminal.connect(props.id);
-  }
+  // Superseded while loading (A → B → C): the later load connects.
+  if (props.id !== id || !workspaceLive.value) return;
+  void terminal.connect(id);
+}
+
+onMounted(() => {
+  void loadSession();
 });
+
+// The preview lives only as long as the binding it was opened under (#76).
+//
+// When the binding drops *in place* — the session ended, or a refetch failed —
+// the preview closes through the ordinary route: the pane unmounts, which aborts
+// an in-flight read and disposes every Monaco model, and on a phone the user is
+// returned to the file panel, which now says why. That route pops the one
+// same-URL entry this view pushed, and only that one.
+//
+// When the *route* changed, the entry is disowned instead, exactly as the
+// session-switch watcher below does: calling `history.back()` in the middle of
+// a navigation is how a router ends up somewhere neither it nor the user chose.
+// Both sources are watched together so that the two cases cannot be told apart
+// by which watcher happened to run first.
+//
+// Losing the user — signed out, or `/me` naming someone else — is the second
+// kind: the auth-loss handler is already navigating away, so the entry is
+// disowned too, and the phone leaves the preview mode so nothing is left
+// behind the gate.
+watch(
+  [
+    () => props.id,
+    filesSessionId,
+    () => auth.isAuthenticated && !auth.discarding,
+  ],
+  ([id, files, ownUser], [previousId, previousFiles]) => {
+    if (!previewPath.value || files === previousFiles) return;
+    if (id !== previousId || !ownUser) {
+      previewHistoryDepth = 0;
+      previewPath.value = null;
+      activeTab.value = "cli";
+      if (!ownUser) mobileMode.value = "cli";
+      return;
+    }
+    if (files === null) closePreview();
+  },
+);
 
 // Switching to another session id re-attaches cleanly (dispose is handled by the
 // composable's scope teardown on unmount; here we just reconnect).
@@ -633,10 +885,25 @@ watch(
       // The pushed history entry is disowned rather than popped: popping here
       // would fight the navigation that is already in progress.
       previewHistoryDepth = 0;
+      previewPath.value = null;
+      activeTab.value = "cli";
       mobileMode.value = "cli";
+      // The previous session's CLI stops here, before the first await (#76
+      // review 4). What follows waits on the network twice — the shell's
+      // termination and B's payload — and all that time A's socket was open
+      // under a page that already says B: a focused xterm kept sending
+      // keystrokes to A. Closing it synchronously leaves nothing to carry
+      // them. The composable will try to reconnect it; `cliTicket` abandons
+      // that without asking Central, because A is no longer the route. The
+      // page itself goes inert in the same tick (`workspaceLive`). The
+      // shell is closed synchronously too: `closeShell` disconnects before
+      // its own first await.
+      terminal.disconnect();
+      disownPendingShell();
+      terminateTarget.value = null;
       await closeShell();
-      await resource.run();
-      void terminal.connect(next);
+      if (props.id !== next) return;
+      await loadSession();
     }
   },
 );
@@ -718,14 +985,29 @@ watch(
 );
 
 async function confirmTerminate(): Promise<void> {
+  const target = terminateTarget.value;
+  if (!target || target.id !== props.id || !workspaceLive.value) {
+    terminateTarget.value = null;
+    return;
+  }
   busy.value = true;
   actionError.value = "";
   try {
-    await sessions.terminate(props.id);
-    terminateOpen.value = false;
+    await sessions.terminate(target.id);
+    if (props.id === target.id) {
+      terminateTarget.value = null;
+    } else if (resource.data.value?.id === props.id) {
+      // The route moved on while the request was out. The store keeps the
+      // terminated payload as `current`; the page now belongs to another
+      // session, whose own payload is put back (or, still loading, lands
+      // when it arrives).
+      sessions.current = resource.data.value;
+    }
   } catch (caught) {
-    actionError.value =
-      caught instanceof ApiError ? caught.message : "Terminate failed.";
+    if (props.id === target.id) {
+      actionError.value =
+        caught instanceof ApiError ? caught.message : "Terminate failed.";
+    }
   } finally {
     busy.value = false;
   }
@@ -741,8 +1023,13 @@ async function confirmTerminate(): Promise<void> {
          Loading / forbidden / error therefore render as an overlay on top
          rather than instead of it (WT-02). -->
     <div class="workspace">
+      <!-- Everything but the veil carries `behindVeil`: inert whenever the
+           veil is up — in particular from the tick the route id changes in
+           place until the new session has loaded, while this still shows the
+           one that was left (#76 review 4). -->
       <SessionHeader
         v-if="session"
+        v-bind="behindVeil"
         :name="session.name"
         :node-name="nodePosture?.name"
         :runtime="session.runtime"
@@ -757,14 +1044,18 @@ async function confirmTerminate(): Promise<void> {
         :compact="compactHeader"
         @takeover="terminal.takeover()"
         @reconnect="terminal.retry()"
-        @terminate="terminateOpen = true"
+        @terminate="askTerminate()"
       />
 
       <!-- Notices, not toasts. A failure that removes itself is a failure the
            user may never have read, and the gap banner in particular is
            explaining why output is missing — it has to stay while the gap
            does. -->
-      <div v-if="actionError || terminal.gap.value" class="notices">
+      <div
+        v-if="actionError || terminal.gap.value"
+        v-bind="behindVeil"
+        class="notices"
+      >
         <UiInlineNotice
           v-if="actionError"
           tone="error"
@@ -785,6 +1076,7 @@ async function confirmTerminate(): Promise<void> {
            same attribute. Hidden under preview, which is fullscreen. -->
       <nav
         v-if="isNarrow && session && mobileMode !== 'preview'"
+        v-bind="behindVeil"
         class="modes"
         role="tablist"
         aria-label="工作區"
@@ -810,6 +1102,7 @@ async function confirmTerminate(): Promise<void> {
       </nav>
 
       <div
+        v-bind="behindVeil"
         class="grid"
         :style="{ '--inspector-width': `${preferences.inspectorWidth}px` }"
         :data-files-hidden="filesVisible ? undefined : ''"
@@ -1131,6 +1424,7 @@ async function confirmTerminate(): Promise<void> {
            revised to say so). It renders even under the veil — a blank status
            bar behind a failure reads as "everything is fine back here". -->
       <StatusBar
+        v-bind="behindVeil"
         :session-status="session?.status"
         :connection="terminal.status.value"
         :role="terminal.role.value"
@@ -1147,11 +1441,19 @@ async function confirmTerminate(): Promise<void> {
         </template>
       </StatusBar>
 
-      <div v-if="!session || resource.state.value !== 'success'" class="veil">
+      <!-- Signed out, or not sure as whom, is not this veil's job: `App.vue`
+           makes the whole page inert behind `AuthGate` (#76). -->
+      <div v-if="!workspaceLive" class="veil">
         <!-- Three different situations, three different components. What was
-             here printed the state's internal name on screen for all three. -->
+             here printed the state's internal name on screen for all three.
+             A route change that has not started its fetch yet (the old
+             shell is still being closed) is loading too: the previous
+             fetch's `success` is not about this id. -->
         <UiLoadingState
-          v-if="resource.state.value === 'loading'"
+          v-if="
+            resource.state.value === 'loading' ||
+            resource.state.value === 'success'
+          "
           label="正在載入 Session"
         />
         <UiInlineNotice
@@ -1166,25 +1468,25 @@ async function confirmTerminate(): Promise<void> {
         <ErrorNotice
           v-else
           :error="resource.error.value"
-          @retry="resource.run()"
+          @retry="loadSession()"
         />
       </div>
     </div>
 
     <ConfirmDialog
-      :open="terminateOpen"
+      :open="terminateTarget !== null"
       :busy="busy"
       danger
       title="終止此 Session？"
       confirm-label="確認終止"
       @confirm="confirmTerminate"
-      @cancel="terminateOpen = false"
+      @cancel="terminateTarget = null"
     >
       <!-- The name is shown and marked up as a name. A `message: string` prop
            could only concatenate it into prose, where it reads as part of the
            sentence rather than as the thing about to be stopped. -->
       <p>
-        將終止 <code>{{ session?.name }}</code
+        將終止 <code>{{ terminateTarget?.name }}</code
         >，此 Node 上的 CLI 程序會被停止。已產生的輸出不會保留。
       </p>
     </ConfirmDialog>

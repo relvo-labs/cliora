@@ -20,12 +20,16 @@
 //     so `width` has to be set deliberately per test rather than inherited from
 //     jsdom's default of 1024.
 
-import { mount } from "@vue/test-utils";
+import { flushPromises, mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createRouter, createWebHistory, type Router } from "vue-router";
 
-import { useAuthStore } from "../../stores/auth";
+import { installAuthLossHandler, registerGuards } from "../../router";
+import { _resetApiClient, useAuthStore } from "../../stores/auth";
+import { useFavoritesStore } from "../../stores/favorites";
+import { useFilesStore } from "../../stores/files";
+import { useSessionsStore } from "../../stores/sessions";
 import { usePreferencesStore } from "../../stores/preferences";
 import AppLayout from "./AppLayout.vue";
 
@@ -241,6 +245,109 @@ describe("AppLayout", () => {
     expect(items.map((i) => i.text())).toEqual(["個人設定", "登出"]);
     expect(items[0].attributes("href")).toBe("/settings/preferences");
   });
+
+  // Sign-out clears every per-user cache held in memory, whether or not Central
+  // confirmed it (#76). Driven through the real store action and the real API
+  // client, with only `fetch` replaced: the client drops the tokens in
+  // `finally`, and the point of the failure case is that the layout must not
+  // stop halfway and leave a signed-out tab still holding the last listing.
+  //
+  // The clearing and the navigation belong to the app's auth-loss handler, not
+  // to this button, so the handler is installed exactly as `createAppRouter`
+  // installs it; the button's only job is to end up with the tokens gone.
+  for (const outcome of ["accepted", "rejected"] as const) {
+    it(`sign-out ${outcome} by Central: caches cleared and the login page shown (#76)`, async () => {
+      const SESSION = "44444444-4444-4444-8444-444444444444";
+      localStorage.setItem("cliora.access_token", "access");
+      localStorage.setItem("cliora.refresh_token", "refresh");
+      _resetApiClient();
+      const fetchMock = vi.fn(async () =>
+        outcome === "accepted"
+          ? new Response(null, { status: 204 })
+          : new Response(
+              JSON.stringify({
+                error: { code: "INTERNAL", message: "boom" },
+                request_id: "r1",
+              }),
+              { status: 500, headers: { "Content-Type": "application/json" } },
+            ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+
+      const files = useFilesStore();
+      files.useSession(SESSION);
+      files.dirs["."] = {
+        path: ".",
+        entries: [
+          {
+            name: "secret-plan.md",
+            rel_path: "secret-plan.md",
+            type: "file",
+            size: 1,
+            modified_at: "2026-09-27T00:00:00Z",
+            hidden: false,
+            symlink: false,
+            excluded: false,
+            expandable: false,
+          } as never,
+        ],
+        state: "success",
+        truncated: false,
+      };
+      const favorites = useFavoritesStore();
+      favorites.favorites = [{ id: "f1", path: "/srv/private" } as never];
+      const sessions = useSessionsStore();
+      sessions.current = { id: SESSION, workspace: "/srv/private" } as never;
+
+      const store = useAuthStore();
+      store.user = {
+        id: "u",
+        username: "u",
+        display_name: "U",
+        role: "Admin",
+        permissions: [],
+      };
+      // The real guard, so a tab that still believed it was signed in would be
+      // bounced from /login back into the app and the assertion would see it.
+      const router = testRouter();
+      // As in production (`router/index.ts`): without it the guard would
+      // redirect /login to itself.
+      router.getRoutes().find((r) => r.name === "login")!.meta.public = true;
+      registerGuards(router);
+      const stopAuthLoss = installAuthLossHandler(router);
+      await router.push("/dashboard");
+      await router.isReady();
+      const wrapper = mount(AppLayout, {
+        slots: { default: "<p>page</p>" },
+        global: { plugins: [router] },
+        attachTo: document.body,
+      });
+
+      await wrapper.get('[aria-haspopup="menu"]').trigger("click");
+      const signOut = wrapper
+        .findAll('[role="menuitem"]')
+        .find((item) => item.text() === "登出");
+      await signOut!.trigger("click");
+      await flushPromises();
+
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(files.sessionId).toBeNull();
+      expect(files.dirs).toEqual({});
+      expect(favorites.favorites).toEqual([]);
+      expect(sessions.current).toBeNull();
+      expect(store.isAuthenticated).toBe(false);
+      expect(localStorage.getItem("cliora.access_token")).toBeNull();
+      expect(localStorage.getItem("cliora.refresh_token")).toBeNull();
+      expect(router.currentRoute.value.name).toBe("login");
+      // Asked for, so it starts over rather than coming back here.
+      expect(router.currentRoute.value.query.redirect).toBeUndefined();
+
+      stopAuthLoss();
+      wrapper.unmount();
+      vi.unstubAllGlobals();
+      _resetApiClient();
+    });
+  }
 
   it("keeps no theme control in the header", async () => {
     // A regression guard on the placement, not on the styling: the control was

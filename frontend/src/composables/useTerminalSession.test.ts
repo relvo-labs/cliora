@@ -412,6 +412,22 @@ describe("useTerminalSession", () => {
     expect(sockets).toHaveLength(1);
   });
 
+  // The workspace unbinds its files on this status alone, with no session
+  // refetch behind it (#76), so both end-of-session events must produce it.
+  it("reports exited on session.stopped as well as terminal.exited", async () => {
+    const s = newSession();
+    s.mount(document.createElement("div"));
+    await s.connect(SESSION);
+    sockets[0].open();
+    expect(s.status.value).toBe("connected");
+    sockets[0].emit(
+      JSON.stringify({ type: "session.stopped", payload: { reason: "done" } }),
+    );
+    expect(s.status.value).toBe("exited");
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(sockets).toHaveLength(1);
+  });
+
   it("writes binary frames to the terminal, never control text", async () => {
     const s = newSession();
     s.mount(document.createElement("div"));
