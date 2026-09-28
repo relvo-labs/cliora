@@ -120,6 +120,7 @@ PREVIEW_MAX_SIDE = 8192
 # How long the close at the end of a stream may take. It is best effort: the
 # daemon's idle TTL is the backstop for a close that does not arrive.
 _PREVIEW_CLOSE_SECONDS = 1.0
+_PREVIEW_AUDIT_SECONDS = 2.0
 
 # In-band refusals: each keeps its own code and status, because each has a different
 # next step (the `_map_error` principle). None of them is answered with a download.
@@ -840,8 +841,6 @@ class FileRelayService:
                 sent += len(data)
                 chunks += 1
                 yield data
-            # Every byte went out: this, and only this, is a successful preview.
-            await self._audit_preview_success(stream)
         except (asyncio.CancelledError, GeneratorExit):
             outcome = "CANCELLED"
             metrics.increment(metrics.FILESYSTEM_RELAY_CANCEL_TOTAL, op="binary_preview")
@@ -911,7 +910,9 @@ class FileRelayService:
             except ApiError:
                 pass
 
-    async def _audit_preview_success(self, stream: BinaryPreviewStream) -> None:
+    async def _audit_preview_success(
+        self, stream: BinaryPreviewStream, *, request_id: str | None = None
+    ) -> None:
         """OD-6: `file.binary_preview` with kind, mime and size_bytes — never the path.
         Written on its own short session, like the RBAC-denial middleware, because the
         request's session and a streamed body do not share a lifetime this relies on.
@@ -919,21 +920,32 @@ class FileRelayService:
         from app.db.engine import get_database
 
         try:
-            async with get_database().session() as own:
-                await AuditService(own).record(
-                    audit.FILE_BINARY_PREVIEW,
-                    user_id=stream.actor_id,
-                    node_id=stream.node_id,
-                    session_id=stream.session_id,
-                    metadata={"kind": stream.kind, "mime": stream.mime, "size_bytes": stream.size},
-                )
-                await own.commit()
-        except Exception:
+            with anyio.CancelScope(shield=True):
+                with anyio.move_on_after(_PREVIEW_AUDIT_SECONDS) as deadline:
+                    async with get_database().session() as own:
+                        await AuditService(own).record(
+                            audit.FILE_BINARY_PREVIEW,
+                            user_id=stream.actor_id,
+                            node_id=stream.node_id,
+                            session_id=stream.session_id,
+                            request_id=request_id,
+                            metadata={
+                                "kind": stream.kind,
+                                "mime": stream.mime,
+                                "size_bytes": stream.size,
+                            },
+                        )
+                        await own.commit()
+                if deadline.cancel_called:
+                    raise TimeoutError("binary preview audit deadline")
+        except (Exception, asyncio.CancelledError) as exc:
             metrics.increment(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="binary_preview")
             log.warning(
                 "audit write failed",
                 extra={"action": audit.FILE_BINARY_PREVIEW, "session_id": str(stream.session_id)},
             )
+            if isinstance(exc, asyncio.CancelledError):
+                raise
 
     async def _resolve_for_upload(self, session_id: uuid.UUID, viewer: User) -> TerminalSession:
         """Same resolution as `_resolve`, gated on `file.upload` instead of

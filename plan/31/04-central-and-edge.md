@@ -7,6 +7,7 @@
 | 檔案 | 改什麼 |
 |---|---|
 | `backend/app/api/http/files.py` | 一條新路由（POST），含「先 commit 再 raise」 |
+| `backend/app/api/middleware.py`、`backend/app/main.py` | 外層純 ASGI middleware 在 server-facing send 完成最後一塊後觸發成功稽核，避免 `RequestIdMiddleware` 的 body buffer 提前記成功 |
 | `backend/app/services/files.py` | `open_binary_preview`／串流 generator；回傳拒絕結果而不是直接 raise |
 | `backend/app/services/authz.py` | `session_capabilities` 多一個 `can_preview_binary`（`:309-316`） |
 | `backend/app/api/http/schemas.py` | `SessionCapabilities.can_preview_binary`（`:90-110`）；`_capabilities` 從 `get_node_registry()` 與 settings 取 live bit（`:164-169`） |
@@ -58,7 +59,7 @@ Content-Type: application/json
 | 8 | `preview_open`（15 秒）。in-band 拒絕時，service **回傳**一個拒絕結果（不 raise）；敏感拒絕照舊經 `_maybe_audit_denied`（`services/files.py:482-523`，**不改**）加入 session | — |
 | 9 | 有拒絕結果時：路由**先 `await session.commit()`**，**再** raise `ApiError(code, 固定訊息, status, details={reason, size?, limit?})`。與現有 `/content` 路由 commit `read_file` 加入的稽核是同一模式（`files.py:212-215`）。反過來做，稽核列會隨 session 關閉而消失：`AuditService.record` 只把列加進 session（`audit.py:204-210`），`get_session` 也不會自己 commit（`db/engine.py:96-98`） | 對應 HTTP 狀態（下表） |
 | 10 | `StreamingResponse`：逐塊 `preview_chunk`（每塊 10 秒，整體 60 秒） | 串流中斷 → 連線被截斷，`Content-Length` 不符讓瀏覽器得到 network error |
-| 11 | 最後一塊送出之後：以**獨立的短 session**（`get_database().session()`）寫入成功稽核並 commit，與 RBAC 拒絕 middleware 同一模式（`middleware.py:126-127`、`:171`）。不用 request 的 session，因為它相對於串流 body 的生命週期取決於 FastAPI（0.120.1）的 dependency 結束時機，本設計不依賴它 | 寫入失敗只計數並記 log |
+| 11 | 最後一塊的**最外層、面向 server 的 ASGI `send`** 成功返回後：以**獨立的短 session**（`get_database().session()`）寫入成功稽核並 commit，與 RBAC 拒絕 middleware 同一模式（`middleware.py:126-127`、`:171`）。外層純 ASGI middleware 越過 `RequestIdMiddleware` 的 body buffer 觀察 send；寫入受有期限的 cancellation shield 保護，因為 generator 在最後一個 `yield` 後可能直接被取消。不用 request 的 session，因為它相對於串流 body 的生命週期取決於 FastAPI（0.120.1）的 dependency 結束時機，本設計不依賴它 | 寫入失敗或逾時只計數並記無路徑 log |
 | 12 | generator 的 `finally`：**一律**送 `preview_close`，包括成功送完最後一塊、節點或逾時錯誤、client 取消三種情況（不等待結果，1 秒上限）。完成的串流因此會立即釋放 daemon 的 snapshot；daemon 的閒置 TTL 只是 close 遺失時的 backstop（ADR 0029 §5、§6） | — |
 
 HTTP 狀態對照：`FILE_DENIED` 403、`FILE_NOT_FOUND` 404、`FILE_PERMISSION_DENIED` 403、

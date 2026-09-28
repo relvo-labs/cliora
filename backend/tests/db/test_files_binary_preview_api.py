@@ -16,12 +16,14 @@ import base64
 import json
 import logging
 import math
+import time
 import uuid
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 from urllib.parse import quote
 
+import anyio
 import pytest
 import sqlalchemy as sa
 from fastapi import status
@@ -30,11 +32,14 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from app import metrics
 from app.api.errors import ApiError
-from app.api.http.files import get_registry
+from app.api.http.files import BinaryPreviewResponse, get_registry
+from app.api.middleware import BinaryPreviewCompletionMiddleware
 from app.db.models import Node, NodeWorkspaceRoot, Role, TerminalSession, User
 from app.main import app
 from app.protocol import ControlMessage
 from app.security.passwords import hash_password
+from app.services.audit import AuditService
+from app.services.files import BinaryPreviewStream, FileRelayService
 from app.settings import get_settings
 
 pytestmark = pytest.mark.asyncio
@@ -853,6 +858,92 @@ async def test_success_audit_on_own_session(api: tuple) -> None:
     assert len(await _audit_rows(maker, "file.binary_preview")) == 1
 
 
+async def test_success_audit_survives_disconnect_after_final_send(api: tuple) -> None:
+    _, maker, _, uid, sid = await _setup(api, "Viewer")
+    async with maker() as session:
+        node_id = (
+            await session.execute(
+                sa.text("select node_id from terminal_sessions where id = :id"), {"id": sid}
+            )
+        ).scalar_one()
+    fake = FakePreviewDaemon()
+    preview_id = f"{PID_PREFIX}{1:015d}"
+    fake.handles[preview_id] = PNG
+    stream = BinaryPreviewStream(
+        node_id=node_id,
+        session_id=sid,
+        actor_id=uid,
+        preview_id=preview_id,
+        kind="image",
+        mime="image/png",
+        size=len(PNG),
+        chunk_count=1,
+        width=3,
+        height=2,
+        started=time.monotonic(),
+        _released=True,
+    )
+    response = BinaryPreviewCompletionMiddleware(
+        BinaryPreviewResponse(FileRelayService(None, registry=fake), stream)
+    )
+    received = bytearray()
+    with anyio.CancelScope() as disconnect:
+
+        async def receive() -> dict:
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                received.extend(message["body"])
+                disconnect.cancel()  # the peer leaves as soon as the last send returns
+
+        await response(
+            {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.4"}},
+            receive,
+            send,
+        )
+    assert received == PNG
+    assert len(await _audit_rows(maker, "file.binary_preview")) == 1
+    assert metrics.counter_value(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="binary_preview") == 0
+
+
+async def test_success_audit_timeout_is_counted(
+    api: tuple, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _, maker, _, uid, sid = await _setup(api, "Viewer")
+    async with maker() as session:
+        node_id = (
+            await session.execute(
+                sa.text("select node_id from terminal_sessions where id = :id"), {"id": sid}
+            )
+        ).scalar_one()
+    stream = BinaryPreviewStream(
+        node_id=node_id,
+        session_id=sid,
+        actor_id=uid,
+        preview_id="x",
+        kind="pdf",
+        mime="application/pdf",
+        size=1,
+        chunk_count=1,
+        width=None,
+        height=None,
+        started=time.monotonic(),
+        _released=True,
+    )
+
+    async def stalled_record(self: AuditService, *args: Any, **kwargs: Any) -> None:
+        await anyio.sleep(10)
+
+    monkeypatch.setattr(AuditService, "record", stalled_record)
+    monkeypatch.setattr("app.services.files._PREVIEW_AUDIT_SECONDS", 0.01)
+    with caplog.at_level(logging.WARNING):
+        await FileRelayService(None)._audit_preview_success(stream)
+    assert await _audit_rows(maker, "file.binary_preview") == []
+    assert metrics.counter_value(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="binary_preview") == 1
+    assert any(r.getMessage() == "audit write failed" for r in caplog.records)
+
+
 async def test_log_has_no_path(api: tuple, caplog: pytest.LogCaptureFixture) -> None:
     client, _, headers, _, sid = await _setup(api, "Viewer")
     marker = uuid.uuid4().hex[:12]
@@ -991,3 +1082,29 @@ async def test_disconnect_sends_close(api: tuple) -> None:
     assert await _audit_rows(maker, "file.binary_preview") == [], (
         "a cancelled stream is not a success"
     )
+
+
+async def test_failed_final_server_send_has_no_success_audit(api: tuple) -> None:
+    _, maker, headers, _, sid = await _setup(api)
+    fake = FakePreviewDaemon()
+    fake.add("a.png", PNG)
+
+    class FailingFinalSend(RawClient):
+        async def send(self, message: dict) -> None:
+            if message["type"] == "http.response.body" and message.get("body"):
+                # Hold the server-facing send long enough for an audit incorrectly
+                # attached to BaseHTTPMiddleware's inner buffer to complete.
+                for _ in range(50):
+                    if await _audit_rows(maker, "file.binary_preview"):
+                        break
+                    await asyncio.sleep(0.01)
+                raise OSError("client left before the final send completed")
+            await super().send(message)
+
+    with use_daemon(fake):
+        raw = FailingFinalSend(_url(sid), json.dumps({"path": "a.png"}).encode(), headers)
+        try:
+            await asyncio.wait_for(raw.run(), 5)
+        except OSError:
+            pass
+    assert await _audit_rows(maker, "file.binary_preview") == []

@@ -47,8 +47,10 @@ from starlette.types import Receive, Scope, Send
 
 from app.api.errors import ApiError
 from app.api.http.deps import require_action
+from app.api.middleware import BinaryPreviewCompletion, set_binary_preview_completion
 from app.db.engine import get_session
 from app.db.models import User
+from app.logging import request_id_var
 from app.services.files import BinaryPreviewDenial, BinaryPreviewStream, FileRelayService
 from app.services.rbac import FILE_BROWSE, FILE_UPLOAD
 from app.services.registry import NodeConnectionRegistry, get_node_registry
@@ -334,6 +336,15 @@ class BinaryPreviewResponse(StreamingResponse):
         )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        request_id = request_id_var.get()
+
+        async def audit() -> None:
+            await self._service._audit_preview_success(self._stream, request_id=request_id)
+
+        set_binary_preview_completion(
+            scope, BinaryPreviewCompletion(size=self._stream.size, audit=audit)
+        )
+
         try:
             await super().__call__(scope, receive, send)
         finally:

@@ -365,11 +365,15 @@ Processing:
    The TTL is a backstop for a close that is lost, for example on a Central crash. A
    client disconnect cancels the generator, and `_observe` already records `CANCELLED`
    (`services/files.py:220-224`).
-7. The success audit (§10) is written **inside the generator after the last chunk**, on its
+7. The success audit (§10) is written **after the server-facing ASGI `send` returns for the last chunk**, on its
    **own short-lived session** (`get_database().session()`), the same pattern the
    RBAC-denial middleware uses (`middleware.py:126-127`, `:171`). It is not written on the
    request-scoped session, whose lifetime relative to a streamed body depends on
    FastAPI's dependency-exit timing (FastAPI 0.120.1 here) and is not relied on.
+   An outer ASGI middleware observes that send beyond `RequestIdMiddleware`'s body buffer.
+   The write is shielded from disconnect cancellation and bounded by a short timeout;
+   a timeout is counted and logged without a path. The generator can be cancelled
+   before resuming after its final `yield`, so it cannot own this audit.
 
 Response headers, as a set:
 
@@ -540,7 +544,7 @@ an old one.
   is none (`audit.py:196-201`), and that key is allowed. There is **no path, no filename,
   no extension and no content**. `bytes` must not be the key, because the audit filter
   drops it (`audit.py:159`). The success row is written on its own short-lived session
-  after the last chunk (§6 step 7).
+  after the last chunk's server-facing ASGI send returns (§6 step 7).
 
   Why record success when text preview does not: this is a deliberate expansion of what
   Viewers can see, and "did Viewers use it, on which sessions" has to be answerable
