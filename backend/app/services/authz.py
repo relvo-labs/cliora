@@ -306,7 +306,21 @@ def authorize_node_manage(user: User) -> None:
 # tested independently, because UI hiding is not authorization.
 
 
-def session_capabilities(user: User, session: TerminalSession) -> dict[str, bool]:
+def may_preview_binary(user: User, session: TerminalSession, *, available: bool) -> bool:
+    """Read-only image/PDF preview (ADR 0029 §7, §9).
+
+    The same scope as browsing — `file.browse` plus view access, never through a shell
+    session — so every role that browses may preview, Viewer included. `available` is
+    the other two gates, which are not about the user: Central's rollout flag and the
+    node's LIVE registration reporting `binary_preview`. It is a parameter rather than
+    a lookup so this module stays free of process state.
+    """
+    return available and may_browse_files(user, session)
+
+
+def session_capabilities(
+    user: User, session: TerminalSession, *, binary_preview_available: bool = False
+) -> dict[str, bool]:
     return {
         "can_view": may_view_session(user, session),
         "can_write": may_write_session(user, session),
@@ -315,4 +329,7 @@ def session_capabilities(user: User, session: TerminalSession) -> dict[str, bool
         "can_browse_files": may_browse_files(user, session),
         "can_upload_files": may_upload_files(user, session),
         "can_open_shell": may_open_shell(user, session),
+        # Composed on the server, unlike the upload affordance, because one of its
+        # inputs — the node's live registration — exists only here (ADR 0029 §9).
+        "can_preview_binary": may_preview_binary(user, session, available=binary_preview_available),
     }

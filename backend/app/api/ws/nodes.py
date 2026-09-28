@@ -112,6 +112,9 @@ def _register_input(payload: dict[str, Any]) -> RegisterNodeInput:
         image_upload=bool(payload.get("image_upload", False)),
         file_upload=bool(payload.get("file_upload", False)),
         file_download=bool(payload.get("file_download", False)),
+        # `const: true` on the wire (contract 1.11.0): present means true, absent means
+        # no. `false` never reaches here — the schema rejects it before this runs.
+        binary_preview=payload.get("binary_preview") is True,
     )
 
 
@@ -202,8 +205,12 @@ async def node_gateway(
             except ProtocolError:
                 continue
             if message.type == "node.register":
-                await service.persist_registration(node_id, _register_input(message.payload))
+                registration = _register_input(message.payload)
+                await service.persist_registration(node_id, registration)
                 await session.commit()
+                # The live gate for binary preview belongs to THIS connection and
+                # dies with it (ADR 0029 §9).
+                registry.set_binary_preview(connection, registration.binary_preview)
                 await websocket.send_text(
                     _frame(
                         "node.registered", node_id, message.request_id, {"node_id": str(node_id)}

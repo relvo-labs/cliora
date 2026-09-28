@@ -109,6 +109,23 @@ class Settings(BaseSettings):
     # as REQUEST_TIMEOUT rather than a browser that waits forever (ADR 0028).
     file_download_timeout_seconds: float = 20
 
+    # --- Read-only binary preview (ADR 0029, plan/31/04 §6) ---
+    # The rollout flag. OFF by default (OD-5): upgrading Central or a daemon turns
+    # nothing on by itself. It stays off on any deployment topology whose edge has
+    # not passed BP-OM-06 / BP-OM-10 (FR-FILE-012.AC-09, OD-11).
+    binary_preview_enabled: bool = False
+    # FR-CONN-006.AC-13: 15 s to open (the node reads and validates the whole file),
+    # 10 s per chunk (a slice of an in-memory snapshot), 60 s for the whole stream.
+    file_preview_open_timeout_seconds: float = 15
+    file_preview_chunk_timeout_seconds: float = 10
+    file_preview_total_seconds: float = 60
+    # Streams in flight, per user and per node. Process-local (BP-OM-09).
+    file_preview_streams_per_user: int = 2
+    file_preview_streams_per_node: int = 4
+    # The request body carries only {"path": ...}: 24 KiB holds a 4096-code-point
+    # UTF-8 path with room to spare, and matches the edge's client_max_body_size.
+    file_preview_max_body_bytes: int = 24576
+
     # --- P4 audit retention (ADR 0016) ---
     # Expiry is applied by an explicit operator command
     # (`python -m app.retention prune`, dry-run by default), never by a background

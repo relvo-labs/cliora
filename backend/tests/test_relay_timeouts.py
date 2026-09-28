@@ -36,6 +36,10 @@ PUBLISHED_BUDGETS = [
     ("tunnel_close_timeout_seconds", 10, "FR-CONN-006.AC-10"),
     ("file_upload_timeout_seconds", 20, "FR-CONN-006.AC-11"),
     ("file_download_timeout_seconds", 20, "FR-CONN-006.AC-12"),
+    # Read-only binary preview (ADR 0029 §4). FR-CONN-006.AC-12 is reserved by open
+    # PR #71 (download); these are AC-13.
+    ("file_preview_open_timeout_seconds", 15, "FR-CONN-006.AC-13"),
+    ("file_preview_chunk_timeout_seconds", 10, "FR-CONN-006.AC-13"),
 ]
 
 
@@ -103,3 +107,13 @@ def test_every_relay_budget_is_published() -> None:
     )
     for name in found:
         assert 0 < getattr(settings, name) <= 600, name
+
+
+def test_the_binary_preview_transfer_has_a_total_budget() -> None:
+    """FR-CONN-006.AC-13 names three numbers. The third is not a single relay round
+    trip, so the `_timeout_seconds` scan above cannot see it: 60 s for the whole
+    stream, so a slow client cannot hold a node's snapshot for longer."""
+    settings = _defaults()
+    assert settings.file_preview_total_seconds == 60
+    assert settings.file_preview_total_seconds > settings.file_preview_open_timeout_seconds
+    assert settings.file_preview_chunk_timeout_seconds < settings.file_preview_open_timeout_seconds

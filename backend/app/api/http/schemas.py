@@ -108,6 +108,10 @@ class SessionCapabilities(BaseModel):
     # folds in the action, ownership and the node's own veto, so the browser has
     # nothing left to combine (ADR 0021).
     can_open_shell: bool
+    # Read-only image/PDF preview (ADR 0029 §9) = Central's rollout flag AND the
+    # node's live registration reporting it AND file-browse scope. An older Central
+    # omits the field, which a newer browser reads as false.
+    can_preview_binary: bool
 
 
 class SessionSummary(BaseModel):
@@ -165,8 +169,17 @@ def _capabilities(s: TerminalSession, viewer: User) -> SessionCapabilities:
     # Imported here: app.services.authz imports app.api.errors, and a top-level
     # import would make schemas <-> authz circular.
     from app.services.authz import session_capabilities
+    from app.services.registry import get_node_registry
+    from app.settings import get_settings
 
-    return SessionCapabilities(**session_capabilities(viewer, s))
+    # Read here so that no call site changes signature: the flag from settings, the
+    # live bit from the process registry — the same registry the relay uses.
+    available = get_settings().binary_preview_enabled and get_node_registry().binary_preview(
+        s.node_id
+    )
+    return SessionCapabilities(
+        **session_capabilities(viewer, s, binary_preview_available=available)
+    )
 
 
 class AttachTicketResponse(BaseModel):
@@ -375,6 +388,12 @@ class NodeDetail(NodeSummary):
     # permission and the machine's consent are different questions, and the console
     # needs both answered before it shows a download control.
     file_download: bool
+    # Whether this node's last accepted registration reported read-only image/PDF
+    # preview (ADR 0029). Display only; the request gate is the live connection.
+    binary_preview: bool
+    # When Central last accepted a node.register from this node. Read-only; the
+    # rollback drill's proof that a registration landed (ADR 0029 §9).
+    last_registration_at: datetime | None
     is_enabled: bool
     registered_at: datetime
     runtimes: list[NodeRuntimeDTO]

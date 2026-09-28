@@ -32,6 +32,7 @@ const LABELS: Record<string, string> = {
   // 標籤跟著改；要分辨兩者請看 metadata 的 source（image | file）。
   "file.upload": "上傳檔案",
   "file.download": "下載檔案",
+  "file.binary_preview": "預覽圖片／PDF",
   "authz.denied": "授權被拒",
   // 埠轉發（ADR 0022）。整合層與隧道層分開記，因為它們回答的是不同的問題：
   // 「誰決定本組織使用這個服務、用誰的帳號」與「誰把哪台機器的哪個 port 對外」。
@@ -110,8 +111,9 @@ export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
     // A successful download sits here for the same reason a successful upload
     // does: it is ordinary session activity. The refusals next door under
     // Security are the ones that must stay easy to find (ADR 0028 §7).
+    // A successful image/PDF preview is ordinary workspace activity too.
     title: "工作區 / Workspace",
-    actions: ["file.upload", "file.download"],
+    actions: ["file.upload", "file.download", "file.binary_preview"],
   },
 ];
 

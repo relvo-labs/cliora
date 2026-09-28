@@ -45,6 +45,15 @@ const TYPES = new Set([
   // is a type that forwards malformed data, so both are checked here too.
   "filesystem.download",
   "filesystem.downloaded",
+  // Read-only binary preview (v1.11.0, ADR 0029). The browser receives the bytes
+  // over HTTP, never these frames, but the vocabulary is shared by all three
+  // consumers.
+  "filesystem.preview_open",
+  "filesystem.preview_opened",
+  "filesystem.preview_chunk",
+  "filesystem.preview_data",
+  "filesystem.preview_close",
+  "filesystem.preview_closed",
   "node.challenge",
   "node.auth",
   "node.authenticated",
@@ -275,6 +284,7 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
       "image_upload",
       "file_upload",
       "file_download",
+      "binary_preview",
     ]),
     [
       "name",
@@ -326,6 +336,11 @@ function validateRegisterPayload(payload: Record<string, unknown>): void {
   // "no" here too, so an older daemon reads as download-off rather than unknown.
   if ("file_download" in payload && typeof payload.file_download !== "boolean")
     reject("INVALID_MESSAGE", "file_download must be boolean");
+  // const:true, not a boolean (contract 1.11.0, ADR 0029 §9). A disabled daemon
+  // omits the key, because an older Central rejects the key whatever its value;
+  // so `false` is invalid rather than a second way to say "no".
+  if ("binary_preview" in payload && payload.binary_preview !== true)
+    reject("INVALID_MESSAGE", "binary_preview may only be true");
   for (const item of payload.runtimes as unknown[]) validateRuntimeItem(item);
   for (const root of payload.workspace_roots as unknown[]) {
     if (!isPlainObject(root))
@@ -606,6 +621,187 @@ function validateFsStoredPayload(payload: Record<string, unknown>): void {
     !TIMESTAMP.test(payload.modified_at)
   )
     reject("INVALID_MESSAGE", "Invalid stored timestamp");
+}
+
+// Read-only binary preview (contract 1.11.0, ADR 0029). The browser fetches the
+// bytes over HTTP and never receives these frames; they are validated so all three
+// consumers agree. The request side can claim nothing: no mime/kind, raw/encoding,
+// offset/length/range, disposition/filename or password. The mime enum is the
+// allowlist, so image/svg+xml is refused here as it is by the schema.
+const PREVIEW_CHUNK_SIZE = 512 * 1024;
+const PREVIEW_MAX_CHUNKS = 32;
+const PREVIEW_MAX_SIZE = PREVIEW_CHUNK_SIZE * PREVIEW_MAX_CHUNKS;
+const PREVIEW_DATA_MAX_BASE64 = 699052; // base64 length of one 512 KiB chunk
+const PREVIEW_MAX_SIDE = 8192;
+const PREVIEW_MIMES: Record<string, "image" | "pdf"> = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/webp": "image",
+  "image/gif": "image",
+  "application/pdf": "pdf",
+};
+const PREVIEW_DENIAL_CODES = new Set([
+  "FILE_PREVIEW_UNSUPPORTED",
+  "FILE_PREVIEW_INVALID",
+  "FILE_PREVIEW_LIMIT",
+  "FILE_DENIED",
+  "FILE_NOT_FOUND",
+  "FILE_PERMISSION_DENIED",
+  "FILE_TOO_LARGE",
+]);
+const DENIAL_REASON = /^[a-z][a-z0-9_]{0,63}$/;
+
+function isInt(value: unknown, min: number, max: number): boolean {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= min &&
+    value <= max
+  );
+}
+
+function requirePreviewId(value: unknown): void {
+  if (typeof value !== "string" || !ULID.test(value))
+    reject("INVALID_MESSAGE", "Invalid preview id");
+}
+
+function validatePreviewOpenPayload(payload: Record<string, unknown>): void {
+  validateFsReadPayload(payload);
+}
+
+function validatePreviewOpenedPayload(payload: Record<string, unknown>): void {
+  if (typeof payload.success !== "boolean")
+    reject("INVALID_MESSAGE", "success must be boolean");
+  if (payload.success === false) {
+    requireKeys(payload, new Set(["success", "path", "error"]), [
+      "success",
+      "path",
+      "error",
+    ]);
+    if (!isRelPath(payload.path))
+      reject("INVALID_MESSAGE", "Invalid preview path");
+    const error = payload.error;
+    if (!isPlainObject(error))
+      reject("INVALID_MESSAGE", "error must be an object");
+    requireKeys(error, new Set(["code", "reason", "size", "limit"]), [
+      "code",
+      "reason",
+    ]);
+    if (!PREVIEW_DENIAL_CODES.has(error.code as string))
+      reject("INVALID_MESSAGE", "Unknown preview denial code");
+    if (typeof error.reason !== "string" || !DENIAL_REASON.test(error.reason))
+      reject("INVALID_MESSAGE", "Invalid denial reason");
+    if (
+      error.size !== undefined &&
+      !isInt(error.size, 0, Number.MAX_SAFE_INTEGER)
+    )
+      reject("INVALID_MESSAGE", "Invalid denial size");
+    if (
+      error.limit !== undefined &&
+      !isInt(error.limit, 1, Number.MAX_SAFE_INTEGER)
+    )
+      reject("INVALID_MESSAGE", "Invalid denial limit");
+    return;
+  }
+  requireKeys(
+    payload,
+    new Set([
+      "success",
+      "preview_id",
+      "path",
+      "kind",
+      "mime",
+      "size",
+      "modified_at",
+      "chunk_size",
+      "chunk_count",
+      "width",
+      "height",
+    ]),
+    [
+      "success",
+      "preview_id",
+      "path",
+      "kind",
+      "mime",
+      "size",
+      "modified_at",
+      "chunk_size",
+      "chunk_count",
+    ],
+  );
+  requirePreviewId(payload.preview_id);
+  if (!isRelPath(payload.path))
+    reject("INVALID_MESSAGE", "Invalid preview path");
+  const kind = PREVIEW_MIMES[payload.mime as string];
+  if (kind === undefined) reject("INVALID_MESSAGE", "Mime is not allowlisted");
+  if (payload.kind !== kind)
+    reject("INVALID_MESSAGE", "Kind does not match mime");
+  if (!isInt(payload.size, 1, PREVIEW_MAX_SIZE))
+    reject("INVALID_MESSAGE", "Invalid preview size");
+  if (
+    typeof payload.modified_at !== "string" ||
+    !TIMESTAMP.test(payload.modified_at)
+  )
+    reject("INVALID_MESSAGE", "Invalid preview timestamp");
+  if (payload.chunk_size !== PREVIEW_CHUNK_SIZE)
+    reject("INVALID_MESSAGE", "Invalid chunk size");
+  if (!isInt(payload.chunk_count, 1, PREVIEW_MAX_CHUNKS))
+    reject("INVALID_MESSAGE", "Invalid chunk count");
+  if (kind === "pdf") {
+    if ("width" in payload || "height" in payload)
+      reject("INVALID_MESSAGE", "A PDF has no pixel dimensions");
+  } else if (
+    !isInt(payload.width, 1, PREVIEW_MAX_SIDE) ||
+    !isInt(payload.height, 1, PREVIEW_MAX_SIDE)
+  )
+    reject("INVALID_MESSAGE", "Invalid image dimensions");
+}
+
+function validatePreviewChunkPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["session_id", "preview_id", "index"]), [
+    "session_id",
+    "preview_id",
+    "index",
+  ]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  requirePreviewId(payload.preview_id);
+  if (!isInt(payload.index, 0, PREVIEW_MAX_CHUNKS - 1))
+    reject("INVALID_MESSAGE", "Invalid chunk index");
+}
+
+function validatePreviewDataPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["preview_id", "index", "data"]), [
+    "preview_id",
+    "index",
+    "data",
+  ]);
+  requirePreviewId(payload.preview_id);
+  if (!isInt(payload.index, 0, PREVIEW_MAX_CHUNKS - 1))
+    reject("INVALID_MESSAGE", "Invalid chunk index");
+  if (
+    typeof payload.data !== "string" ||
+    payload.data.length < 4 ||
+    payload.data.length > PREVIEW_DATA_MAX_BASE64 ||
+    !BASE64.test(payload.data)
+  )
+    reject("INVALID_MESSAGE", "Invalid preview data");
+}
+
+function validatePreviewClosePayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["session_id", "preview_id"]), [
+    "session_id",
+    "preview_id",
+  ]);
+  if (typeof payload.session_id !== "string" || !UUID.test(payload.session_id))
+    reject("INVALID_MESSAGE", "Invalid session id");
+  requirePreviewId(payload.preview_id);
+}
+
+function validatePreviewClosedPayload(payload: Record<string, unknown>): void {
+  requireKeys(payload, new Set(["preview_id"]), ["preview_id"]);
+  requirePreviewId(payload.preview_id);
 }
 
 function validateFsSearchPayload(payload: Record<string, unknown>): void {
@@ -972,6 +1168,24 @@ export function decodeControl(raw: Uint8Array | string): DecodedControl {
     validateFsDownloadPayload(data.payload);
   if (data.type === "filesystem.downloaded")
     validateFsDownloadedPayload(data.payload);
+  if (data.type === "filesystem.preview_open")
+    validatePreviewOpenPayload(data.payload);
+  if (data.type === "filesystem.preview_opened")
+    validatePreviewOpenedPayload(data.payload);
+  if (data.type === "filesystem.preview_chunk")
+    validatePreviewChunkPayload(data.payload);
+  if (data.type === "filesystem.preview_data") {
+    if (data.success !== true)
+      reject("INVALID_MESSAGE", "preview_data must claim success");
+    validatePreviewDataPayload(data.payload);
+  }
+  if (data.type === "filesystem.preview_close")
+    validatePreviewClosePayload(data.payload);
+  if (data.type === "filesystem.preview_closed") {
+    if (data.success !== true)
+      reject("INVALID_MESSAGE", "preview_closed must claim success");
+    validatePreviewClosedPayload(data.payload);
+  }
   if (data.type === "node.register") validateRegisterPayload(data.payload);
   if (data.type === "node.heartbeat") validateHeartbeatPayload(data.payload);
   if (data.type === "node.runtime_status")

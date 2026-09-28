@@ -23,7 +23,7 @@ Developer terminate any colleague's session.
 | 操作 Terminal / Operate terminal (writer) | `terminal.operate` | ✓ | ✓ | — |
 | 接管 Terminal / Take over the writer role | `terminal.takeover` | ✓ | ✓ | — |
 | 終止 Session / Terminate session | `session.terminate` | ✓ | ✓ | — |
-| 瀏覽檔案 / Browse & preview files | `file.browse` | ✓ | ✓ | ✓ |
+| 瀏覽檔案 / Browse & preview files (text; images & PDF, view-only) | `file.browse` | ✓ | ✓ | ✓ |
 | 查看 Audit Log / View audit log | `audit.view` | ✓ | — | — |
 
 Roles are strictly nested: Viewer ⊂ Developer ⊂ Admin. Viewer holds no mutation
@@ -39,6 +39,7 @@ action, so a forged Viewer mutation fails before any resource is loaded.
 | session.terminate / delete | `session.terminate` **and** (owner **or** holder of `node.manage`, i.e. Admin) |
 | session.create | `user_id` is assigned by the server; never accepted from the client |
 | file browse / search / preview | `file.browse` **and** view access to the owning session |
+| binary preview (image / PDF, view-only) | `file.browse` **and** view access to the owning session **and** not a shell session **and** the node's live registration reports `binary_preview` **and** Central's `binary_preview_enabled` is on. Grants no download. |
 | node management | `node.manage`; nodes have no owner |
 
 Every refusal from either layer raises the same `FORBIDDEN` / 403 with the same

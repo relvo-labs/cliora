@@ -1,0 +1,10 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Contract 1.11.0 (ADR 0029). Idempotent; Central sends it at the end of every stream.",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "preview_id"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "preview_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"}
+  }
+}

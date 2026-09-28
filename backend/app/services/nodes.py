@@ -165,6 +165,10 @@ class RegisterNodeInput:
     # browser (ADR 0028 §6). False for a daemon that predates the field, and separate
     # from both upload flags: accepting a file is not agreeing to hand one back.
     file_download: bool = False
+    # The node's own report that it serves read-only image/PDF preview (ADR 0029).
+    # On the wire it is `const: true` or absent — a disabled daemon omits it — so
+    # absent reads as False here, exactly like a daemon that predates the field.
+    binary_preview: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +260,9 @@ class NodeRegistrationService:
         node.daemon_version = data.daemon_version
         node.run_user = data.run_user
         node.last_seen_at = now_utc()
+        # Set here and nowhere else: this is the proof a registration was accepted
+        # (ADR 0029 §9). Heartbeats move last_seen_at, never this.
+        node.last_registration_at = node.last_seen_at
         # The daemon's announce is authoritative; replace the child rows.
         # Clear + flush so orphan deletes happen before the new inserts,
         # otherwise the (node_id, runtime) unique constraint is violated.
@@ -287,6 +294,7 @@ class NodeRegistrationService:
             or node.image_upload != data.image_upload
             or node.file_upload != data.file_upload
             or node.file_download != data.file_download
+            or node.binary_preview != data.binary_preview
         )
         previous_posture = node.privileged_terminal
         previous_upload = node.image_upload
@@ -296,6 +304,8 @@ class NodeRegistrationService:
         node.image_upload = data.image_upload
         node.file_upload = data.file_upload
         node.file_download = data.file_download
+        previous_binary_preview = node.binary_preview
+        node.binary_preview = data.binary_preview
         await self._audit.record(
             audit.NODE_REGISTER, node_id=node.id, metadata={"hostname": node.hostname}
         )
@@ -312,6 +322,8 @@ class NodeRegistrationService:
                     "previous_file_upload": previous_file_upload,
                     "file_download": data.file_download,
                     "previous_file_download": previous_file_download,
+                    "binary_preview": data.binary_preview,
+                    "previous_binary_preview": previous_binary_preview,
                 },
             )
         return node

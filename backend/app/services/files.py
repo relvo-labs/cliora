@@ -12,18 +12,24 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import binascii
 import hashlib
+import math
 import os
 import posixpath
 import time
 import uuid
-from collections.abc import AsyncIterator
+from collections import Counter
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
+import anyio
 from fastapi import status
 
 from app import metrics
+from app.api.error_catalog import safe_message
 from app.api.errors import ApiError
 from app.db.models import TerminalSession, User
 from app.logging import get_logger
@@ -94,6 +100,138 @@ _UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
         status.HTTP_403_FORBIDDEN,
     ),
 }
+
+
+# --- Read-only binary preview (ADR 0029, plan/31/04) ---
+
+# The wire allowlist (contract 1.11.0 mime enum) and the kind each mime implies. The
+# X-Cliora-Preview-Mime header is taken from here, never copied from the node.
+PREVIEW_MIMES: dict[str, str] = {
+    "image/png": "image",
+    "image/jpeg": "image",
+    "image/webp": "image",
+    "image/gif": "image",
+    "application/pdf": "pdf",
+}
+PREVIEW_CHUNK_SIZE = 524288
+PREVIEW_MAX_CHUNKS = 32
+PREVIEW_MAX_SIZE = PREVIEW_CHUNK_SIZE * PREVIEW_MAX_CHUNKS
+PREVIEW_MAX_SIDE = 8192
+# How long the close at the end of a stream may take. It is best effort: the
+# daemon's idle TTL is the backstop for a close that does not arrive.
+_PREVIEW_CLOSE_SECONDS = 1.0
+_PREVIEW_AUDIT_SECONDS = 2.0
+
+# In-band refusals: each keeps its own code and status, because each has a different
+# next step (the `_map_error` principle). None of them is answered with a download.
+_PREVIEW_DENIAL_STATUS: dict[str, int] = {
+    "FILE_DENIED": status.HTTP_403_FORBIDDEN,
+    "FILE_NOT_FOUND": status.HTTP_404_NOT_FOUND,
+    "FILE_PERMISSION_DENIED": status.HTTP_403_FORBIDDEN,
+    "FILE_TOO_LARGE": status.HTTP_413_CONTENT_TOO_LARGE,
+    "FILE_PREVIEW_UNSUPPORTED": status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+    "FILE_PREVIEW_INVALID": status.HTTP_422_UNPROCESSABLE_CONTENT,
+    "FILE_PREVIEW_LIMIT": status.HTTP_413_CONTENT_TOO_LARGE,
+}
+# Node-level refusals, which arrive as error frames.
+_PREVIEW_ERROR_STATUS: dict[str, int] = {
+    "FILE_PREVIEW_DISABLED": status.HTTP_403_FORBIDDEN,
+    "FILE_PREVIEW_EXPIRED": status.HTTP_502_BAD_GATEWAY,
+    "NODE_BUSY": status.HTTP_503_SERVICE_UNAVAILABLE,
+}
+
+
+@dataclass(slots=True)
+class BinaryPreviewDenial:
+    """An in-band refusal, returned rather than raised so the route can commit the
+    sensitive-denial audit row before it raises (ADR 0029 §6 step 5)."""
+
+    code: str
+    status_code: int
+    details: dict[str, Any]
+
+    def to_error(self) -> ApiError:
+        return ApiError(
+            self.code,
+            safe_message(self.code, "This file cannot be previewed"),
+            self.status_code,
+            details=self.details,
+        )
+
+
+class _PreviewStreams:
+    """Streams in flight per user and per node, in this process (BP-OM-09: Central is
+    assumed to serve a node's WebSocket from one process). No lock is needed: the check
+    and the increment happen with no await between them."""
+
+    def __init__(self) -> None:
+        self.by_user: Counter[uuid.UUID] = Counter()
+        self.by_node: Counter[uuid.UUID] = Counter()
+
+    def acquire(
+        self, user_id: uuid.UUID, node_id: uuid.UUID, *, per_user: int, per_node: int
+    ) -> bool:
+        if self.by_user[user_id] >= per_user or self.by_node[node_id] >= per_node:
+            return False
+        self.by_user[user_id] += 1
+        self.by_node[node_id] += 1
+        return True
+
+    def release(self, user_id: uuid.UUID, node_id: uuid.UUID) -> None:
+        self.by_user[user_id] -= 1
+        self.by_node[node_id] -= 1
+        if self.by_user[user_id] <= 0:
+            del self.by_user[user_id]
+        if self.by_node[node_id] <= 0:
+            del self.by_node[node_id]
+
+
+_preview_streams = _PreviewStreams()
+
+
+@dataclass(slots=True)
+class BinaryPreviewStream:
+    """A validated handle on the node, owned by one HTTP response. Whoever holds it
+    must end with `FileRelayService.stream_binary_preview` running to its `finally`,
+    which closes the handle and frees the stream slot on every path."""
+
+    node_id: uuid.UUID
+    session_id: uuid.UUID
+    actor_id: uuid.UUID
+    preview_id: str
+    kind: str
+    mime: str
+    size: int
+    chunk_count: int
+    width: int | None
+    height: int | None
+    started: float
+    _released: bool = field(default=False)
+    # Set when stream_binary_preview's `finally` has run (handle closed).
+    finished: bool = field(default=False)
+
+    def headers(self) -> dict[str, str]:
+        """ADR 0029 §6's header set. There is no Content-Disposition: this is not a
+        download and must not look like one."""
+        h = {
+            "Content-Length": str(self.size),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "no-store, private",
+            "Vary": "Authorization",
+            "Cross-Origin-Resource-Policy": "same-origin",
+            "Content-Security-Policy": "sandbox; default-src 'none'",
+            "X-Cliora-Preview-Mime": self.mime,
+            "X-Cliora-Preview-Kind": self.kind,
+        }
+        if self.kind == "image" and self.width is not None and self.height is not None:
+            h["X-Cliora-Preview-Width"] = str(self.width)
+            h["X-Cliora-Preview-Height"] = str(self.height)
+        return h
+
+    def release_slot(self) -> None:
+        if not self._released:
+            self._released = True
+            _preview_streams.release(self.actor_id, self.node_id)
 
 
 def _reject_rel_path(rel: str, *, allow_empty: bool = False) -> str:
@@ -493,11 +631,9 @@ class FileRelayService:
     ) -> None:
         """Record a successful download (ADR 0028 sec 7).
 
-        The successful case is the one audited here, which is the opposite of the
-        preview path next door. The asymmetry is not an oversight: a preview that
-        succeeded leaves nothing behind, so its refusals are the interesting rows,
-        while a download that succeeded leaves a copy of the file somewhere the
-        platform will never see again.
+        The successful case is audited here because a download leaves a copy
+        outside the platform. Binary preview has its own success audit with no
+        path; the download record includes the selected relative path.
 
         `size_bytes`, not `bytes`: the latter is an exact-match forbidden metadata
         key and is stripped from every audit API response, so a number written under
@@ -520,6 +656,296 @@ class FileRelayService:
                 "audit write failed",
                 extra={"action": audit.FILE_DOWNLOAD, "session_id": str(session_id)},
             )
+
+    # --- Read-only binary preview (ADR 0029 §6) ---
+
+    @property
+    def settings(self) -> Settings:
+        return self._settings
+
+    async def binary_preview_target(self, *, actor: User, session_id: uuid.UUID) -> TerminalSession:
+        """Steps 2-4: session, file-browse scope (Viewer included, shell refused),
+        node online, then the two capability gates. Both gates refuse BEFORE any frame
+        is sent: an old daemon drops unknown types silently, so asking it would only
+        turn into a timeout (ADR 0029 §9)."""
+        s = await self._resolve(session_id, actor)
+        if not self._settings.binary_preview_enabled or not self._registry.binary_preview(
+            s.node_id
+        ):
+            raise ApiError(
+                "FILE_PREVIEW_UNSUPPORTED_NODE",
+                safe_message("FILE_PREVIEW_UNSUPPORTED_NODE"),
+                status.HTTP_409_CONFLICT,
+            )
+        return s
+
+    async def open_binary_preview(
+        self, *, actor: User, target: TerminalSession, path: str
+    ) -> BinaryPreviewStream | BinaryPreviewDenial:
+        """Steps 6-8: validate the path, take a stream slot, and open a snapshot on the
+        node. An in-band refusal is RETURNED; a sensitive one has already been added to
+        the session's audit through the shared `_maybe_audit_denied`, and the caller
+        commits before raising."""
+        actor_id = actor.id
+        session_id = target.id
+        async with self._observe(
+            "binary_preview_open", session_id=session_id, actor_id=actor_id
+        ) as detail:
+            detail["node_id"] = str(target.node_id)
+            rel = _reject_rel_path(path)
+            settings = self._settings
+            if not _preview_streams.acquire(
+                actor_id,
+                target.node_id,
+                per_user=settings.file_preview_streams_per_user,
+                per_node=settings.file_preview_streams_per_node,
+            ):
+                raise ApiError(
+                    "FILE_PREVIEW_BUSY",
+                    safe_message("FILE_PREVIEW_BUSY"),
+                    status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+            owned = False
+            try:
+                started = time.monotonic()
+                message = await self._registry.request(
+                    target.node_id,
+                    "filesystem.preview_open",
+                    {"session_id": str(session_id), "path": rel},
+                    timeout_seconds=settings.file_preview_open_timeout_seconds,
+                )
+                if message.type == "error" and message.error:
+                    code = str(message.error.get("code", "INTERNAL_ERROR"))
+                    if code in _PREVIEW_ERROR_STATUS:
+                        raise ApiError(code, safe_message(code), _PREVIEW_ERROR_STATUS[code])
+                    raise self._map_error(code)
+                payload = self._expect(message, "filesystem.preview_opened")
+                if not payload.get("success"):
+                    error = payload.get("error") or {}
+                    code = str(error.get("code", "FILE_DENIED"))
+                    reason = str(error.get("reason") or "unspecified")
+                    detail["code"] = code
+                    detail["denied_reason"] = reason
+                    metrics.increment(metrics.FILESYSTEM_DENIED_TOTAL, code=code, reason=reason)
+                    await self._maybe_audit_denied(
+                        actor_id, target.node_id, session_id, rel, payload
+                    )
+                    details: dict[str, Any] = {"reason": reason}
+                    for key in ("size", "limit"):
+                        if isinstance(error.get(key), int):
+                            details[key] = error[key]
+                    return BinaryPreviewDenial(
+                        code, _PREVIEW_DENIAL_STATUS.get(code, status.HTTP_403_FORBIDDEN), details
+                    )
+                stream = await self._accept_opened(target, actor_id, payload, started)
+                detail["kind"] = stream.kind
+                detail["bytes"] = stream.size
+                owned = True
+                return stream
+            finally:
+                if not owned:
+                    _preview_streams.release(actor_id, target.node_id)
+
+    async def _accept_opened(
+        self, target: TerminalSession, actor_id: uuid.UUID, payload: dict[str, Any], started: float
+    ) -> BinaryPreviewStream:
+        """Re-check the daemon's verdict before anything is forwarded. The schema has
+        already been applied on the socket; this is the part it cannot express, and a
+        second look at the part a browser decoder depends on. A bad answer is a 502,
+        and the handle it named is closed."""
+        preview_id = payload.get("preview_id")
+        mime = payload.get("mime")
+        kind = PREVIEW_MIMES.get(mime) if isinstance(mime, str) else None
+        size = payload.get("size")
+        count = payload.get("chunk_count")
+        width, height = payload.get("width"), payload.get("height")
+        ok = (
+            isinstance(preview_id, str)
+            and len(preview_id) == 26
+            and kind is not None
+            and payload.get("kind") == kind
+            and isinstance(size, int)
+            and 1 <= size <= PREVIEW_MAX_SIZE
+            and payload.get("chunk_size") == PREVIEW_CHUNK_SIZE
+            and count == max(1, math.ceil(size / PREVIEW_CHUNK_SIZE))
+        )
+        if ok and kind == "image":
+            ok = all(isinstance(v, int) and 1 <= v <= PREVIEW_MAX_SIDE for v in (width, height))
+        if ok and kind == "pdf":
+            ok = width is None and height is None
+        if not ok:
+            if isinstance(preview_id, str):
+                await self._close_preview(target.node_id, target.id, preview_id)
+            raise ApiError(
+                "INTERNAL_ERROR", "Unexpected node response", status.HTTP_502_BAD_GATEWAY
+            )
+        assert isinstance(preview_id, str) and isinstance(mime, str) and kind is not None
+        assert isinstance(size, int) and isinstance(count, int)
+        return BinaryPreviewStream(
+            node_id=target.node_id,
+            session_id=target.id,
+            actor_id=actor_id,
+            preview_id=preview_id,
+            kind=kind,
+            mime=mime,
+            size=size,
+            chunk_count=count,
+            width=width if kind == "image" else None,
+            height=height if kind == "image" else None,
+            started=started,
+        )
+
+    async def stream_binary_preview(
+        self, stream: BinaryPreviewStream
+    ) -> AsyncGenerator[bytes, None]:
+        """Steps 10-12: pull one chunk at a time and hand it on. The next chunk is only
+        requested after the previous one was accepted by the ASGI send, so a slow
+        client slows the node rather than filling Central's memory.
+
+        A failure mid-stream ends the body early. The response already promised
+        `Content-Length`, so the browser gets a network error — never a partial image
+        and never a download. On EVERY exit — success, node error, budget, client
+        gone — the handle is closed at once; the daemon's idle TTL is only a backstop.
+        """
+        settings = self._settings
+        outcome = "OK"
+        sent = 0
+        chunks = 0
+        try:
+            for index in range(stream.chunk_count):
+                remaining = settings.file_preview_total_seconds - (
+                    time.monotonic() - stream.started
+                )
+                if remaining <= 0:
+                    outcome = "REQUEST_TIMEOUT"
+                    metrics.increment(metrics.FILESYSTEM_RELAY_TIMEOUT_TOTAL, op="binary_preview")
+                    return
+                try:
+                    message = await self._registry.request(
+                        stream.node_id,
+                        "filesystem.preview_chunk",
+                        {
+                            "session_id": str(stream.session_id),
+                            "preview_id": stream.preview_id,
+                            "index": index,
+                        },
+                        timeout_seconds=min(settings.file_preview_chunk_timeout_seconds, remaining),
+                    )
+                except ApiError as exc:
+                    outcome = exc.code
+                    return
+                data = self._preview_chunk(message, stream, index)
+                if data is None:
+                    outcome = _chunk_outcome(message)
+                    return
+                sent += len(data)
+                chunks += 1
+                yield data
+        except (asyncio.CancelledError, GeneratorExit):
+            outcome = "CANCELLED"
+            metrics.increment(metrics.FILESYSTEM_RELAY_CANCEL_TOTAL, op="binary_preview")
+            raise
+        finally:
+            stream.finished = True
+            await self._close_preview(stream.node_id, stream.session_id, stream.preview_id)
+            stream.release_slot()
+            metrics.increment(metrics.FILESYSTEM_REQUEST_TOTAL, op="binary_preview", code=outcome)
+            log.info(
+                "filesystem relay",
+                extra={
+                    "event": "filesystem.binary_preview",
+                    "op": "binary_preview",
+                    "code": outcome,
+                    "kind": stream.kind,
+                    "chunks": chunks,
+                    "bytes": sent,
+                    "duration_ms": round((time.monotonic() - stream.started) * 1000, 2),
+                    "session_id": str(stream.session_id),
+                    "node_id": str(stream.node_id),
+                    "user_id": str(stream.actor_id),
+                },
+            )
+
+    async def abandon_binary_preview(self, stream: BinaryPreviewStream) -> None:
+        """For a response whose body never started (the client left before the first
+        chunk): an async generator that never ran does not run its `finally`, so the
+        handle is closed and the slot freed here instead. A no-op otherwise."""
+        if stream.finished:
+            return
+        stream.finished = True
+        await self._close_preview(stream.node_id, stream.session_id, stream.preview_id)
+        stream.release_slot()
+        metrics.increment(metrics.FILESYSTEM_REQUEST_TOTAL, op="binary_preview", code="CANCELLED")
+
+    def _preview_chunk(
+        self, message: ControlMessage, stream: BinaryPreviewStream, index: int
+    ) -> bytes | None:
+        """The chunk's bytes, or None if the frame is not exactly the chunk asked for."""
+        if message.type != "filesystem.preview_data":
+            return None
+        payload = message.payload
+        if payload.get("preview_id") != stream.preview_id or payload.get("index") != index:
+            return None
+        try:
+            data = base64.b64decode(str(payload.get("data", "")), validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        last = index == stream.chunk_count - 1
+        expected = stream.size - PREVIEW_CHUNK_SIZE * index if last else PREVIEW_CHUNK_SIZE
+        return data if len(data) == expected else None
+
+    async def _close_preview(
+        self, node_id: uuid.UUID, session_id: uuid.UUID, preview_id: str
+    ) -> None:
+        """Send preview_close, shielded from the cancellation that may be ending the
+        stream and bounded to one second. Best effort by design."""
+        with anyio.CancelScope(shield=True), anyio.move_on_after(_PREVIEW_CLOSE_SECONDS):
+            try:
+                await self._registry.request(
+                    node_id,
+                    "filesystem.preview_close",
+                    {"session_id": str(session_id), "preview_id": preview_id},
+                    timeout_seconds=_PREVIEW_CLOSE_SECONDS,
+                )
+            except ApiError:
+                pass
+
+    async def _audit_preview_success(
+        self, stream: BinaryPreviewStream, *, request_id: str | None = None
+    ) -> None:
+        """OD-6: `file.binary_preview` with kind, mime and size_bytes — never the path.
+        Written on its own short session, like the RBAC-denial middleware, because the
+        request's session and a streamed body do not share a lifetime this relies on.
+        A failed write is counted and logged, not turned into a failed preview."""
+        from app.db.engine import get_database
+
+        try:
+            with anyio.CancelScope(shield=True):
+                with anyio.move_on_after(_PREVIEW_AUDIT_SECONDS) as deadline:
+                    async with get_database().session() as own:
+                        await AuditService(own).record(
+                            audit.FILE_BINARY_PREVIEW,
+                            user_id=stream.actor_id,
+                            node_id=stream.node_id,
+                            session_id=stream.session_id,
+                            request_id=request_id,
+                            metadata={
+                                "kind": stream.kind,
+                                "mime": stream.mime,
+                                "size_bytes": stream.size,
+                            },
+                        )
+                        await own.commit()
+                if deadline.cancel_called:
+                    raise TimeoutError("binary preview audit deadline")
+        except (Exception, asyncio.CancelledError) as exc:
+            metrics.increment(metrics.FILESYSTEM_AUDIT_ERROR_TOTAL, action="binary_preview")
+            log.warning(
+                "audit write failed",
+                extra={"action": audit.FILE_BINARY_PREVIEW, "session_id": str(stream.session_id)},
+            )
+            if isinstance(exc, asyncio.CancelledError):
+                raise
 
     async def _resolve_for_upload(self, session_id: uuid.UUID, viewer: User) -> TerminalSession:
         """Same resolution as `_resolve`, gated on `file.upload` instead of
@@ -686,3 +1112,9 @@ class FileRelayService:
             "Node could not complete the request",
             status.HTTP_502_BAD_GATEWAY,
         )
+
+
+def _chunk_outcome(message: ControlMessage) -> str:
+    if message.type == "error" and message.error:
+        return str(message.error.get("code", "INTERNAL_ERROR"))
+    return "INTERNAL_ERROR"

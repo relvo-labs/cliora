@@ -94,6 +94,8 @@ type FilesystemConfig struct {
 	// and a node owner is entitled to answer them separately - the same argument
 	// that made Upload.Files its own switch rather than a widening of Upload.
 	Download DownloadConfig `yaml:"download"`
+	// Preview has independent consent and limits.
+	BinaryPreview BinaryPreviewConfig `yaml:"binary_preview"`
 }
 
 // DownloadConfig bounds workspace file download (ADR 0028, FR-FILE-011).
@@ -121,6 +123,41 @@ type DownloadConfig struct {
 // and ADR 0026 sec 9: upgrade acquires the behaviour, so a release note and a
 // runbook are owed).
 func (d DownloadConfig) DownloadEnabled() bool { return d.Enabled == nil || *d.Enabled }
+
+// BinaryPreviewConfig is the node's switch and limits for read-only binary
+// preview (ADR 0029 §4, §9; plan/31/03 §5).
+//
+// The limits can only be LOWERED. A value above the compiled-in default is
+// refused at load rather than clamped, because the wire contract caps what a
+// preview may be (16 MiB, 32 chunks) and a raised setting would read as working
+// right up to the frame Central rejects. Zero means "use the default".
+//
+// There is no allowed-types key: the allowlist is the wire contract's mime enum,
+// and changing it means amending ADR 0029 and all three consumers.
+type BinaryPreviewConfig struct {
+	// Enabled is a pointer so that absent and explicit stay distinguishable
+	// (BinaryPreviewFromDefault), like UploadConfig.Enabled. Absent means on
+	// (OD-5): Central's own flag is off by default and stands in front of it.
+	// When off, node.register OMITS binary_preview rather than sending false,
+	// so an older Central still accepts this node (ADR 0029 §9).
+	Enabled        *bool `yaml:"enabled"`
+	ImageMaxBytes  int64 `yaml:"image_max_bytes"`
+	ImageMaxPixels int64 `yaml:"image_max_pixels"`
+	ImageMaxSide   int   `yaml:"image_max_side"`
+	PDFMaxBytes    int64 `yaml:"pdf_max_bytes"`
+}
+
+// PreviewEnabled reports the effective switch: absent means enabled (OD-5).
+func (b BinaryPreviewConfig) PreviewEnabled() bool { return b.Enabled == nil || *b.Enabled }
+
+// Binary preview ceilings (ADR 0029 §4, OD-2). These are also the defaults: a
+// node may lower them, never raise them.
+const (
+	DefaultPreviewImageMaxBytes  int64 = 8 * 1024 * 1024
+	DefaultPreviewImageMaxPixels int64 = 16777216
+	DefaultPreviewImageMaxSide         = 8192
+	DefaultPreviewPDFMaxBytes    int64 = 16 * 1024 * 1024
+)
 
 // UploadConfig bounds image drop, the one path by which anything may be written
 // into a workspace (ADR 0024, FR-FILE-009).
@@ -341,6 +378,10 @@ type Config struct {
 	// question a node owner is most likely to have a different answer to. Never
 	// serialised.
 	DownloadFromDefault bool `yaml:"-"`
+	// BinaryPreviewFromDefault is the same fact for filesystem.binary_preview.enabled
+	// (ADR 0029, OD-5): a node that inherited image/PDF preview from an upgrade must
+	// be able to say so in its startup log. Never serialised.
+	BinaryPreviewFromDefault bool `yaml:"-"`
 
 	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
 	// absent and defaulted to enabled rather than being chosen. Surfaced in the
@@ -541,6 +582,24 @@ func (c *Config) applyFilesystemDefaults() {
 	if d.MaxBytes <= 0 {
 		d.MaxBytes = DefaultDownloadMaxBytes
 	}
+	bp := &c.Filesystem.BinaryPreview
+	if bp.Enabled == nil {
+		c.BinaryPreviewFromDefault = true
+	}
+	// Zero means "not set". A negative or raised value is left for Validate to
+	// refuse, so a typo is an error rather than a silently different limit.
+	if bp.ImageMaxBytes == 0 {
+		bp.ImageMaxBytes = DefaultPreviewImageMaxBytes
+	}
+	if bp.ImageMaxPixels == 0 {
+		bp.ImageMaxPixels = DefaultPreviewImageMaxPixels
+	}
+	if bp.ImageMaxSide == 0 {
+		bp.ImageMaxSide = DefaultPreviewImageMaxSide
+	}
+	if bp.PDFMaxBytes == 0 {
+		bp.PDFMaxBytes = DefaultPreviewPDFMaxBytes
+	}
 }
 
 // applyTunnelDefaults fills in what an absent `tunnel:` block means. Absent is "do not
@@ -686,8 +745,35 @@ func (c *Config) Validate() error {
 	if s.MaxDepth < 0 || s.MaxResults < 0 || s.MaxScanned < 0 || s.TimeoutSeconds < 0 {
 		return errors.New("filesystem.search bounds must not be negative")
 	}
+	if err := c.Filesystem.BinaryPreview.validate(); err != nil {
+		return err
+	}
 	if c.Session.Backend != "" && c.Session.Backend != "tmux" {
 		return fmt.Errorf("session.backend %q is not supported", c.Session.Backend)
+	}
+	return nil
+}
+
+// validate refuses a binary preview limit that is negative or above its
+// compiled-in ceiling. The ceilings are contract-bound (ADR 0029 §4), so a
+// setting may lower a limit and never raise it.
+func (b BinaryPreviewConfig) validate() error {
+	for _, l := range []struct {
+		key        string
+		value, max int64
+	}{
+		{"image_max_bytes", b.ImageMaxBytes, DefaultPreviewImageMaxBytes},
+		{"image_max_pixels", b.ImageMaxPixels, DefaultPreviewImageMaxPixels},
+		{"image_max_side", int64(b.ImageMaxSide), DefaultPreviewImageMaxSide},
+		{"pdf_max_bytes", b.PDFMaxBytes, DefaultPreviewPDFMaxBytes},
+	} {
+		if l.value < 0 {
+			return fmt.Errorf("filesystem.binary_preview.%s must not be negative", l.key)
+		}
+		if l.value > l.max {
+			return fmt.Errorf("filesystem.binary_preview.%s = %d exceeds the ceiling %d; "+
+				"these limits can only be lowered (ADR 0029 §4)", l.key, l.value, l.max)
+		}
 	}
 	return nil
 }

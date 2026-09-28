@@ -134,9 +134,42 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # (AC-06), and Central keeping no byte (AC-10). Getting the feature wrong makes
     # it not work; getting those four wrong sends a secret off the node or runs
     # workspace content in the console's own origin.
+    # 2026-09-27: +16 for read-only binary preview (plan/31, ADR 0029) —
+    # FR-FILE-012.AC-01..AC-16. None is `verifiable` yet: at BP-01 each carries only
+    # `planned_by` and `specified_by`, because an `implemented_by` / `verified_by`
+    # pointing at a file that does not exist yet is a claim, not a link. They gain
+    # the other two as BP-02..BP-07 land, and each of those stages adds its own line
+    # here. `blocking` stays 0 because FR-FILE-012 is `should`. FR-CONN-006.AC-13
+    # (the preview relay budgets) is registered too but `proposed`, so it is not in
+    # these totals; FR-CONN-006 is `must`, and it becomes active with its budgets in
+    # BP-04 (+1 there, on its own line).
+    # 2026-09-27: +3 verifiable (plan/31 BP-03, daemon): FR-FILE-012.AC-02 (type from
+    # content, closed allowlist), AC-03 (the shared sensitive policy, twice) and AC-05
+    # (envelope refusal before transfer) are wholly the daemon's, and now carry
+    # implemented_by and verified_by. AC-04 is not among them: its PDF page limit is
+    # enforced by the browser (BP-07), so it waits for that half.
+    # 2026-09-27: +1 total, +5 verifiable (plan/31 BP-04, Central). FR-CONN-006.AC-13
+    # becomes active now that its three budgets exist (the +1 promised above), and it
+    # is verifiable at once; FR-FILE-012.AC-01 (roles incl. Viewer, shell refused),
+    # AC-11 (a node without the capability is never asked), AC-12 (flag, live
+    # registration and scope, composed on the server) and AC-13 (audit without a
+    # path, committed before the refusal) gain implemented_by and verified_by. AC-08,
+    # AC-09 and AC-14 have a Central half done but a browser or edge half that is not,
+    # so they stay `specified` until BP-05/BP-06.
+    # 2026-09-28: +3 verifiable (plan/31 BP-06, frontend lifecycle and image viewer):
+    # FR-FILE-012.AC-06 (first frame only), AC-08 (no save affordance; Central's
+    # octet-stream/no-Content-Disposition half landed in BP-04) and AC-10 (cleared on
+    # session change, sign-out and user change) gain implemented_by and verified_by.
+    # AC-16 waits for BP-07: its password-required half is the PDF renderer's.
+    # 2026-09-28: +3 verifiable (plan/31 BP-07, PDF.js renderer): FR-FILE-012.AC-04
+    # (its browser half, the PDF page limit before render, joins BP-03's daemon
+    # limits), AC-07 (no scripts, links, forms or attachments) and AC-16 (render
+    # failures and password PDFs refused without a prompt).
+    # #71 has merged first: its ten active, verifiable FR-FILE-011 criteria are
+    # counted separately from the 16 preview criteria and two relay budgets.
     assert result["summary"] == {
-        "total": 468,
-        "verifiable": 335,
+        "total": 486,
+        "verifiable": 350,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

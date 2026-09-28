@@ -37,6 +37,7 @@ from app.api.http.sessions import router as sessions_router
 from app.api.http.tunnels import router as tunnels_router
 from app.api.middleware import (
     AuthzDenialAuditMiddleware,
+    BinaryPreviewCompletionMiddleware,
     HttpMetricsMiddleware,
     RequestIdMiddleware,
 )
@@ -143,6 +144,7 @@ app = FastAPI(title="Cliora Central", version="0.2.0", lifespan=lifespan)
 app.add_middleware(HttpMetricsMiddleware)
 app.add_middleware(AuthzDenialAuditMiddleware)
 app.add_middleware(RequestIdMiddleware)
+app.add_middleware(BinaryPreviewCompletionMiddleware)
 install_error_handlers(app)
 app.include_router(auth_router)
 app.include_router(enrollment_router)

@@ -403,6 +403,9 @@ async def test_created_session_reports_its_creators_capabilities(api: tuple) -> 
         # A Developer holds `terminal.shell` and owns this session, so the tab is
         # offered here (ADR 0021 / D7).
         "can_open_shell": True,
+        # No node connection reported binary_preview in this test, so the image/PDF
+        # preview is not offered however the role reads (ADR 0029 §9).
+        "can_preview_binary": False,
     }
 
 
@@ -437,6 +440,9 @@ async def test_demoted_owner_loses_write_and_terminate(api: tuple) -> None:
         # Contraction reaches the system terminal too: a demoted owner still owns
         # the session but no longer holds `terminal.shell`.
         "can_open_shell": False,
+        # Off for want of a live node capability, not because of the demotion: a
+        # Viewer may preview binaries (ADR 0029 §7).
+        "can_preview_binary": False,
     }
 
     registry = RecordingRegistry()

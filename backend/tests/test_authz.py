@@ -107,7 +107,27 @@ def test_capability_projection_matches_the_predicates(role: str, is_owner: bool)
         "can_browse_files": authz.may_browse_files(actor, session),
         "can_upload_files": authz.may_upload_files(actor, session),
         "can_open_shell": authz.may_open_shell(actor, session),
+        # Off unless the node's live registration and Central's flag both allow it.
+        "can_preview_binary": False,
     }
+    assert authz.session_capabilities(actor, session, binary_preview_available=True)[
+        "can_preview_binary"
+    ] is authz.may_browse_files(actor, session)
+
+
+@pytest.mark.parametrize("role", ["Admin", "Developer", "Viewer"])
+def test_every_role_that_browses_may_preview_binary_including_viewer(role: str) -> None:
+    """ADR 0029 §7: the widening of file.browse, stated as a row. Viewer is in it on
+    purpose (product owner, 2026-09-27); changing that is a decision, and this is the
+    line that has to change with it."""
+    actor = _user(role)
+    session = _session(_user("Developer"))
+    assert authz.may_preview_binary(actor, session, available=True) is True
+    assert authz.may_preview_binary(actor, session, available=False) is False
+    assert authz.may_preview_binary(actor, _shell(actor), available=True) is False
+    assert (
+        authz.may_preview_binary(_user("Stripped", actions=set()), session, available=True) is False
+    )
 
 
 def test_owner_without_operate_cannot_write() -> None:
@@ -250,6 +270,11 @@ ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     # express "may upload images but not files". The cost is that the action's
     # meaning widens, which is a release-note obligation rather than a matrix one.
     ("POST", "/api/sessions/{session_id}/files/upload"): rbac.FILE_UPLOAD,
+    # Read-only binary preview (ADR 0029 §6, §7). A POST because the workspace path
+    # travels in the body, never in a URL — but a read: gated on file.browse, which
+    # Viewer holds. That Viewer may see images and PDFs is a decision recorded in
+    # FR-AUTH-002.AC-11 and the permission matrix, not a default nobody noticed.
+    ("POST", "/api/sessions/{session_id}/files/binary-preview"): rbac.FILE_BROWSE,
     # Favourites/recents exist to make creating a session faster, so they are gated on
     # `session.create`: a Viewer cannot create one and has nothing to shortcut (ADR 0016).
     ("GET", "/api/workspaces/favorites"): rbac.SESSION_CREATE,

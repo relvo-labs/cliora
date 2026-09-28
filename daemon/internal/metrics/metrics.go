@@ -37,6 +37,16 @@ const (
 	// design, so "how much left this machine" is answered by measurement rather
 	// than by a counter that would have refused something.
 	FilesystemDownloadBytes = "filesystem_download_bytes"
+	// Read-only binary preview (ADR 0029 §10, plan/31/03 §6). Requests and denials
+	// reuse filesystem_request_total{op="preview_open"|"preview_chunk"} and
+	// filesystem_denied_total. These add: the size of each snapshot that passed
+	// validation (observed once per successful open, labelled by kind only), the
+	// handles currently held, the bytes reserved in the shared 32 MiB pool
+	// (handles plus in-progress opens), and recovered validator panics.
+	FilesystemPreviewBytes         = "filesystem_preview_bytes"
+	FilesystemPreviewHandles       = "filesystem_preview_handles"
+	FilesystemPreviewReservedBytes = "filesystem_preview_reserved_bytes"
+	FilesystemPreviewPanicTotal    = "filesystem_preview_panic_total"
 )
 
 // tech §18.2, the daemon's own series (P4-09).

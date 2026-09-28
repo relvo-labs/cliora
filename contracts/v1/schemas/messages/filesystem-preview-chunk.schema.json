@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Contract 1.11.0 (ADR 0029). Pulls one 512 KiB chunk of a validated snapshot by index; there is no offset or length, so a chunk can never be a range of the live file.",
+  "type": "object", "additionalProperties": false,
+  "required": ["session_id", "preview_id", "index"],
+  "properties": {
+    "session_id": {"type": "string", "format": "uuid"},
+    "preview_id": {"type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"},
+    "index": {"type": "integer", "minimum": 0, "maximum": 31}
+  }
+}

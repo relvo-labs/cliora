@@ -90,6 +90,8 @@ def _detail(node: Node, registry: NodeConnectionRegistry, settings: Settings) ->
         image_upload=node.image_upload,
         file_upload=node.file_upload,
         file_download=node.file_download,
+        binary_preview=node.binary_preview,
+        last_registration_at=node.last_registration_at,
         is_enabled=node.is_enabled,
         registered_at=node.registered_at,
         runtimes=[

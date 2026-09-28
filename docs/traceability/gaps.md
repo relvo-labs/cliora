@@ -6,6 +6,9 @@
 
 - **FR-FILE-008.AC-04** (should): missing verified_by
 - **FR-FILE-008.AC-05** (should): missing verified_by
+- **FR-FILE-012.AC-09** (should): missing implemented_by, verified_by
+- **FR-FILE-012.AC-14** (should): missing implemented_by, verified_by
+- **FR-FILE-012.AC-15** (should): missing implemented_by, verified_by
 
 ## Awaiting requirement rewrite
 

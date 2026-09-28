@@ -8,6 +8,7 @@
     "image_upload": {"type": "boolean"},
     "file_upload": {"type": "boolean"},
     "file_download": {"type": "boolean"},
+    "binary_preview": {"const": true},
     "name": {"type": "string", "minLength": 1, "maxLength": 128},
     "hostname": {"type": "string", "minLength": 1, "maxLength": 255},
     "os": {"type": "string", "minLength": 1, "maxLength": 64},

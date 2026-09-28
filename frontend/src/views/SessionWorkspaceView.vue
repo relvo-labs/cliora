@@ -37,6 +37,7 @@ import { useBreakpoint } from "../composables/useBreakpoint";
 import { useFileDownload } from "../composables/useFileDownload";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
 import { useImageDrop } from "../composables/useImageDrop";
+import type { BrowserPlace } from "../composables/useFileBrowser";
 import { useFocusTrap } from "../composables/useFocusTrap";
 import { useTerminalSession } from "../composables/useTerminalSession";
 import { api, useAuthStore } from "../stores/auth";
@@ -189,8 +190,38 @@ function closePreview(): void {
     // Back to the list it was opened from, not to the terminal: preview is a
     // substate of files.
     mobileMode.value = "files";
+    resumeBrowser();
     popPreviewHistory();
   }
+}
+
+// Where the phone's file list was when a preview opened: folder, scroll and
+// the row, so closing the preview puts the user back there with focus on
+// that row (plan/29 MS-16, plan/31/05 BP-06 §0). The list is not mounted
+// beside a full-screen preview, so the place is held here in between — in
+// memory only, never in the URL or the history entry. It belongs to one
+// session and one user, and is forgotten with them.
+let browserPlace: BrowserPlace | null = null;
+let panelScrollTop = 0;
+const browserResume = ref<BrowserPlace | null>(null);
+function rememberPlace(place: BrowserPlace): void {
+  browserPlace = place;
+  panelScrollTop = filePanel.value?.scrollTop ?? 0;
+}
+function resumeBrowser(): void {
+  browserResume.value = browserPlace;
+}
+function onBrowserResumed(): void {
+  // The rail scrolls too on a phone; it is this view's element, so this view
+  // restores it, after the list has rendered its rows.
+  if (browserResume.value && filePanel.value) {
+    filePanel.value.scrollTop = panelScrollTop;
+  }
+  browserResume.value = null;
+}
+function forgetPlace(): void {
+  browserPlace = null;
+  browserResume.value = null;
 }
 
 // The back gesture, without putting a workspace-relative path in history
@@ -222,6 +253,7 @@ function onPopState(): void {
   previewPath.value = null;
   activeTab.value = "cli";
   mobileMode.value = "files";
+  resumeBrowser();
 }
 
 function closeTab(id: string): void {
@@ -859,6 +891,7 @@ watch(
   ([id, files, ownUser], [previousId, previousFiles]) => {
     if (!previewPath.value || files === previousFiles) return;
     if (id !== previousId || !ownUser) {
+      forgetPlace();
       previewHistoryDepth = 0;
       previewPath.value = null;
       activeTab.value = "cli";
@@ -884,6 +917,7 @@ watch(
       // *before* anything for the new one runs (plan/29 MS-08 condition 2).
       // The pushed history entry is disowned rather than popped: popping here
       // would fight the navigation that is already in progress.
+      forgetPlace();
       previewHistoryDepth = 0;
       previewPath.value = null;
       activeTab.value = "cli";
@@ -1288,6 +1322,7 @@ async function confirmTerminate(): Promise<void> {
                 :can-download="canDownloadFiles"
                 :downloading="fileDownload.activePath.value === previewPath"
                 @download="downloadFile"
+                @close="closePreview"
               />
               <!-- Kept until dismissed, the same rule the upload list follows:
                    an error that disappears on its own is an error nobody read. -->
@@ -1345,7 +1380,10 @@ async function confirmTerminate(): Promise<void> {
             :root-label="workspaceLabel"
             :can-browse="canBrowseFiles"
             :disabled-reason="filesDisabledReason"
+            :resume="browserResume"
             @open="openPreview"
+            @remember="rememberPlace"
+            @resumed="onBrowserResumed"
           />
           <FileTree
             v-else

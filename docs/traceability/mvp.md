@@ -45,6 +45,8 @@
 | FR-CONN-006.AC-06 | functional | verifiable | — |
 | FR-CONN-006.AC-07 | functional | verifiable | — |
 | FR-CONN-006.AC-08 | functional | verifiable | — |
+| FR-CONN-006.AC-12 | functional | verifiable | — |
+| FR-CONN-006.AC-13 | functional | verifiable | — |
 | FR-FILE-001.AC-01 | functional | verifiable | — |
 | FR-FILE-001.AC-02 | functional | covered-by-parent | — |
 | FR-FILE-001.AC-03 | functional | covered-by-parent | — |
@@ -118,6 +120,22 @@
 | FR-FILE-011.AC-08 | functional | verifiable | — |
 | FR-FILE-011.AC-09 | functional | verifiable | — |
 | FR-FILE-011.AC-10 | functional | verifiable | — |
+| FR-FILE-012.AC-01 | functional | verifiable | — |
+| FR-FILE-012.AC-02 | functional | verifiable | — |
+| FR-FILE-012.AC-03 | functional | verifiable | — |
+| FR-FILE-012.AC-04 | functional | verifiable | — |
+| FR-FILE-012.AC-05 | functional | verifiable | — |
+| FR-FILE-012.AC-06 | functional | verifiable | — |
+| FR-FILE-012.AC-07 | functional | verifiable | — |
+| FR-FILE-012.AC-08 | functional | verifiable | — |
+| FR-FILE-012.AC-09 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-10 | functional | verifiable | — |
+| FR-FILE-012.AC-11 | functional | verifiable | — |
+| FR-FILE-012.AC-12 | functional | verifiable | — |
+| FR-FILE-012.AC-13 | functional | verifiable | — |
+| FR-FILE-012.AC-14 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-15 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-16 | functional | verifiable | — |
 | FR-INSTALL-001.AC-01 | functional | verifiable | — |
 | FR-INSTALL-001.AC-02 | functional | covered-by-parent | — |
 | FR-INSTALL-001.AC-03 | functional | covered-by-parent | — |

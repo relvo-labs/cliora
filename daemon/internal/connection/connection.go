@@ -83,6 +83,10 @@ type Manager struct {
 	// update handler can be exercised without systemd or a real binary swap.
 	configPath   string
 	newUpdaterFn func() *update.Updater
+
+	// Read-only binary preview (ADR 0029): the daemon-wide snapshot pool, the
+	// bounded workers, and the current connection's handle table.
+	preview *previewState
 }
 
 func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, info systeminfo.Info, version string) *Manager {
@@ -107,6 +111,7 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		files:         files.NewService(cfg, time.Now),
 		probeEgress:   dialProvider,
 		configPath:    config.DefaultConfigPath,
+		preview:       newPreviewState(),
 	}
 	m.tunnels = tunnel.NewSupervisor(tunnel.NewPinggyProvider(), m)
 	// Anything left by a previous daemon generation is still serving traffic, with nothing
@@ -390,7 +395,7 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 	if hostname == "" {
 		hostname = m.cfg.Node.Name
 	}
-	return map[string]any{
+	payload := map[string]any{
 		"tunnel": m.tunnelReport(),
 		// The posture of this machine, reported so the console can show it. Never
 		// settable from Central: a message that could turn this on would be a message
@@ -420,6 +425,9 @@ func (m *Manager) registerPayload(detected []runtime.DetectResult) map[string]an
 		"runtimes":        runtimeItems(detected),
 		"workspace_roots": roots,
 	}
+	// binary_preview is reported as true or OMITTED, never false (ADR 0029 §9).
+	m.reportBinaryPreview(payload)
+	return payload
 }
 
 // systemInfoPayload conforms to node-system-info.schema.json (os, os_version,
@@ -482,6 +490,8 @@ type sizeFields struct {
 func (m *Manager) dispatch(
 	ctx context.Context, conn *websocket.Conn, send, sendBinary func([]byte) error,
 ) error {
+	previews := m.beginPreviewTable(ctx) // this connection's snapshot handles
+	defer m.endPreviewTable(previews)
 	for {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
@@ -522,6 +532,12 @@ func (m *Manager) dispatch(
 			m.handleFsStore(env, data, send)
 		case "filesystem.download":
 			m.handleFsDownload(env, data, send)
+		case "filesystem.preview_open":
+			m.handlePreviewOpen(ctx, previews, env, data, send)
+		case "filesystem.preview_chunk":
+			m.handlePreviewChunk(previews, env, data, send)
+		case "filesystem.preview_close":
+			m.handlePreviewClose(previews, env, data, send)
 		case "daemon.update":
 			m.handleUpdate(ctx, env, data, send)
 		case "tunnel.open":
@@ -690,6 +706,7 @@ func (m *Manager) handleStop(ctx context.Context, env protocol.Envelope, send fu
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
 	}
+	m.dropSessionPreviews(p.SessionID) // a stopped session's snapshots go with it
 	outcome, err := m.sessions.Stop(ctx, p.SessionID)
 	if err != nil {
 		m.replyError(send, env.RequestID, "SESSION_NOT_RUNNING")

@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
+from dataclasses import dataclass
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -20,6 +22,59 @@ from app.logging import get_logger, request_id_var
 
 HEADER = "x-request-id"
 _logger = get_logger("cliora.api")
+_BINARY_PREVIEW_COMPLETION = "cliora.binary_preview_completion"
+
+
+@dataclass(frozen=True, slots=True)
+class BinaryPreviewCompletion:
+    size: int
+    audit: Callable[[], Awaitable[None]]
+
+
+class BinaryPreviewCompletionMiddleware:
+    """Audit after the final server-facing send, unless receive saw a disconnect.
+
+    This must be outside RequestIdMiddleware: its BaseHTTPMiddleware response
+    buffers body messages, so a send inside the route can finish before the
+    server-facing send succeeds.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        sent = 0
+        disconnected = False
+
+        async def receive_wrapper() -> Message:
+            nonlocal disconnected
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                disconnected = True
+            return message
+
+        async def send_wrapper(message: Message) -> None:
+            nonlocal sent
+            await send(message)
+            completion = scope.get(_BINARY_PREVIEW_COMPLETION)
+            if (
+                isinstance(completion, BinaryPreviewCompletion)
+                and message["type"] == "http.response.body"
+            ):
+                sent += len(message.get("body", b""))
+                if sent == completion.size and message.get("body") and not disconnected:
+                    await completion.audit()
+
+        await self.app(scope, receive_wrapper, send_wrapper)
+
+
+def set_binary_preview_completion(scope: Scope, completion: BinaryPreviewCompletion) -> None:
+    scope[_BINARY_PREVIEW_COMPLETION] = completion
+
 
 # Set by the two places that can refuse on authorization grounds — the action
 # guard (`api/http/deps.require_action`) and the resource layer

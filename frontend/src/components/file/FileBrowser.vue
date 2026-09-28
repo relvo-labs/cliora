@@ -21,10 +21,21 @@ import {
   File,
   Link,
 } from "lucide-vue-next";
-import { computed, toRef } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toRef,
+  watch,
+} from "vue";
 
 import type { FileEntry, FileSearchHit } from "../../api/dto";
-import { useFileBrowser } from "../../composables/useFileBrowser";
+import {
+  useFileBrowser,
+  type BrowserPlace,
+} from "../../composables/useFileBrowser";
 import { useFilesStore } from "../../stores/files";
 import UiButton from "../ui/UiButton.vue";
 import UiEmptyState from "../ui/UiEmptyState.vue";
@@ -38,9 +49,24 @@ const props = defineProps<{
   canBrowse: boolean;
   /** Why browsing is unavailable, when it is. Server-decided, not guessed. */
   disabledReason?: string;
+  /**
+   * Coming back from a full-screen preview: the place to restore, once, on
+   * mount. This component is not mounted beside the preview on a phone, so
+   * the parent holds the place in between.
+   */
+  resume?: BrowserPlace | null;
 }>();
 
-const emit = defineEmits<{ open: [relPath: string] }>();
+const emit = defineEmits<{
+  open: [relPath: string];
+  // Sent just before `open`, with where the user is; handed back as `resume`.
+  remember: [place: BrowserPlace];
+  // The resume has been applied (or could not be); the parent drops it, so a
+  // later mode switch does not move focus again.
+  resumed: [];
+}>();
+
+const root = ref<HTMLElement | null>(null);
 
 const store = useFilesStore();
 
@@ -71,15 +97,120 @@ const retryable = computed(
 // different question: the listing answers "what is in this folder", the search
 // answers "where in the workspace is this name".
 const searching = computed(() => store.search.state !== "idle");
+let alive = true;
+let settleRestoreWait: (() => void) | undefined;
+let completeRestore: (() => void) | undefined;
+
+function remember(relPath: string): void {
+  emit("remember", {
+    cwd: browser.cwd.value,
+    scrollTop: root.value?.scrollTop ?? 0,
+    focus: relPath,
+  });
+}
 
 function activate(entry: FileEntry): void {
   const file = browser.enter(entry);
-  if (file) emit("open", file.rel_path);
+  if (file) {
+    remember(file.rel_path);
+    emit("open", file.rel_path);
+  }
 }
 
 function pick(hit: FileSearchHit): void {
+  remember(hit.rel_path);
   emit("open", hit.rel_path);
 }
+
+// Back from a preview: the same folder (the store still holds its listing, so
+// this is served from cache), the same scroll offset, and focus on the row
+// that opened it. A search, if one was showing, is still in the store and
+// comes back by itself; its hit is focused the same way.
+async function resumePlace(place: BrowserPlace): Promise<void> {
+  const sessionId = props.sessionId;
+  let completed = false;
+  completeRestore = () => {
+    if (completed) return;
+    completed = true;
+    emit("resumed");
+  };
+  const sameContext = () =>
+    alive &&
+    browsable.value &&
+    sessionId !== null &&
+    props.sessionId === sessionId &&
+    store.sessionId === sessionId;
+  // Nothing to return to: the session ended, or browsing was withdrawn, while
+  // the preview was open. No listing will arrive, so there is none to wait on.
+  if (!sameContext()) {
+    completeRestore();
+    return;
+  }
+  if (!searching.value) browser.goTo(place.cwd);
+  await nextTick();
+  if (!sameContext()) {
+    completeRestore();
+    return;
+  }
+  if (!searching.value && browser.state.value === "loading") {
+    await new Promise<void>((done) => {
+      const stop = watch(
+        [
+          browser.state,
+          browsable,
+          () => props.sessionId,
+          () => store.sessionId,
+        ],
+        () => {
+          // An aborted load deletes its node, which reads as `idle`. It is a
+          // terminal outcome for this attempt, not another load to await.
+          if (browser.state.value !== "loading" || !sameContext()) {
+            settleRestoreWait?.();
+          }
+        },
+        { flush: "sync" },
+      );
+      settleRestoreWait = () => {
+        if (settleRestoreWait) {
+          stop();
+          settleRestoreWait = undefined;
+          done();
+        }
+      };
+      if (browser.state.value !== "loading" || !sameContext()) {
+        settleRestoreWait();
+      }
+    });
+    await nextTick();
+  }
+  if (
+    !sameContext() ||
+    (!searching.value &&
+      (browser.cwd.value !== place.cwd ||
+        !["success", "partial", "empty"].includes(browser.state.value)))
+  ) {
+    completeRestore();
+    return;
+  }
+  const el = root.value;
+  if (el) {
+    el.scrollTop = place.scrollTop;
+    const target = Array.from(
+      el.querySelectorAll<HTMLElement>("[data-rel-path]"),
+    ).find((row) => row.dataset.relPath === place.focus);
+    target?.focus({ preventScroll: true });
+  }
+  completeRestore();
+}
+
+onMounted(() => {
+  if (props.resume) void resumePlace(props.resume);
+});
+onBeforeUnmount(() => {
+  alive = false;
+  settleRestoreWait?.();
+  completeRestore?.();
+});
 
 function icon(entry: FileEntry) {
   if (entry.type === "directory") return Folder;
@@ -88,7 +219,7 @@ function icon(entry: FileEntry) {
 </script>
 
 <template>
-  <div class="browser">
+  <div ref="root" class="browser">
     <!-- No retry here: neither a missing permission nor an ended session is
          something asking again can change. -->
     <UiInlineNotice
@@ -148,6 +279,7 @@ function icon(entry: FileEntry) {
               type="button"
               class="entry"
               :disabled="entry.excluded"
+              :data-rel-path="entry.rel_path"
               @click="activate(entry)"
             >
               <component

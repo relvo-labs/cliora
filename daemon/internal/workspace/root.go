@@ -118,6 +118,33 @@ func (r *Root) OpenFile(rel string) (*os.File, error) {
 	return f, nil
 }
 
+// NonBlockingReadFlags are the open flags of OpenFileNonBlocking. Exported so the
+// daemon's start-up probe opens its own FIFO with exactly these flags through the
+// same os.Root API (ADR 0029 §3 step 4).
+const NonBlockingReadFlags = os.O_RDONLY | syscall.O_NONBLOCK | syscall.O_NOCTTY
+
+// OpenFileNonBlocking is OpenFile with O_NONBLOCK|O_NOCTTY, for the binary
+// preview path (ADR 0029 §3 step 4). Confinement is identical to OpenFile: ".."
+// and escaping symlinks are refused, and an in-root symlink is followed (so the
+// caller must still classify RealRel). O_NONBLOCK makes a FIFO that was swapped
+// in after the caller's pre-open StatIn return at once instead of waiting for a
+// writer; it has no effect on reads from a regular file. The caller must fstat
+// the handle and refuse anything that is not a regular file before reading.
+//
+// OpenFile itself is deliberately unchanged: the text preview still uses it, and
+// its blocking FIFO open is a separate, pre-existing defect (plan/31/09 §4 E1).
+func (r *Root) OpenFileNonBlocking(rel string) (*os.File, error) {
+	clean, err := relClean(rel)
+	if err != nil {
+		return nil, err
+	}
+	f, err := r.root.OpenFile(clean, NonBlockingReadFlags, 0)
+	if err != nil {
+		return nil, mapPathErr(err)
+	}
+	return f, nil
+}
+
 // MkdirAllIn creates rel and any missing parents beneath the root. Every
 // component is resolved by os.Root, so a ".." segment or an escaping symlink is
 // refused by the kernel exactly as it is for reads (ADR 0024 W1).

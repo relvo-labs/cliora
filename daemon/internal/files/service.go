@@ -29,6 +29,13 @@ type Service struct {
 	// freeBytes is a seam so the free-space refusal can be tested without
 	// filling a disk. Production uses statfsFreeBytes.
 	freeBytes func(path string) (int64, error)
+	// Read-only binary preview (ADR 0029). Read-only config like the rest; the
+	// mutable preview state (the snapshot pool and handle tables) is owned by the
+	// connection, not the service.
+	previewEnabled bool
+	previewLimits  PreviewLimits
+	// previewHooks are test seams inside PreviewOpen (nil in production).
+	previewHooks *previewHooks
 }
 
 // NewService builds the file service from daemon config.
@@ -51,6 +58,9 @@ func NewService(cfg *config.Config, now func() time.Time) *Service {
 		now:          now,
 		storeQuota:   newStoreQuota(),
 		freeBytes:    statfsFreeBytes,
+
+		previewEnabled: cfg.Filesystem.BinaryPreview.PreviewEnabled(),
+		previewLimits:  previewLimitsFrom(cfg.Filesystem.BinaryPreview),
 	}
 }
 

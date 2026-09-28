@@ -32,6 +32,7 @@ import { watch } from "vue";
 import type { RouteLocationRaw, Router } from "vue-router";
 
 import { isSigningOut, useAuthStore } from "../stores/auth";
+import { useBinaryPreviewStore } from "../stores/binaryPreview";
 import { useFavoritesStore } from "../stores/favorites";
 import { useFilesStore } from "../stores/files";
 import { useSessionsStore } from "../stores/sessions";
@@ -47,6 +48,7 @@ export function installAuthLossHandler(router: Router): () => void {
     // wipes the cache and the binding (stores/files.ts stays read-only here,
     // plan/29 MS-14).
     files.clearForSession(null);
+    useBinaryPreviewStore().clear();
     favorites.clear();
   }
 

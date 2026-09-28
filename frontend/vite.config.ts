@@ -1,5 +1,73 @@
-import { defineConfig, loadEnv } from "vite";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { extname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import vue from "@vitejs/plugin-vue";
+
+// PDF.js's static assets, self-hosted under /pdfjs/ (ADR 0029 §12, plan/31/05
+// BP-07 §2). Written here rather than taken from a copy plugin, so the preview
+// adds exactly one dependency (pdfjs-dist) to review.
+//
+// Four directories, and one exclusion that matters: wasm/ also ships
+// `quickjs-eval.*`, the JavaScript engine of PDF.js's scripting sandbox. It is
+// only ever loaded by `pdf.sandbox.mjs`, which is never imported, and it is not
+// copied either — a document's JavaScript has no engine to run on.
+const PDFJS_ROOT = fileURLToPath(
+  new URL("./node_modules/pdfjs-dist/", import.meta.url),
+);
+const PDFJS_DIRS = ["cmaps", "standard_fonts", "wasm", "iccs"];
+const PDFJS_EXCLUDED = /^quickjs-eval\./;
+const SAFE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const PDFJS_TYPES: Record<string, string> = {
+  ".wasm": "application/wasm",
+  ".js": "text/javascript",
+  ".ttf": "font/ttf",
+};
+
+export function pdfjsAssetAllowed(dir: string, name: string): boolean {
+  return (
+    PDFJS_DIRS.includes(dir) &&
+    SAFE_NAME.test(name) &&
+    !PDFJS_EXCLUDED.test(name)
+  );
+}
+
+function pdfjsAssets(): Plugin {
+  return {
+    name: "cliora-pdfjs-assets",
+    configureServer(server) {
+      server.middlewares.use("/pdfjs/", (req, res, next) => {
+        const [dir, name, ...rest] = (req.url ?? "")
+          .split("?")[0]
+          .split("/")
+          .filter(Boolean);
+        const file = dir && name ? join(PDFJS_ROOT, dir, name) : "";
+        if (rest.length || !pdfjsAssetAllowed(dir, name) || !existsSync(file)) {
+          next();
+          return;
+        }
+        res.setHeader(
+          "Content-Type",
+          PDFJS_TYPES[extname(name)] ?? "application/octet-stream",
+        );
+        res.end(readFileSync(file));
+      });
+    },
+    generateBundle() {
+      for (const dir of PDFJS_DIRS) {
+        for (const name of readdirSync(join(PDFJS_ROOT, dir))) {
+          if (!pdfjsAssetAllowed(dir, name)) continue;
+          this.emitFile({
+            type: "asset",
+            fileName: `pdfjs/${dir}/${name}`,
+            source: readFileSync(join(PDFJS_ROOT, dir, name)),
+          });
+        }
+      }
+    },
+  };
+}
 
 // The product name has one source (VITE_PRODUCT_NAME, default "Cliora") and two
 // consumers: AppLayout's brand and the document title. index.html cannot read an env
@@ -53,6 +121,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       vue(),
+      pdfjsAssets(),
       {
         name: "cliora-product-name",
         transformIndexHtml: (html) =>
