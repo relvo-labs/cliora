@@ -1,6 +1,6 @@
 # Cliora 行動視覺與資訊層級原型（#75）
 
-一套資訊層級、三個視覺變體（A 克制編輯式／B 工程工作台式／C 安靜操作式）的互動原型。
+一套資訊層級、三個視覺變體（A 克制編輯式／B 工程工作台式／**C 安靜操作式——2026-09-28 產品負責人選定，預設顯示**）的互動原型。
 獨立 HTML／CSS／JavaScript，**不需要 npm install、不連任何服務**；所有資料是合成的，只存在記憶體。
 設計說明、痛點地圖與建議在 [`plan/32/`](../../plan/32/README.md)。
 
@@ -18,7 +18,7 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory prototypes/mobile-visua
 
 | 參數 | 值 | 用途 |
 |---|---|---|
-| `v` | `a`／`b`／`c` | 變體 |
+| `v` | `a`／`b`／`c` | 變體；省略時為 **C** |
 | `s` | 情境 id（見下） | 直接進入某個狀態 |
 | `shot` | `1` | 把原型控制列收成一行標籤（截圖用；仍標示「原型 · 合成資料」） |
 
@@ -46,11 +46,17 @@ uv run --no-project --with playwright python prototypes/mobile-visual-ia/test_pr
 - `style.css` 的 token 區塊之外、`app.js`、`index.html` 沒有任何字面色值（規則同 `GATE-VR-NO-LITERAL-COLOR`）。
 - 沒有真實資料特徵（家目錄、e-mail、IP、憑證樣式、外部 URL）；所有 Session／Node 名稱都是 `demo-*`。
 - 沒有 page error、外部請求、API、WebSocket、localStorage／sessionStorage。
+- C 方向（v0.2）：未帶 `v` 時預設 C；五種尺寸下終端與標頭不截斷、不互相遮擋（被截斷的標題帶全文 `title`，完整名稱另在 `⋯`）；
+  CLI 的分隔線與輸入框隨寬度延伸；Viewer 看不到輸入框，C 在該位置放整寬「取得控制權」。
 
 ## 範圍與限制
 
 - **這不是正式 Vue 元件**，也不是 xterm 或 Monaco：終端是 `<pre>`、預覽是 `<pre>`，顏色取自 pocket token 與 `plan/29/07` §1.2 的 ANSI 提案值。
   它能比較版面、層級與色彩用法；不能證明 xterm 渲染、IME、貼上、resize、reconnect、RBAC 或任何伺服器行為。
+- 終端的合成輸出以「已依寬度換行」的樣子呈現，模擬一個已 fit 到欄數的 PTY；分隔線與輸入框用 CSS 畫到目前寬度，
+  代表 CLI 依欄數重繪的結果。正式版這兩者都由 CLI 自己畫在 PTY 裡。
+- **Viewer 沒有輸入框只在原型成立**：合成輸出停在提示框之前。正式版不得改寫或遮住 CLI 畫在輸出裡的輸入框（`plan/29/07` MS-19）；
+  能做的是讓 Cliora 自己的輸入元件（MS-12）在 Viewer 時不存在，由接管列佔同一個位置（`plan/32/06` §1.1）。
 - 「活動」分頁是**假說**：只出現在 `demo-docs-managed` 這個標示為受管的 Session，依賴 #73 的官方結構化事件；
   既有 Session 只有原生終端。沒有 composer、沒有批准按鈕（審批只在原生終端，#72）。對話輸入屬 #74。
 - 建立、終止、接管、重連、附加圖片、預覽選單都**不會做任何事**：按下只顯示「原型…」說明或切換合成狀態。

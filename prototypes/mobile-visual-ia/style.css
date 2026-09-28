@@ -578,9 +578,7 @@ html[data-shot] .proto-bar {
   color: var(--text-secondary);
   font-size: var(--fs-meta);
   line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 [data-variant="b"] .sbar .sub {
   font-family: var(--font-mono);
@@ -839,6 +837,59 @@ html[data-shot] .proto-bar {
   line-height: var(--term-lh);
   white-space: pre;
   transition: none;
+}
+.terminal .tl {
+  display: block;
+  /* A fitted PTY wraps at its column count; a <pre> would cut instead. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Divider and prompt box drawn to the terminal's current width (fluid), not
+   to a fixed number of box-drawing characters. */
+.terminal .rule {
+  display: flex;
+  align-items: center;
+  gap: 1ch;
+  width: 100%;
+  white-space: pre;
+}
+.terminal .rule-title::after {
+  content: "";
+  flex: 1 1 auto;
+  min-width: 2ch;
+  border-top: 1px solid currentColor;
+}
+.terminal .rule-box {
+  min-height: calc(var(--term-font) * var(--term-lh) * 3);
+  margin: 0;
+  padding: 0 1ch;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+}
+.term-foot {
+  flex: 0 0 auto;
+  padding: 8px var(--pad-x) calc(8px + var(--safe-bottom));
+  border-top: 1px solid var(--border-subtle);
+  background: var(--surface-default);
+}
+.term-foot .hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.term-foot .hint .icon {
+  width: 16px;
+  height: 16px;
+}
+.term-foot .takeover-foot {
+  width: 100%;
+}
+/* The take-over action lives in exactly one place per variant: the state line
+   for A/B, the terminal foot (where the input would be) for C. */
+[data-variant="a"] .term-foot:has(.takeover-foot),
+[data-variant="b"] .term-foot:has(.takeover-foot),
+[data-variant="c"] .state-line .action[data-kind="takeover"] {
+  display: none;
 }
 .terminal ::selection {
   background: var(--terminal-selection);
@@ -1340,12 +1391,12 @@ html[data-shot] .proto-bar {
   .detail-top {
     display: flex;
     align-items: center;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     border-bottom: 1px solid var(--border-subtle);
     background: var(--surface-default);
   }
   .detail-top .sbar {
-    flex: 0 1 34%;
+    flex: 1 1 200px;
     min-width: 0;
     min-height: var(--touch);
     padding-top: 0;
@@ -1357,10 +1408,8 @@ html[data-shot] .proto-bar {
   .detail-top .state-line,
   [data-variant="b"] .detail-top .state-line {
     display: flex;
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     flex-wrap: nowrap;
-    min-width: 0;
-    overflow: hidden;
     border: 0;
   }
   [data-variant="b"] .detail-top .state-line .cell {
@@ -1389,7 +1438,8 @@ html[data-shot] .proto-bar {
     flex: 0 0 auto;
   }
   .detail-top .posture-line {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
+    align-self: stretch;
     padding: 0 8px;
     box-shadow: none;
   }

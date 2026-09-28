@@ -331,6 +331,89 @@ def behaviour_suite(browser: Browser, base: str, passed) -> None:
     context.close()
 
 
+FIT_SIZES = [(360, 800), (390, 844), (430, 932), (844, 390), ZOOM_200]
+FIT_PROBE = """() => {
+  const rect = (el) => el && el.getBoundingClientRect();
+  const overlap = (a, b) => a && b && Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
+                                       Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
+  const out = { terminal: [], title: [], collide: [], cells: [], rules: [] };
+  for (const t of document.querySelectorAll('.terminal')) {
+    if (t.scrollWidth > t.clientWidth + 1) out.terminal.push(`${t.scrollWidth}>${t.clientWidth}`);
+    if (t.textContent.includes('demo agent cli')) {
+      const inner = t.clientWidth - parseFloat(getComputedStyle(t).paddingLeft) - parseFloat(getComputedStyle(t).paddingRight);
+      const rules = [...t.querySelectorAll('.rule')];
+      if (!rules.length) out.rules.push('no fluid divider/input lines');
+      for (const r of rules) {
+        const w = r.getBoundingClientRect().width;
+        if (w < inner * 0.85 || w > inner + 1) out.rules.push(`${Math.round(w)} vs ${Math.round(inner)}`);
+      }
+    }
+  }
+  for (const el of document.querySelectorAll('.sbar h1, .sbar .sub')) {
+    const truncated = el.scrollWidth > el.clientWidth + 1;
+    if (truncated && el.getAttribute('title') !== el.textContent.trim()) out.title.push(el.textContent.trim().slice(0, 30));
+  }
+  const top = document.querySelector('.detail-top');
+  if (top) {
+    const parts = ['.sbar', '.state-line', '.posture-line', '.tabs'].map((s) => [s, top.querySelector(s)]).filter(([, e]) => e);
+    for (let i = 0; i < parts.length; i++) for (let j = i + 1; j < parts.length; j++) {
+      if (overlap(rect(parts[i][1]), rect(parts[j][1])) > 2) out.collide.push(`${parts[i][0]}×${parts[j][0]}`);
+    }
+    const line = top.querySelector('.state-line');
+    for (const c of top.querySelectorAll('.state-line .cell')) {
+      const lr = rect(line), cr = rect(c);
+      if (cr.right > lr.right + 1 || cr.left < lr.left - 1 || c.scrollWidth > c.clientWidth + 1) out.cells.push(c.textContent.trim().slice(0, 20));
+    }
+  }
+  return out;
+}"""
+
+
+def c_direction_suite(browser: Browser, base: str, passed) -> None:
+    """plan/32 v0.2: fixes made when the owner chose C. Failures are collected per fix."""
+    fails: dict[str, list[str]] = {"F1": [], "F2": [], "F3": [], "F4": []}
+    context = browser.new_context(viewport={"width": 390, "height": 844})
+    page = context.new_page()
+    page.goto(base, wait_until="domcontentloaded")
+    page.wait_for_selector("#app > *")
+    chosen = page.evaluate("[document.documentElement.dataset.variant, document.querySelector('#variant-select').value]")
+    if chosen != ["c", "c"]:
+        fails["F4"].append(f"default variant without ?v= is {chosen}, expected C")
+    page.goto(f"{base}?v=a&s=terminal", wait_until="domcontentloaded")
+    if page.evaluate("document.documentElement.dataset.variant") != "a":
+        fails["F4"].append("?v=a no longer selects A")
+    context.close()
+
+    for width, height in FIT_SIZES:
+        context = browser.new_context(viewport={"width": width, "height": height}, is_mobile=True, has_touch=True)
+        page = context.new_page()
+        for variant in VARIANTS:
+            for scenario in DETAIL_SCENARIOS:
+                load(page, base, variant, scenario)
+                label = f"{variant}/{scenario}@{width}x{height}"
+                r = page.evaluate(FIT_PROBE)
+                for key in ("terminal", "title", "collide", "cells"):
+                    fails["F1"] += [f"{label} {key}: {x}" for x in r[key]]
+                fails["F3"] += [f"{label}: {x}" for x in r["rules"]]
+                if scenario in ("viewer", "viewer-locked"):
+                    text = page.locator(".terminal").first.inner_text()
+                    if "╭" in text or "│ >" in text:
+                        fails["F2"].append(f"{label}: viewer sees a terminal input box")
+                    if scenario == "viewer" and variant == "c":
+                        # "Full width" = fills the content box of the foot that replaces the input.
+                        box = page.evaluate("""() => { const b = [...document.querySelectorAll('.pane .term-foot button')].find((x) => x.textContent.includes('取得控制權'));
+                                                       if (!b || !b.offsetParent) return 0; const f = b.parentElement, cs = getComputedStyle(f);
+                                                       const inner = f.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+                                                       return b.getBoundingClientRect().width / inner; }""")
+                        if box < 0.99:
+                            fails["F2"].append(f"{label}: no full-width 取得控制權 in place of the input (ratio {box:.2f})")
+        context.close()
+    report = {k: v[:4] + ([f"... +{len(v) - 4} more"] if len(v) > 4 else []) for k, v in fails.items() if v}
+    expect(not report, "C-direction fixes failing:\n" + json.dumps(report, ensure_ascii=False, indent=1))
+    passed("C direction: default ?v=c; header/terminal fit without collision or silent truncation at 360/390/430/844x390/200%; "
+           "fluid divider and input lines; Viewer has no input box and C offers a full-width 取得控制權")
+
+
 def motion_suite(browser: Browser, base: str, passed) -> None:
     durations = {}
     for mode in ("no-preference", "reduce"):
@@ -380,6 +463,7 @@ def main() -> int:
             geometry_suite(browser, base, passed)
             ia_invariants_suite(browser, base, passed)
             behaviour_suite(browser, base, passed)
+            c_direction_suite(browser, base, passed)
             motion_suite(browser, base, passed)
         finally:
             browser.close()

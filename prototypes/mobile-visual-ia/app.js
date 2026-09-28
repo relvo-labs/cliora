@@ -89,9 +89,12 @@ const FILES = {
 };
 
 const T = (cls, text) => `<span class="${cls}">${esc(text)}</span>`;
+// The CLI's own prompt box. In the product these are box-drawing characters the
+// CLI redraws to the PTY's column count; here CSS draws them to the current width.
+const INPUT_BOX = `<span class="rule rule-box fg-dim" data-input-box><span class="fg-input">&gt;</span></span>`;
 const TERMINAL = {
   claude: [
-    T("fg-dim", "── demo agent cli ─────────────────────"),
+    `<span class="rule rule-title fg-dim">── demo agent cli</span>`,
     "",
     T("bold", "> 把 router 的測試補齊"),
     "",
@@ -102,9 +105,7 @@ const TERMINAL = {
     "",
     "已補上三個邊界測試；需要我也更新文件嗎？",
     "",
-    T("fg-dim", "╭──────────────────────────────────────╮"),
-    `${T("fg-dim", "│")} ${T("fg-input", ">")}                                    ${T("fg-dim", "│")}`,
-    T("fg-dim", "╰──────────────────────────────────────╯"),
+    INPUT_BOX,
     T("fg-dim", "  ? for shortcuts"),
   ],
   codex: [
@@ -350,15 +351,15 @@ function detailTop(s) {
   return `<div class="detail-top">
     <header class="sbar">
       <button class="icon-btn" type="button" data-action="back-list" aria-label="回到 Sessions">${icon("back")}</button>
-      <div class="titles"><h1 id="session-title">${esc(s.name)}</h1>
-        <span class="sub">${RUNTIME[s.runtime]} · ${esc(node.name)} · <bdi>${esc(s.workspace.split("/").pop())}</bdi></span></div>
+      <div class="titles"><h1 id="session-title" title="${esc(s.name)}">${esc(s.name)}</h1>
+        <span class="sub" title="${esc(`${RUNTIME[s.runtime]} · ${node.name} · ${s.workspace.split("/").pop()}`)}">${RUNTIME[s.runtime]} · ${esc(node.name)} · <bdi>${esc(s.workspace.split("/").pop())}</bdi></span></div>
       <button class="icon-btn" type="button" data-action="open-menu" aria-haspopup="dialog" aria-label="Session 選單與資訊">${icon("more")}</button>
     </header>
     <div class="state-line" role="status" aria-label="Session 狀態" ${lineTone ? `data-tone="${lineTone}"` : ""}>
       <span class="cell"><span class="key">Session</span>${stMarkup(statusLabel, statusTone, statusTone === "error" ? "alert" : "")}</span>
       <span class="cell"><span class="key">連線</span>${stMarkup(connLabel, connTone, connIcon)}</span>
       <span class="cell"><span class="key">控制權</span><span class="control" ${mine ? "data-mine" : ""}>${esc(ctlLabel)}</span></span>
-      ${action ? `<span class="action"><button class="btn ${action[0] === "takeover" ? "primary" : ""}" type="button" data-action="${action[0]}">${icon(action[2])}${action[1]}</button></span>` : ""}
+      ${action ? `<span class="action" data-kind="${action[0]}"><button class="btn ${action[0] === "takeover" ? "primary" : ""}" type="button" data-action="${action[0]}">${icon(action[2])}${action[1]}</button></span>` : ""}
     </div>
     ${posture.length ? `<div class="posture-line" role="note" aria-label="Node 執行姿態">${posture.map(([short, long]) => `<span class="cell">${icon("alert")}<span><strong>${esc(short)}</strong><span class="long">：${esc(long)}</span></span></span>`).join("")}</div>` : ""}
     <nav class="tabs" role="tablist" aria-label="Session 工作區">
@@ -377,7 +378,14 @@ function detailTop(s) {
 }
 
 function terminalPane(s, which) {
-  const lines = which === "shell" ? TERMINAL.shell : TERMINAL[s.runtime];
+  let lines = which === "shell" ? TERMINAL.shell : TERMINAL[s.runtime];
+  const viewer = which !== "shell" && s.status === "running" && state.role === "viewer";
+  // A Viewer is never offered something that looks like a place to type: the
+  // synthetic output for this state ends before the CLI's prompt (see README).
+  if (viewer) {
+    const cut = lines.findIndex((l) => l === INPUT_BOX || l.includes("fg-input"));
+    if (cut >= 0) lines = lines.slice(0, cut);
+  }
   const bands = [];
   if (which === "shell") {
     bands.push(["warning", "alert", "系統終端機：直接操作此 Node 的 shell，不受 workspace 路徑限制；此 Node 可經 sudo 取得 root。關閉即終止這個 shell；主 CLI 不受影響。"]);
@@ -394,8 +402,19 @@ function terminalPane(s, which) {
   }
   return `<section class="pane" id="pane-${which}" role="tabpanel" aria-labelledby="tab-${which}">
     ${bands.map(([t, ic, text]) => `<div class="band" data-tone="${t}">${icon(ic)}<p>${esc(text)}</p></div>`).join("")}
-    <pre class="terminal" tabindex="0" aria-label="${which === "shell" ? "系統終端機（合成輸出）" : "主 CLI 終端機（合成輸出）"}" ${which === "shell" ? "data-shell" : ""} style="--term-font:${state.fontSize}px">${lines.join("\n")}</pre>
+    <pre class="terminal" tabindex="0" aria-label="${which === "shell" ? "系統終端機（合成輸出）" : "主 CLI 終端機（合成輸出）"}" ${which === "shell" ? "data-shell" : ""} style="--term-font:${state.fontSize}px">${lines.map((l) => (l.startsWith('<span class="rule') ? l : `<span class="tl">${l || " "}</span>`)).join("")}</pre>
+    ${viewer ? viewerFoot() : ""}
   </section>`;
+}
+
+// Where the input would be. C shows the take-over action here as a full-width
+// block (the state line then carries only the words); A/B keep it in the state
+// line, so CSS hides this button for them. Same DOM for every variant.
+function viewerFoot() {
+  if (state.canTakeover && state.conn === "connected") {
+    return `<div class="term-foot"><button class="btn primary takeover-foot" type="button" data-action="takeover">${icon("lock")}取得控制權</button></div>`;
+  }
+  return `<div class="term-foot"><p class="hint">${icon("lock")}唯讀：控制權由他人持有，這個帳號不能接管。</p></div>`;
 }
 
 function activityPane() {
@@ -745,7 +764,8 @@ document.addEventListener("keydown", (event) => {
 function boot() {
   const params = new URLSearchParams(location.search);
   const v = params.get("v");
-  if (v === "a" || v === "b" || v === "c") document.documentElement.dataset.variant = v;
+  // C is the chosen direction (product owner, 2026-09-28); A and B stay selectable.
+  document.documentElement.dataset.variant = v === "a" || v === "b" || v === "c" ? v : "c";
   if (params.get("shot") === "1") document.documentElement.dataset.shot = "";
   const sel = $("#scenario-select");
   sel.innerHTML = SCENARIOS.map(([id, label]) => `<option value="${id}">${esc(label)}</option>`).join("");
