@@ -156,11 +156,16 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # path, committed before the refusal) gain implemented_by and verified_by. AC-08,
     # AC-09 and AC-14 have a Central half done but a browser or edge half that is not,
     # so they stay `specified` until BP-05/BP-06.
+    # 2026-09-28: +3 verifiable (plan/31 BP-06, frontend lifecycle and image viewer):
+    # FR-FILE-012.AC-06 (first frame only), AC-08 (no save affordance; Central's
+    # octet-stream/no-Content-Disposition half landed in BP-04) and AC-10 (cleared on
+    # session change, sign-out and user change) gain implemented_by and verified_by.
+    # AC-16 waits for BP-07: its password-required half is the PDF renderer's.
     # #71 has merged first: its ten active, verifiable FR-FILE-011 criteria are
     # counted separately from the 16 preview criteria and two relay budgets.
     assert result["summary"] == {
         "total": 486,
-        "verifiable": 344,
+        "verifiable": 347,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

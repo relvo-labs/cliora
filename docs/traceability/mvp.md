@@ -125,11 +125,11 @@
 | FR-FILE-012.AC-03 | functional | verifiable | — |
 | FR-FILE-012.AC-04 | functional | specified | implemented_by, verified_by |
 | FR-FILE-012.AC-05 | functional | verifiable | — |
-| FR-FILE-012.AC-06 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-06 | functional | verifiable | — |
 | FR-FILE-012.AC-07 | functional | specified | implemented_by, verified_by |
-| FR-FILE-012.AC-08 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-08 | functional | verifiable | — |
 | FR-FILE-012.AC-09 | functional | specified | implemented_by, verified_by |
-| FR-FILE-012.AC-10 | functional | specified | implemented_by, verified_by |
+| FR-FILE-012.AC-10 | functional | verifiable | — |
 | FR-FILE-012.AC-11 | functional | verifiable | — |
 | FR-FILE-012.AC-12 | functional | verifiable | — |
 | FR-FILE-012.AC-13 | functional | verifiable | — |

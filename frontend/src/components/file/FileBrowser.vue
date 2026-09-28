@@ -21,10 +21,13 @@ import {
   File,
   Link,
 } from "lucide-vue-next";
-import { computed, toRef } from "vue";
+import { computed, nextTick, onMounted, ref, toRef, watch } from "vue";
 
 import type { FileEntry, FileSearchHit } from "../../api/dto";
-import { useFileBrowser } from "../../composables/useFileBrowser";
+import {
+  useFileBrowser,
+  type BrowserPlace,
+} from "../../composables/useFileBrowser";
 import { useFilesStore } from "../../stores/files";
 import UiButton from "../ui/UiButton.vue";
 import UiEmptyState from "../ui/UiEmptyState.vue";
@@ -38,9 +41,24 @@ const props = defineProps<{
   canBrowse: boolean;
   /** Why browsing is unavailable, when it is. Server-decided, not guessed. */
   disabledReason?: string;
+  /**
+   * Coming back from a full-screen preview: the place to restore, once, on
+   * mount. This component is not mounted beside the preview on a phone, so
+   * the parent holds the place in between.
+   */
+  resume?: BrowserPlace | null;
 }>();
 
-const emit = defineEmits<{ open: [relPath: string] }>();
+const emit = defineEmits<{
+  open: [relPath: string];
+  // Sent just before `open`, with where the user is; handed back as `resume`.
+  remember: [place: BrowserPlace];
+  // The resume has been applied (or could not be); the parent drops it, so a
+  // later mode switch does not move focus again.
+  resumed: [];
+}>();
+
+const root = ref<HTMLElement | null>(null);
 
 const store = useFilesStore();
 
@@ -72,14 +90,65 @@ const retryable = computed(
 // answers "where in the workspace is this name".
 const searching = computed(() => store.search.state !== "idle");
 
+function remember(relPath: string): void {
+  emit("remember", {
+    cwd: browser.cwd.value,
+    scrollTop: root.value?.scrollTop ?? 0,
+    focus: relPath,
+  });
+}
+
 function activate(entry: FileEntry): void {
   const file = browser.enter(entry);
-  if (file) emit("open", file.rel_path);
+  if (file) {
+    remember(file.rel_path);
+    emit("open", file.rel_path);
+  }
 }
 
 function pick(hit: FileSearchHit): void {
+  remember(hit.rel_path);
   emit("open", hit.rel_path);
 }
+
+// Back from a preview: the same folder (the store still holds its listing, so
+// this is served from cache), the same scroll offset, and focus on the row
+// that opened it. A search, if one was showing, is still in the store and
+// comes back by itself; its hit is focused the same way.
+async function resumePlace(place: BrowserPlace): Promise<void> {
+  // Nothing to return to: the session ended, or browsing was withdrawn, while
+  // the preview was open. No listing will arrive, so there is none to wait on.
+  if (!browsable.value) {
+    emit("resumed");
+    return;
+  }
+  if (!searching.value) browser.goTo(place.cwd);
+  await nextTick();
+  if (!searching.value && (loading.value || browser.state.value === "idle")) {
+    await new Promise<void>((done) => {
+      const stop = watch(loading, (busy) => {
+        if (!busy) {
+          stop();
+          done();
+        }
+      });
+    });
+    await nextTick();
+  }
+  const el = root.value;
+  if (el) {
+    el.scrollTop = place.scrollTop;
+    const target = Array.from(
+      el.querySelectorAll<HTMLElement>("[data-rel-path]"),
+    ).find((row) => row.dataset.relPath === place.focus);
+    target?.focus({ preventScroll: true });
+  }
+  emit("resumed");
+}
+
+onMounted(() => {
+  if (props.resume) void resumePlace(props.resume);
+});
 
 function icon(entry: FileEntry) {
   if (entry.type === "directory") return Folder;
@@ -88,7 +157,7 @@ function icon(entry: FileEntry) {
 </script>
 
 <template>
-  <div class="browser">
+  <div ref="root" class="browser">
     <!-- No retry here: neither a missing permission nor an ended session is
          something asking again can change. -->
     <UiInlineNotice
@@ -148,6 +217,7 @@ function icon(entry: FileEntry) {
               type="button"
               class="entry"
               :disabled="entry.excluded"
+              :data-rel-path="entry.rel_path"
               @click="activate(entry)"
             >
               <component

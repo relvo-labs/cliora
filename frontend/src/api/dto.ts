@@ -306,6 +306,33 @@ export interface FileStoreResult {
   modified_at: string;
 }
 
+// Read-only binary preview (ADR 0029). The five MIME types are the allowlist;
+// the daemon decides which one a file is from its bytes, and the console picks
+// its decoder from that verdict, never from the file's extension.
+export type BinaryPreviewKind = "image" | "pdf";
+export type BinaryPreviewMime =
+  | "image/png"
+  | "image/jpeg"
+  | "image/webp"
+  | "image/gif"
+  | "application/pdf";
+
+export interface BinaryPreviewMeta {
+  kind: BinaryPreviewKind;
+  mime: BinaryPreviewMime;
+  size: number;
+  // Images only: the dimensions the daemon read from the header.
+  width?: number;
+  height?: number;
+}
+
+// Bytes plus the daemon's verdict. Held by `useBinaryPreview` only, and only
+// until they are decoded.
+export interface BinaryPreviewPayload {
+  meta: BinaryPreviewMeta;
+  bytes: Uint8Array<ArrayBuffer>;
+}
+
 export interface FileContent {
   success: boolean;
   rel_path: string;

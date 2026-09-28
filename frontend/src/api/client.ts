@@ -466,6 +466,39 @@ export class ApiClient {
     };
   }
 
+  // Read-only binary preview of an allowlisted image or PDF (ADR 0029 §6).
+  //
+  // A POST for a read, on purpose: the workspace path travels in the JSON body,
+  // so no URL carries it and no access log along the way can write it down. The
+  // URL holds the session id and nothing else — no query at all, which Central
+  // refuses anyway.
+  //
+  // Returns the response with its body unread. Reading it — exactly
+  // `Content-Length` bytes, or nothing — is the preview owner's job
+  // (`useBinaryPreview`), which keeps that code in the preview's lazy chunk.
+  // A refusal is thrown here as an ApiError carrying the daemon's code and
+  // `{reason, size?, limit?}`. Not routed through `request`, which parses every
+  // body as JSON; the 401 refresh-and-retry is spelled out, as in
+  // `downloadFile`.
+  async fetchBinaryPreview(
+    sessionId: string,
+    path: string,
+    options: RequestOptions = {},
+  ): Promise<Response> {
+    const url = `/api/sessions/${encodeURIComponent(sessionId)}/files/binary-preview`;
+    let res = await this.raw("POST", url, { path }, true, options.signal);
+    if (res.status === 401 && this.tokens.refreshToken()) {
+      if (await this.refresh()) {
+        res = await this.raw("POST", url, { path }, true, options.signal);
+      }
+    }
+    if (!res.ok) {
+      await this.parse(res);
+      throw new ApiError("HTTP_ERROR", res.statusText, res.status);
+    }
+    return res;
+  }
+
   // --- P4 dashboard aggregates ---
   // No parameters: Central owns the window, the freshness rules and the cache, so
   // there is nothing here for a caller to get wrong.

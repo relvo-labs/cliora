@@ -124,11 +124,11 @@
 | FR-FILE-012 | [FR-FILE-012.AC-03](../../research/prd.md#fr-file-012-ac-03) | FR-FILE-005 的敏感檔案規則適用，且與文字預覽共用同一份判定；對請求路徑與實際開啟檔案的解析名稱各判定一次。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview.go | gotest:daemon/internal/files/preview_test.go#TestPreviewUsesSameSensitivePolicyTwice |
 | FR-FILE-012 | [FR-FILE-012.AC-04](../../research/prd.md#fr-file-012-ac-04) | 上限（檔案大小、像素、邊長、PDF 頁數）超出時明確拒絕並顯示原因，不得逾時或部分顯示。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
 | FR-FILE-012 | [FR-FILE-012.AC-05](../../research/prd.md#fr-file-012-ac-05) | Node 端信封拒絕： magic 與宣稱型別不符、表頭結構異常（圖片表頭／標記走訪；PDF 的 %PDF- 與 %%EOF）、 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview_image.go | gotest:daemon/internal/files/preview_formats_test.go#TestPreviewPNGAncillaryBudgetBoundary |
-| FR-FILE-012 | [FR-FILE-012.AC-06](../../research/prd.md#fr-file-012-ac-06) | GIF 只顯示第一幀（OD-1）。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-06](../../research/prd.md#fr-file-012-ac-06) | GIF 只顯示第一幀（OD-1）。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/composables/useBinaryPreview.ts | playwright:frontend/tests/e2e/binary-preview.spec.ts#an animated GIF shows its first frame only, and says so |
 | FR-FILE-012 | [FR-FILE-012.AC-07](../../research/prd.md#fr-file-012-ac-07) | PDF 不執行腳本、不啟用連結、表單或附件；不使用第三方服務。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
-| FR-FILE-012 | [FR-FILE-012.AC-08](../../research/prd.md#fr-file-012-ac-08) | 平台不提供任何存檔入口；回應不得以可渲染型別或附件形式交付。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-08](../../research/prd.md#fr-file-012-ac-08) | 平台不提供任何存檔入口；回應不得以可渲染型別或附件形式交付。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/components/file/ImagePreview.vue | vitest:frontend/src/components/file/PreviewPane.binary.test.ts#a full image flow: canvas only, no object URL, nothing that saves<br>vitest:frontend/src/components/file/PreviewDenied.binary.test.ts#states_are_distinct: every state's copy differs, and none says download or save |
 | FR-FILE-012 | [FR-FILE-012.AC-09](../../research/prd.md#fr-file-012-ac-09) | 中央、edge 與瀏覽器不保存預覽內容：不落磁碟、DB、log、metrics label、HTTP 快取或瀏覽器持久儲存； | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
-| FR-FILE-012 | [FR-FILE-012.AC-10](../../research/prd.md#fr-file-012-ac-10) | 切換 Session、登出或換使用者時，畫面與記憶體中的預覽內容於同一刻清除。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-10](../../research/prd.md#fr-file-012-ac-10) | 切換 Session、登出或換使用者時，畫面與記憶體中的預覽內容於同一刻清除。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/composables/useBinaryPreview.ts | vitest:frontend/src/composables/useBinaryPreview.test.ts#auth_loss_clears_in_same_tick<br>vitest:frontend/src/composables/useBinaryPreview.test.ts#session_switch_mid_transfer_never_paints<br>vitest:frontend/src/composables/useBinaryPreview.test.ts#user_switch_clears |
 | FR-FILE-012 | [FR-FILE-012.AC-11](../../research/prd.md#fr-file-012-ac-11) | 不支援此功能的 Node 或中央不得啟用入口；中央不得向未回報能力的 Node 送出預覽請求。 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_binary_preview_api.py::test_old_daemon_is_never_asked |
 | FR-FILE-012 | [FR-FILE-012.AC-12](../../research/prd.md#fr-file-012-ac-12) | Node 可停用並回報；中央另有 rollout 開關（預設關閉，OD-5）；兩者任一關閉即隱藏入口。 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:backend/app/api/http/schemas.py | pytest:backend/tests/db/test_node_register_binary_preview.py::test_reconnect_flips_gate_and_capability |
 | FR-FILE-012 | [FR-FILE-012.AC-13](../../research/prd.md#fr-file-012-ac-13) | 敏感拒絕留稽核（分類與副檔名），且在回應錯誤之前寫定；成功預覽留稽核（型別、大小；另有服務自動加上的 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_binary_preview_api.py::test_success_audit_has_no_path |
@@ -1482,10 +1482,13 @@
 - `manual:docs/runbooks/privileged-node-posture.md` ← `SEC-007.AC-02` (validated_by)
 - `code:frontend/src/components/common/StatusBadge.vue` ← `NFR-006.AC-03` (implemented_by)
 - `vitest:frontend/src/components/file/FileTree.test.ts` ← `FR-FILE-010.AC-12` (verified_by)
+- `code:frontend/src/components/file/ImagePreview.vue` ← `FR-FILE-012.AC-08` (implemented_by)
+- `vitest:frontend/src/components/file/PreviewDenied.binary.test.ts#states_are_distinct: every state's copy differs, and none says download or save` ← `FR-FILE-012.AC-08` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains a binary file with mime and size but no content` ← `FR-FILE-004.AC-04` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-03` (verified_by)
 - `vitest:frontend/src/components/file/PreviewDenied.test.ts#explains an oversize file with its size and the cap` ← `FR-FILE-003.AC-04` (verified_by)
+- `vitest:frontend/src/components/file/PreviewPane.binary.test.ts#a full image flow: canvas only, no object URL, nothing that saves` ← `FR-FILE-012.AC-08` (verified_by)
 - `vitest:frontend/src/components/layout/AppLayout.test.ts` ← `NFR-006.AC-05` (measured_by)
 - `vitest:frontend/src/components/layout/AppLayout.test.ts` ← `NFR-007.AC-05` (measured_by)
 - `code:frontend/src/components/layout/AppLayout.vue` ← `FR-TERM-001.AC-14` (implemented_by)
@@ -1499,6 +1502,11 @@
 - `code:frontend/src/components/ui/UiIconButton.vue` ← `NFR-006.AC-05` (implemented_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
+- `vitest:frontend/src/composables/useBinaryPreview.test.ts#auth_loss_clears_in_same_tick` ← `FR-FILE-012.AC-10` (verified_by)
+- `vitest:frontend/src/composables/useBinaryPreview.test.ts#session_switch_mid_transfer_never_paints` ← `FR-FILE-012.AC-10` (verified_by)
+- `vitest:frontend/src/composables/useBinaryPreview.test.ts#user_switch_clears` ← `FR-FILE-012.AC-10` (verified_by)
+- `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-06` (implemented_by)
+- `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-10` (implemented_by)
 - `vitest:frontend/src/composables/useBreakpoint.test.ts` ← `NFR-007.AC-04` (measured_by)
 - `code:frontend/src/composables/useBreakpoint.ts` ← `NFR-007.AC-04` (implemented_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
@@ -1595,6 +1603,7 @@
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-TERM-001.AC-13` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-03` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-07` (implemented_by)
+- `playwright:frontend/tests/e2e/binary-preview.spec.ts#an animated GIF shows its first frame only, and says so` ← `FR-FILE-012.AC-06` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-02` (verified_by)

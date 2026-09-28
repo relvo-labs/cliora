@@ -116,7 +116,12 @@ function clear(): void {
       </p>
       <ul class="hits" :aria-label="`搜尋結果，共 ${slice.results.length} 筆`">
         <li v-for="hit in slice.results" :key="hit.rel_path">
-          <button type="button" class="hit" @click="emit('pick', hit)">
+          <button
+            type="button"
+            class="hit"
+            :data-rel-path="hit.rel_path"
+            @click="emit('pick', hit)"
+          >
             <span class="hit-name">{{ hit.name }}</span>
             <span class="hit-path">{{ hit.rel_path }}</span>
           </button>

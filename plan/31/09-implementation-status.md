@@ -12,7 +12,7 @@
 | `BP-03` daemon | **完成（工作樹，待 commit）** | `files/preview*.go`（十一步、四種圖片走訪＋PDF 信封、D15 有界解壓、共用 32 MiB／4 handle 池、每連線 handle 表與 janitor）；`workspace.Root.OpenFileNonBlocking`（只新增）；`connection/preview_handlers.go`（open 2／chunk 4 worker，滿了即 `NODE_BUSY`；啟動 FIFO probe，失敗即省略欄位）；`config` 的 `filesystem.binary_preview.*`（只能調低）；metrics；停用時省略 `binary_preview`。`read.go`、`Root.OpenFile`、`go.mod` 無 diff。偏差 DV-11…DV-14 |
 | `BP-04` Central | **完成（工作樹，待 commit）** | `POST …/files/binary-preview`（路徑在 body、拒絕任何 query、只收 JSON `{path}`、≤24 KiB）；兩道閘（flag 預設關、**當下連線**的 `binary_preview`）在送任何 frame 之前；每使用者 2／每節點 4 條串流；拉取式串流（15／10／60 秒）與七個標頭、無 `Content-Disposition`；每種結束路徑都送 `preview_close`（shielded，1 秒）；敏感拒絕先 commit 再 raise；成功稽核 `file.binary_preview` 用獨立 session；`SessionCapabilities.can_preview_binary`；`nodes.binary_preview`／`last_registration_at`（migration `0022`，可降級）；錯誤目錄兩個 Central 碼。偏差 DV-15…DV-17 |
 | `BP-05` edge | **設定部分完成；發布閘門開放** | compose／Railway 專用 regex location、`cliora_noquery`、24 KiB body／32 KiB buffer、無 response buffering／temp file；parity 測試與兩份 `nginx -t` 見 §3.1。`BP-OM-06`／`BP-OM-10` 尚未量測，兩種拓樸的 flag 仍須保持關閉 |
-| `BP-06` 前端生命週期＋圖片 | 未開始 | 依賴 #76 合併 |
+| `BP-06` 前端生命週期＋圖片 | **完成** | `useBinaryPreview`（唯一 owner：AbortController、位元組、`ImageBitmap`、canvas；session／能力變更與 auth-loss 皆同步清除；identity pending 只 abort）；`stores/binaryPreview.ts`（`clear()`＋metadata）；`ImagePreview.vue`（canvas、符合寬度、＋／−、雙指與拖曳、44×44 工具列）；`PreviewPane` 路由分支；`PreviewDenied` 16 個二進位狀態文案（皆無下載）；`fetchBinaryPreview`（POST、路徑在 body、無 query）；`authLoss.ts` 一個 import＋一行呼叫。§5 的 13 項 RED→GREEN，另有 E2E（真實 CSP、mocked Central）9 項。偏差 DV-18…DV-25 |
 | `BP-07` 前端 PDF.js | 未開始 | — |
 | `BP-08` 安全審查 | 未開始 | — |
 | `BP-09` 驗證 | 未開始 | — |
@@ -43,11 +43,20 @@
 | DV-16 | `04` §1 第 5 步：415／413／422／400 | 四種都用既有的 `INVALID_ARGUMENT` 碼，只以 HTTP 狀態區分 | 都是「請求形狀不對」這一類；另開新碼只會多一條目錄項而沒有不同的下一步 |
 | DV-17 | `04` §7 `test_preview_does_not_imply_download` | 已補於 `backend/tests/db/test_files_binary_preview_api.py` | #71 已合併；雙向測試證實 preview 可用時下載仍可 403，下載可用時 preview 仍可 409 |
 
+| DV-18 | `05` §0／§5 `focus_returns_to_row`：寫入集內完成 | 另改 `SessionWorkspaceView.vue`（在記憶體保存資料夾、捲動、開啟列，預覽關閉時交回）、`FileBrowser.vue`（`remember`／`resume`）、`FileSearchBar.vue`（一個 `data-rel-path` 屬性）、`useFileBrowser.ts`（一個型別） | 手機上檔案清單在預覽時是卸載的（#76 既有行為），寫入集內做不到；協調者核准「寫入集外的最小修正」。原提案「預覽時以 `v-show` 保留清單」會破壞既有測試（`SessionWorkspaceView.files.test.ts:340` 斷言 `#file-panel` 不存在），故改為記住再還原。文字預覽同樣受益；桌面行為不變（關閉預覽仍聚焦終端機）。位置只在記憶體，不進 URL／history |
+| DV-19 | `05` §2：`fetchBinaryPreview` 以串流讀取 | `client.ts` 的方法只送 POST 並回傳未讀的 `Response`；長度與標頭檢查（`readPreviewBody`）在 `useBinaryPreview` | 與 §2「由 owner 以 `ReadableStream` 讀取」一致，並讓這段程式留在預覽的 lazy chunk。首頁 chunk 仍 **+577 B**（134 481 → 135 058）：計畫指定的 `client.ts` 方法與 `authLoss.ts` 必須 import 的 store 都在主 chunk，增量無法為 0；PDF.js（`BP-07`）對主 chunk 的增量另計，須為 0 |
+| DV-20 | `05` §1：`routeHint` 含 `pdf` | `BP-06` 只含四種圖片；`pdf` 由 `BP-07` 加入 | `BP-06` 沒有 PDF 渲染器，先加提示只會讓 PDF 落到錯誤狀態 |
+| DV-21 | `00` §5：`authLoss.ts` 只加一行 | 一個 import＋`wipeUserScoped` 內一行呼叫；identity pending 的「只 abort」由 composable 自己以 `flush:"sync"` 監看 `auth.identityPending` | 協調者要求 `authLoss.ts` 的 diff 為一個呼叫；第二個呼叫點（`stopPending`）會違反它，而行為相同 |
+| DV-22 | ADR 0029 §16：下載入口可依 #71 自己的條件出現 | 二進位路由的任何狀態都**不顯示**標頭的下載按鈕 | 比 ADR 更嚴；協調者要求「沒有任何狀態提供下載或另存」。文字路由（含能力為 false 時的 `FILE_BINARY` 面板）的下載行為不變 |
+| DV-23 | `01` §5：traceability 在 `BP-01` 一次寫完 | 依 DV-3：`BP-06` 為 AC-06／08／10 加 implemented_by／verified_by，census +3 verifiable（另起一行），並以 `make traceability-render` 重新產生 `docs/traceability/*.md`；AC-16 的密碼半邊屬 `BP-07`，連結留到那時 | 同 DV-3、DV-6 |
+| DV-24 | `05` BP-07 寫入集：`binary-preview*.spec.ts`；`07`：產生器屬 `BP-09` | 圖片 E2E（`binary-preview.spec.ts`＋`binary-preview.harness.ts`）與最小產生器 `scripts/p31/gen_preview_fixtures.py`（PNG／EXIF 6 JPEG／動畫 GIF）隨 `BP-06` 提交；`BP-07` 擴充 PDF | 讓圖片的瀏覽器證據與實作同一個 commit。E2E 用真實 bundle、`deploy/nginx/nginx.conf` 的 CSP 原字串與 mocked Central（不是 full-stack；full-stack 矩陣仍屬 `BP-09`） |
+| DV-25 | `05` §4：狀態表 | 多一個內部狀態 `node_unsupported`（`FILE_PREVIEW_UNSUPPORTED_NODE`／`FILE_PREVIEW_DISABLED`）：不顯示文案，直接改走文字路徑 | 節點以停用狀態重連時，行為與 `can_preview_binary=false` 相同（既有 `FILE_BINARY` 面板），不另造一個使用者狀態 |
+
 ## 2. 外部相依的當下狀態（2026-09-27 核對）
 
 | 項目 | 狀態 | 對本計畫的影響 |
 |---|---|---|
-| #76（手機檔案清單空白） | 開啟中；修補在本機分支 `fix/mobile-file-browser-76` @ `a453bd4`，**尚未推送**（見 #76 留言） | `BP-06` 的 auth-loss 掛點（`router/authLoss.ts`）只存在於該分支 |
+| #76（手機檔案清單空白） | **已合併**（2026-09-28 核對：base master `a2d316f` 含 #71 與 #76） | `BP-06` 掛在 master 的 `router/authLoss.ts`（`wipeUserScoped`） |
 | PR #71（下載） | 開啟中，mergeable，最後更新 2026-09-16 | 佔用 ADR 0028、`plan/30`、v1.10.0、`0021`、`FR-FILE-011`；本計畫編號排在其後（README） |
 | `make traceability` census | 依 #71 描述，master 上自 `NFR-007` 起即為紅燈 | `BP-01` §5 第 4 點 |
 
@@ -58,8 +67,8 @@
 | ID | 問題 | 影響 | 在哪一張票量 | 性質 |
 |---|---|---|---|---|
 | `BP-OM-01` | iOS Safari 的 canvas 最大面積與單頁總記憶體上限實際是多少？ | OD-2 像素上限；§11 縮放策略 | `BP-06` 開工時；`BP-10` 複驗 | 定預設 |
-| `BP-OM-02` | 在現行 CSP（`img-src 'self' data:`）下，iOS／Android 的 `createImageBitmap(Blob)` 是否可用、是否受 `img-src` 約束；`imageOrientation` 與 resize 選項的支援 | 是否需要 `img-src blob:` 的 fallback（需另行審查） | `BP-06` | 定設計 |
-| `BP-OM-03` | iOS Safari 與 Android Chrome 長按 `<canvas>` 是否出現存檔選單 | 「沒有存檔入口」這個宣稱 | `BP-06`；`BP-10` #2 | 定宣稱 |
+| `BP-OM-02` | 在現行 CSP（`img-src 'self' data:`）下，iOS／Android 的 `createImageBitmap(Blob)` 是否可用、是否受 `img-src` 約束；`imageOrientation` 與 resize 選項的支援 | 是否需要 `img-src blob:` 的 fallback（需另行審查） | `BP-06` | 定設計。**部分（2026-09-28）**：桌面 Chromium（headless shell 1234）在 production CSP 原字串下可用，`securitypolicyviolation` 0，EXIF 6 正確旋轉（`binary-preview.spec.ts`）。iOS Safari／Android 實機未量（`BP-10`） |
+| `BP-OM-03` | iOS Safari 與 Android Chrome 長按 `<canvas>` 是否出現存檔選單 | 「沒有存檔入口」這個宣稱 | `BP-06`；`BP-10` #2 | 定宣稱。`BP-06` 已加 `contextmenu` 攔截與 `-webkit-touch-callout:none`；實機長按仍待 `BP-10` |
 | `BP-OM-04` | 選定的 PDF.js 版本在現行 CSP 下：worker、wasm、FontFace、cMap 是否全部可用而無 violation | 是否需要改 CSP（需另行審查） | `BP-07` 第一天 | 定設計 |
 | `BP-OM-05` | 每節點 4 條預覽串流時，以及兩個同時的最貴 D15 中繼資料驗證時，終端 echo 延遲的增量與心跳偏離；**發布門檻在目標硬體實測後設定**，CI 的 p95 容差只用於偵測明顯退步 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
 | `BP-OM-06` | 每種部署拓樸上，preview 的請求 body 或回應 body 是否被寫到任何檔案：nginx 的 `proxy_temp`／`client_body_temp`，以及 Railway edge | 「不落地」宣稱；OD-11 | `BP-05` | **發布閘門** |
@@ -97,6 +106,8 @@
 | E8 | `make traceability-validate` 在 master 上是紅的：`docs/traceability/{matrix,coverage,mvp,owners}.md` 未重新產生；census 也少了 NFR-007 的 +7 | base `157efe3` 上 `scripts/trace render --check` 失敗；census 458≠451 | 同上 | 本期已順帶修正（DV-6 與 census 的 +7 行）；#71 也帶有同一修正，後合併者需解衝突 |
 | E9 | `TestClassifyLatencyBudget`（2 MiB 分類 ≤ 5 ms）在負載高的機器上會隨機失敗 | 本機 load ≈ 10／8 核時量到 5.47 ms；單獨重跑 1／3 次通過 | 牆鐘預算測試在共用 CI 上會 flake | 以多次取最小值或 `testing.B` 取代單次量測 |
 | E10 | 沒有 `session.view` 的使用者，對不存在的 session 得到 404、對存在的得到 403，可藉此探測 session id 是否存在 | `services/files.py` `_resolve()`：先 `get`（404）再 `authorize_file_browse`（403）；所有檔案路由共用 | 三個內建角色都持有 `session.view`，只影響自訂角色 | 先做 action 層以外的 view 判定再回 404，或兩者統一回 403 |
+| E11 | 手機上從預覽返回時，檔案清單回到工作區根目錄、捲動歸零、焦點落在 `<body>`（文字預覽同樣如此） | `SessionWorkspaceView.vue` 的 `<aside v-if="session && filesVisible">` 在預覽模式下卸載 `FileBrowser`，`useFileBrowser` 的 `cwd` 隨之消失 | 違反 plan/29 MS-15／MS-16 的「返回時還原」 | **本期已修**（DV-18），`focus_returns_to_row` 於 Vitest 與 E2E 各驗一次 |
+| E12 | Porcelain（明亮）主題的桌面預覽標頭：檔名與「唯讀」標記用 `--text-primary`，但底下的 `.center` 一律是 `--terminal-background`，對比不足（文字預覽相同） | `PreviewPane.vue` `h2 { color: var(--text-primary) }` 對照 `SessionWorkspaceView.vue` `.center { background: var(--terminal-background) }`；1440×900 截圖 | 桌面明亮主題下看不清正在預覽哪個檔案 | 標頭改用 `--text-on-terminal*` 系列，或讓 `.head` 有自己的面板底色；另開議題 |
 
 ## 5. 本版文件中明確標為「未驗證」的假設
 

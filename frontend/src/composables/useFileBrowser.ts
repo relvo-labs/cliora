@@ -36,6 +36,20 @@ export interface Crumb {
   label: string;
 }
 
+/**
+ * Where the user was when they opened a file, so a phone can bring them back
+ * to it (plan/29 MS-16, plan/31/05 BP-06 §0). In memory only: a
+ * workspace-relative path must never reach the URL or history state.
+ */
+export interface BrowserPlace {
+  /** The folder on screen. Ignored while a search is showing. */
+  cwd: string;
+  /** The list's own scroll offset. */
+  scrollTop: number;
+  /** The row (or search hit) that opened the preview; focus returns to it. */
+  focus: string;
+}
+
 export interface FileBrowserOptions {
   sessionId: Ref<string | null>;
   /** Folder name for the workspace root, not a full path (ADR 0014). */

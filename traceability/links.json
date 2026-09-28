@@ -28055,6 +28055,37 @@
       ]
     },
     {
+      "id": "LNK-FR-FILE-012-AC-06-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-06",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useBinaryPreview.ts"
+      },
+      "role": "primary",
+      "assertion": "Images are decoded with createImageBitmap, which takes an animated image's first frame; the viewer labels it (動畫僅顯示第一幀).",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-06-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-06",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/binary-preview.spec.ts#an animated GIF shows its first frame only, and says so"
+      },
+      "role": "primary",
+      "assertion": "A two-frame GIF still shows frame one after its delay, with the first-frame notice, in a real browser.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
       "id": "LNK-FR-FILE-012-AC-07-PLANNED-BY",
       "from": "FR-FILE-012.AC-07",
       "type": "planned_by",
@@ -28115,6 +28146,53 @@
       ]
     },
     {
+      "id": "LNK-FR-FILE-012-AC-08-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-08",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/components/file/ImagePreview.vue"
+      },
+      "role": "primary",
+      "assertion": "The image is painted to a canvas with the context menu, long-press callout and drag suppressed; no <img>, object URL or download control exists on the binary route.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-08-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/components/file/PreviewPane.binary.test.ts#a full image flow: canvas only, no object URL, nothing that saves"
+      },
+      "role": "primary",
+      "assertion": "A full image flow creates no object URL and leaves no img, a[download], iframe, object or embed, and no download control.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-08-VERIFIED-02",
+      "from": "FR-FILE-012.AC-08",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/components/file/PreviewDenied.binary.test.ts#states_are_distinct: every state's copy differs, and none says download or save"
+      },
+      "role": "supporting",
+      "assertion": "No binary-preview state offers download or save.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
       "id": "LNK-FR-FILE-012-AC-09-PLANNED-BY",
       "from": "FR-FILE-012.AC-09",
       "type": "planned_by",
@@ -28173,6 +28251,69 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-10",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useBinaryPreview.ts"
+      },
+      "role": "primary",
+      "assertion": "The single owner disposes (abort, bitmap.close, canvases 0x0, bytes dropped) synchronously on session change, capability loss and, through the auth-loss handler's store clear(), sign-out and user change.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-10",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBinaryPreview.test.ts#auth_loss_clears_in_same_tick"
+      },
+      "role": "primary",
+      "assertion": "Clearing the tokens closes the bitmap and zeroes the canvas within the same synchronous call.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-VERIFIED-02",
+      "from": "FR-FILE-012.AC-10",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBinaryPreview.test.ts#session_switch_mid_transfer_never_paints"
+      },
+      "role": "supporting",
+      "assertion": "A response for the previous session that arrives after the switch is never decoded or painted.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-10-VERIFIED-03",
+      "from": "FR-FILE-012.AC-10",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBinaryPreview.test.ts#user_switch_clears"
+      },
+      "role": "supporting",
+      "assertion": "A different user id arriving disposes the preview.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
     },
     {
       "id": "LNK-FR-FILE-012-AC-11-PLANNED-BY",
