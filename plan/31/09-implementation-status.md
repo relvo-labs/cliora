@@ -1,6 +1,6 @@
 # 09 — 實作狀態
 
-最後更新：2026-09-27。**唯一的「現在到哪了」來源。**
+最後更新：2026-09-28。**唯一的「現在到哪了」來源。**
 
 ## 1. Ticket 狀態
 
@@ -11,7 +11,7 @@
 | `BP-02` 契約 | **完成（工作樹，待 commit）** | v1.11.0：六個 schema、`binary_preview` `const:true`、五個 wire 錯誤碼、21 個 fixture、凍結的 1.9.0 `node-register`（`contracts/v1/compat/`，digest 把關）與 `test_contract_compat.py`；Python／Go／TS 三個消費端（Go 另有兩個 response 分支與凍結的 1.9.0 型別表）；CHANGELOG。偏差 DV-8…DV-10 |
 | `BP-03` daemon | **完成（工作樹，待 commit）** | `files/preview*.go`（十一步、四種圖片走訪＋PDF 信封、D15 有界解壓、共用 32 MiB／4 handle 池、每連線 handle 表與 janitor）；`workspace.Root.OpenFileNonBlocking`（只新增）；`connection/preview_handlers.go`（open 2／chunk 4 worker，滿了即 `NODE_BUSY`；啟動 FIFO probe，失敗即省略欄位）；`config` 的 `filesystem.binary_preview.*`（只能調低）；metrics；停用時省略 `binary_preview`。`read.go`、`Root.OpenFile`、`go.mod` 無 diff。偏差 DV-11…DV-14 |
 | `BP-04` Central | **完成（工作樹，待 commit）** | `POST …/files/binary-preview`（路徑在 body、拒絕任何 query、只收 JSON `{path}`、≤24 KiB）；兩道閘（flag 預設關、**當下連線**的 `binary_preview`）在送任何 frame 之前；每使用者 2／每節點 4 條串流；拉取式串流（15／10／60 秒）與七個標頭、無 `Content-Disposition`；每種結束路徑都送 `preview_close`（shielded，1 秒）；敏感拒絕先 commit 再 raise；成功稽核 `file.binary_preview` 用獨立 session；`SessionCapabilities.can_preview_binary`；`nodes.binary_preview`／`last_registration_at`（migration `0022`，可降級）；錯誤目錄兩個 Central 碼。偏差 DV-15…DV-17 |
-| `BP-05` edge | 未開始 | — |
+| `BP-05` edge | **設定部分完成；發布閘門開放** | compose／Railway 專用 regex location、`cliora_noquery`、24 KiB body／32 KiB buffer、無 response buffering／temp file；parity 測試與兩份 `nginx -t` 見 §3.1。`BP-OM-06`／`BP-OM-10` 尚未量測，兩種拓樸的 flag 仍須保持關閉 |
 | `BP-06` 前端生命週期＋圖片 | 未開始 | 依賴 #76 合併 |
 | `BP-07` 前端 PDF.js | 未開始 | — |
 | `BP-08` 安全審查 | 未開始 | — |
@@ -71,6 +71,14 @@
 | `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
 | `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
 | `BP-OM-14` | 池滿載時（兩個 16 MiB handle 各在送 chunk，或一個 16 MiB handle 加兩個進行中的 8 MiB open）daemon 的 RSS 與 GC 開銷 | `07-…md` §3 暫定的「基準＋48 MiB」 | `BP-09` | 定預設 |
+
+### 3.1 `BP-05` 設定驗證（2026-09-28）
+
+- `make railway-check` RED：新增的兩份 edge 測試各因缺 `cliora_noquery` 失敗（2 failed，49 passed）；設定落地後 GREEN。
+- `nginx:1.27-alpine` 實際 `nginx -t`：在兩份新 location 的 `proxy_max_temp_file_size` 故意拼錯，compose／Railway 各失敗一次；修正後各通過一次。CI 新增 compose 檢查，Railway 沿用既有步驟。本機因 Docker host daemon 看不到工作樹，以 `docker cp` 將設定與測試憑證放進具標籤的容器；所有容器均移除。
+- Central `file_preview_max_body_bytes = 24576`，所以 location 採 `24k`，並以 `32k` 保持請求 body 在記憶體。現有 `/api/` 沒有 `add_header`，新 location 也不宣告 `add_header`，兩者都繼承 server 的安全標頭。
+- 計畫範例的 regex 必須加引號：未加引號時 nginx 把 `{36}` 當作設定分隔符而拒絕載入。兩份已使用引號，匹配式本身不變。
+- 以上只證實靜態設定與 nginx 可載入。`BP-OM-06` 的暫存檔觀察（含 Railway 前端 edge）與 `BP-OM-10` 的 canary 全鏈 log 搜尋**仍為 OPEN**；在每種拓樸證實前不得開啟 flag 或宣稱發布閘門已過。
 
 ## 4. 審查中確認、但**不在本期修正**的既有缺陷
 

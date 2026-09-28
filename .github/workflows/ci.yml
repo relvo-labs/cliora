@@ -138,6 +138,17 @@ jobs:
             -e CLIORA_BACKEND_HOST=central.railway.internal \
             -e CLIORA_BACKEND_PORT=8080 \
             nginx:1.27-alpine sh -c '/docker-entrypoint.sh nginx -t'
+      - name: nginx accepts the compose edge config
+        run: |
+          mkdir -p "$RUNNER_TEMP/cliora-nginx-test/tls"
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -subj /CN=localhost \
+            -keyout "$RUNNER_TEMP/cliora-nginx-test/tls/privkey.pem" \
+            -out "$RUNNER_TEMP/cliora-nginx-test/tls/fullchain.pem" > /dev/null 2>&1
+          docker run --rm --add-host backend:127.0.0.1 \
+            -v "$PWD/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            -v "$RUNNER_TEMP/cliora-nginx-test/tls:/etc/nginx/tls:ro" \
+            nginx:1.27-alpine nginx -t
       # Same rule applied to Central's image: execute it, do not read it. `uv sync` writes an
       # absolute shebang into every console script, so a venv assembled at a staging path and
       # copied elsewhere leaves `alembic` and `uvicorn` pointing at an interpreter the runtime
