@@ -122,10 +122,10 @@
 | FR-FILE-012 | [FR-FILE-012.AC-01](../../research/prd.md#fr-file-012-ac-01) | 持有 file.browse 且可檢視該 Session 的使用者（Admin／Developer／Viewer）可預覽；Shell session 一律拒絕。 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:backend/app/api/http/files.py | pytest:backend/tests/db/test_files_binary_preview_api.py::test_roles_matrix |
 | FR-FILE-012 | [FR-FILE-012.AC-02](../../research/prd.md#fr-file-012-ac-02) | 型別由 Node 依檔案內容判定；白名單為 PNG、JPEG、WebP、GIF、PDF，其餘一律「不支援預覽」。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview_image.go | gotest:daemon/internal/files/preview_test.go#TestPreviewAllowlistIsClosed |
 | FR-FILE-012 | [FR-FILE-012.AC-03](../../research/prd.md#fr-file-012-ac-03) | FR-FILE-005 的敏感檔案規則適用，且與文字預覽共用同一份判定；對請求路徑與實際開啟檔案的解析名稱各判定一次。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview.go | gotest:daemon/internal/files/preview_test.go#TestPreviewUsesSameSensitivePolicyTwice |
-| FR-FILE-012 | [FR-FILE-012.AC-04](../../research/prd.md#fr-file-012-ac-04) | 上限（檔案大小、像素、邊長、PDF 頁數）超出時明確拒絕並顯示原因，不得逾時或部分顯示。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-04](../../research/prd.md#fr-file-012-ac-04) | 上限（檔案大小、像素、邊長、PDF 頁數）超出時明確拒絕並顯示原因，不得逾時或部分顯示。 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview.go<br>code:frontend/src/composables/useBinaryPreview.ts | gotest:daemon/internal/files/preview_test.go#TestPreviewPixelBombRefused<br>vitest:frontend/src/composables/useBinaryPreview.pdf.test.ts#page_limit_before_render: 10 000 pages is refused before a page is asked for |
 | FR-FILE-012 | [FR-FILE-012.AC-05](../../research/prd.md#fr-file-012-ac-05) | Node 端信封拒絕： magic 與宣稱型別不符、表頭結構異常（圖片表頭／標記走訪；PDF 的 %PDF- 與 %%EOF）、 | plan:plan/31/03-daemon.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:daemon/internal/files/preview_image.go | gotest:daemon/internal/files/preview_formats_test.go#TestPreviewPNGAncillaryBudgetBoundary |
 | FR-FILE-012 | [FR-FILE-012.AC-06](../../research/prd.md#fr-file-012-ac-06) | GIF 只顯示第一幀（OD-1）。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/composables/useBinaryPreview.ts | playwright:frontend/tests/e2e/binary-preview.spec.ts#an animated GIF shows its first frame only, and says so |
-| FR-FILE-012 | [FR-FILE-012.AC-07](../../research/prd.md#fr-file-012-ac-07) | PDF 不執行腳本、不啟用連結、表單或附件；不使用第三方服務。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-07](../../research/prd.md#fr-file-012-ac-07) | PDF 不執行腳本、不啟用連結、表單或附件；不使用第三方服務。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/pdf/setup.ts | playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#pdf_active_content_inert<br>vitest:frontend/src/pdf/imports.test.ts#no_viewer_or_scripting_import<br>vitest:frontend/src/pdf/setup.test.ts#setup_options_are_locked<br>playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#cve_2024_4367_shape: script in a FontMatrix does not run |
 | FR-FILE-012 | [FR-FILE-012.AC-08](../../research/prd.md#fr-file-012-ac-08) | 平台不提供任何存檔入口；回應不得以可渲染型別或附件形式交付。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/components/file/ImagePreview.vue | vitest:frontend/src/components/file/PreviewPane.binary.test.ts#a full image flow: canvas only, no object URL, nothing that saves<br>vitest:frontend/src/components/file/PreviewDenied.binary.test.ts#states_are_distinct: every state's copy differs, and none says download or save |
 | FR-FILE-012 | [FR-FILE-012.AC-09](../../research/prd.md#fr-file-012-ac-09) | 中央、edge 與瀏覽器不保存預覽內容：不落磁碟、DB、log、metrics label、HTTP 快取或瀏覽器持久儲存； | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
 | FR-FILE-012 | [FR-FILE-012.AC-10](../../research/prd.md#fr-file-012-ac-10) | 切換 Session、登出或換使用者時，畫面與記憶體中的預覽內容於同一刻清除。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/composables/useBinaryPreview.ts | vitest:frontend/src/composables/useBinaryPreview.test.ts#auth_loss_clears_in_same_tick<br>vitest:frontend/src/composables/useBinaryPreview.test.ts#session_switch_mid_transfer_never_paints<br>vitest:frontend/src/composables/useBinaryPreview.test.ts#user_switch_clears |
@@ -134,7 +134,7 @@
 | FR-FILE-012 | [FR-FILE-012.AC-13](../../research/prd.md#fr-file-012-ac-13) | 敏感拒絕留稽核（分類與副檔名），且在回應錯誤之前寫定；成功預覽留稽核（型別、大小；另有服務自動加上的 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:backend/app/services/files.py | pytest:backend/tests/db/test_files_binary_preview_api.py::test_success_audit_has_no_path |
 | FR-FILE-012 | [FR-FILE-012.AC-14](../../research/prd.md#fr-file-012-ac-14) | 載入可取消；離開畫面即取消；並發與傳輸時間有上限。 | plan:plan/31/04-central-and-edge.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
 | FR-FILE-012 | [FR-FILE-012.AC-15](../../research/prd.md#fr-file-012-ac-15) | 手機（360／390／430 px）與桌面皆可縮放圖片、逐頁瀏覽 PDF，返回時保留資料夾、搜尋與捲動位置（OD-7：手機與桌面共用同一渲染器）。 | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
-| FR-FILE-012 | [FR-FILE-012.AC-16](../../research/prd.md#fr-file-012-ac-16) | 瀏覽器端解析／渲染失敗： 通過信封檢查、但解碼或渲染失敗（損毀的 xref、壞掉的影像資料、需要密碼的 PDF）時， | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | — | — |
+| FR-FILE-012 | [FR-FILE-012.AC-16](../../research/prd.md#fr-file-012-ac-16) | 瀏覽器端解析／渲染失敗： 通過信封檢查、但解碼或渲染失敗（損毀的 xref、壞掉的影像資料、需要密碼的 PDF）時， | plan:plan/31/05-frontend.md<br>adr:docs/adr/0029-read-only-binary-preview.md | code:frontend/src/composables/useBinaryPreview.ts | playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#password_pdf_refused: RC4-40, AES-128, AES-256 with a user password<br>vitest:frontend/src/composables/useBinaryPreview.test.ts#a decoder failure is render_failed and leaves nothing behind<br>playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#permissions_only_pdf_renders: empty user password opens view-only, no print, copy or save |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-01](../../research/prd.md#fr-install-001-ac-01) | 管理員可建立一次性或限時 Token。 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | pytest:backend/tests/db/test_enrollment_api.py<br>pytest:backend/tests/db/test_enrollment_api.py::test_admin_creates_token_once_and_lists_without_plaintext<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_consumes_single_use_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_register_rejects_expired_token<br>pytest:backend/tests/db/test_enrollment_api.py::test_revoked_token_cannot_register<br>pytest:backend/tests/db/test_node_registration.py::test_concurrent_consume_respects_max_uses |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-02](../../research/prd.md#fr-install-001-ac-02) | Token 值 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
 | FR-INSTALL-001 | [FR-INSTALL-001.AC-03](../../research/prd.md#fr-install-001-ac-03) | 建立者 | plan:plan/02/06-installer-artifacts.md<br>source:research/tech.md | code:backend/app/services/enrollment.py | — |
@@ -1150,10 +1150,12 @@
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-03` (verified_by)
 - `gotest:daemon/internal/files/policy_test.go` ← `FR-FILE-008.AC-04` (measured_by)
 - `code:daemon/internal/files/preview.go` ← `FR-FILE-012.AC-03` (implemented_by)
+- `code:daemon/internal/files/preview.go` ← `FR-FILE-012.AC-04` (implemented_by)
 - `gotest:daemon/internal/files/preview_formats_test.go#TestPreviewPNGAncillaryBudgetBoundary` ← `FR-FILE-012.AC-05` (verified_by)
 - `code:daemon/internal/files/preview_image.go` ← `FR-FILE-012.AC-02` (implemented_by)
 - `code:daemon/internal/files/preview_image.go` ← `FR-FILE-012.AC-05` (implemented_by)
 - `gotest:daemon/internal/files/preview_test.go#TestPreviewAllowlistIsClosed` ← `FR-FILE-012.AC-02` (verified_by)
+- `gotest:daemon/internal/files/preview_test.go#TestPreviewPixelBombRefused` ← `FR-FILE-012.AC-04` (verified_by)
 - `gotest:daemon/internal/files/preview_test.go#TestPreviewUsesSameSensitivePolicyTwice` ← `FR-FILE-012.AC-03` (verified_by)
 - `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-04` (implemented_by)
 - `code:daemon/internal/files/store.go` ← `FR-FILE-010.AC-05` (implemented_by)
@@ -1502,11 +1504,15 @@
 - `code:frontend/src/components/ui/UiIconButton.vue` ← `NFR-006.AC-05` (implemented_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#does not report partial when every runtime failed` ← `FR-RUNTIME-002.AC-05` (verified_by)
 - `vitest:frontend/src/composables/useAsyncResource.test.ts#returns partial when some runtimes failed detection` ← `FR-RUNTIME-002.AC-04` (verified_by)
+- `vitest:frontend/src/composables/useBinaryPreview.pdf.test.ts#page_limit_before_render: 10 000 pages is refused before a page is asked for` ← `FR-FILE-012.AC-04` (verified_by)
+- `vitest:frontend/src/composables/useBinaryPreview.test.ts#a decoder failure is render_failed and leaves nothing behind` ← `FR-FILE-012.AC-16` (verified_by)
 - `vitest:frontend/src/composables/useBinaryPreview.test.ts#auth_loss_clears_in_same_tick` ← `FR-FILE-012.AC-10` (verified_by)
 - `vitest:frontend/src/composables/useBinaryPreview.test.ts#session_switch_mid_transfer_never_paints` ← `FR-FILE-012.AC-10` (verified_by)
 - `vitest:frontend/src/composables/useBinaryPreview.test.ts#user_switch_clears` ← `FR-FILE-012.AC-10` (verified_by)
+- `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-04` (implemented_by)
 - `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-06` (implemented_by)
 - `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-10` (implemented_by)
+- `code:frontend/src/composables/useBinaryPreview.ts` ← `FR-FILE-012.AC-16` (implemented_by)
 - `vitest:frontend/src/composables/useBreakpoint.test.ts` ← `NFR-007.AC-04` (measured_by)
 - `code:frontend/src/composables/useBreakpoint.ts` ← `NFR-007.AC-04` (implemented_by)
 - `vitest:frontend/src/composables/useFileTree.test.ts#does not refetch anything on its own until asked` ← `FR-FILE-006.AC-04` (verified_by)
@@ -1572,6 +1578,9 @@
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-05` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `FR-TERM-006.AC-06` (implemented_by)
 - `code:frontend/src/composables/useTerminalSession.ts` ← `NFR-006.AC-07` (implemented_by)
+- `vitest:frontend/src/pdf/imports.test.ts#no_viewer_or_scripting_import` ← `FR-FILE-012.AC-07` (verified_by)
+- `vitest:frontend/src/pdf/setup.test.ts#setup_options_are_locked` ← `FR-FILE-012.AC-07` (verified_by)
+- `code:frontend/src/pdf/setup.ts` ← `FR-FILE-012.AC-07` (implemented_by)
 - `vitest:frontend/src/protocol/v1.test.ts#preserves UTF-8 and binary input bytes` ← `FR-TERM-001.AC-06` (verified_by)
 - `vitest:frontend/src/terminal.test.ts` ← `NFR-006.AC-03` (measured_by)
 - `vitest:frontend/src/terminal.test.ts#expresses status with text, not colour alone` ← `FR-TERM-005.AC-01` (verified_by)
@@ -1603,6 +1612,10 @@
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `FR-TERM-001.AC-13` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-03` (implemented_by)
 - `code:frontend/src/views/SessionWorkspaceView.vue` ← `NFR-007.AC-07` (implemented_by)
+- `playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#cve_2024_4367_shape: script in a FontMatrix does not run` ← `FR-FILE-012.AC-07` (verified_by)
+- `playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#password_pdf_refused: RC4-40, AES-128, AES-256 with a user password` ← `FR-FILE-012.AC-16` (verified_by)
+- `playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#pdf_active_content_inert` ← `FR-FILE-012.AC-07` (verified_by)
+- `playwright:frontend/tests/e2e/binary-preview-pdf.spec.ts#permissions_only_pdf_renders: empty user password opens view-only, no print, copy or save` ← `FR-FILE-012.AC-16` (verified_by)
 - `playwright:frontend/tests/e2e/binary-preview.spec.ts#an animated GIF shows its first frame only, and says so` ← `FR-FILE-012.AC-06` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-001.AC-01` (verified_by)
 - `playwright:frontend/tests/e2e/files.spec.ts` ← `FR-FILE-002.AC-01` (verified_by)

@@ -15,7 +15,7 @@
 // false or absent (an old Central, an old or disabled node) every file takes
 // the text path exactly as before, including the FILE_BINARY pane.
 
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch } from "vue";
 
 import { api } from "../../stores/auth";
 import {
@@ -30,6 +30,10 @@ import { usePreferencesStore } from "../../stores/preferences";
 import { useSessionsStore } from "../../stores/sessions";
 import UiButton from "../ui/UiButton.vue";
 import ImagePreview from "./ImagePreview.vue";
+
+// Its own chunk, with PDF.js behind it: nobody who never opens a PDF downloads
+// the library (ADR 0029 §12; the first-load bundle does not change).
+const PdfPreview = defineAsyncComponent(() => import("./PdfPreview.vue"));
 import PreviewDenied from "./PreviewDenied.vue";
 
 const props = defineProps<{
@@ -150,6 +154,8 @@ const DENIAL_STATES = new Set<string>([
   "busy",
   "transfer_failed",
   "session_ended",
+  "pdf_password_required",
+  "pdf_too_many_pages",
 ]);
 const binaryDenial = computed(() => {
   const state = binary.state.value;
@@ -190,7 +196,8 @@ function formatSize(size: number): string {
 const binaryMeta = computed(() => {
   const m = binary.meta.value;
   if (!m || binary.state.value !== "ready") return "";
-  const dims = m.width && m.height ? ` · ${m.width}×${m.height}` : "";
+  const pages = binary.pdf.value ? ` · ${binary.pdf.value.numPages} 頁` : "";
+  const dims = m.width && m.height ? ` · ${m.width}×${m.height}` : pages;
   return `${props.relPath} · ${m.mime}${dims} · ${formatSize(m.size)}`;
 });
 
@@ -336,6 +343,13 @@ const fileName = computed(
           :name="fileName"
           :first-frame-only="binary.meta.value?.mime === 'image/gif'"
           :register="binary.registerCanvas"
+        />
+        <PdfPreview
+          v-else-if="binary.state.value === 'ready' && binary.pdf.value"
+          :doc="binary.pdf.value"
+          :name="fileName"
+          :register="binary.registerCanvas"
+          :track-render="binary.trackRender"
         />
         <PreviewDenied
           v-else-if="binaryDenial"

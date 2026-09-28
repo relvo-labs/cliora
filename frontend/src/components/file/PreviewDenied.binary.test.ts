@@ -30,6 +30,9 @@ const STATES: Array<[BinaryDenialState, BinaryPreviewDetail]> = [
   ["busy", {}],
   ["transfer_failed", {}],
   ["session_ended", {}],
+  // BP-07
+  ["pdf_password_required", {}],
+  ["pdf_too_many_pages", { pages: 10_000, limit: 200 }],
 ];
 
 function text(state: BinaryDenialState, detail: BinaryPreviewDetail) {
@@ -77,6 +80,23 @@ describe("PreviewDenied — binary states", () => {
     const copy = text("denied_sensitive", { reason: "private_key" });
     expect(copy).toContain("此檔案受保護，不提供預覽");
     expect(copy).not.toContain("私鑰");
+  });
+
+  it("pdf_too_many_pages names the page count and the limit", () => {
+    const copy = text("pdf_too_many_pages", { pages: 10_000, limit: 200 });
+    expect(copy).toContain("10000");
+    expect(copy).toContain("200");
+  });
+
+  it("pdf_password_required says a password is needed and asks for none", () => {
+    const w = mount(PreviewDenied, {
+      props: {
+        binary: { state: "pdf_password_required", detail: {} },
+        relPath: "secret.pdf",
+      },
+    });
+    expect(w.text()).toContain("此 PDF 需要密碼才能開啟，預覽不支援");
+    expect(w.find("input").exists()).toBe(false);
   });
 
   it("session ended offers no retry that cannot work", () => {

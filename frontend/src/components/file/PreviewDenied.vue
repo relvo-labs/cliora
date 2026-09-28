@@ -10,9 +10,11 @@ import {
   FileQuestion,
   FileType,
   FileWarning,
+  Files,
   HardDrive,
   Hourglass,
   ImageOff,
+  KeyRound,
   Lock,
   MonitorX,
   RefreshCw,
@@ -182,8 +184,8 @@ function binaryView(state: BinaryDenialState, d: BinaryPreviewDetail): View {
       return {
         ...base,
         icon: FileType,
-        title: "這不是可預覽的圖片",
-        detail: "依檔案內容判定，它不是 PNG、JPEG、WebP 或 GIF。",
+        title: "這不是可預覽的圖片或 PDF",
+        detail: "依檔案內容判定，它不是 PNG、JPEG、WebP、GIF 或 PDF。",
         next: "可以改用文字預覽開啟。",
         action: { label: "改用文字預覽", emit: "text" },
       };
@@ -237,6 +239,24 @@ function binaryView(state: BinaryDenialState, d: BinaryPreviewDetail): View {
         detail: "檔案沒有完整送達；為避免顯示不完整的內容，已全部捨棄。",
         next: "請重試。",
         action: { label: "重試", emit: "retry" },
+      };
+    case "pdf_password_required":
+      // No password field, here or anywhere (OD-8). The bytes that arrived
+      // have already been discarded with the document.
+      return {
+        ...base,
+        icon: KeyRound,
+        title: "此 PDF 需要密碼才能開啟，預覽不支援",
+        detail: "預覽不提供密碼輸入；已取得的內容已清除。",
+        next: "請在 Node 上用終端機處理此檔案。",
+      };
+    case "pdf_too_many_pages":
+      return {
+        ...base,
+        icon: Files,
+        title: "PDF 頁數超過預覽上限",
+        detail: `這份 PDF 有 ${d.pages ?? "未知"} 頁，預覽上限為 ${d.limit ?? 200} 頁。`,
+        next: "頁數在上限內的 PDF 才能在此預覽。",
       };
     case "session_ended":
       // No retry: asking a session that is over only fails again.

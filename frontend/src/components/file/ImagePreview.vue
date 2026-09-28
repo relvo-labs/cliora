@@ -16,16 +16,10 @@
 // enforced; zooming past natural size is CSS scaling, not a larger canvas.
 
 import { Maximize2, ZoomIn, ZoomOut } from "lucide-vue-next";
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 
 import { IMAGE_MAX_PIXELS } from "../../composables/useBinaryPreview";
+import { usePanZoom } from "../../composables/usePanZoom";
 import UiIconButton from "../ui/UiIconButton.vue";
 
 const props = defineProps<{
@@ -37,24 +31,18 @@ const props = defineProps<{
   register: (canvas: HTMLCanvasElement) => () => void;
 }>();
 
-const STEP = 1.25;
-// Eight screen pixels per image pixel is enough to inspect a screenshot; past
-// that it is only a bigger blur.
-const MAX_SCALE = 8;
-
 const viewport = ref<HTMLElement | null>(null);
 const canvas = ref<HTMLCanvasElement | null>(null);
-const containerWidth = ref(0);
-// Multiplier over the fit scale; 1 is "fit to width".
-const zoom = ref(1);
 
-const fitScale = computed(() =>
-  containerWidth.value > 0
-    ? Math.min(1, containerWidth.value / props.bitmap.width)
-    : 1,
-);
-const maxZoom = computed(() => Math.max(1, MAX_SCALE / fitScale.value));
-const scale = computed(() => fitScale.value * zoom.value);
+// Fit to width, but never enlarge past the image's own size to do it. Eight
+// screen pixels per image pixel is enough to inspect a screenshot; past that it
+// is only a bigger blur.
+const view = usePanZoom(viewport, {
+  fit: (width) => Math.min(1, width / props.bitmap.width),
+  maxScale: 8,
+});
+const { zoom, scale, maxZoom } = view;
+
 const displayWidth = computed(() =>
   Math.max(1, Math.round(props.bitmap.width * scale.value)),
 );
@@ -65,10 +53,6 @@ const percent = computed(() => `${Math.round(scale.value * 100)}%`);
 const label = computed(
   () => `${props.name}，${props.bitmap.width}×${props.bitmap.height} 像素`,
 );
-
-function clampZoom(value: number): number {
-  return Math.min(maxZoom.value, Math.max(1, value));
-}
 
 function draw(): void {
   const el = canvas.value;
@@ -96,111 +80,12 @@ watch([() => props.bitmap, displayWidth, displayHeight], () => draw(), {
   flush: "post",
 });
 
-// Zoom about a point of the viewport, so what is under the fingers (or the
-// centre, for the buttons) stays there.
-async function zoomTo(next: number, anchorX?: number, anchorY?: number) {
-  const el = viewport.value;
-  const before = scale.value;
-  const target = clampZoom(next);
-  if (target === zoom.value) return;
-  const x = anchorX ?? (el ? el.clientWidth / 2 : 0);
-  const y = anchorY ?? (el ? el.clientHeight / 2 : 0);
-  const contentX = el ? (el.scrollLeft + x) / before : 0;
-  const contentY = el ? (el.scrollTop + y) / before : 0;
-  zoom.value = target;
-  await nextTick();
-  if (el) {
-    el.scrollLeft = contentX * scale.value - x;
-    el.scrollTop = contentY * scale.value - y;
-  }
-}
-
-function zoomIn(): void {
-  void zoomTo(zoom.value * STEP);
-}
-function zoomOut(): void {
-  void zoomTo(zoom.value / STEP);
-}
-function fit(): void {
-  zoom.value = 1;
-}
-
-function onKey(event: KeyboardEvent): void {
-  if (event.key === "+" || event.key === "=") zoomIn();
-  else if (event.key === "-") zoomOut();
-  else if (event.key === "0") fit();
-  else return;
-  event.preventDefault();
-}
-
-// Pointer handling: one pointer drags, two pinch. `touch-action: none` on the
-// viewport hands both gestures to us; the page itself keeps its own pinch zoom
-// everywhere else (ADR 0029 §11 does not disable it).
-const pointers = new Map<number, { x: number; y: number }>();
-let pinch: { distance: number; zoom: number } | null = null;
-
-function distance(): number {
-  const [a, b] = [...pointers.values()];
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function onPointerDown(event: PointerEvent): void {
-  viewport.value?.setPointerCapture?.(event.pointerId);
-  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (pointers.size === 2) pinch = { distance: distance(), zoom: zoom.value };
-}
-
-function onPointerMove(event: PointerEvent): void {
-  const previous = pointers.get(event.pointerId);
-  const el = viewport.value;
-  if (!previous || !el) return;
-  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
-  if (pointers.size === 1) {
-    el.scrollLeft -= event.clientX - previous.x;
-    el.scrollTop -= event.clientY - previous.y;
-    return;
-  }
-  if (pointers.size === 2 && pinch && pinch.distance > 0) {
-    const [a, b] = [...pointers.values()];
-    const box = el.getBoundingClientRect();
-    void zoomTo(
-      pinch.zoom * (distance() / pinch.distance),
-      (a.x + b.x) / 2 - box.left,
-      (a.y + b.y) / 2 - box.top,
-    );
-  }
-}
-
-function onPointerEnd(event: PointerEvent): void {
-  pointers.delete(event.pointerId);
-  if (pointers.size < 2) pinch = null;
-}
-
-// A width change (rotation, a resized window) re-fits: the old zoom was
-// relative to a width that no longer exists (plan/31/08 BP-10 #14).
-let observer: ResizeObserver | null = null;
-function measure(): void {
-  const width = viewport.value?.clientWidth ?? 0;
-  if (width !== containerWidth.value) {
-    containerWidth.value = width;
-    zoom.value = 1;
-  }
-}
-
 let unregister: (() => void) | null = null;
 onMounted(() => {
   if (canvas.value) unregister = props.register(canvas.value);
-  measure();
-  if (typeof ResizeObserver !== "undefined" && viewport.value) {
-    observer = new ResizeObserver(() => measure());
-    observer.observe(viewport.value);
-  }
   draw();
 });
 onBeforeUnmount(() => {
-  observer?.disconnect();
-  observer = null;
-  pointers.clear();
   unregister?.();
   unregister = null;
 });
@@ -214,12 +99,12 @@ onBeforeUnmount(() => {
       role="group"
       aria-label="圖片檢視區（可捲動、以 ＋／− 縮放）"
       tabindex="0"
-      @keydown="onKey"
-      @pointerdown="onPointerDown"
-      @pointermove="onPointerMove"
-      @pointerup="onPointerEnd"
-      @pointercancel="onPointerEnd"
-      @pointerleave="onPointerEnd"
+      @keydown="view.onZoomKey"
+      @pointerdown="view.onPointerDown"
+      @pointermove="view.onPointerMove"
+      @pointerup="view.onPointerEnd"
+      @pointercancel="view.onPointerEnd"
+      @pointerleave="view.onPointerEnd"
     >
       <div class="stage">
         <canvas
@@ -241,7 +126,7 @@ onBeforeUnmount(() => {
         variant="secondary"
         :disabled="zoom <= 1"
         disabled-reason="已是符合寬度"
-        @click="zoomOut"
+        @click="view.zoomOut"
       >
         <ZoomOut aria-hidden="true" />
       </UiIconButton>
@@ -249,7 +134,7 @@ onBeforeUnmount(() => {
         label="符合寬度"
         variant="secondary"
         :pressed="zoom === 1"
-        @click="fit"
+        @click="view.fitToWidth"
       >
         <Maximize2 aria-hidden="true" />
       </UiIconButton>
@@ -258,7 +143,7 @@ onBeforeUnmount(() => {
         variant="secondary"
         :disabled="zoom >= maxZoom"
         disabled-reason="已是最大倍率"
-        @click="zoomIn"
+        @click="view.zoomIn"
       >
         <ZoomIn aria-hidden="true" />
       </UiIconButton>

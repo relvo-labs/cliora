@@ -19,12 +19,15 @@
 import { markRaw, onScopeDispose, ref, shallowRef, watch, type Ref } from "vue";
 
 import { ApiError, isAbortError } from "../api/client";
+import type { PDFDocumentProxy } from "pdfjs-dist";
+
 import type {
   BinaryPreviewKind,
   BinaryPreviewMeta,
   BinaryPreviewMime,
   BinaryPreviewPayload,
 } from "../api/dto";
+import type { PdfHandle } from "../pdf/setup";
 import { api, useAuthStore } from "../stores/auth";
 import {
   registerBinaryPreviewOwner,
@@ -34,7 +37,7 @@ import {
 // A routing hint only, never an authorisation: the daemon decides what a file
 // is from its bytes, and a `.png` that is really text comes back
 // `unsupported` (plan/31/05 BP-06 §1).
-export const BINARY_PREVIEW_HINT = /\.(png|jpe?g|webp|gif)$/i;
+export const BINARY_PREVIEW_HINT = /\.(png|jpe?g|webp|gif|pdf)$/i;
 export function routeHint(relPath: string): boolean {
   return BINARY_PREVIEW_HINT.test(relPath);
 }
@@ -71,7 +74,9 @@ export type BinaryDenialState =
   | "forbidden"
   | "busy"
   | "transfer_failed"
-  | "session_ended";
+  | "session_ended"
+  | "pdf_password_required"
+  | "pdf_too_many_pages";
 
 export type BinaryPreviewState =
   | "idle"
@@ -88,6 +93,8 @@ export interface BinaryPreviewDetail {
   reason?: string;
   size?: number;
   limit?: number;
+  /** PDF only: the document's page count. */
+  pages?: number;
 }
 
 // In-flight controllers across every owner, for the leak gate. Outside any
@@ -96,6 +103,19 @@ const inflight = new Set<AbortController>();
 /** Test seam: requests still running. Must be 0 after every disposal. */
 export function binaryPreviewInflightCount(): number {
   return inflight.size;
+}
+
+// PDF.js arrives with the first PDF, as its own chunk (ADR 0029 §12). A failed
+// load is not cached, so a flaky network does not make PDFs unavailable for
+// the rest of the tab's life.
+type PdfSetup = typeof import("../pdf/setup");
+let pdfSetup: Promise<PdfSetup> | null = null;
+function loadPdfSetup(): Promise<PdfSetup | null> {
+  pdfSetup ??= import("../pdf/setup");
+  return pdfSetup.catch(() => {
+    pdfSetup = null;
+    return null;
+  });
 }
 
 // The client-side verdict for a preview body that did not arrive exactly as
@@ -294,6 +314,8 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
   const detail = ref<BinaryPreviewDetail>({});
   const meta = shallowRef<BinaryPreviewMeta | null>(null);
   const bitmap = shallowRef<ImageBitmap | null>(null);
+  // The open PDF document. Its loading task and worker are `pdfHandle`'s.
+  const pdf = shallowRef<PDFDocumentProxy | null>(null);
   const progress = ref({ received: 0, total: 0 });
   const announcement = ref("");
   const currentPath = ref<string | null>(null);
@@ -304,6 +326,8 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
   let disposed = false;
   let lastAnnounced = 0;
   const canvases = new Set<HTMLCanvasElement>();
+  let pdfHandle: PdfHandle | null = null;
+  const renders = new Set<{ cancel(): void }>();
 
   function abortInflight(): void {
     generation += 1;
@@ -315,7 +339,18 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
   }
 
   // Everything that holds pixels, in the ADR 0029 §14 order after the abort.
+  function releasePdf(): void {
+    for (const task of renders) task.cancel();
+    renders.clear();
+    // Starts synchronously (the document is marked destroyed at once); the
+    // worker is terminated when PDF.js has finished, or after a grace period.
+    void pdfHandle?.destroy();
+    pdfHandle = null;
+    pdf.value = null;
+  }
+
   function releaseContent(): void {
+    releasePdf();
     bitmap.value?.close();
     bitmap.value = null;
     for (const canvas of canvases) {
@@ -384,6 +419,59 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
     state.value = "ready";
   }
 
+  async function openDocument(
+    payload: BinaryPreviewPayload,
+    stale: () => boolean,
+  ): Promise<void> {
+    const setup = await loadPdfSetup();
+    if (stale()) return;
+    if (!setup?.pdfSupported()) {
+      state.value = "unsupported_browser";
+      return;
+    }
+    let passwordRequested = false;
+    // The bytes are handed to PDF.js's worker (transferred, not copied) and
+    // are no longer ours to hold.
+    const handle = setup.openPdf(payload.bytes, {
+      onPassword: () => {
+        passwordRequested = true;
+      },
+    });
+    // Owned from here, so every disposal trigger reaches it even mid-load.
+    pdfHandle = handle;
+    let document: PDFDocumentProxy;
+    try {
+      document = await handle.task.promise;
+    } catch (caught) {
+      if (pdfHandle === handle) releasePdf();
+      else void handle.destroy();
+      if (stale()) return;
+      // A PDF that needs a password to open is refused and never prompted for
+      // (OD-8). Anything else PDF.js cannot open is a renderer failure.
+      state.value =
+        passwordRequested ||
+        (caught as { name?: string } | null)?.name === "PasswordException"
+          ? "pdf_password_required"
+          : "render_failed";
+      return;
+    }
+    if (stale() || pdfHandle !== handle) {
+      void handle.destroy();
+      return;
+    }
+    // The page limit is checked before any page is asked for (ADR 0029 §4).
+    if (document.numPages > setup.PDF_MAX_PAGES) {
+      releasePdf();
+      state.value = "pdf_too_many_pages";
+      detail.value = { pages: document.numPages, limit: setup.PDF_MAX_PAGES };
+      return;
+    }
+    pdf.value = markRaw(document);
+    meta.value = payload.meta;
+    store.meta = payload.meta;
+    state.value = "ready";
+  }
+
   async function open(relPath: string): Promise<void> {
     if (disposed) return;
     // 先清再換: nothing of the previous file survives into this one.
@@ -400,14 +488,6 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
       state.value = "session_ended";
       return;
     }
-    if (typeof globalThis.createImageBitmap !== "function") {
-      state.value = "unsupported_browser";
-      return;
-    }
-
-    const request = new AbortController();
-    controller = request;
-    inflight.add(request);
     const ticket = generation;
     const stale = () =>
       disposed ||
@@ -416,6 +496,23 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
       currentPath.value !== relPath;
     state.value = "loading";
     announcement.value = "正在載入預覽";
+
+    // Nothing is fetched for a file this browser cannot show (OD-9).
+    if (/\.pdf$/i.test(relPath)) {
+      const setup = await loadPdfSetup();
+      if (stale()) return;
+      if (!setup?.pdfSupported()) {
+        state.value = "unsupported_browser";
+        return;
+      }
+    } else if (typeof globalThis.createImageBitmap !== "function") {
+      state.value = "unsupported_browser";
+      return;
+    }
+
+    const request = new AbortController();
+    controller = request;
+    inflight.add(request);
 
     try {
       const response = await api().fetchBinaryPreview(sessionId, relPath, {
@@ -430,11 +527,10 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
       });
       // A late answer for another session, file or user: dropped unread.
       if (stale()) return;
-      if (payload.meta.kind !== "image") {
-        state.value = "render_failed";
-        return;
-      }
-      await paintImage(payload, stale);
+      // The daemon's verdict picks the renderer, not the file name: a `.png`
+      // that is really a PDF opens as a PDF.
+      if (payload.meta.kind === "pdf") await openDocument(payload, stale);
+      else await paintImage(payload, stale);
     } catch (caught) {
       if (isAbortError(caught) || stale()) return;
       const verdict = classifyPreviewError(caught);
@@ -462,6 +558,14 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
   }
 
   /** Hand a canvas to the owner, which zeroes it on every disposal. */
+  /** Hand a page render to the owner, which cancels it on every disposal. */
+  function trackRender(task: { cancel(): void }): () => void {
+    renders.add(task);
+    return () => {
+      renders.delete(task);
+    };
+  }
+
   function registerCanvas(canvas: HTMLCanvasElement): () => void {
     canvases.add(canvas);
     return () => {
@@ -510,6 +614,7 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
     detail,
     meta,
     bitmap,
+    pdf,
     progress,
     announcement,
     currentPath,
@@ -519,6 +624,7 @@ export function useBinaryPreview(options: BinaryPreviewOptions) {
     close,
     dispose,
     registerCanvas,
+    trackRender,
   };
 }
 

@@ -27965,6 +27965,67 @@
       ]
     },
     {
+      "id": "LNK-FR-FILE-012-AC-04-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "daemon/internal/files/preview.go"
+      },
+      "role": "primary",
+      "assertion": "The daemon refuses over-size files and images over the pixel, side or metadata limits before transfer, with the reason.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-04-IMPLEMENTED-02",
+      "from": "FR-FILE-012.AC-04",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useBinaryPreview.ts"
+      },
+      "role": "supporting",
+      "assertion": "The browser half: the PDF page limit is checked on numPages before any page renders, and the image limits are rechecked before decode; each refusal is its own state naming the limit.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-04-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "gotest",
+        "locator": "daemon/internal/files/preview_test.go#TestPreviewPixelBombRefused"
+      },
+      "role": "primary",
+      "assertion": "A pixel bomb is refused FILE_PREVIEW_LIMIT/pixels before any byte is served.",
+      "owner": "daemon",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-04-VERIFIED-02",
+      "from": "FR-FILE-012.AC-04",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBinaryPreview.pdf.test.ts#page_limit_before_render: 10 000 pages is refused before a page is asked for"
+      },
+      "role": "supporting",
+      "assertion": "A 10 000-page document ends in pdf_too_many_pages without getPage ever being called.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
       "id": "LNK-FR-FILE-012-AC-05-PLANNED-BY",
       "from": "FR-FILE-012.AC-05",
       "type": "planned_by",
@@ -28114,6 +28175,85 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-07",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/pdf/setup.ts"
+      },
+      "role": "primary",
+      "assertion": "The only getDocument call: bytes not a URL, locked options, an owned worker port; no scripting sandbox, annotation, text or XFA layer; self-hosted assets only.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/binary-preview-pdf.spec.ts#pdf_active_content_inert"
+      },
+      "role": "primary",
+      "assertion": "Under the production CSP, a PDF with JavaScript, URI/Launch/GoToR links, a submit button, XFA and an attachment causes no navigation, popup, dialog, request, <a> or script.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-VERIFIED-02",
+      "from": "FR-FILE-012.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/pdf/imports.test.ts#no_viewer_or_scripting_import"
+      },
+      "role": "supporting",
+      "assertion": "No source imports the PDF.js viewer, the scripting sandbox or QuickJS.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-VERIFIED-03",
+      "from": "FR-FILE-012.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/pdf/setup.test.ts#setup_options_are_locked"
+      },
+      "role": "supporting",
+      "assertion": "getDocument receives exactly the locked option set, the bytes and the owned worker.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-07-VERIFIED-04",
+      "from": "FR-FILE-012.AC-07",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/binary-preview-pdf.spec.ts#cve_2024_4367_shape: script in a FontMatrix does not run"
+      },
+      "role": "supporting",
+      "assertion": "The CVE-2024-4367 FontMatrix shape does not execute.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
     },
     {
       "id": "LNK-FR-FILE-012-AC-08-PLANNED-BY",
@@ -28584,6 +28724,69 @@
       "applicability": [
         "mvp"
       ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-IMPLEMENTED-BY",
+      "from": "FR-FILE-012.AC-16",
+      "type": "implemented_by",
+      "target": {
+        "kind": "code",
+        "locator": "frontend/src/composables/useBinaryPreview.ts"
+      },
+      "role": "primary",
+      "assertion": "A decode or PDF.js failure is render_failed and a password request is pdf_password_required; either way the document is destroyed, nothing is half-drawn and no password is asked for.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ]
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-VERIFIED-BY",
+      "from": "FR-FILE-012.AC-16",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/binary-preview-pdf.spec.ts#password_pdf_refused: RC4-40, AES-128, AES-256 with a user password"
+      },
+      "role": "primary",
+      "assertion": "Password PDFs show pdf_password_required with no password field and every PDF.js worker terminated.",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-VERIFIED-02",
+      "from": "FR-FILE-012.AC-16",
+      "type": "verified_by",
+      "target": {
+        "kind": "vitest",
+        "locator": "frontend/src/composables/useBinaryPreview.test.ts#a decoder failure is render_failed and leaves nothing behind"
+      },
+      "role": "supporting",
+      "assertion": "A rejected image decode ends in render_failed with no bitmap held.",
+      "owner": "frontend",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-FRONTEND-UNIT"
+    },
+    {
+      "id": "LNK-FR-FILE-012-AC-16-VERIFIED-03",
+      "from": "FR-FILE-012.AC-16",
+      "type": "verified_by",
+      "target": {
+        "kind": "playwright",
+        "locator": "frontend/tests/e2e/binary-preview-pdf.spec.ts#permissions_only_pdf_renders: empty user password opens view-only, no print, copy or save"
+      },
+      "role": "supporting",
+      "assertion": "Permissions-only PDFs (empty user password) render view-only, per OD-8 (a).",
+      "owner": "test-infra",
+      "applicability": [
+        "mvp"
+      ],
+      "gate_id": "GATE-BROWSER-E2E"
     },
     {
       "id": "LNK-FR-CONN-006-AC-12-PLANNED-BY",

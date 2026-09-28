@@ -161,11 +161,15 @@ def test_committed_registry_is_valid_and_covered() -> None:
     # octet-stream/no-Content-Disposition half landed in BP-04) and AC-10 (cleared on
     # session change, sign-out and user change) gain implemented_by and verified_by.
     # AC-16 waits for BP-07: its password-required half is the PDF renderer's.
+    # 2026-09-28: +3 verifiable (plan/31 BP-07, PDF.js renderer): FR-FILE-012.AC-04
+    # (its browser half, the PDF page limit before render, joins BP-03's daemon
+    # limits), AC-07 (no scripts, links, forms or attachments) and AC-16 (render
+    # failures and password PDFs refused without a prompt).
     # #71 has merged first: its ten active, verifiable FR-FILE-011 criteria are
     # counted separately from the 16 preview criteria and two relay budgets.
     assert result["summary"] == {
         "total": 486,
-        "verifiable": 347,
+        "verifiable": 350,
         "covered_by_parent": 131,
         "needs_rewrite": 0,
         "blocking": 0,

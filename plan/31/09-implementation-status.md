@@ -13,7 +13,7 @@
 | `BP-04` Central | **完成（工作樹，待 commit）** | `POST …/files/binary-preview`（路徑在 body、拒絕任何 query、只收 JSON `{path}`、≤24 KiB）；兩道閘（flag 預設關、**當下連線**的 `binary_preview`）在送任何 frame 之前；每使用者 2／每節點 4 條串流；拉取式串流（15／10／60 秒）與七個標頭、無 `Content-Disposition`；每種結束路徑都送 `preview_close`（shielded，1 秒）；敏感拒絕先 commit 再 raise；成功稽核 `file.binary_preview` 用獨立 session；`SessionCapabilities.can_preview_binary`；`nodes.binary_preview`／`last_registration_at`（migration `0022`，可降級）；錯誤目錄兩個 Central 碼。偏差 DV-15…DV-17 |
 | `BP-05` edge | **設定部分完成；發布閘門開放** | compose／Railway 專用 regex location、`cliora_noquery`、24 KiB body／32 KiB buffer、無 response buffering／temp file；parity 測試與兩份 `nginx -t` 見 §3.1。`BP-OM-06`／`BP-OM-10` 尚未量測，兩種拓樸的 flag 仍須保持關閉 |
 | `BP-06` 前端生命週期＋圖片 | **完成** | `useBinaryPreview`（唯一 owner：AbortController、位元組、`ImageBitmap`、canvas；session／能力變更與 auth-loss 皆同步清除；identity pending 只 abort）；`stores/binaryPreview.ts`（`clear()`＋metadata）；`ImagePreview.vue`（canvas、符合寬度、＋／−、雙指與拖曳、44×44 工具列）；`PreviewPane` 路由分支；`PreviewDenied` 16 個二進位狀態文案（皆無下載）；`fetchBinaryPreview`（POST、路徑在 body、無 query）；`authLoss.ts` 一個 import＋一行呼叫。§5 的 13 項 RED→GREEN，另有 E2E（真實 CSP、mocked Central）9 項。偏差 DV-18…DV-25 |
-| `BP-07` 前端 PDF.js | 未開始 | — |
+| `BP-07` 前端 PDF.js | **完成** | 依賴審查先行（`docs/security-review-p31.md` 附錄 A）：`pdfjs-dist` **6.3.289** 精確 pin（最新穩定版，≥ 6.2.108；GitHub advisory 對該版 0 筆；`npm audit` 前後相同 6 筆既有項，無新增；Apache-2.0；唯一 transitive 為 optional 的 `@napi-rs/canvas` 1.0.9，MIT，不進 bundle）。`pdf/setup.ts` 是唯一的 `getDocument` 呼叫點（鎖定選項、位元組而非 URL、自建 Worker 以 port 交給 PDF.js、`onPassword` 直接銷毀）；`vite.config.ts` 自寫 plugin 自架 `cmaps`／`standard_fonts`／`wasm`（**不含** QuickJS）／`iccs`；lazy `PdfPreview.vue`（單欄、最多 3 個 canvas、翻頁取消離開的 render、每頁 10 秒、頁碼輸入、縮放、OD-3 提示）；頁數上限在渲染前判定；需要密碼的 PDF 拒絕且無輸入框。首頁 chunk 與 `BP-06` 相同（135 058 B），PDF.js chunk 437 614 B、worker 1 265 413 B。§4 的 4 項 unit 與 6 項 E2E RED→GREEN；E2E 共 19 項 × chromium／Pixel 7 模擬 = 38 項綠。偏差 DV-26…DV-33 |
 | `BP-08` 安全審查 | 未開始 | — |
 | `BP-09` 驗證 | 未開始 | — |
 | `BP-10` 實機 | 未開始 | — |
@@ -52,6 +52,15 @@
 | DV-24 | `05` BP-07 寫入集：`binary-preview*.spec.ts`；`07`：產生器屬 `BP-09` | 圖片 E2E（`binary-preview.spec.ts`＋`binary-preview.harness.ts`）與最小產生器 `scripts/p31/gen_preview_fixtures.py`（PNG／EXIF 6 JPEG／動畫 GIF）隨 `BP-06` 提交；`BP-07` 擴充 PDF | 讓圖片的瀏覽器證據與實作同一個 commit。E2E 用真實 bundle、`deploy/nginx/nginx.conf` 的 CSP 原字串與 mocked Central（不是 full-stack；full-stack 矩陣仍屬 `BP-09`） |
 | DV-25 | `05` §4：狀態表 | 多一個內部狀態 `node_unsupported`（`FILE_PREVIEW_UNSUPPORTED_NODE`／`FILE_PREVIEW_DISABLED`）：不顯示文案，直接改走文字路徑 | 節點以停用狀態重連時，行為與 `can_preview_binary=false` 相同（既有 `FILE_BINARY` 面板），不另造一個使用者狀態 |
 
+| DV-26 | `05` BP-07 §2：鎖定選項清單 | 另加 `iccUrl`（自架 `iccs/`） | 6.3.289 以此載入 CMYK 色彩描述檔；不自架就會落回內建處理，自架則維持「沒有第三方 origin」 |
+| DV-27 | `05` §2：`enableScripting: false` 由哪一層讀取待確認 | **已確認**：6.3.289 的 `getDocument` 不讀 `enableScripting`（只有 annotation layer 與 viewer 讀），也完全沒有 `isEvalSupported`。兩者仍留在鎖定集合；實際控制是結構性的：不 import `pdf.sandbox*`、不建立 annotation DOM、自架資產**排除** `wasm/quickjs-eval.*`（腳本沙箱的 JS 引擎） | 見 `docs/security-review-p31.md` A.3。若照原樣複製 `wasm/`，origin 上就會有一個文件腳本引擎 |
+| DV-28 | `05` §2：worker 以 `new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url)` 載入 | `?url` import（原樣輸出、帶 hash）＋自建 `new Worker(url, {type:"module"})`，以 `PDFWorker.create({ port })` 交給 PDF.js | Vite 的 `new URL()` 不解析 bare specifier；交 port 而非 `workerSrc`，PDF.js 就沒有「worker 起不來改在主執行緒解析」的 fake-worker 路徑，而且 worker 由我們終止（PDF.js 1 秒內沒收完也照樣終止） |
+| DV-29 | `05` §3：目前頁＋相鄰一頁 | 只畫目前頁；canvas 以「每次渲染」為單位、上限 3（縮放時新解析度畫好才替換，避免閃白）；不預先渲染相鄰頁 | 符合「最多 3 個」上限；預渲染是效能選項，v1 不做 |
+| DV-30 | `00` §5 BP-07 寫入集 | 新增 `composables/usePanZoom.ts`（圖片與 PDF 共用的縮放／拖曳／雙指），`ImagePreview.vue` 改用它 | 避免兩份相同的手勢程式；`BP-06` 的圖片 E2E 作為回歸，全數仍綠 |
+| DV-31 | OD-9：舊瀏覽器顯示「不支援」 | `pdfSupported()` 檢查 6.3.289 無 fallback 直接呼叫的四個 builtin（`Map.prototype.getOrInsertComputed`、`Math.sumPrecise`、`Promise.try`、`Uint8Array.fromBase64`）與 `Worker`；不符就 `unsupported_browser`，而且**不送請求** | 讓引擎不足時有誠實的狀態，而不是文件畫到一半才崩潰；清單寫在 `docs/security-review-p31.md` A.7 |
+| DV-32 | `05` §4：E2E「真實 CSP」 | 以 `vite preview` 服務 build 後的 bundle，對每個非 API 回應注入 `deploy/nginx/nginx.conf` 的 CSP 原字串，Central 以 Playwright route 模擬（`binary-preview.harness.ts`）。只跑了 Playwright 的 chromium 與 mobile-chrome-emulated；webkit／firefox 本機未安裝，full-stack 本機無 Go 工具鏈（見 §3.2） | 測的是渲染器、生命週期與 CSP；daemon 與 Central 的閘門有自己的測試，full-stack 矩陣屬 `BP-09` |
+| DV-33 | `05` §4 `no_csp_violation`／`07` §1：CJK 字形正確 | E2E 斷言 CMap 以 200 載入、零 violation、頁面渲染完成（`data-rendered`），**不**斷言字形 | 本機 headless Chromium 沒有 CJK 系統字型，非內嵌 CID 字型畫出來是空白；字形正確屬 `BP-10` #6 |
+
 ## 2. 外部相依的當下狀態（2026-09-27 核對）
 
 | 項目 | 狀態 | 對本計畫的影響 |
@@ -69,15 +78,15 @@
 | `BP-OM-01` | iOS Safari 的 canvas 最大面積與單頁總記憶體上限實際是多少？ | OD-2 像素上限；§11 縮放策略 | `BP-06` 開工時；`BP-10` 複驗 | 定預設 |
 | `BP-OM-02` | 在現行 CSP（`img-src 'self' data:`）下，iOS／Android 的 `createImageBitmap(Blob)` 是否可用、是否受 `img-src` 約束；`imageOrientation` 與 resize 選項的支援 | 是否需要 `img-src blob:` 的 fallback（需另行審查） | `BP-06` | 定設計。**部分（2026-09-28）**：桌面 Chromium（headless shell 1234）在 production CSP 原字串下可用，`securitypolicyviolation` 0，EXIF 6 正確旋轉（`binary-preview.spec.ts`）。iOS Safari／Android 實機未量（`BP-10`） |
 | `BP-OM-03` | iOS Safari 與 Android Chrome 長按 `<canvas>` 是否出現存檔選單 | 「沒有存檔入口」這個宣稱 | `BP-06`；`BP-10` #2 | 定宣稱。`BP-06` 已加 `contextmenu` 攔截與 `-webkit-touch-callout:none`；實機長按仍待 `BP-10` |
-| `BP-OM-04` | 選定的 PDF.js 版本在現行 CSP 下：worker、wasm、FontFace、cMap 是否全部可用而無 violation | 是否需要改 CSP（需另行審查） | `BP-07` 第一天 | 定設計 |
+| `BP-OM-04` | 選定的 PDF.js 版本在現行 CSP 下：worker、wasm、FontFace、cMap 是否全部可用而無 violation | 是否需要改 CSP（需另行審查） | `BP-07` 第一天 | 定設計。**Chromium 已量（2026-09-28）**：production CSP 原字串下，module worker、`openjpeg.wasm`、CMap、標準字型、內嵌字型全部可用，`securitypolicyviolation` 0、console CSP 訊息 0；**不需改 CSP**。WebKit／Firefox 與實機未量 |
 | `BP-OM-05` | 每節點 4 條預覽串流時，以及兩個同時的最貴 D15 中繼資料驗證時，終端 echo 延遲的增量與心跳偏離；**發布門檻在目標硬體實測後設定**，CI 的 p95 容差只用於偵測明顯退步 | 512 KiB 分塊與並發上限 | `BP-09` | 定預設 |
 | `BP-OM-06` | 每種部署拓樸上，preview 的請求 body 或回應 body 是否被寫到任何檔案：nginx 的 `proxy_temp`／`client_body_temp`，以及 Railway edge | 「不落地」宣稱；OD-11 | `BP-05` | **發布閘門** |
-| `BP-OM-07` | PDF.js 現代 build 在產品支援清單裡最舊的 iOS／Android 瀏覽器上是否可用 | OD-9 | `BP-07`；`BP-10` | 定預設 |
+| `BP-OM-07` | PDF.js 現代 build 在產品支援清單裡最舊的 iOS／Android 瀏覽器上是否可用 | OD-9 | `BP-07`；`BP-10` | 定預設。**`BP-07` 靜態分析**：6.3.289 現代 build 無 fallback 直接呼叫四個很新的 builtin（DV-31），需要當前版本的引擎；與 PRD `NFR-005`「前端支援最新版」一致，OD-9 (a) 維持。實機仍待 `BP-10` |
 | `BP-OM-08` | ~~舊 Central 收到帶 `binary_preview` 的 `node.register` 時，是拒收該訊息還是斷線~~ **已由讀程式解答**：拒收該訊息且靜默（`codec.py:100-102` → `ws/nodes.py:199-202` 的 `continue`），不回覆、不持久化、連線照常；daemon 忽略 ack（`connection.go:474-475`）。由 `BP-04` 的 `test_invalid_register_is_silently_skipped` 與 `BP-02` 的相容測試釘住 | 回退程序（ADR §9） | `BP-02`／`BP-04`（測試確認） | 已解答，待測試 |
 | `BP-OM-09` | Central 是否為單一 process 服務一個節點的 WebSocket（串流上限用 process 內 semaphore 的前提） | 並發上限的實作方式 | `BP-04` | 定設計 |
 | `BP-OM-10` | canary 路徑（原文與 percent-encoded）在兩份 nginx access log、uvicorn／Central stdout、Central JSON log、稽核表、Railway HTTP／deploy log 中是否為零筆 | 「log 無路徑」宣稱；OD-11 | `BP-05`（步驟見 `04-…md` `BP-05`「發布閘門」） | **發布閘門** |
 | `BP-OM-11` | ~~`RequestIdMiddleware`（`BaseHTTPMiddleware`）是否破壞 `StreamingResponse` 的背壓或斷線偵測~~ **已量（2026-09-27，Starlette 0.49.1）**：背壓保留，但 `BaseHTTPMiddleware` 的 hand-off 多**一塊**預讀——慢速 client 還拿著第一塊時，Central 最多已要了兩塊（`test_stream_backpressure` 斷言 ≤ 2），所以每條串流在 Central 最多持有 **2 × 512 KiB = 1 MiB 原始資料**，另有編碼與 frame 開銷；已更新 ADR §5 與 `08` §`BP-11` 推出容量估算。client 斷線會取消串流，`preview_close` 恰好送一次，記 `CANCELLED`，沒有成功稽核（`test_disconnect_sends_close`）。兩者都以直接呼叫 ASGI app 的方式跑完整 middleware stack | ADR §6 第 6 步、§15 | `BP-04` | 已量並修訂容量敘述 |
-| `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式 |
+| `BP-OM-12` | PDF.js 是否提供可靠訊號，辨識「不需密碼即可開啟、但有加密」的文件 | 只有 OD-8 選 (b) 時才需要 | `BP-07` 第一天 | 條件式。**已查（6.3.289）**：`getMetadata().info.EncryptFilterName` 在有 `/Encrypt` 時非 null，`getPermissions()` 亦非 null。OD-8 為 (a)，不使用，僅記錄 |
 | `BP-OM-13` | 日常檔案裡壓縮附屬 chunk 的實際分布：取 macOS、iOS、Android、Windows 截圖與相機／編輯器匯出各一批樣本，量含 `iCCP`／`zTXt`／`iTXt` 的比例，以及展開後大小的最大值；JPEG／WebP／GIF 中繼資料同樣量 | D15 的預算會不會誤拒正常檔案；「`iCCP` 很常見」這個理由本身 | `BP-03`；`BP-09` 語料 | 定預設 |
 | `BP-OM-14` | 池滿載時（兩個 16 MiB handle 各在送 chunk，或一個 16 MiB handle 加兩個進行中的 8 MiB open）daemon 的 RSS 與 GC 開銷 | `07-…md` §3 暫定的「基準＋48 MiB」 | `BP-09` | 定預設 |
 
@@ -88,6 +97,13 @@
 - Central `file_preview_max_body_bytes = 24576`，所以 location 採 `24k`，並以 `32k` 保持請求 body 在記憶體。現有 `/api/` 沒有 `add_header`，新 location 也不宣告 `add_header`，兩者都繼承 server 的安全標頭。
 - 計畫範例的 regex 必須加引號：未加引號時 nginx 把 `{36}` 當作設定分隔符而拒絕載入。兩份已使用引號，匹配式本身不變。
 - 以上只證實靜態設定與 nginx 可載入。`BP-OM-06` 的暫存檔觀察（含 Railway 前端 edge）與 `BP-OM-10` 的 canary 全鏈 log 搜尋**仍為 OPEN**；在每種拓樸證實前不得開啟 flag 或宣稱發布閘門已過。
+
+### 3.2 `BP-06`／`BP-07` 的驗證環境（2026-09-28）
+
+- **E2E**：`frontend/tests/e2e/binary-preview.spec.ts`（圖片 9 項）與 `binary-preview-pdf.spec.ts`（PDF 10 項），以 `vite preview` 服務 build 後的 bundle，注入 production CSP 原字串，Central 以 route 模擬。在 Playwright `chromium` 與 `mobile-chrome-emulated`（Pixel 7）各跑一次，38／38 綠。這台主機的 Playwright 瀏覽器是 revision 1234，repo 的 `@playwright/test` 1.61.1 預期 1228，因此以**不進 repo** 的暫存 config 指定已安裝的 headless shell；webkit、firefox 未安裝，`mobile-safari-emulated` 與桌面 Safari／Firefox **未執行**。
+- **Full-stack**（`E2E_FULL_STACK=1`，`scripts/e2e/run-stack.sh`）**未執行**：本機沒有 Go 工具鏈，無法建出 `agentd`。既有的 full-stack spec 因此是 skipped，不是 passed。
+- **Go 閘門**（`gofmt`、`go vet`、`go test -race`、`go build`）在具標籤的 `golang` 容器中以 `docker cp` 執行（本期未改 `daemon/`）。
+- 截圖只存在工作區外的暫存目錄，不進 Git。
 
 ## 4. 審查中確認、但**不在本期修正**的既有缺陷
 
@@ -108,6 +124,7 @@
 | E10 | 沒有 `session.view` 的使用者，對不存在的 session 得到 404、對存在的得到 403，可藉此探測 session id 是否存在 | `services/files.py` `_resolve()`：先 `get`（404）再 `authorize_file_browse`（403）；所有檔案路由共用 | 三個內建角色都持有 `session.view`，只影響自訂角色 | 先做 action 層以外的 view 判定再回 404，或兩者統一回 403 |
 | E11 | 手機上從預覽返回時，檔案清單回到工作區根目錄、捲動歸零、焦點落在 `<body>`（文字預覽同樣如此） | `SessionWorkspaceView.vue` 的 `<aside v-if="session && filesVisible">` 在預覽模式下卸載 `FileBrowser`，`useFileBrowser` 的 `cwd` 隨之消失 | 違反 plan/29 MS-15／MS-16 的「返回時還原」 | **本期已修**（DV-18），`focus_returns_to_row` 於 Vitest 與 E2E 各驗一次 |
 | E12 | Porcelain（明亮）主題的桌面預覽標頭：檔名與「唯讀」標記用 `--text-primary`，但底下的 `.center` 一律是 `--terminal-background`，對比不足（文字預覽相同） | `PreviewPane.vue` `h2 { color: var(--text-primary) }` 對照 `SessionWorkspaceView.vue` `.center { background: var(--terminal-background) }`；1440×900 截圖 | 桌面明亮主題下看不清正在預覽哪個檔案 | 標頭改用 `--text-on-terminal*` 系列，或讓 `.head` 有自己的面板底色；另開議題 |
+| E13 | `frontend/tests/e2e/mobile.spec.ts`「every visible control on the sign-in page reaches the touch floor」在 390 px 失敗：兩個輸入框 276×37、登入鈕 276×41（下限 44） | 以本分支 `BP-06` 之前的 `28e747d` 另行 build（bundle `index-Dhlc2B59.js` 與記錄的基準相同）重跑，結果完全相同；chromium 與 mobile-chrome-emulated 皆然 | 手機登入頁控制項低於觸控下限，既有 E2E 為紅 | 與本期無關；另開議題（`--density-control` 在 < 768 px 的值或 LoginView 的樣式） |
 
 ## 5. 本版文件中明確標為「未驗證」的假設
 
@@ -115,13 +132,13 @@
 - 以 Blob 呼叫 `createImageBitmap` 不受 `img-src` 約束（`BP-OM-02`）。
 - nginx 在預設設定下會把大回應溢寫到 `proxy_temp`，把超過 buffer 的請求 body 寫到 `client_body_temp`。依 nginx 文件如此，本部署未實測（`BP-OM-06`）。
 - ~~`os.Root.OpenFile` 會把 `O_NONBLOCK` 原樣傳給 `openat`~~ **linux/amd64 已證實（2026-09-27，go1.26.0）**：`TestOpenFileNonBlockingOnFifoReturns` 對沒有寫入端的 FIFO 立即返回，fd 即該 FIFO；`TestStartupProbePassesOnThisPlatform` 同樣通過。**linux/arm64 未執行**（本機無模擬器，只跑了 `GOARCH=arm64 go vet`），由執行期 probe 把關：失敗即不回報 `binary_preview`。CI 的 arm64 執行仍待補。
-- PDF.js 的 WebAssembly 解碼器與 FontFace 在現行 CSP 下可用（`BP-OM-04`）。
-- PDF.js 的 `stopAtErrors: true` 不會誤拒常見的良性 PDF（`BP-09` 語料驗證）。
-- PDF.js 對只有權限密碼的 PDF 會不經提示開啟，對需要使用者密碼的 PDF 會呼叫 `onPassword`（`BP-07` E2E）。
+- ~~PDF.js 的 WebAssembly 解碼器與 FontFace 在現行 CSP 下可用（`BP-OM-04`）~~ **Chromium 已證實**（`BP-07`，見 `BP-OM-04`）；WebKit／Firefox／實機未量。
+- PDF.js 的 `stopAtErrors: true` 不會誤拒常見的良性 PDF（`BP-09` 語料驗證）。`BP-07` 的產生語料（40／200 頁、CJK、JPX、主動內容、六種加密）全部未被誤拒；只有信封正常、物件圖損毀的 `broken-xref.pdf` 被拒（預期）。真實世界語料仍屬 `BP-09`。
+- ~~PDF.js 對只有權限密碼的 PDF 會不經提示開啟，對需要使用者密碼的 PDF 會呼叫 `onPassword`~~ **Chromium 已證實**：RC4-40／AES-128／AES-256 各一，有使用者密碼者呼叫 `onPassword` 並被拒、worker 已終止；空使用者密碼者直接顯示（`binary-preview-pdf.spec.ts`）。
 - Starlette／uvicorn 的 `StreamingResponse` 在完整 middleware stack 下會把 client 的背壓傳回 generator（`BP-OM-11`）。
 - FastAPI 0.120.1 的 yield dependency 相對於串流 body 的結束時機：本設計**不依賴**它，成功稽核用獨立 session（ADR §6 第 7 步）。
 - PDF.js 版本下限 **≥ 6.2.108**：CVE-2026-16633 已於 2026-09-27 以 GitHub Advisory API 查證；CVE-2024-4367 依公開紀錄。授權（Apache-2.0）與實際 pin 在 `BP-07` 核對，advisory 於 pin 當天與發布前再查一次。
-- `enableScripting` 由 pinned 版本的哪一層（display API 或 viewer）讀取，未驗證（`BP-07`）；結構性控制仍是不附 scripting bundle。
+- ~~`enableScripting` 由 pinned 版本的哪一層讀取~~ **已確認**：只有 annotation layer 與 viewer 讀取，`getDocument` 不讀（DV-27）。
 - ~~daemon 有可寫的私有狀態目錄可供啟動 probe 建 FIFO~~ **已核對**：probe 用 `tmux.ResolveConfigDir()`，也就是 systemd `RuntimeDirectory=agentd` 給的 `/run/agentd`（`$RUNTIME_DIRECTORY`；開發環境退回 `$XDG_RUNTIME_DIR/agentd` 或 `/tmp/agentd-<uid>`），與產生的 tmux 設定同一處；FIFO 名稱帶 ULID，用完即刪。建立失敗同樣 fail closed。
 
 ## 6. 設計審查處置（`c7b85c5` 的獨立審查，判定 BLOCKED）
