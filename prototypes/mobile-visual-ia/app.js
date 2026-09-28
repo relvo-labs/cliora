@@ -61,6 +61,9 @@ const SESSIONS = [
   { id: "sess-a9d0-demo", name: "demo-docs-managed", runtime: "claude", node: "a", status: "running", workspace: "/srv/demo/docs", last: "剛剛", kind: "structured", canShell: false, canImage: false },
   { id: "sess-50e1-demo", name: "demo-docs-pass", runtime: "claude", node: "a", status: "exited", exitCode: 0, workspace: "/srv/demo/docs-pass", last: "昨天 18:40", kind: "native" },
   { id: "sess-c4f8-demo", name: "demo-migration-check", runtime: "codex", node: "b", status: "failed", workspace: "/srv/demo/migration", last: "昨天 11:05", kind: "native", sandboxBypass: true },
+  // A synthetic same-name pair: only the workspace tells them apart (plan/32/04 C1).
+  { id: "sess-4d17-demo", name: "demo-api", runtime: "codex", node: "a", status: "running", workspace: "/srv/demo/team-a/api", last: "5 分鐘前", kind: "native", canShell: true },
+  { id: "sess-9b2e-demo", name: "demo-api", runtime: "codex", node: "a", status: "running", workspace: "/srv/demo/team-b/api", last: "8 分鐘前", kind: "native", canShell: true },
 ];
 const RUNTIME = { claude: "Claude", codex: "Codex" };
 const SESSION_STATUS = {
@@ -116,7 +119,7 @@ const TERMINAL = {
     "",
     `${T("fg-blue", "exec")} npm run test:api`,
     `  ${T("fg-green", "✓")} 41 passed`,
-    `  ${T("fg-red", "✗")} 2 failed  ${T("fg-dim", "demo/orders.spec.ts")}`,
+    `  ${T("fg-bright-red", "✗ 2 failed")}  ${T("fg-dim", "demo/orders.spec.ts")}`,
     "",
     T("bold", "codex"),
     "兩個失敗都來自同一個合成 fixture 的日期欄位。",
@@ -185,6 +188,7 @@ const SCENARIOS = [
   ["list", "清單", { screen: "list" }],
   ["list-empty", "清單（空）", { screen: "list", empty: true }],
   ["create", "建立 Session", { screen: "list", sheet: "create" }],
+  ["list-info", "清單 · 同名 Session 的完整路徑", { screen: "list", sheet: "row-info", rowInfo: "sess-9b2e-demo" }],
   ["terminal", "詳情 · 終端機（有控制權）", { session: 0, tab: "cli" }],
   ["menu", "詳情 · Session 選單", { session: 0, tab: "cli", sheet: "menu" }],
   ["viewer", "詳情 · Viewer（可接管）", { session: 0, role: "viewer", canTakeover: true }],
@@ -301,14 +305,14 @@ function listMarkup() {
     : !filtered.length
       ? `<div class="empty"><h2>沒有符合條件的 Session</h2><p class="hint">調整搜尋字串，或清除 Runtime 篩選。</p><button class="btn" type="button" data-action="clear-filters">清除搜尋與篩選</button></div>`
       : `<ul class="sessions" aria-label="Sessions">${filtered
-          .map((s) => {
+          .map((s, i) => {
             const [label, t] = SESSION_STATUS[s.status];
             const kind = s.kind === "structured" ? " · 活動＋終端（假設）" : "";
-            return `<li><button type="button" class="srow" data-action="open-session" data-id="${s.id}" aria-label="開啟 ${esc(s.name)}，${label}">
+            return `<li><button type="button" class="srow" data-action="open-session" data-id="${s.id}" aria-label="開啟 ${esc(s.name)}（${esc(s.workspace)}），${label}">
               <span class="name">${esc(s.name)}</span>${stMarkup(label, t, t === "error" ? "alert" : "")}
               <span class="meta">${RUNTIME[s.runtime]} · ${esc(NODES[s.node].name)} · ${esc(s.last)}<span class="kind">${kind}</span></span>
               <span class="path mono"><bdi>${esc(s.workspace)}</bdi></span>
-            </button></li>`;
+            </button><button type="button" class="icon-btn srow-more" id="more-${s.id}" data-action="row-info" data-id="${s.id}" aria-haspopup="dialog" aria-label="第 ${i + 1} 列 ${esc(s.name)}：完整路徑與資訊">${icon("more")}</button></li>`;
           })
           .join("")}</ul>`;
   const filters = rows.length
@@ -557,7 +561,7 @@ function sheetMarkup() {
     inner = `<div class="sheet" data-full role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-head"><h2 id="sheet-title">新建 Session</h2><button class="icon-btn" type="button" data-action="close-sheet" aria-label="關閉">${icon("close")}</button></div>
       <div class="sheet-body">
-        <label class="field"><span>Node</span><select class="select" data-input="createNode">
+        <label class="field"><span>Node</span><select class="select" id="create-node" data-input="createNode">
           ${Object.entries(NODES).map(([k, n]) => `<option value="${k}" ${k === state.createNode ? "selected" : ""} ${n.status === "離線" ? "disabled" : ""}>${esc(n.name)} · ${esc(n.status)}${n.privileged ? " · 可提權" : ""}</option>`).join("")}
         </select></label>
         ${node.privileged ? `<div class="band" data-tone="warning" style="padding-inline:12px;border-radius:var(--radius)">${icon("alert")}<p>這台 Node 可經 sudo 取得 root；Codex 在此 Node 的沙箱已停用。建立前先確認。</p></div>` : ""}
@@ -569,6 +573,15 @@ function sheetMarkup() {
         ${state.note ? `<p class="hint" role="status">${esc(state.note)}</p>` : ""}
       </div>
       <div class="sheet-foot"><button class="btn" type="button" data-action="close-sheet">取消</button><button class="btn primary" type="button" data-action="create-submit">建立</button></div></div>`;
+  } else if (state.sheet === "row-info") {
+    const r = SESSIONS.find((x) => x.id === state.rowInfo) ?? SESSIONS[0];
+    const [label] = SESSION_STATUS[r.status];
+    inner = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+      <div class="sheet-head"><h2 id="sheet-title">${esc(r.name)}</h2><button class="icon-btn" type="button" data-action="close-sheet" aria-label="關閉">${icon("close")}</button></div>
+      <div class="sheet-body">
+        <dl class="kv"><dt>工作目錄</dt><dd class="mono"><bdi>${esc(r.workspace)}</bdi></dd><dt>Node</dt><dd>${esc(NODES[r.node].name)}</dd><dt>Runtime</dt><dd>${RUNTIME[r.runtime]}</dd><dt>狀態</dt><dd>${esc(label)} · ${esc(r.last)}</dd><dt>Session ID</dt><dd class="mono">${esc(r.id)}</dd></dl>
+        <button class="btn primary" type="button" data-action="open-session" data-id="${r.id}">開啟這個 Session</button>
+      </div></div>`;
   } else if (state.sheet === "nav") {
     inner = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-head"><h2 id="sheet-title">Cliora</h2><button class="icon-btn" type="button" data-action="close-sheet" aria-label="關閉">${icon("close")}</button></div>
@@ -617,7 +630,11 @@ function closeSheet() {
   const back = returnFocus;
   returnFocus = null;
   render();
-  if (back && back.dataset && back.dataset.action) {
+  // By id first: several rows share one data-action, and focus has to go
+  // back to the row that opened the sheet, not the first row.
+  const byId = back && back.id ? document.getElementById(back.id) : null;
+  if (byId) byId.focus();
+  else if (back && back.dataset && back.dataset.action) {
     const again = $(`[data-action="${back.dataset.action}"]`);
     if (again) again.focus();
   }
@@ -645,6 +662,10 @@ document.addEventListener("click", (event) => {
     render(`#tab-${state.tab}`);
   } else if (a === "open-menu") openSheet("menu", el);
   else if (a === "open-nav") openSheet("nav", el);
+  else if (a === "row-info") {
+    state.rowInfo = el.dataset.id;
+    openSheet("row-info", el);
+  }
   else if (a === "open-create") openSheet("create", el);
   else if (a === "open-preview-menu") openSheet("preview-menu", el);
   else if (a === "close-sheet") closeSheet();

@@ -24,7 +24,10 @@ from playwright.sync_api import Browser, Page, sync_playwright
 HERE = Path(__file__).resolve().parent
 VARIANTS = ["a", "b", "c"]
 SIZES = [(360, 800), (390, 844), (430, 932), (844, 390)]
-ZOOM_200 = (195, 422)  # 390x844 at 200% browser zoom
+# 195x422 is a NARROW-REFLOW APPROXIMATION of 390x844 at 200%: a small CSS
+# viewport, not browser zoom (no text-size scaling, no zoom UI). Real 200% zoom
+# and OS text scaling are device checks (plan/32/06 §3).
+NARROW_REFLOW = (195, 422)
 TOUCH = 44
 DETAIL_SCENARIOS = [
     "terminal", "menu", "viewer", "viewer-locked", "posture", "shell",
@@ -32,7 +35,7 @@ DETAIL_SCENARIOS = [
     "events-gap", "unsupported", "files", "keyboard",
 ]
 ALL_SCENARIOS = [
-    "list", "list-empty", "create", *DETAIL_SCENARIOS, "load-error",
+    "list", "list-empty", "create", "list-info", *DETAIL_SCENARIOS, "load-error",
     "forbidden", "preview", "preview-denied",
 ]
 # Internal scrollers that may legitimately hold content wider than the screen
@@ -126,7 +129,12 @@ TEXT_PAIRS = [
     ("terminal-foreground", "terminal-background"), ("terminal-input", "terminal-background"),
     ("text-on-terminal-dim", "terminal-background"),
     *[(f"ansi-{c}", "terminal-background") for c in ("black", "red", "green", "yellow", "blue", "magenta", "cyan", "bright-black")],
+    *[(f"ansi-bright-{c}", "terminal-background") for c in ("red", "green", "yellow", "blue", "magenta", "cyan")],
 ]
+ANSI_CHROMATIC = [f"ansi-{b}{c}" for b in ("", "bright-") for c in ("red", "green", "yellow", "blue", "magenta", "cyan")]
+# plan/29/07 R1: the two greys nearest the pocket (white) surface are dim by
+# design — "1.25 <= x < 4.5", not a text target.
+DIM_PAIRS = [("ansi-white", "terminal-background"), ("ansi-bright-white", "terminal-background")]
 # Non-text: 3:1 (focus ring, control borders, disabled labels, the dim ANSI end).
 NON_TEXT_PAIRS = [
     ("focus-ring", "surface-default"), ("focus-ring", "surface-canvas"), ("focus-ring", "surface-raised"),
@@ -136,9 +144,23 @@ NON_TEXT_PAIRS = [
 ]
 
 
+def check_ansi_coverage() -> str:
+    table = tokens()
+    missing = [t for t in ANSI_CHROMATIC + ["ansi-black", "ansi-bright-black", "ansi-white", "ansi-bright-white"] if t not in table]
+    covered = {fg for fg, _ in TEXT_PAIRS}
+    uncovered = [t for t in ANSI_CHROMATIC if t not in covered]
+    expect(not missing and not uncovered, f"ANSI coverage: missing tokens {missing}, chromatic not in text pairs {uncovered}")
+    return "ANSI coverage: 12 chromatic (6 normal + 6 bright) + 2 readable greys as text, 2 dim greys as a band"
+
+
 def check_contrast() -> tuple[str, list[dict]]:
     table = tokens()
     report, failures = [], []
+    for fg, bg in DIM_PAIRS:
+        ratio = contrast(table[fg], table[bg])
+        report.append({"fg": fg, "bg": bg, "fg_value": table[fg], "bg_value": table[bg], "ratio": round(ratio, 2), "floor": "1.25<=x<4.5"})
+        if not 1.25 <= ratio < 4.5:
+            failures.append(f"{fg} {table[fg]} on {bg}: {ratio:.2f} outside the dim band")
     for pairs, floor in ((TEXT_PAIRS, 4.5), (NON_TEXT_PAIRS, 3.0)):
         for fg, bg in pairs:
             ratio = contrast(table[fg], table[bg])
@@ -146,7 +168,27 @@ def check_contrast() -> tuple[str, list[dict]]:
             if ratio < floor:
                 failures.append(f"{fg} {table[fg]} on {bg} {table[bg]}: {ratio:.2f} < {floor}")
     expect(not failures, "contrast failures:\n" + "\n".join(failures))
-    return f"{len(report)} token pairs meet contrast (text >= 4.5, non-text >= 3)", report
+    return f"{len(report)} token pairs meet contrast (text >= 4.5, non-text >= 3, dim ANSI band 1.25-4.5)", report
+
+
+TOUCH_LOADS = len(SIZES) * len(VARIANTS) * len(ALL_SCENARIOS)
+DOC_FILES = ["../../plan/32/04-comparison-and-recommendation.md", "../../plan/32/05-token-vds-impact.md",
+             "../../plan/32/06-verification-and-open-questions.md", "README.md"]
+STALE_CLAIMS = ["200% zoom（195×422）", "200% zoom (195x422)", "345 次頁面載入下所有可見控制", "41 組"]
+
+
+def check_doc_claims(pair_count: int) -> str:
+    """The numbers the docs quote must be the numbers this file measures."""
+    texts = {name: (HERE / name).read_text(encoding="utf-8") for name in DOC_FILES}
+    problems = [f"{name}: stale claim {claim!r}" for name, text in texts.items() for claim in STALE_CLAIMS
+                if claim in text and not (claim == f"{pair_count} 組")]
+    for name in ("../../plan/32/05-token-vds-impact.md", "README.md", "../../plan/32/04-comparison-and-recommendation.md"):
+        if f"{pair_count} 組" not in texts[name]:
+            problems.append(f"{name}: does not state the measured {pair_count} 組 pairs")
+    if f"{TOUCH_LOADS} 次" not in texts["../../plan/32/04-comparison-and-recommendation.md"]:
+        problems.append(f"04: does not state the measured {TOUCH_LOADS} touch-target loads")
+    expect(not problems, "doc claims out of date:\n" + "\n".join(problems))
+    return f"docs quote the measured numbers ({pair_count} contrast pairs, {TOUCH_LOADS} touch-target loads, narrow reflow not called zoom)"
 
 
 REAL_DATA = [
@@ -224,8 +266,8 @@ def overflow(page: Page) -> list[str]:
 
 
 def geometry_suite(browser: Browser, base: str, passed) -> dict:
-    counts = {"pages": 0}
-    for width, height in [*SIZES, ZOOM_200]:
+    counts = {"pages": 0, "touch": 0}
+    for width, height in [*SIZES, NARROW_REFLOW]:
         context = browser.new_context(viewport={"width": width, "height": height}, is_mobile=True, has_touch=True)
         page = context.new_page()
         for variant in VARIANTS:
@@ -234,12 +276,15 @@ def geometry_suite(browser: Browser, base: str, passed) -> dict:
                 label = f"{variant}/{scenario} @{width}x{height}"
                 bad = overflow(page)
                 expect(not bad, f"{label}: horizontal overflow {bad}")
-                if (width, height) != ZOOM_200:
+                if (width, height) != NARROW_REFLOW:
                     small = undersized(page)
                     expect(not small, f"{label}: touch targets under {TOUCH}px {small}")
+                    counts["touch"] += 1
                 counts["pages"] += 1
         context.close()
-    passed(f"no horizontal overflow at 360/390/430/844x390 and 200% zoom (195x422); 44px targets at every size ({counts['pages']} page loads)")
+    expect(counts["touch"] == TOUCH_LOADS, f"touch loads {counts['touch']} != {TOUCH_LOADS}")
+    passed(f"no horizontal overflow at 360/390/430/844x390 and the 195x422 narrow-reflow approximation ({counts['pages']} loads); "
+           f"44px targets at the four device sizes ({counts['touch']} loads)")
     return counts
 
 
@@ -331,7 +376,7 @@ def behaviour_suite(browser: Browser, base: str, passed) -> None:
     context.close()
 
 
-FIT_SIZES = [(360, 800), (390, 844), (430, 932), (844, 390), ZOOM_200]
+FIT_SIZES = [(360, 800), (390, 844), (430, 932), (844, 390), NARROW_REFLOW]
 FIT_PROBE = """() => {
   const rect = (el) => el && el.getBoundingClientRect();
   const overlap = (a, b) => a && b && Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) *
@@ -410,8 +455,66 @@ def c_direction_suite(browser: Browser, base: str, passed) -> None:
         context.close()
     report = {k: v[:4] + ([f"... +{len(v) - 4} more"] if len(v) > 4 else []) for k, v in fails.items() if v}
     expect(not report, "C-direction fixes failing:\n" + json.dumps(report, ensure_ascii=False, indent=1))
-    passed("C direction: default ?v=c; header/terminal fit without collision or silent truncation at 360/390/430/844x390/200%; "
+    passed("C direction: default ?v=c; header/terminal fit without collision or silent truncation at 360/390/430/844x390/195x422; "
            "fluid divider and input lines; Viewer has no input box and C offers a full-width 取得控制權")
+
+
+def review_followups_suite(browser: Browser, base: str, passed) -> None:
+    """Codex review of f3501fa: C1 must be achievable in C; Node change keeps focus."""
+    fails: dict[str, list[str]] = {"C1": [], "focus": []}
+    context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page = context.new_page()
+    load(page, base, "c", "list")
+    rows = page.locator(".sessions li").filter(has=page.locator(".name", has_text=re.compile(r"^demo-api$")))
+    if rows.count() != 2:
+        fails["C1"].append(f"expected a synthetic same-name pair demo-api, found {rows.count()}")
+    target = "/srv/demo/team-b/api"
+    for i in range(rows.count()):
+        more = rows.nth(i).locator("button.srow-more")
+        if more.count() != 1:
+            fails["C1"].append(f"row {i}: no per-row reveal button")
+            continue
+        box = more.bounding_box()
+        if not box or box["width"] < TOUCH or box["height"] < TOUCH:
+            fails["C1"].append(f"row {i}: reveal under 44px {box}")
+        more.focus()
+        page.keyboard.press("Enter")
+        dialog = page.get_by_role("dialog")
+        if dialog.count() != 1:
+            fails["C1"].append(f"row {i}: reveal did not open a dialog")
+            continue
+        path = dialog.locator(".mono bdi").first.inner_text() if dialog.locator(".mono bdi").count() else ""
+        if not path.startswith("/srv/demo/team-"):
+            fails["C1"].append(f"row {i}: full path not shown in monospace <bdi>: {path!r}")
+        page.keyboard.press("Escape")
+        back = page.evaluate("document.activeElement && document.activeElement.id")
+        if back != more.get_attribute("id"):
+            fails["C1"].append(f"row {i}: Escape returned focus to {back!r}, not the row trigger")
+        if path == target:
+            more.click()
+            page.get_by_role("dialog").get_by_role("button", name="開啟這個 Session").click()
+            page.get_by_role("button", name="Session 選單與資訊").click()
+            opened = page.get_by_role("dialog").inner_text()
+            if "sess-9b2e-demo" not in opened:
+                fails["C1"].append("opening from the reveal did not open the team-b session")
+            page.keyboard.press("Escape")
+            load(page, base, "c", "list")
+            rows = page.locator(".sessions li").filter(has=page.locator(".name", has_text=re.compile(r"^demo-api$")))
+
+    load(page, base, "c", "create")
+    node = page.locator(".sheet select").first
+    node.focus()
+    node.select_option("b")
+    active = page.evaluate("document.activeElement && [document.activeElement.tagName, document.activeElement.value]")
+    if active != ["SELECT", "b"]:
+        fails["focus"].append(f"changing Node moved focus to {active}")
+    if page.locator(".sheet .band[data-tone='warning']").count() != 1:
+        fails["focus"].append("privileged-node warning did not appear")
+    context.close()
+    report = {k: v for k, v in fails.items() if v}
+    expect(not report, "review follow-ups failing:\n" + json.dumps(report, ensure_ascii=False, indent=1))
+    passed("C1 same-name pair: per-row reveal (44px, keyboard) shows the full <bdi> path, Escape returns to the row trigger, "
+           "the right Session opens; changing Node keeps focus on the Node select")
 
 
 def motion_suite(browser: Browser, base: str, passed) -> None:
@@ -440,8 +543,10 @@ def main() -> int:
         print(f"PASS {message}", flush=True)
 
     passed(check_literal_colours())
+    passed(check_ansi_coverage())
     message, contrast_report = check_contrast()
     passed(message)
+    passed(check_doc_claims(len(contrast_report)))
     passed(check_real_data())
 
     page_errors: list[str] = []
@@ -464,6 +569,7 @@ def main() -> int:
             ia_invariants_suite(browser, base, passed)
             behaviour_suite(browser, base, passed)
             c_direction_suite(browser, base, passed)
+            review_followups_suite(browser, base, passed)
             motion_suite(browser, base, passed)
         finally:
             browser.close()

@@ -59,6 +59,13 @@
   --ansi-cyan: #0f6f77;
   --ansi-white: #7d8790;
   --ansi-bright-black: #39424a;
+  --ansi-bright-red: #8f1f1f;
+  --ansi-bright-green: #155c33;
+  --ansi-bright-yellow: #5c430d;
+  --ansi-bright-blue: #16469c;
+  --ansi-bright-magenta: #72237f;
+  --ansi-bright-cyan: #0a5359;
+  --ansi-bright-white: #c2c8ce;
   --shadow-overlay: 0 8px 28px #25313c1f;
 }
 /* @tokens:end */
@@ -459,15 +466,28 @@ html[data-shot] .proto-bar {
   margin: 0;
   padding: 0 0 calc(16px + var(--safe-bottom));
 }
+/* A row is two controls: open the Session (the whole card), and a 44px
+   reveal for its full path and identity — so two same-name Sessions can be
+   told apart without opening the wrong one (plan/32/04 C1). */
+.sessions > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.srow-more {
+  margin-right: calc(var(--pad-x) - 14px);
+  color: var(--text-secondary);
+}
 .srow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 2px 12px;
   width: 100%;
+  min-width: 0;
   min-height: var(--row-min);
-  padding: 12px var(--pad-x);
+  padding: 12px 4px 12px var(--pad-x);
   border: 0;
-  border-bottom: 1px solid var(--border-subtle);
   background: transparent;
   text-align: left;
 }
@@ -512,11 +532,13 @@ html[data-shot] .proto-bar {
   gap: 6px;
   padding: 0 var(--pad-x) calc(16px + var(--safe-bottom));
 }
-[data-variant="b"] .srow {
+[data-variant="b"] .sessions > li {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--surface-default);
-  padding: 10px 12px;
+}
+[data-variant="b"] .srow {
+  padding: 10px 4px 10px 12px;
 }
 [data-variant="b"] .srow .meta {
   font-family: var(--font-mono);
@@ -530,11 +552,13 @@ html[data-shot] .proto-bar {
   gap: 8px;
   padding: 0 var(--pad-x) calc(16px + var(--safe-bottom));
 }
-[data-variant="c"] .srow {
+[data-variant="c"] .sessions > li {
   border: 0;
   border-radius: var(--radius);
   background: var(--surface-default);
-  padding: 14px 16px;
+}
+[data-variant="c"] .srow {
+  padding: 14px 4px 14px 16px;
 }
 [data-variant="c"] .srow .path {
   display: none;
@@ -659,7 +683,8 @@ html[data-shot] .proto-bar {
   min-width: 0;
   white-space: normal;
 }
-/* 200% zoom on a phone leaves ~195px: three cells stop being readable. */
+/* ~195px wide (the 390px phone at 200%, approximated by a narrow viewport):
+   three cells stop being readable. */
 @media (max-width: 300px) {
   [data-variant="b"] .state-line {
     grid-template-columns: minmax(0, 1fr);
@@ -914,6 +939,12 @@ html[data-shot] .proto-bar {
 }
 .terminal .fg-cyan {
   color: var(--ansi-cyan);
+}
+.terminal .fg-bright-red {
+  color: var(--ansi-bright-red);
+}
+.terminal .fg-bright-green {
+  color: var(--ansi-bright-green);
 }
 .terminal .fg-input {
   color: var(--terminal-input);

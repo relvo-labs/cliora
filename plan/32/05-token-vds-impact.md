@@ -6,12 +6,16 @@
 ## 1. 顏色：零變更
 
 三個變體只用 `:root[data-theme="pocket"]` 既有的值（原型 token 區塊逐一複製，另加 `plan/29/07` §1.2 的 pocket ANSI）。
-`test_prototype.py` 以與 `theme/contrast.ts` 相同的公式量了 41 組配對：
+`test_prototype.py` 以與 `theme/contrast.ts` 相同的公式量了 49 組配對（v0.2.1；v0.1／v0.2 只量了 41，當時 ANSI 只涵蓋 6 個 normal 彩色）：
 
-- 文字 ≥4.5:1：`text-primary`／`text-secondary` 對三種表面、`accent-strong` 對白與 `accent-subtle`、白字對 `accent-strong`、
+- 文字 ≥4.5:1（38 組）：`text-primary`／`text-secondary` 對三種表面、`accent-strong` 對白與 `accent-subtle`、白字對 `accent-strong`、
   五個 `status-*-fg` 對各自 `-bg` 與白、`terminal-foreground`／`terminal-input`／`text-on-terminal-dim` 對終端底、
-  ANSI 12 色＋`black`／`brBlack`（pocket 的可讀端）對白底。
-- 非文字 ≥3:1：`focus-ring`、`border-control` 對三種表面；`text-disabled`；ANSI `white`（pocket 的 dim 端）。
+  ANSI **12 個彩色（6 normal ＋ 6 bright）**＋`black`／`brBlack`（pocket 的可讀端）對白底。
+- 非文字 ≥3:1（9 組）：`focus-ring`、`border-control` 對三種表面；`text-disabled`；ANSI `white`（pocket 的 dim 端）。
+- dim 帶 1.25 ≤ x < 4.5（2 組）：ANSI `white`、`brWhite`——`plan/29/07` R1 規定靠近白底的兩個灰是刻意壓淡的，不是文字目標。
+
+值取自 `themes.ts` 的 `POCKET_ANSI`（與 `plan/29/07` §1.2 一致）。6 個 bright 彩色全部 ≥4.5:1（最低 `brGreen` 8.04），**沒有需要縮窄的項目**。
+觀察（不是失敗）：`brWhite #c2c8ce` 對白是 1.69:1，若用 3:1 的非文字門檻會不通過；它依 R1 屬 dim 端，所以放在 dim 帶檢查，未改色值。
 
 數字在 `/opt/data/cliora-mobile-75-run/shots/test/mobile-visual-ia-test.json`。
 **因此 `GATE-VR-*` 與 `theme.contract.test.ts` 不受任何變體影響。**

@@ -24,7 +24,7 @@ python3 -m http.server 8080 --bind 127.0.0.1 --directory prototypes/mobile-visua
 
 情境 id：`list`、`list-empty`、`create`、`terminal`、`menu`、`viewer`、`viewer-locked`、`posture`、`shell`、
 `reconnecting`、`disconnected`、`gap`、`exited`、`load-error`、`forbidden`、`activity`、`await`、`events-gap`、
-`unsupported`、`files`、`preview`、`preview-denied`、`keyboard`。
+`unsupported`、`files`、`preview`、`preview-denied`、`keyboard`、`list-info`（同名 Session 的完整路徑）。
 
 ## 自動檢查
 
@@ -37,17 +37,18 @@ uv run --no-project --with playwright python prototypes/mobile-visual-ia/test_pr
 
 省略 `--chromium` 則使用 Playwright 自己下載的 Chromium。測試會自行啟停本機 HTTP 伺服器。檢查內容：
 
-- 360×800、390×844、430×932、844×390 與 200% zoom（195×422）× 3 變體 × 23 情境：無橫向溢出（終端、程式碼、麵包屑是明示的內部捲動區）。
-- 同上四種尺寸：所有可見 button／input／select／tab ≥ 44×44 CSS px（單選鈕以其 label 計）。
+- 360×800、390×844、430×932、844×390 與 195×422（窄寬重排近似，不是真實瀏覽器縮放）× 3 變體 × 24 情境：無橫向溢出（終端、程式碼、麵包屑是明示的內部捲動區）。
+- 前四種裝置尺寸（288 次載入）：所有可見 button／input／select／tab ≥ 44×44 CSS px（單選鈕以其 label 計）；195×422 不量觸控。
 - 每個詳情情境（直式與橫式）：Session 名稱、三格分開的狀態、「檔案」與「終端機」分頁都可見；posture、接管、重連、系統 shell 各自可辨。
 - 鍵盤焦點可見（3px outline）；Escape 關閉 sheet 並把焦點還給開啟鈕；預覽 Escape 回到開啟的那一列。
 - `prefers-reduced-motion: reduce` 下 sheet 動畫為 0s（C 平常是 0.18s）。
-- token 區塊內 41 組文字／非文字配對達 4.5:1／3:1。
+- token 區塊內 49 組配對：文字 4.5:1（含 ANSI 12 個彩色＝6 normal＋6 bright）、非文字 3:1、ANSI `white`／`brWhite` 在 dim 帶 1.25–4.5。
 - `style.css` 的 token 區塊之外、`app.js`、`index.html` 沒有任何字面色值（規則同 `GATE-VR-NO-LITERAL-COLOR`）。
 - 沒有真實資料特徵（家目錄、e-mail、IP、憑證樣式、外部 URL）；所有 Session／Node 名稱都是 `demo-*`。
 - 沒有 page error、外部請求、API、WebSocket、localStorage／sessionStorage。
 - C 方向（v0.2）：未帶 `v` 時預設 C；五種尺寸下終端與標頭不截斷、不互相遮擋（被截斷的標題帶全文 `title`，完整名稱另在 `⋯`）；
   CLI 的分隔線與輸入框隨寬度延伸；Viewer 看不到輸入框，C 在該位置放整寬「取得控制權」。
+- 審查後續（v0.2.1）：同名 `demo-api` 兩列各有 44px `⋯`，鍵盤可開、顯示完整 `<bdi>` 路徑、Escape 回到該列；建立 sheet 換 Node 焦點不跑掉；文件引用的數字與實測一致。
 
 ## 範圍與限制
 
