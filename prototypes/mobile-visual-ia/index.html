@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-Hant" data-variant="c">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta name="color-scheme" content="light" />
+    <title>Cliora 行動視覺與資訊層級原型（#75）</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Prototype controls. Not part of any variant: they exist so a reviewer
+         can switch the variant and the synthetic situation without a build. -->
+    <div class="proto-bar" role="region" aria-label="原型控制">
+      <span class="proto-label">原型 · 合成資料</span>
+      <label class="proto-field">
+        <span class="visually-hidden">視覺變體</span>
+        <select id="variant-select" aria-label="視覺變體">
+          <option value="a">A 克制編輯式</option>
+          <option value="b">B 工程工作台式</option>
+          <option value="c">C 安靜操作式（已選）</option>
+        </select>
+      </label>
+      <label class="proto-field proto-grow">
+        <span class="visually-hidden">情境</span>
+        <select id="scenario-select" aria-label="情境"></select>
+      </label>
+    </div>
+    <div id="app" class="app"></div>
+    <p id="announcer" class="visually-hidden" aria-live="polite"></p>
+    <script src="app.js" defer></script>
+  </body>
+</html>
