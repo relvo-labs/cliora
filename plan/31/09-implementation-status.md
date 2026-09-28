@@ -110,6 +110,7 @@
 - Full-stack 實測 5 次完整 HTTP 200 預覽只有 2 筆 `file.binary_preview`：最後一塊 `yield` 後，斷線可取消 generator，使其後的稽核寫入完全跳過，且沒有錯誤計數或 log。
 - 成功稽核改在最後一塊的**面向 server 的 ASGI `send` 成功返回後**執行；外層純 ASGI middleware 越過 `RequestIdMiddleware` 的 body buffer。寫入受有期限的 cancellation shield 保護；逾時或寫入失敗均計入 `FILESYSTEM_AUDIT_ERROR_TOTAL` 並記無路徑的 warning。最後一塊送出失敗不記成功。close 已有 shield；generator 的 `finally` 在取消下仍釋放 slot 並記請求 metric。
 - 回歸測試先證實「完整 body 已送、立刻取消」時稽核為 0（RED），修正後為 1（GREEN）；另證實「內層 buffer 接收後，server send 失敗」會誤記成功（RED），修正後不記（GREEN）；稽核逾時會計數及記 log。
+- 獨立審查發現第二個缺陷：Uvicorn 0.35.0 的 `h11_impl` 與 `httptools_impl` 在斷線後的 `send` 會正常返回、但不寫入。ASGI 回歸測試先重現只交付 4 bytes 中的 `ab`、最後 `cd` 被丟棄卻記成功（RED）；middleware 現在包住 `receive` 記錄 `http.disconnect`，最後一塊 `send` 返回後若已觀察到斷線就不記成功（GREEN）。最後一塊確實交給 server 後才斷線仍恰好記一次。保證僅止於 transport hand-off；不證明瀏覽器已收到，也無法識別尚未由 `receive` 呈現的斷線。
 
 ## 4. 審查中確認、但**不在本期修正**的既有缺陷
 

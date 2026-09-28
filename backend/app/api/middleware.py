@@ -32,7 +32,7 @@ class BinaryPreviewCompletion:
 
 
 class BinaryPreviewCompletionMiddleware:
-    """Audit only after the server-facing send accepts the final preview byte.
+    """Audit after the final server-facing send, unless receive saw a disconnect.
 
     This must be outside RequestIdMiddleware: its BaseHTTPMiddleware response
     buffers body messages, so a send inside the route can finish before the
@@ -48,6 +48,14 @@ class BinaryPreviewCompletionMiddleware:
             return
 
         sent = 0
+        disconnected = False
+
+        async def receive_wrapper() -> Message:
+            nonlocal disconnected
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                disconnected = True
+            return message
 
         async def send_wrapper(message: Message) -> None:
             nonlocal sent
@@ -58,10 +66,10 @@ class BinaryPreviewCompletionMiddleware:
                 and message["type"] == "http.response.body"
             ):
                 sent += len(message.get("body", b""))
-                if sent == completion.size and message.get("body"):
+                if sent == completion.size and message.get("body") and not disconnected:
                     await completion.audit()
 
-        await self.app(scope, receive, send_wrapper)
+        await self.app(scope, receive_wrapper, send_wrapper)
 
 
 def set_binary_preview_completion(scope: Scope, completion: BinaryPreviewCompletion) -> None:

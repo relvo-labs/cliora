@@ -356,21 +356,28 @@ Processing:
    `get_session` does not commit (`db/engine.py:96-98`).
 6. On success, a `StreamingResponse` whose generator requests chunk *i + 1* only after
    chunk *i* has been handed to the ASGI `send`. That is real pull-based backpressure,
-   unlike the single-frame case ADR 0028 rejects streaming for. It is **unverified through
-   `RequestIdMiddleware`**, a `BaseHTTPMiddleware` (`middleware.py:41`) that sits between
-   the route and the server (`BP-OM-11`). The generator's `finally` **always** sends
+   unlike the single-frame case ADR 0028 rejects streaming for. A full-stack ASGI test
+   through `RequestIdMiddleware` verifies it (`test_stream_backpressure`): that middleware
+   can read one extra chunk ahead, so at most two 512 KiB raw chunks are in Central per
+   stream (§5, `BP-OM-11`). The generator's `finally` **always** sends
    `preview_close`: after the last chunk on success, on a node or timeout error, and on
    client cancellation. A completed stream therefore frees its daemon snapshot at once,
    rather than holding one of the four handles and up to 32 MiB (§4) for the 30 s idle TTL.
    The TTL is a backstop for a close that is lost, for example on a Central crash. A
    client disconnect cancels the generator, and `_observe` already records `CANCELLED`
    (`services/files.py:220-224`).
-7. The success audit (§10) is written **after the server-facing ASGI `send` returns for the last chunk**, on its
+7. The success audit (§10) is written **after the server-facing ASGI `send` returns for the last chunk, provided the middleware has not observed `http.disconnect`**, on its
    **own short-lived session** (`get_database().session()`), the same pattern the
    RBAC-denial middleware uses (`middleware.py:126-127`, `:171`). It is not written on the
    request-scoped session, whose lifetime relative to a streamed body depends on
    FastAPI's dependency-exit timing (FastAPI 0.120.1 here) and is not relied on.
-   An outer ASGI middleware observes that send beyond `RequestIdMiddleware`'s body buffer.
+   An outer ASGI middleware observes that send beyond `RequestIdMiddleware`'s body buffer
+   and wraps `receive`, where the streaming response observes disconnects. In both pinned
+   Uvicorn 0.35.0 HTTP implementations (`h11_impl` and `httptools_impl`), `send` returns
+   without writing when disconnected. If Uvicorn has not disconnected, a normal return
+   means the final bytes were handed to the transport; it does **not** prove the browser
+   received them. A disconnect not yet surfaced through `receive` may still cause a
+   normal return without a write, so the middleware cannot detect that race.
    The write is shielded from disconnect cancellation and bounded by a short timeout;
    a timeout is counted and logged without a path. The generator can be cancelled
    before resuming after its final `yield`, so it cannot own this audit.
@@ -544,7 +551,8 @@ an old one.
   is none (`audit.py:196-201`), and that key is allowed. There is **no path, no filename,
   no extension and no content**. `bytes` must not be the key, because the audit filter
   drops it (`audit.py:159`). The success row is written on its own short-lived session
-  after the last chunk's server-facing ASGI send returns (§6 step 7).
+  after the last chunk's server-facing ASGI send returns with no observed disconnect (§6
+  step 7). This measures transport hand-off, not browser receipt.
 
   Why record success when text preview does not: this is a deliberate expansion of what
   Viewers can see, and "did Viewers use it, on which sessions" has to be answerable
