@@ -366,18 +366,24 @@ Processing:
    The TTL is a backstop for a close that is lost, for example on a Central crash. A
    client disconnect cancels the generator, and `_observe` already records `CANCELLED`
    (`services/files.py:220-224`).
-7. The success audit (§10) is written **after the server-facing ASGI `send` returns for the last chunk, provided the middleware has not observed `http.disconnect`**, on its
-   **own short-lived session** (`get_database().session()`), the same pattern the
+7. Under OD-6 (a), as amended by product owner Neil on **2026-09-28**, success means
+   **the whole preview body was handed to the transport (the final server-facing ASGI
+   `send` returned) and no `http.disconnect` had been observed**. The success audit (§10)
+   is written at that point on its **own short-lived session**
+   (`get_database().session()`), the same pattern the
    RBAC-denial middleware uses (`middleware.py:126-127`, `:171`). It is not written on the
    request-scoped session, whose lifetime relative to a streamed body depends on
    FastAPI's dependency-exit timing (FastAPI 0.120.1 here) and is not relied on.
    An outer ASGI middleware observes that send beyond `RequestIdMiddleware`'s body buffer
    and wraps `receive`, where the streaming response observes disconnects. In both pinned
    Uvicorn 0.35.0 HTTP implementations (`h11_impl` and `httptools_impl`), `send` returns
-   without writing when disconnected. If Uvicorn has not disconnected, a normal return
-   means the final bytes were handed to the transport; it does **not** prove the browser
-   received them. A disconnect not yet surfaced through `receive` may still cause a
-   normal return without a write, so the middleware cannot detect that race.
+   without writing when disconnected; the same behavior exists in 0.54.0. If the client
+   disconnects mid-body before `receive` surfaces it, the final `send` may return without
+   writing and a partial transfer may be audited as success (a rare over-count, tracked
+   in [#101](https://github.com/relvo-labs/cliora/issues/101)). A normal return does
+   **not** prove browser receipt. With this definition, under-count occurs only if the
+   audit write itself fails; that failure is counted in `FILESYSTEM_AUDIT_ERROR_TOTAL`
+   and logged without a path.
    The write is shielded from disconnect cancellation and bounded by a short timeout;
    a timeout is counted and logged without a path. The generator can be cancelled
    before resuming after its final `yield`, so it cannot own this audit.
@@ -545,14 +551,19 @@ an old one.
 
 - **Sensitive denial**: the existing `file.sensitive_read_denied` with `{classification, extension}`
   (`services/files.py:482-523`), unchanged and shared.
-- **Success** (OD-6 (a), approved 2026-09-27: **yes**): a new audit action `file.binary_preview` with
+- **Success** (OD-6 (a), approved 2026-09-27; definition amended by product owner Neil
+  on **2026-09-28**): a new audit action `file.binary_preview` with
   caller-supplied metadata `{kind, mime, size_bytes}` plus the usual user, session and node
   ids. `AuditService.record` adds the correlation key `request_id`, or `source` when there
   is none (`audit.py:196-201`), and that key is allowed. There is **no path, no filename,
   no extension and no content**. `bytes` must not be the key, because the audit filter
   drops it (`audit.py:159`). The success row is written on its own short-lived session
-  after the last chunk's server-facing ASGI send returns with no observed disconnect (§6
-  step 7). This measures transport hand-off, not browser receipt.
+  when **the whole preview body was handed to the transport (the final server-facing
+  ASGI `send` returned) and no `http.disconnect` had been observed** (§6 step 7).
+  This measures transport hand-off, not browser receipt. An unobserved mid-body
+  disconnect can produce a rare success over-count ([#101](https://github.com/relvo-labs/cliora/issues/101));
+  only an audit-write failure can under-count, and it is counted in
+  `FILESYSTEM_AUDIT_ERROR_TOTAL` and logged.
 
   Why record success when text preview does not: this is a deliberate expansion of what
   Viewers can see, and "did Viewers use it, on which sessions" has to be answerable

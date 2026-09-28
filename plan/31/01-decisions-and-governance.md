@@ -143,7 +143,8 @@
 
 產品負責人於 **2026-09-27** 書面核准下列答案（經 #77 的協調者轉達）：**OD-1…OD-11 全部採用上表的建議預設，
 沒有任何一題改答**，同時簽核 ADR 0029 §7 的 `file.browse` 語意變寬（含 Viewer）。因為答案與建議預設相同，
-ADR 0029 的決策內容**不需回填修改**，只把「待決」字樣改為「已核准」。
+當時 ADR 0029 的決策內容**不需回填修改**，只把「待決」字樣改為「已核准」；
+OD-6 的成功定義另於 2026-09-28 修訂如下。
 
 | # | 核准的答案 | 仍待量測才定案的數字或前提 |
 |---|---|---|
@@ -152,12 +153,19 @@ ADR 0029 的決策內容**不需回填修改**，只把「待決」字樣改為�
 | OD-3 | (a) v1 不做 PDF 文字層 | release note 與畫面要寫明螢幕報讀器的代價 |
 | OD-4 | (a) PDF 內連結全部無效 | — |
 | OD-5 | Central flag 預設**關**；節點開關預設**開** | — |
-| OD-6 | (a) 成功預覽留 `file.binary_preview`，只記 `kind`／`mime`／`size_bytes` | — |
+| OD-6 | (a) 成功預覽留 `file.binary_preview`，只記 `kind`／`mime`／`size_bytes`；成功定義於 2026-09-28 修訂如下 | 未觀察到的斷線可能造成少量高估（[#101](https://github.com/relvo-labs/cliora/issues/101)） |
 | OD-7 | (a) 手機與桌面共用同一渲染器 | — |
 | OD-8 | (a) 需要密碼的 PDF 拒絕且不提示；只有權限密碼的照常唯讀顯示 | `BP-07` E2E 驗證 PDF.js 的實際行為 |
 | OD-9 | (a) PDF.js 現代版 | 待 `BP-OM-07`；量測若顯示支援清單內的裝置跑不動，需再回到產品負責人改 (b) |
 | OD-10 | 只有五種格式；HEIC／AVIF／SVG 都不加 | — |
 | OD-11 | (a) 未證實的拓樸（含 Railway）flag 保持關閉 | `BP-OM-06`／`BP-OM-10` 是發布閘門 |
+
+**OD-6 (a) 修訂（產品負責人 Neil，2026-09-28）：** `file.binary_preview` 的成功意指
+**整個預覽 body 已交給 transport（最後一次面向 server 的 ASGI `send` 返回），且尚未觀察到 `http.disconnect`**，
+並不保證瀏覽器收到。Uvicorn 0.35.0（0.54.0 亦同）在斷線後的 `send` 可正常返回卻不寫入；
+若中途斷線尚未經 `receive` 呈現，部分傳輸可能被記為成功，屬少量高估，追蹤於
+[#101](https://github.com/relvo-labs/cliora/issues/101)。只有稽核寫入本身失敗會少計；
+失敗會計入 `FILESYSTEM_AUDIT_ERROR_TOTAL` 並記 log。Central 的 feature flag 保持關閉。
 
 **不是開放題、但需要簽核的一項：** Viewer 包含在內。#77 已明確表達，
 這裡要的是 PRD `FR-AUTH-002.AC-11` 註記（§2.2）與 release note 第一段的簽核，不是再討論一次。

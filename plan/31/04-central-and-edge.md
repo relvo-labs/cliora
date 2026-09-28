@@ -59,7 +59,7 @@ Content-Type: application/json
 | 8 | `preview_open`（15 秒）。in-band 拒絕時，service **回傳**一個拒絕結果（不 raise）；敏感拒絕照舊經 `_maybe_audit_denied`（`services/files.py:482-523`，**不改**）加入 session | — |
 | 9 | 有拒絕結果時：路由**先 `await session.commit()`**，**再** raise `ApiError(code, 固定訊息, status, details={reason, size?, limit?})`。與現有 `/content` 路由 commit `read_file` 加入的稽核是同一模式（`files.py:212-215`）。反過來做，稽核列會隨 session 關閉而消失：`AuditService.record` 只把列加進 session（`audit.py:204-210`），`get_session` 也不會自己 commit（`db/engine.py:96-98`） | 對應 HTTP 狀態（下表） |
 | 10 | `StreamingResponse`：逐塊 `preview_chunk`（每塊 10 秒，整體 60 秒） | 串流中斷 → 連線被截斷，`Content-Length` 不符讓瀏覽器得到 network error |
-| 11 | 最後一塊的**最外層、面向 server 的 ASGI `send`** 成功返回後：以**獨立的短 session**（`get_database().session()`）寫入成功稽核並 commit，與 RBAC 拒絕 middleware 同一模式（`middleware.py:126-127`、`:171`）。外層純 ASGI middleware 越過 `RequestIdMiddleware` 的 body buffer 觀察 send；寫入受有期限的 cancellation shield 保護，因為 generator 在最後一個 `yield` 後可能直接被取消。不用 request 的 session，因為它相對於串流 body 的生命週期取決於 FastAPI（0.120.1）的 dependency 結束時機，本設計不依賴它 | 寫入失敗或逾時只計數並記無路徑 log |
+| 11 | OD-6 (a) 成功的定義（產品負責人 Neil，2026-09-28 修訂）：**整個預覽 body 已交給 transport（最後一次最外層、面向 server 的 ASGI `send` 返回），且尚未觀察到 `http.disconnect`**。此時以**獨立的短 session**（`get_database().session()`）寫入成功稽核並 commit，與 RBAC 拒絕 middleware 同一模式（`middleware.py:126-127`、`:171`）。外層純 ASGI middleware 越過 `RequestIdMiddleware` 的 body buffer 觀察 send 並包住 `receive`；寫入受有期限的 cancellation shield 保護，因為 generator 在最後一個 `yield` 後可能直接被取消。不用 request 的 session，因為它相對於串流 body 的生命週期取決於 FastAPI（0.120.1）的 dependency 結束時機，本設計不依賴它。未經 `receive` 呈現的中途斷線可能造成少量成功高估（[#101](https://github.com/relvo-labs/cliora/issues/101)） | 寫入失敗或逾時計入 `FILESYSTEM_AUDIT_ERROR_TOTAL` 並記無路徑 log |
 | 12 | generator 的 `finally`：**一律**送 `preview_close`，包括成功送完最後一塊、節點或逾時錯誤、client 取消三種情況（不等待結果，1 秒上限）。完成的串流因此會立即釋放 daemon 的 snapshot；daemon 的閒置 TTL 只是 close 遺失時的 backstop（ADR 0029 §5、§6） | — |
 
 HTTP 狀態對照：`FILE_DENIED` 403、`FILE_NOT_FOUND` 404、`FILE_PERMISSION_DENIED` 403、
@@ -68,9 +68,8 @@ HTTP 狀態對照：`FILE_DENIED` 403、`FILE_NOT_FOUND` 404、`FILE_PERMISSION_
 對使用者而言是暫時性失敗）、`NODE_BUSY` 503。
 每個 code 保留自己的碼，因為每個的下一步都不同（`_map_error` 的既有原則，`services/files.py:555-562`）。
 
-**未驗證：** `RequestIdMiddleware` 是 `BaseHTTPMiddleware`（`middleware.py:41`），位於路由與 server 之間。
-它會不會影響串流的背壓與斷線偵測，要由 `test_stream_backpressure` 與 `test_disconnect_sends_close`
-在**完整 middleware stack** 下證明（`BP-OM-11`），不能只測裸路由。
+**已驗證（`BP-OM-11`）：** `RequestIdMiddleware` 是 `BaseHTTPMiddleware`（`middleware.py:41`），位於路由與 server 之間。
+`backend/tests/db/test_files_binary_preview_api.py` 的 `test_stream_backpressure` 在**完整 middleware stack** 下證實慢速 client 停在第一塊時，Central 最多拉取兩塊（middleware 多預讀一塊）；`test_disconnect_sends_close` 證實觀察到的中途斷線會送 `preview_close` 並記 `CANCELLED`。
 
 ### 2. 回應標頭
 
@@ -105,14 +104,15 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 - 敏感拒絕：沿用 `_maybe_audit_denied`，**先 commit 再回錯誤**（§1 第 9 步）。
 - 成功（OD-6）：新動作 `file.binary_preview`，呼叫端給的 metadata 是 `{kind, mime, size_bytes}`；
   `AuditService.record` 會自動加上 `request_id`（沒有時加 `source`，`audit.py:196-201`），那是允許的關聯鍵。
-  在**最後一塊送出之後**以獨立 session 寫入（§1 第 11 步）。中途取消的不記成功，只記 metric。
+  依 §1 第 11 步的 transport hand-off 與未觀察到斷線條件，以獨立 session 寫入。
+  已觀察到的中途斷線不記成功；未經 `receive` 呈現的斷線可能高估（[#101](https://github.com/relvo-labs/cliora/issues/101)）。
   **`bytes` 不能當 key**（`audit.py:159` 會濾掉）。
 - 稽核寫入失敗不讓請求失敗，而是計數並記 log，與 `_audit_upload` 同一種取捨（`services/files.py:472-480`）。
 - `frontend/src/utils/auditActions.ts` 的標籤在 `BP-06` 加（「預覽圖片／PDF」）。
 
 ### 5. 記憶體與 log
 
-- 每條串流同時最多持有一塊（≤512 KiB 原始、≤683 KiB base64）。
+- 每條串流在 Central 同時最多持有兩塊原始資料（2 × 512 KiB = 1 MiB），另有編碼與 frame 開銷（`BP-OM-11`）。
 - `_observe("binary_preview", …)` 記 `kind`、`code`、`reason`、`chunks`、`bytes`、`duration_ms`。
   **不記 path**；`bytes` 是 log 欄位，不是稽核 metadata，所以可以用。
 - uvicorn access log 會記 URL，而 URL 只有 session id（§1）。
@@ -142,8 +142,8 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 | `test_headers_are_a_set` | 七個標頭都在，而且沒有 `Content-Disposition` |
 | `test_mime_header_comes_from_enum` | fake daemon 回 `image/svg+xml`（繞過 schema）→ 502，不轉出 |
 | `test_cookie_without_bearer_is_401` | 帶 cookie、不帶 `Authorization` → 401 |
-| `test_stream_backpressure` | **完整 middleware stack** 下，慢速 client：Central 在前一塊被消費前不送下一個 `preview_chunk`（`BP-OM-11`） |
-| `test_disconnect_sends_close` | 同上 stack，client 中途斷線 → fake daemon 收到 `preview_close`；`_observe` 記 `CANCELLED` |
+| `test_stream_backpressure` | **完整 middleware stack** 下，慢速 client 停在第一塊時，Central 最多拉取兩塊（`RequestIdMiddleware` 多預讀一塊；`BP-OM-11`） |
+| `test_disconnect_sends_close` | 同上 stack，client 中途斷線被觀察到 → fake daemon 收到 `preview_close`；`_observe` 記 `CANCELLED`，沒有成功稽核 |
 | `test_close_sent_on_success_and_error` | 成功送完 → fake daemon 收到恰好一次 `preview_close`；第 2 塊逾時或節點回錯 → 同樣收到 close |
 | `test_successive_previews_beyond_handle_limit` | fake daemon 嚴格實作 4 個 handle 上限，而且**沒有 TTL**：同一使用者依序完成 N+1＝5 次預覽，全部 200；每次串流結束後 fake daemon 的 handle 數為 0 |
 | `test_truncated_stream_is_error` | 第 3 塊時節點斷線 → 回應長度小於 `Content-Length` |
@@ -151,7 +151,7 @@ ADR 0029 §6 的七個標頭為一組，缺一不可：`Content-Type: applicatio
 | `test_busy_limits` | 同一使用者第 3 條串流 → 429 |
 | `test_sensitive_denial_audit_persists_after_403` | `.env.png` → 回應 403 **之後**，以**另一個 DB session** 查詢，稽核列存在，metadata 為 `{classification, extension}` 加 `request_id`，不含路徑。先移掉路由裡的 `commit` 再跑一次，這條必須變紅（mutation check） |
 | `test_success_audit_has_no_path` | 成功稽核的 metadata：**必須**有 `kind`、`mime`、`size_bytes`；**只能**再有 `request_id` 或 `source`（服務自動加入，`audit.py:196-201`）；**不得**有 `path`、`rel_path`、`filename`、`name`、`extension`、`content`、`data`、`bytes` 任何一個；而且沒有任何值包含 canary 路徑的片段 |
-| `test_success_audit_on_own_session` | 串流完整送完 → 稽核列可見；中途取消 → 沒有成功列 |
+| `test_success_audit_on_own_session` | 完整 body 送出 → 獨立 session 中稽核列可見；節點中途回錯、body 未送完 → 沒有新增成功列 |
 | `test_log_has_no_path` | 以 canary 路徑 `bp-canary-<隨機>/機密-<隨機>.pdf` 請求，擷取 app 的所有 log 記錄，不含任何片段（原文與 percent-encoded） |
 | `test_preview_does_not_imply_download` | （#71 合併後）`binary_preview:true, file_download:false` → 預覽 200、下載 403；反之亦然 |
 | `test_read_content_unchanged` | 同一張 PNG 走 `/content` 仍是 in-band `FILE_BINARY` |
