@@ -88,12 +88,15 @@ let sequence = 0;
 let pageToken = 0;
 let alive = true;
 
-const shown = computed(() => {
-  const mine = entries.value.filter((e) => e.page === current.value);
-  return mine.filter((e) => e.status === "done").at(-1) ?? mine.at(-1);
-});
+const mine = computed(() =>
+  entries.value.filter((e) => e.page === current.value),
+);
+const shown = computed(
+  () =>
+    mine.value.filter((e) => e.status === "done").at(-1) ?? mine.value.at(-1),
+);
 const failed = computed(() =>
-  shown.value?.status === "failed" ? shown.value : undefined,
+  mine.value.at(-1)?.status === "failed" ? mine.value.at(-1) : undefined,
 );
 const cssWidth = computed(() =>
   Math.max(1, Math.round((pageSize.value?.width ?? 612) * scale.value)),
@@ -177,9 +180,10 @@ async function draw(page: PDFPageProxy, number: number): Promise<void> {
   const live = entries.value.find((e) => e.id === entry.id);
   if (!live) return;
   live.status = "done";
-  // The newest finished drawing of this page replaces every other one.
+  // A successful attempt replaces only older attempts. A newer failure must
+  // remain visible even if this older render finishes after it.
   for (const other of [...entries.value]) {
-    if (other.id !== entry.id && other.page === number) drop(other);
+    if (other.id < entry.id && other.page === number) drop(other);
   }
 }
 
@@ -401,6 +405,7 @@ onBeforeUnmount(() => {
 /* `margin: auto` rather than grid centring, so a page wider than the viewport
    stays reachable on both edges. */
 .stage {
+  position: relative;
   display: flex;
   min-width: 100%;
   min-height: 100%;
@@ -418,8 +423,10 @@ canvas {
   -webkit-user-drag: none;
 }
 .page-error {
-  margin: auto;
+  position: absolute;
+  inset: 0;
   display: grid;
+  align-content: center;
   justify-items: center;
   gap: 8px;
   padding: 16px;
@@ -499,6 +506,9 @@ canvas {
 /* A phone is narrow enough that the note takes its own row above the
    controls, rather than squeezing them. */
 @media (max-width: 767px) {
+  .page input {
+    font-size: 1rem;
+  }
   .note {
     flex-basis: 100%;
   }

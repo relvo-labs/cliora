@@ -99,6 +99,18 @@ describe("PreviewDenied — binary states", () => {
     expect(w.find("input").exists()).toBe(false);
   });
 
+  it("unsupported browser copy also describes a PDF without calling it an image", () => {
+    const copy = mount(PreviewDenied, {
+      props: {
+        binary: { state: "unsupported_browser", detail: {} },
+        relPath: "report.pdf",
+      },
+    }).text();
+    expect(copy).toContain("預覽");
+    expect(copy).not.toContain("圖片");
+    expect(copy).not.toContain("下載");
+  });
+
   it("session ended offers no retry that cannot work", () => {
     const w = mount(PreviewDenied, {
       props: {

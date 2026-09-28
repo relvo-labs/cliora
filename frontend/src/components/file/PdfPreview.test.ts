@@ -13,6 +13,7 @@ interface FakeTask {
   page: number;
   promise: Promise<void>;
   resolve: () => void;
+  reject: (error: Error) => void;
   cancel: ReturnType<typeof vi.fn>;
 }
 const { tasks } = vi.hoisted(() => ({ tasks: [] as FakeTask[] }));
@@ -30,6 +31,7 @@ vi.mock("../../pdf/setup", () => ({
       page: page.number,
       promise,
       resolve,
+      reject,
       cancel: vi.fn(() =>
         reject(
           Object.assign(new Error("cancelled"), {
@@ -157,6 +159,43 @@ describe("PdfPreview", () => {
     await settle();
     expect(w.text()).not.toContain("無法在時限內顯示");
     expect(w.get("canvas").attributes("aria-label")).toBe("第 2／40 頁");
+  });
+
+  it("shows the latest failed zoom attempt and retry while keeping the old canvas", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { w } = await render();
+    tasks[0].resolve();
+    await settle();
+    expect(w.get('canvas[data-rendered="true"]').isVisible()).toBe(true);
+
+    await w.get('button[aria-label="放大"]').trigger("click");
+    await vi.advanceTimersByTimeAsync(150);
+    await settle();
+    expect(tasks).toHaveLength(2);
+    tasks[1].reject(new Error("render failed"));
+    await settle();
+
+    expect(w.get('[role="alert"]').text()).toContain("第 1 頁無法顯示");
+    expect(w.get(".retry").text()).toBe("重試此頁");
+    expect(w.get('canvas[data-rendered="true"]').isVisible()).toBe(true);
+  });
+
+  it("an older render finishing late does not erase a newer failed attempt", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { w } = await render();
+    await w.get('button[aria-label="放大"]').trigger("click");
+    await vi.advanceTimersByTimeAsync(150);
+    await settle();
+    expect(tasks).toHaveLength(2);
+
+    tasks[1].reject(new Error("newer render failed"));
+    await settle();
+    tasks[0].resolve();
+    await settle();
+
+    expect(w.get('[role="alert"]').text()).toContain("第 1 頁無法顯示");
+    expect(w.get(".retry").text()).toBe("重試此頁");
+    expect(w.get('canvas[data-rendered="true"]').isVisible()).toBe(true);
   });
 
   it("jumps to a typed page number and keeps it within the document", async () => {

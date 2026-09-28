@@ -210,8 +210,12 @@ const B_ROOT = [entry({ name: "b-only.txt", rel_path: "b-only.txt" })];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((r) => (resolve = r));
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((r, j) => {
+    resolve = r;
+    reject = j;
+  });
+  return { promise, resolve, reject };
 }
 
 function unboundApi(overrides: Record<string, unknown> = {}) {
@@ -397,6 +401,69 @@ describe("FileBrowser — 沒有預先綁定的新 session（#76）", () => {
     // Served from the cache the first mount filled: same session, no refetch.
     expect(listFileTree).toHaveBeenCalledTimes(1);
     expect(second.text()).toContain("README.md");
+  });
+});
+
+describe("FileBrowser — return restoration while a folder loads", () => {
+  function pendingFolder() {
+    const pending = deferred<unknown>();
+    const listFileTree = vi.fn((_id: string, params: { path: string }) =>
+      params.path === "src"
+        ? pending.promise
+        : Promise.resolve(listing(params.path)),
+    );
+    unboundApi({ listFileTree });
+    return pending;
+  }
+
+  const resume = { cwd: "src", scrollTop: 120, focus: "src/app.py" };
+
+  it("settles when the folder request is aborted and its loading entry disappears", async () => {
+    const pending = pendingFolder();
+    const wrapper = render({ sessionId: A, resume });
+    await flushPromises();
+    expect(useFilesStore().dirs.src?.state).toBe("loading");
+    expect(wrapper.emitted("resumed")).toBeUndefined();
+
+    pending.reject(new DOMException("aborted", "AbortError"));
+    await flushPromises();
+
+    expect(useFilesStore().dirs.src).toBeUndefined();
+    expect(wrapper.emitted("resumed")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("settles and stops restoring when unmounted during the wait", async () => {
+    const pending = pendingFolder();
+    const wrapper = render({ sessionId: A, resume });
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toBeUndefined();
+
+    wrapper.unmount();
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toHaveLength(1);
+    pending.reject(new DOMException("aborted", "AbortError"));
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toHaveLength(1);
+  });
+
+  it.each([
+    ["session switch", { sessionId: B }],
+    ["session loss", { sessionId: null }],
+    ["permission loss", { canBrowse: false }],
+  ])("settles after %s during the wait", async (_reason, change) => {
+    const pending = pendingFolder();
+    const wrapper = render({ sessionId: A, resume });
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toBeUndefined();
+
+    await wrapper.setProps(change);
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toHaveLength(1);
+    pending.reject(new DOMException("aborted", "AbortError"));
+    await flushPromises();
+    expect(wrapper.emitted("resumed")).toHaveLength(1);
+    wrapper.unmount();
   });
 });
 

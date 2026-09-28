@@ -127,6 +127,23 @@ for (const size of [
       await page.setViewportSize(size);
     });
 
+    if (narrow) {
+      test("phone page-number input uses at least 16px text", async ({
+        page,
+        context,
+      }) => {
+        await mockCentral(context, allPdfs());
+        await openWorkspace(page, narrow);
+        await openFile(page, "ok.pdf", narrow);
+        const input = page.getByRole("textbox", { name: "頁碼" });
+        await expect(input).toBeVisible();
+        const fontSize = await input.evaluate((el) =>
+          Number.parseFloat(getComputedStyle(el).fontSize),
+        );
+        expect(fontSize).toBeGreaterThanOrEqual(16);
+      });
+    }
+
     test("a 40-page PDF: page 1 of 40, next, jump, zoom, under the real CSP", async ({
       page,
       context,

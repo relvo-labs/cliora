@@ -202,7 +202,7 @@ function binaryView(state: BinaryDenialState, d: BinaryPreviewDetail): View {
         ...base,
         icon: MonitorX,
         title: "瀏覽器不支援此預覽",
-        detail: "這個瀏覽器缺少在頁面中顯示圖片所需的功能。",
+        detail: "這個瀏覽器缺少顯示此檔案預覽所需的功能。",
         next: "請更新瀏覽器，或改用其他瀏覽器。",
       };
     case "offline":

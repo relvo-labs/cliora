@@ -21,7 +21,15 @@ import {
   File,
   Link,
 } from "lucide-vue-next";
-import { computed, nextTick, onMounted, ref, toRef, watch } from "vue";
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toRef,
+  watch,
+} from "vue";
 
 import type { FileEntry, FileSearchHit } from "../../api/dto";
 import {
@@ -89,6 +97,9 @@ const retryable = computed(
 // different question: the listing answers "what is in this folder", the search
 // answers "where in the workspace is this name".
 const searching = computed(() => store.search.state !== "idle");
+let alive = true;
+let settleRestoreWait: (() => void) | undefined;
+let completeRestore: (() => void) | undefined;
 
 function remember(relPath: string): void {
   emit("remember", {
@@ -116,24 +127,70 @@ function pick(hit: FileSearchHit): void {
 // that opened it. A search, if one was showing, is still in the store and
 // comes back by itself; its hit is focused the same way.
 async function resumePlace(place: BrowserPlace): Promise<void> {
+  const sessionId = props.sessionId;
+  let completed = false;
+  completeRestore = () => {
+    if (completed) return;
+    completed = true;
+    emit("resumed");
+  };
+  const sameContext = () =>
+    alive &&
+    browsable.value &&
+    sessionId !== null &&
+    props.sessionId === sessionId &&
+    store.sessionId === sessionId;
   // Nothing to return to: the session ended, or browsing was withdrawn, while
   // the preview was open. No listing will arrive, so there is none to wait on.
-  if (!browsable.value) {
-    emit("resumed");
+  if (!sameContext()) {
+    completeRestore();
     return;
   }
   if (!searching.value) browser.goTo(place.cwd);
   await nextTick();
-  if (!searching.value && (loading.value || browser.state.value === "idle")) {
+  if (!sameContext()) {
+    completeRestore();
+    return;
+  }
+  if (!searching.value && browser.state.value === "loading") {
     await new Promise<void>((done) => {
-      const stop = watch(loading, (busy) => {
-        if (!busy) {
+      const stop = watch(
+        [
+          browser.state,
+          browsable,
+          () => props.sessionId,
+          () => store.sessionId,
+        ],
+        () => {
+          // An aborted load deletes its node, which reads as `idle`. It is a
+          // terminal outcome for this attempt, not another load to await.
+          if (browser.state.value !== "loading" || !sameContext()) {
+            settleRestoreWait?.();
+          }
+        },
+        { flush: "sync" },
+      );
+      settleRestoreWait = () => {
+        if (settleRestoreWait) {
           stop();
+          settleRestoreWait = undefined;
           done();
         }
-      });
+      };
+      if (browser.state.value !== "loading" || !sameContext()) {
+        settleRestoreWait();
+      }
     });
     await nextTick();
+  }
+  if (
+    !sameContext() ||
+    (!searching.value &&
+      (browser.cwd.value !== place.cwd ||
+        !["success", "partial", "empty"].includes(browser.state.value)))
+  ) {
+    completeRestore();
+    return;
   }
   const el = root.value;
   if (el) {
@@ -143,11 +200,16 @@ async function resumePlace(place: BrowserPlace): Promise<void> {
     ).find((row) => row.dataset.relPath === place.focus);
     target?.focus({ preventScroll: true });
   }
-  emit("resumed");
+  completeRestore();
 }
 
 onMounted(() => {
   if (props.resume) void resumePlace(props.resume);
+});
+onBeforeUnmount(() => {
+  alive = false;
+  settleRestoreWait?.();
+  completeRestore?.();
 });
 
 function icon(entry: FileEntry) {
