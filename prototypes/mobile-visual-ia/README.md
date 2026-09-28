@@ -49,6 +49,7 @@ uv run --no-project --with playwright python prototypes/mobile-visual-ia/test_pr
 - C 方向（v0.2）：未帶 `v` 時預設 C；五種尺寸下終端與標頭不截斷、不互相遮擋（被截斷的標題帶全文 `title`，完整名稱另在 `⋯`）；
   CLI 的分隔線與輸入框隨寬度延伸；Viewer 看不到輸入框，C 在該位置放整寬「取得控制權」。
 - 審查後續（v0.2.1）：同名 `demo-api` 兩列各有 44px `⋯`，鍵盤可開、顯示完整 `<bdi>` 路徑、Escape 回到該列；建立 sheet 換 Node 焦點不跑掉；文件引用的數字與實測一致。
+- 圓角（v0.2.1，Q8 = b）：三個變體的控制項與卡片計算值都是 8px；底部 sheet A 12／B 8／C 16。
 
 ## 範圍與限制
 

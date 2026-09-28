@@ -42,15 +42,17 @@
 | `--space-inline` | **16px** | 行動左右內距 | 20px |
 | `--radius-sheet` | **16px** | 底部 sheet；`style.md` §6 上限正好是 16 | 12px |
 
-**`--radius-control` 12 vs 8 是尚未決定的問題（`06-…md` Q8），本提案不預設答案：**
+**`--radius-control`：Q8 已決定 (b)**（2026-09-28，產品負責人 Neil，對話中：「那就用8」）。手機控制項／卡片維持 `--radius-control: 8px`
+（`--radius-panel` 同為 8），C 只在底部 sheet 用 `--radius-sheet: 16px`；**不修訂 `style.md` §22，也不在行動 media 區塊覆寫 `--radius-control`**。
+下表是決策前的選項，保留為紀錄：
 
 | 選項 | 做法 | 代價 |
 |---|---|---|
 | (a) | 在行動尺度 media 區塊覆寫 `--radius-control: 12px`（`--radius-panel` 同步），並經 VDS 1.1 行動附錄修訂 `style.md` §22 的 `radius.control: 8` | 手機與桌面的控制項形狀不同；多一條要維護的例外；最接近原型 C 的樣子 |
-| (b) | 維持 `--radius-control: 8px`，C 只在 sheet 用 16px | C 與 A 的視覺差距變小；不需修 §22 |
+| (b) **← 已選** | 維持 `--radius-control: 8px`，C 只在 sheet 用 16px | C 與 A 的視覺差距變小；不需修 §22 |
 
-**研究者建議 (b)**——圓角是 C 最便宜的辨識度來源，卻也是 `04-…md` §4.1 C3「看起來像消費型 App」風險最大的一項；C 的核心（大字、少字、需要時整寬的下一步）不靠它。
-原型的 C 仍畫成 12px，讓 UAT 能看到差別；Q8 若選 (b)，UAT 前把原型 C 的 `--radius` 改回 8px 即可（一行）。
+研究者當時建議 (b)——圓角是 C 最便宜的辨識度來源，卻也是 `04-…md` §4.1 C3「看起來像消費型 App」風險最大的一項；C 的核心（大字、少字、需要時整寬的下一步）不靠它。
+原型已同步（v0.2.1）：C 的 `--radius` 由 12px 改為 8px，`--radius-sheet` 維持 16px；`test_prototype.py` 的 `radius_suite` 斷言三個變體的控制項／卡片都是 8px、sheet 為 A 12／B 8／C 16。
 
 規則：
 
@@ -58,7 +60,7 @@
    `MS-21` 的桌面回歸（graphite／porcelain token diff 為空）必須維持綠。
 2. `theme.contract.test.ts:114`「theme 區塊不得重定義尺度」不需要放寬：新 token 不在任何 theme 區塊。
 3. `MS-22` 已有「行動 media 區塊內不得出現 `COLOR_TOKENS`」的測試，沿用。
-4. 控制項圓角見上方的 Q8 表；在它被決定之前，任何實作都以現行 `--radius-control: 8px` 為準。
+4. 控制項圓角：Q8 (b)，沿用現行 `--radius-control: 8px`；VDS 1.1 行動附錄在圓角上只新增 `--radius-sheet`。
 
 ## 3. 元件層的影響（僅列出，非本期範圍）
 
@@ -80,7 +82,7 @@
 |---|---|---|
 | **條件式整寬動作**：斷線時「重新連線」在狀態列整寬；Viewer 可接管時「取得控制權」放在終端底部、取代輸入位置 | `StatusBar.vue`（狀態列動作槽）、`SessionWorkspaceView.vue`（終端底部列） | 兩個不同位置、各自的出現條件（writer／viewer、`can_takeover`、連線狀態、Session 是否執行中）。終端底部列與 `plan/29/05` MS-12 的行動輸入元件**是同一個位置**：Viewer 時顯示接管列、writer 時顯示輸入元件，兩者互斥，必須由 MS-12 同一位 M2 terminal writer 擁有 |
 | **`--surface-raised` 當清單畫布**（白卡浮在灰底） | `AppLayout.vue`（行動 `main` 背景）、`SessionsView.vue`（卡片） | 用的是既有 token，**不是顏色變更**；但手機的畫布與桌面 Porcelain（`--surface-canvas`）不同，要在 VDS 1.1 附錄寫明，避免下一個人以為是漏改 |
-| **sheet 進場 180ms、reduced motion 0ms** | `UiDialog.vue`／`UiActionMenu.vue`／`NewSessionDialog.vue` 的 `<768` 底部 sheet 形態 | 用既有 `--motion-base: 180ms`；`UiDialog.vue:153` 已有 `prefers-reduced-motion: no-preference` 的寫法可沿用。成本在「對話框在手機變成底部 sheet」這個新形態，不在動畫本身 |
+| **sheet 進場 180ms、reduced motion 0ms** | `UiDialog.vue`／`UiActionMenu.vue`／`NewSessionDialog.vue` 的 `<768` 底部 sheet 形態 | 用既有 `--motion-base: 180ms`；`UiDialog.vue:153` 已有 `prefers-reduced-motion: no-preference` 的寫法可沿用。成本在「對話框在手機變成底部 sheet」這個新形態，不在動畫本身。sheet 上緣圓角 16px 需新 token `--radius-sheet`（A 可沿用 `--radius-dialog` 12）；控制項／卡片圓角依 Q8 (b) 沿用 8px，**不是** C 的額外成本 |
 | **清單不顯示路徑** | `SessionsView.vue`、Session `⋯` sheet | 路徑移到 `⋯`，那裡仍需要 D4 的 `<bdi>` 修正；若 UAT C1 失敗，要加「同名才顯示路徑」的條件 |
 | **較大的列高與字級**（56–60px 列、16px 內文） | `SessionsView.vue`、`FileBrowser.vue` | 一屏內容較少；`--density-row` 的行動值（現 52px）可能要調到 56–60，屬 `MS-01` 的行動尺度區塊 |
 

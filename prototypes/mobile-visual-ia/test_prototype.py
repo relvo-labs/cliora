@@ -517,6 +517,38 @@ def review_followups_suite(browser: Browser, base: str, passed) -> None:
            "the right Session opens; changing Node keeps focus on the Node select")
 
 
+RADIUS_PROBE = """() => {
+  const px = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length)
+    .map((e) => getComputedStyle(e).borderTopLeftRadius);
+  return { controls: [...px('.btn'), ...px('.icon-btn'), ...px('.select')], cards: px('.sessions > li'), sheet: px('.sheet:not([data-full])') };
+}"""
+# Q8 = (b), 2026-09-28: controls/cards keep --radius-control 8px on mobile; only C's bottom sheet is 16px.
+EXPECTED_SHEET_RADIUS = {"a": "12px", "b": "8px", "c": "16px"}
+
+
+def radius_suite(browser: Browser, base: str, passed) -> None:
+    fails: list[str] = []
+    context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page = context.new_page()
+    for variant in VARIANTS:
+        load(page, base, variant, "list")
+        r = page.evaluate(RADIUS_PROBE)
+        if not r["controls"] or not r["cards"]:
+            fails.append(f"{variant}/list: probe found no controls {r['controls']} or cards {r['cards']}")
+        fails += [f"{variant}/list control radius {x}, expected 8px" for x in sorted(set(r["controls"])) if x != "8px"]
+        if variant != "a":  # A's list is flat rows, not cards
+            fails += [f"{variant}/list card radius {x}, expected 8px" for x in sorted(set(r["cards"])) if x != "8px"]
+        load(page, base, variant, "menu")
+        r = page.evaluate(RADIUS_PROBE)
+        want = EXPECTED_SHEET_RADIUS[variant]
+        if r["sheet"] != [want]:
+            fails.append(f"{variant}/menu sheet radius {r['sheet']}, expected [{want}]")
+        fails += [f"{variant}/menu control radius {x}, expected 8px" for x in sorted(set(r["controls"])) if x != "8px"]
+    context.close()
+    expect(not fails, "radius (Q8 = b) failing:\n" + "\n".join(fails))
+    passed("radius Q8=(b): controls and cards compute 8px in every variant; bottom sheet A 12px / B 8px / C 16px")
+
+
 def motion_suite(browser: Browser, base: str, passed) -> None:
     durations = {}
     for mode in ("no-preference", "reduce"):
@@ -570,6 +602,7 @@ def main() -> int:
             behaviour_suite(browser, base, passed)
             c_direction_suite(browser, base, passed)
             review_followups_suite(browser, base, passed)
+            radius_suite(browser, base, passed)
             motion_suite(browser, base, passed)
         finally:
             browser.close()

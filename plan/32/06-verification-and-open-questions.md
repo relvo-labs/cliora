@@ -13,6 +13,8 @@
 | v0.2 C 截圖 | 只重拍 C：30 張；A／B 沿用 v0.1 的 30＋30 張，對照圖上標「（v0.1 截圖）」 | `shots/variants/c/`、`shots/sheets/`（20 張，重建） |
 | 原型測試（v0.2.1） | `test_prototype.py` **exit 0**，**16 項 PASS**；幾何 360 次載入（24 情境），其中 44px 觸控 288 次；對比 49 組 | 同上 JSON |
 | v0.2.1 C 截圖 | 清單列改版後重拍 C 的清單類畫面（見 §1.2） | `shots/variants/c/`、`shots/sheets/01-list.png` |
+| 原型測試（v0.2.1，Q8 (b) 之後） | `test_prototype.py` **exit 0**，**17 項 PASS**（新增 `radius_suite`，見 §1.3） | `/opt/data/cache/scratch/75/evidence-q8/mobile-visual-ia-test.json` |
+| v0.2.1 C 截圖（Q8 (b) 之後） | C 控制項／卡片改 8px 後重拍 C 全部畫面並重建對照圖 | `shots/variants/c/`、`shots/sheets/` |
 
 ### 1.1 v0.2 原型修正：先紅後綠
 
@@ -40,7 +42,7 @@ Chromium：`chromium_headless_shell-1234`（repo 的 Playwright 1.61.1 預期 12
 
 ## 2. 閘門
 
-v0.2 在最後一次變更之後重跑（v0.1 的結果見 git 歷史；Node 22.14.0 via `.nvmrc`；Go 1.26.8，因為本機 PATH 上沒有 `go`，改用
+v0.2.1 在最後一次變更（Q8 (b) 原型同步）之後重跑（v0.1 的結果見 git 歷史；Node 22.14.0 via `.nvmrc`；Go 1.26.8，因為本機 PATH 上沒有 `go`，改用
 `~/go/pkg/mod/golang.org/toolchain@v0.0.1-go1.26.8…/bin`，`GOTOOLCHAIN=local`）：
 
 | 指令 | exit |
@@ -69,6 +71,16 @@ v0.2 在最後一次變更之後重跑（v0.1 的結果見 git 歷史；Node 22.
 | P3 觸控與縮放的說法 | 文件改寫：「200% zoom」→「195×422 窄寬重排近似」；44px 的載入數寫實際值；真實 200% 縮放列入 §3 | `check_doc_claims`：04／05／06／原型 README 不得出現舊說法，且必須寫出實測的配對數與觸控載入數 | 紅：04 與原型 README 把 195×422 稱為 200% zoom、04 寫 345 次載入都量了觸控（實際 276） | 綠（49 組、288 次） |
 | P3 建立 sheet 換 Node 失焦 | Node select 加 `id="create-node"`，重繪後焦點回到它 | `review_followups_suite` focus 部分：換成可提權 Node 後焦點仍在該 select，且出現警示帶 | 紅：焦點跑到關閉鈕（`BUTTON`） | 綠 |
 
+### 1.3 v0.2.1：Q8 = (b) 的原型同步
+
+產品負責人 2026-09-28 選 Q8 (b)（§4）。先加斷言、對 12px 的原型跑出紅燈，再改 `style.css` C 區塊的一行 `--radius: 12px → 8px`（`--radius-sheet: 16px` 不動；A／B 未改）：
+
+| 斷言（`radius_suite`，390×844） | 修正前 | 修正後 |
+|---|---|---|
+| 各變體 `list`／`menu` 可見的 `.btn`／`.icon-btn`／`.select` 計算圓角 8px；B／C 清單卡片 8px；可見的底部 sheet（非全螢幕）A 12／B 8／C 16 | 紅，3 筆：C 清單控制項 12px、C 清單卡片 12px、C 選單控制項 12px（sheet 三者本來就對） | 綠；17 項 PASS |
+
+探針第一次跑時 sheet 讀到空值——`position: fixed` 的元素 `offsetParent` 是 null。改用 `getClientRects().length` 判斷可見後，紅燈只剩上面 3 筆，才改 CSS。
+
 ## 3. 沒有驗證的事（不得以本期證據代替）
 
 - **真機**：iOS Safari、Android Chrome 都沒有。網址列收合、home indicator、`env(safe-area-inset-*)` 實值、真實軟體鍵盤高度、旋轉。
@@ -94,7 +106,7 @@ v0.2 在最後一次變更之後重跑（v0.1 的結果見 git 歷史；Node 22.
 | **Q5** | 清單可否依既有 `status` 分組（例如失敗／斷線在前）？ | (a) 可以，屬既有屬性；(b) 只能用伺服器順序（`plan/29/01` §1 的保守讀法） | 仍建議先 (b)。**選 C 使這題更重要**：C 的清單一屏只有 4–5 列、且不顯示路徑，找「對的那一個」更依賴排序與名稱；UAT C1／C2 失敗時，分組是第一個候選調整。另外 D4 的 `<bdi>` 修正並沒有因為 C 隱藏路徑而變得不需要——路徑移到 `⋯` sheet，那裡一樣要修 |
 | **Q6** | **（v0.2 改寫）** UAT 驗證 C：#103 修好之後、iPhone＋Android 各一台，觀察者以 C 完成 U1–U9 與 C1–C4；A 只在 C 某題失敗時作為對照 | — | 是；見 `04-…md` §4、§4.1 |
 | **Q7** | 若選定方向需要新尺度 token（`05-…md` §2），由誰核准 VDS 1.1 行動附錄？ | ADR 0027 修訂或新 ADR | 與 `plan/29` 的 `MS-D-04`～`07`（pocket 機制 ADR）同一次審。選 C 不改變這個建議；提案值已改為 C 的那一欄 |
-| **Q8** | **（v0.2 新增）** C 的控制項圓角：手機 `--radius-control` 用 12px 還是維持 8px？ | (a) 行動 media 區塊覆寫為 12px，經 VDS 1.1 行動附錄修訂 `style.md` §22；(b) 維持 8px，C 只在 sheet 用 16px，接受較小的視覺差異 | (b)：圓角是「消費型 App／樣板感」風險（C3）最大的一項，而 C 的核心不靠它。最好在 UAT 前決定，以免 UAT 看到的 C 與將要實作的 C 不同 |
+| **Q8** | **（v0.2 新增；v0.2.1 已決定）** C 的控制項圓角：手機 `--radius-control` 用 12px 還是維持 8px？ | (a) 行動 media 區塊覆寫為 12px，經 VDS 1.1 行動附錄修訂 `style.md` §22；(b) 維持 8px，C 只在 sheet 用 16px，接受較小的視覺差異 | **已決定 (b)**：2026-09-28，產品負責人 Neil（對話中：「那就用8」）。不修訂 §22、不覆寫行動 `--radius-control`；原型 C 已改為 8／16（§1.3），UAT 在實際要實作的 C 上進行。原建議理由：圓角是「消費型 App／樣板感」風險（C3）最大的一項，而 C 的核心不靠它 |
 
 Q1–Q4 的建議**不因選 C 而改變**：Q1（#103 先修）反而更急，因為 UAT 已改為驗證單一方向，深色終端會直接污染 C 的結果；
 Q2、Q3、Q4 屬共同 IA，與視覺方向無關。

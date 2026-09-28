@@ -136,7 +136,7 @@
   --pad-x: 16px;
   --gap: 12px;
   --row-min: 60px;
-  --radius: 12px;
+  --radius: 8px; /* Q8 = (b): controls/cards stay --radius-control 8px; only the sheet is 16px */
   --radius-sheet: 16px;
   --motion: 180ms;
 }
