@@ -71,7 +71,9 @@ func (s *Service) DownloadEnabled() bool { return s.download.DownloadEnabled() }
 //
 //  1. node switch
 //  2. sensitive-name deny on the requested path, before anything is opened
-//  3. confined O_NOFOLLOW open (ADR 0014)
+//  3. pre-open type check, then a confined non-blocking open (ADR 0014,
+//     issue #83). The open follows an in-root symlink and refuses an escaping
+//     one (it is not O_NOFOLLOW); step 5 is what makes that safe
 //  4. regular-file check on the open fd, not on the path
 //  5. sensitive-name deny on the fd's RESOLVED name, binding the decision to
 //     the opened inode
@@ -97,8 +99,17 @@ func (s *Service) Download(root *workspace.Root, relPath string) (DownloadResult
 		return DownloadResult{}, &downloadDenial{code: "FILE_DENIED", reason: class}
 	}
 
-	// 3. Confined open, refusing a symlink final component.
-	f, err := root.OpenFile(relPath)
+	// 3. Pre-open type check: a FIFO, socket or device is refused without being
+	// opened. Then a confined O_NONBLOCK open, so one swapped in after the stat
+	// returns at once instead of holding this goroutine in open(2) until a writer
+	// appears (issue #83); step 4 refuses it.
+	if denied, stop, err := s.preOpenCheck(root, relPath); stop {
+		if err != nil {
+			return DownloadResult{}, err
+		}
+		return DownloadResult{}, &downloadDenial{code: denied.Code, reason: denied.Reason}
+	}
+	f, err := root.OpenFileNonBlocking(relPath)
 	if err != nil {
 		if denial, ok := denialFromWorkspaceErr(err); ok {
 			return DownloadResult{}, denial
@@ -107,8 +118,8 @@ func (s *Service) Download(root *workspace.Root, relPath string) (DownloadResult
 	}
 	defer f.Close()
 
-	// 4. Regular-file check on the fd. A directory, a FIFO or a device node is
-	// not a download; a FIFO in particular would block the read forever.
+	// 4. Regular-file check on the fd — the binding one, since step 3's stat races
+	// with the open. A directory, a FIFO or a device node is not a download.
 	info, err := f.Stat()
 	if err != nil {
 		return DownloadResult{}, workspace.ErrPermision

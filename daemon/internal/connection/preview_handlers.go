@@ -24,8 +24,9 @@ import (
 
 // Read-only binary preview handlers (ADR 0029 §5, plan/31/03 §4).
 //
-// Unlike handleFsRead, which runs inline on the dispatch loop, preview_open and
-// preview_chunk run on bounded workers: 2 opens and 4 chunk encoders per daemon.
+// preview_open and preview_chunk run on bounded workers: 2 opens and 4 chunk
+// encoders per daemon. (filesystem.read and filesystem.download now follow the
+// same pattern with their own slots, fs_workers.go; issue #83.)
 // A full worker set is answered NODE_BUSY at once; nothing queues, because a
 // queue would only move the wait into Central's timeout. preview_close stays
 // inline on purpose: it is an O(1) map delete, and a close must never be refused

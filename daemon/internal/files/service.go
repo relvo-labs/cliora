@@ -36,6 +36,9 @@ type Service struct {
 	previewLimits  PreviewLimits
 	// previewHooks are test seams inside PreviewOpen (nil in production).
 	previewHooks *previewHooks
+	// afterPreStat runs between Read's/Download's pre-open StatIn and the open
+	// (test seam for the swap race; nil in production).
+	afterPreStat func()
 }
 
 // NewService builds the file service from daemon config.

@@ -87,6 +87,10 @@ type Manager struct {
 	// Read-only binary preview (ADR 0029): the daemon-wide snapshot pool, the
 	// bounded workers, and the current connection's handle table.
 	preview *previewState
+
+	// filesystem.read / filesystem.download run on bounded workers, off the
+	// dispatch loop (issue #83, fs_workers.go).
+	fs *fsWorkerState
 }
 
 func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, info systeminfo.Info, version string) *Manager {
@@ -112,6 +116,7 @@ func New(cfg *config.Config, creds *config.Credentials, reg *runtime.Registry, i
 		probeEgress:   dialProvider,
 		configPath:    config.DefaultConfigPath,
 		preview:       newPreviewState(),
+		fs:            newFsWorkerState(),
 	}
 	m.tunnels = tunnel.NewSupervisor(tunnel.NewPinggyProvider(), m)
 	// Anything left by a previous daemon generation is still serving traffic, with nothing
@@ -492,6 +497,10 @@ func (m *Manager) dispatch(
 ) error {
 	previews := m.beginPreviewTable(ctx) // this connection's snapshot handles
 	defer m.endPreviewTable(previews)
+	// This connection's file read/download workers. Ended (cancelled, then
+	// waited for) when the loop returns, so none outlives the connection.
+	workers := m.beginFsWorkers(ctx)
+	defer workers.end()
 	for {
 		kind, data, err := conn.ReadMessage()
 		if err != nil {
@@ -523,7 +532,7 @@ func (m *Manager) dispatch(
 		case "filesystem.list":
 			m.handleFsList(env, data, send)
 		case "filesystem.read":
-			m.handleFsRead(env, data, send)
+			m.handleFsRead(workers, env, data, send)
 		case "filesystem.search":
 			m.handleFsSearch(ctx, env, data, send)
 		case "filesystem.upload":
@@ -531,7 +540,7 @@ func (m *Manager) dispatch(
 		case "filesystem.store":
 			m.handleFsStore(env, data, send)
 		case "filesystem.download":
-			m.handleFsDownload(env, data, send)
+			m.handleFsDownload(workers, env, data, send)
 		case "filesystem.preview_open":
 			m.handlePreviewOpen(ctx, previews, env, data, send)
 		case "filesystem.preview_chunk":

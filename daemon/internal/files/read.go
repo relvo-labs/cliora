@@ -8,21 +8,33 @@ import (
 )
 
 // Read previews a single file under the workspace root, applying the P3 policy
-// in a fixed, default-deny order (tech §11.5): sensitive-name deny → confined
-// O_NOFOLLOW open → regular-file check on the open fd → size cap → bounded read
-// → binary/undetermined deny. On any denial it returns a ReadResult with Denied
+// in a fixed, default-deny order (tech §11.5): sensitive-name deny → pre-open
+// type check → confined non-blocking open → regular-file check on the open fd →
+// sensitive deny on the fd's resolved name → size cap → bounded read →
+// binary/undetermined deny. On any denial it returns a ReadResult with Denied
 // set and only a safe classification — never file content or an absolute path.
 // A denial is not an error; only unexpected failures return err.
+//
+// The open is os.Root's, so it follows an in-root symlink and refuses an
+// escaping one; it is not O_NOFOLLOW (plan/31/09 §4 E4). Step 3b is what makes
+// following in-root symlinks safe.
 func (s *Service) Read(root *workspace.Root, relPath string) (ReadResult, error) {
 	// 1. Sensitive-name deny before opening or reading anything (SEC-004).
 	if class := s.policy.SensitiveClassification(relPath); class != "" {
 		return ReadResult{RelPath: relPath, Denied: true, Code: "FILE_DENIED", Reason: class}, nil
 	}
 
-	// 2. Open confined, refusing a symlink final component (ADR 0014). Any
-	// path/containment problem becomes a safe in-band denial (the browser always
-	// renders a denial pane); only truly unexpected failures return err.
-	f, err := root.OpenFile(relPath)
+	// 2. Pre-open type check, then a confined non-blocking open (issue #83, the
+	// same sequence as ADR 0029 §3 steps 3-4). A FIFO, socket or device is
+	// refused without being opened; one swapped in after the stat is opened with
+	// O_NONBLOCK, so it returns at once instead of holding this goroutine in
+	// open(2) waiting for a writer, and step 3 refuses it. Any path/containment
+	// problem becomes a safe in-band denial (the browser always renders a denial
+	// pane); only truly unexpected failures return err.
+	if denied, ok, err := s.preOpenCheck(root, relPath); ok || err != nil {
+		return denied, err
+	}
+	f, err := root.OpenFileNonBlocking(relPath)
 	if err != nil {
 		if denied, ok := denyFromWorkspaceErr(relPath, err); ok {
 			return denied, nil
@@ -31,7 +43,8 @@ func (s *Service) Read(root *workspace.Root, relPath string) (ReadResult, error)
 	}
 	defer f.Close()
 
-	// 3. Regular-file check on the open fd (not the path).
+	// 3. Regular-file check on the open fd (not the path). This is the binding
+	// check; step 2's stat is advisory because it races with the open.
 	info, err := f.Stat()
 	if err != nil {
 		return ReadResult{}, workspace.ErrPermision
@@ -87,6 +100,30 @@ func (s *Service) Read(root *workspace.Root, relPath string) (ReadResult, error)
 		Language:   LanguageHint(relPath),
 		Content:    string(content),
 	}, nil
+}
+
+// preOpenCheck is the advisory pre-open type check shared by Read and Download
+// (issue #83). It stats rel through the root — following an in-root symlink and
+// refusing an escaping one exactly as the open will — and answers a denial for
+// anything that is not a regular file, so a FIFO, socket or device node is never
+// opened at all. ok reports that the caller must stop and return (denied, err).
+// The mapping of every stat error is the open's (denyFromWorkspaceErr), so the
+// codes a caller sees are those it saw when the open was the first touch.
+func (s *Service) preOpenCheck(root *workspace.Root, relPath string) (denied ReadResult, ok bool, err error) {
+	info, statErr := root.StatIn(relPath)
+	if statErr != nil {
+		if d, mapped := denyFromWorkspaceErr(relPath, statErr); mapped {
+			return d, true, nil
+		}
+		return ReadResult{}, true, statErr
+	}
+	if !info.Mode().IsRegular() {
+		return ReadResult{RelPath: relPath, Denied: true, Code: "FILE_DENIED", Reason: "not_regular"}, true, nil
+	}
+	if s.afterPreStat != nil {
+		s.afterPreStat()
+	}
+	return ReadResult{}, false, nil
 }
 
 // denyFromWorkspaceErr maps a workspace path/containment error to a safe in-band
