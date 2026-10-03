@@ -1,5 +1,7 @@
 import { expect, Page, test } from "@playwright/test";
 
+import { terminateSessions, trackSessions } from "./session-cleanup";
+
 // Full workspace-files flow (P3-10): session workspace → lazy tree expand →
 // excluded directory → filename search back into the tree → Monaco read-only
 // preview → each denial screen → switching away clears the pane.
@@ -89,10 +91,26 @@ test.describe("workspace files", () => {
     !fullStack || !adminUser,
     "requires E2E_FULL_STACK + seeded admin credentials",
   );
+  // Every case here drives the desktop tree (role=tree, aria-activedescendant,
+  // reveal-in-tree). Below 768px that surface does not exist: the same file
+  // contracts are carried by the one-level list, and each one shared with this
+  // file — excluded folder, search, read-only preview, every denial, ended
+  // session — is asserted there in mobile.spec.ts ("mobile: file contracts").
   test.skip(
     ({ viewport }) => (viewport?.width ?? 1280) < 768,
-    "the file tree is a desktop surface; below 768px it is the one-level file list (plan/29 MS-14), covered by mobile.spec.ts",
+    "desktop file tree; the phone's file list carries the same contracts in mobile.spec.ts (plan/29 MS-14–16)",
   );
+
+  let opened: string[] = [];
+  test.beforeEach(({ page }) => {
+    opened = trackSessions(page);
+  });
+  test.afterEach(async ({ request }) => {
+    await terminateSessions(request, opened, {
+      username: adminUser,
+      password: adminPass,
+    });
+  });
 
   test("lazy tree, excluded dir, search back into the tree", async ({
     page,

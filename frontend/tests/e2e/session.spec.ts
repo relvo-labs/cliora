@@ -1,5 +1,7 @@
 import { expect, Page, test } from "@playwright/test";
 
+import { terminateSessions, trackSessions } from "./session-cleanup";
+
 // Full session → terminal flow (login → sessions → New Session → workspace →
 // live terminal → reconnect → terminate). Like nodes.spec.ts this needs the
 // whole stack — Central + PostgreSQL (migrated) + a seeded admin — and is
@@ -122,6 +124,19 @@ test.describe("session & terminal", () => {
     !fullStack || !adminUser,
     "requires E2E_FULL_STACK + seeded admin credentials",
   );
+
+  // Unconditional cleanup: see session-cleanup.ts for why a leak here breaks
+  // unrelated tests.
+  let opened: string[] = [];
+  test.beforeEach(({ page }) => {
+    opened = trackSessions(page);
+  });
+  test.afterEach(async ({ request }) => {
+    await terminateSessions(request, opened, {
+      username: adminUser,
+      password: adminPass,
+    });
+  });
 
   test("admin sees the sessions list and the create action", async ({
     page,
@@ -848,17 +863,27 @@ test.describe("session & terminal", () => {
     await signIn(page);
     const cli = page.locator("#panel-cli .xterm-rows");
 
+    // Ready means attached as the writer, read from the status bar. Not the Fake
+    // CLI's banner: a session is created at 24x80 and shrunk to the panel on
+    // attach, and at phone width that reflow cuts the banner's first line off
+    // the screen — a separate defect this case is not about. The markers below
+    // are what prove a live, correctly routed PTY.
+    const ready = async () => {
+      await expect(connected(page)).toBeVisible({ timeout: 15_000 });
+      await expect(statusBar(page).getByText("你有控制權")).toBeVisible();
+    };
+
     await sessionsInApp(page);
     const a = await startSessionFromList(page, "e2e-switch-a");
     test.skip(!a, "no online node available in this stack");
-    await expect(cli).toContainText("FAKECLI_READY", { timeout: 15_000 });
+    await ready();
     await cli.click();
     await page.keyboard.type("MARK-A\n");
     await expect(cli).toContainText("MARK-A", { timeout: 15_000 });
 
     await sessionsInApp(page);
     const b = await startSessionFromList(page, "e2e-switch-b");
-    await expect(cli).toContainText("FAKECLI_READY", { timeout: 15_000 });
+    await ready();
     await expect(cli).not.toContainText("MARK-A");
     await cli.click();
     await page.keyboard.type("MARK-B\n");
@@ -885,7 +910,7 @@ test.describe("session & terminal", () => {
     ).toBe(true);
     await expect(cli).toContainText("MARK-A", { timeout: 15_000 });
     await expect(cli).not.toContainText("MARK-B");
-    await expect(connected(page)).toBeVisible();
+    await ready();
 
     // Input now reaches A, and only A.
     await cli.click();
@@ -899,10 +924,7 @@ test.describe("session & terminal", () => {
     ).toBeVisible();
     await expect(cli).toContainText("MARK-B", { timeout: 15_000 });
     await expect(cli).not.toContainText("MARK-A");
-
-    await terminate(page);
-    await page.goto(`/sessions/${a}`);
-    await terminate(page);
+    // Both sessions are ended by the afterEach cleanup, pass or fail.
   });
 
   // #82 / #76. Signing out is a browser-wide fact: the other tab must not keep
