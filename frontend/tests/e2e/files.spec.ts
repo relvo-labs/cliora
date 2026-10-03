@@ -32,7 +32,8 @@ function newSessionDialog(page: Page) {
 async function openWorkspace(page: Page, name: string): Promise<boolean> {
   await page.goto("/sessions");
   await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
-  await page.getByRole("button", { name: "New session" }).click();
+  // `.first()`: on an empty list the empty state repeats the same button.
+  await page.getByRole("button", { name: "建立 Session" }).first().click();
   const dialog = newSessionDialog(page);
   await expect(dialog).toBeVisible();
   await dialog
@@ -73,17 +74,24 @@ const tree = (page: Page) => page.getByRole("tree", { name: "工作區檔案" })
 const row = (page: Page, name: string) =>
   tree(page).getByRole("treeitem", { name: new RegExp(`^${name},`) });
 
+// Terminate lives in the header's action menu, behind a confirmation that
+// names the session (same flow as session.spec.ts).
 async function terminate(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Terminate" }).click();
-  const confirm = page.getByRole("dialog", { name: "Terminate session" });
+  await page.getByRole("button", { name: "Session 操作" }).click();
+  await page.getByRole("menuitem", { name: "終止 Session…" }).click();
+  const confirm = page.getByRole("dialog", { name: "終止此 Session？" });
   await expect(confirm).toBeVisible();
-  await confirm.getByRole("button", { name: "Terminate" }).click();
+  await confirm.getByRole("button", { name: "確認終止" }).click();
 }
 
 test.describe("workspace files", () => {
   test.skip(
     !fullStack || !adminUser,
     "requires E2E_FULL_STACK + seeded admin credentials",
+  );
+  test.skip(
+    ({ viewport }) => (viewport?.width ?? 1280) < 768,
+    "the file tree is a desktop surface; below 768px it is the one-level file list (plan/29 MS-14), covered by mobile.spec.ts",
   );
 
   test("lazy tree, excluded dir, search back into the tree", async ({
@@ -273,8 +281,9 @@ test.describe("workspace files", () => {
     await expect(row(page, "README\\.md")).toBeVisible({ timeout: 15_000 });
 
     await terminate(page);
+    // The session state is reported in words by the status bar.
     await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
+      page.locator(".status-bar").getByText(/已終止|已結束/),
     ).toBeVisible({ timeout: 15_000 });
     // The tree is replaced by an explicit "session ended" affordance.
     await expect(

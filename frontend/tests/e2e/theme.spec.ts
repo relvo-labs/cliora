@@ -88,6 +88,10 @@ test.describe("theme: cold load", () => {
     test(`${theme} is in force on the first paint, with no flash`, async ({
       page,
     }) => {
+      test.skip(
+        (page.viewportSize()?.width ?? 1280) < 768,
+        "below 768px the pocket palette is forced regardless of the stored theme (#62, MS-21); mobile.spec.ts asserts that instead",
+      );
       await withStoredTheme(page, theme);
       // Two samples: one as soon as the DOM exists, one after everything has
       // loaded. A theme applied by main.ts instead of theme-boot.js shows up
@@ -121,6 +125,10 @@ test.describe("theme: cold load", () => {
     });
 
     test(`${theme} survives a reload`, async ({ page }) => {
+      test.skip(
+        (page.viewportSize()?.width ?? 1280) < 768,
+        "below 768px the pocket palette is forced regardless of the stored theme (#62, MS-21); mobile.spec.ts asserts that instead",
+      );
       await signIn(page);
       await page.goto("/settings/preferences");
       // Radio, not select: a theme has three states, and "follow the system"

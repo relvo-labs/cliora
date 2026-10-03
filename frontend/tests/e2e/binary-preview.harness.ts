@@ -126,7 +126,11 @@ export async function mockCentral(
     },
   );
 
-  await context.route("**/api/**", async (route) => {
+  // Matched on the path's *prefix*, not a `**/api/**` glob: under the Vite dev
+  // server the app's own modules are served from `/src/api/*.ts`, and the glob
+  // answered those with the stand-in's 404 — the bundle never booted.
+  const isApi = (url: URL) => url.pathname.startsWith("/api/");
+  await context.route(isApi, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
