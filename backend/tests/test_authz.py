@@ -471,3 +471,57 @@ def test_an_admin_may_terminate_a_shell_they_may_not_watch() -> None:
     admin = _user("Admin")
     assert authz.may_terminate_session(admin, shell)
     assert not authz.may_view_session(admin, shell)
+
+
+# --------------------------------------------------------------------------- #
+# `session.view` is a prerequisite for shell attach too (issue #93, repair 1).
+# --------------------------------------------------------------------------- #
+
+
+def test_every_built_in_role_holds_session_view() -> None:
+    """Why requiring `session.view` for shells changes nothing for built-in roles."""
+    for role, actions in rbac.ROLE_ACTIONS.items():
+        assert rbac.SESSION_VIEW in actions, role
+
+
+@pytest.mark.parametrize("role", sorted(rbac.ROLE_ACTIONS))
+@pytest.mark.parametrize("owned", [True, False])
+@pytest.mark.parametrize("shell", [True, False])
+def test_built_in_roles_view_and_write_exactly_as_before(
+    role: str, owned: bool, shell: bool
+) -> None:
+    """The pre-#93 rules, restated literally, against the current predicates.
+
+    Passes on the code before this change and after it — that is the point.
+    """
+    owner = _user("Developer")
+    user = _user(role)
+    session = _shell(user if owned else owner) if shell else _session(user if owned else owner)
+    held = rbac.ROLE_ACTIONS[role]
+
+    if shell:
+        old_view = owned and rbac.TERMINAL_SHELL in held
+        old_write = old_view
+    else:
+        old_view = rbac.SESSION_VIEW in held
+        old_write = rbac.TERMINAL_OPERATE in held and (owned or rbac.TERMINAL_TAKEOVER in held)
+
+    assert authz.may_view_session(user, session) is old_view
+    assert authz.may_write_session(user, session) is old_write
+
+
+def test_removing_session_view_contracts_attach_to_an_owned_shell() -> None:
+    """Owner-only narrows `session.view`; it no longer stands in for it. Without
+    this a role stripped of `session.view` kept watching and typing into its own
+    shells, and the terminal handshake answered differently for them."""
+    user = _user("Custom", rbac.ROLE_ACTIONS[rbac.ADMIN] - {rbac.SESSION_VIEW})
+    shell = _shell(user)
+    assert not authz.may_view_session(user, shell)
+    assert not authz.may_write_session(user, shell)
+    assert not authz.may_takeover_session(user, shell)
+    assert not authz.may_look_up_session(user)
+    # And with it restored, the owner is back exactly where they were.
+    restored = _user("Custom", rbac.ROLE_ACTIONS[rbac.ADMIN])
+    restored_shell = _shell(restored)
+    assert authz.may_view_session(restored, restored_shell)
+    assert authz.may_write_session(restored, restored_shell)
