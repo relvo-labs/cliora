@@ -116,8 +116,16 @@ command while it holds**; enroll nodes by installing `agentd` manually and runni
 
 ## Upgrading
 
-`git push` → CI → deploy. `watchPatterns` keeps a backend change from restarting the console
-and vice versa.
+Repository validation and Railway deployment are separate paths. An ordinary `git push` or
+merge does not start the repository's GitHub Actions workflows. Before a release deployment,
+retain gate evidence for the exact commit from an eligible PR run or an explicit manual
+dispatch. The full P4 capacity profile currently requires manually dispatching `p4.yml` from
+`release/*`: its other branch predicate names nonexistent `main`, while the repository default
+is `master`, so a default-branch dispatch runs smoke only.
+
+If Railway is connected to the source branch, it may create a deployment according to the
+project's live Railway settings. `watchPatterns` only prevents an unrelated backend change
+from rebuilding the console (and vice versa); it is not a CI gate or proof that tests passed.
 
 During the drain, Central:
 

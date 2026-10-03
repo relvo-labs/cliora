@@ -122,9 +122,17 @@ Central 的節點註冊表與 terminal relay 是**單一行程內**的狀態（�
 | `make traceability` | 需求-測試追溯（[ADR 0019](docs/adr/0019-requirement-traceability.md)）：每條 PRD 驗收條件都要連到一個確實存在的斷言 | 無 |
 | `make perf` | P2/P3 的延遲/退化量測，結果寫進 `artifacts/{p2,p3}/local/` | 需要 tmux |
 
-CI 設定在 `.github/workflows/`：`ci.yml` 是所有 push/PR 都要過的基礎 gate（後端/daemon/前端各自的格式、lint、型別、單元測試、build，加上三個版面高度不變式的瀏覽器量測與一個防憑證外洩腳本）；`p1.yml`–`p4.yml` 疊加各階段的整合/DB/瀏覽器 E2E/容量測試；`traceability.yml` 跑上面的追溯驗證；`wt.yml` 覆蓋系統終端機。這些工作流程檔案存在且內容可讀，但 README 不把 workflow 定義當成當下執行成功的證據；請以 GitHub Actions 的實際 run 為準。
+CI 設定在 `.github/workflows/`。七個 workflow 目前都接受手動
+`workflow_dispatch`，以及 `opened`、`reopened`、`synchronize`、
+`ready_for_review` 四種 PR 事件；每個 job 另有 draft guard。因此建立或更新 Draft PR
+不會執行 job，沒有對應 PR 事件的 branch push、以及 merge 到 `master` 也不會自行啟動
+workflow；Draft 轉 Ready 會執行，而直接以非 Draft 開啟／重開 PR、或更新已 Ready 的
+PR 也會依目前設定執行。
+`ci.yml` 是三語言基礎 gate；`p1.yml`–`p4.yml` 疊加整合、DB、瀏覽器 E2E
+與容量測試；`traceability.yml` 跑追溯驗證；`wt.yml` 覆蓋系統終端機。workflow
+定義存在不等於某個 commit 已通過；請把實際 run 的 head SHA 與結果綁在一起判讀。
 
-已知、寫在報告裡而非藏起來的落差（`docs/p4-report.md` §4）：完整規模的容量壓測（100 節點/500 連線）只在 main／release 分支跑，一般 push 只跑 5 節點的 smoke；五個告警演練裡有三個（`heartbeat-loss`、`timeout-surge`、`update-failure`）需要 systemd 與一個真實安裝的節點，在一般 sandbox/開發機上會被跳過而非算通過；多 OS/多瀏覽器引擎的安裝矩陣需要真正的 CI runner。這些都是「已實作、已審查，但不是每次都被自動執行」的項目，不是缺陷。
+已知、寫在報告裡而非藏起來的落差（`docs/p4-report.md` §4）：完整規模的容量壓測（100 節點/500 連線）目前只能從 `release/*` 手動 dispatch `p4.yml`；workflow 條件也列了 `main`，但 repository 的 default 是 `master` 且沒有 `main` branch，因此從 default branch 手動執行仍只會跑 5 節點 smoke。其他可執行的 PR／手動 run 也只跑 smoke。五個告警演練裡有三個（`heartbeat-loss`、`timeout-surge`、`update-failure`）需要 systemd 與一個真實安裝的節點，在一般 sandbox/開發機上會被跳過而非算通過；多 OS/多瀏覽器引擎的安裝矩陣需要真正的 CI runner。這些都是「已實作、已審查，但不是每次都被自動執行」的項目，不是缺陷。
 
 ---
 
@@ -159,7 +167,7 @@ CI 設定在 `.github/workflows/`：`ci.yml` 是所有 push/PR 都要過的基�
 - **兩個密鑰輪替代價不對稱**：輪替 `CLIORA_JWT_SECRET` 只是讓所有人重新登入；輪替 `CLIORA_TOKEN_PEPPER` 會讓**所有**節點都需要重新 enroll，是單向門而非例行操作。
 - **migration 絕不在應用程式啟動時自動跑**（避免多副本各自搶著跑 migration），而是獨立的一次性步驟，`/readyz` 會在 schema 版本與程式碼不一致時回 503，讓還沒 migrate 的容器永遠拿不到流量。
 - **關站有 drain**：收到 SIGTERM 後，Central 會先通知每個訂閱中的瀏覽器「即將重啟、session 會保留」、再關閉節點連線讓它們走既有的重連退避，全程不對任何節點送出真正的 `session.stop`——重啟不等於幫你關掉任何一個 CLI session。
-- Go/No-Go 判斷本身列了尚待完成的條件（見 `docs/p4-report.md` §5）：在真正的 release 分支跑過完整 `p4.yml`（含全規模容量與三個瀏覽器引擎）、正式環境的兩個密鑰都已換成真的、在第一次跑 retention prune 之前先做過一次備份還原演練、針對實際要用的 nginx 設定跑過 `scripts/p4/verify-edge.sh`。這些是部署前的檢查清單項目，不是「已完成」的陳述。
+- Go/No-Go 判斷本身列了尚待完成的條件（見 `docs/p4-report.md` §5）：針對真正的 `release/*` 分支手動 dispatch 完整 `p4.yml`（含全規模容量與三個瀏覽器引擎），並核對 run head SHA；正式環境的兩個密鑰都已換成真的；在第一次跑 retention prune 之前先做過一次備份還原演練；針對實際要用的 nginx 設定跑過 `scripts/p4/verify-edge.sh`。目前不可用 default `master` 取代 `release/*`，因為 full-capacity 條件誤寫成不存在的 `main`。這些是部署前的檢查清單項目，不是「已完成」的陳述。
 
 ---
 
