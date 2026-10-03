@@ -23,6 +23,9 @@ const searchRequestTimeout = 12 * time.Second
 // confined workspace.Root for it. Every filesystem request re-canonicalises the
 // workspace (never trusting a prior listing) via the guard (ADR 0014).
 func (m *Manager) openSessionWorkspace(sessionID uuid.UUID) (*workspace.Root, string, bool) {
+	if m.fs.root != nil { // test seam
+		return m.fs.root(sessionID)
+	}
 	ws, ok := m.sessions.Workspace(sessionID)
 	if !ok {
 		return nil, "", false
@@ -79,7 +82,9 @@ func (m *Manager) handleFsList(env protocol.Envelope, data []byte, send func([]b
 	_ = send(frame)
 }
 
-func (m *Manager) handleFsRead(env protocol.Envelope, data []byte, send func([]byte) error) {
+// handleFsRead validates the frame on the dispatch loop and runs the read on a
+// bounded worker (issue #83, fs_workers.go): a full set is NODE_BUSY at once.
+func (m *Manager) handleFsRead(workers *fsWorkers, env protocol.Envelope, data []byte, send func([]byte) error) {
 	if protocol.ValidateControl(data) != nil {
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
@@ -89,6 +94,12 @@ func (m *Manager) handleFsRead(env protocol.Envelope, data []byte, send func([]b
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
 	}
+	workers.run(m.fs.readSlots, "read", env.RequestID, send, func(send func([]byte) error) {
+		m.runFsRead(env, p, send)
+	})
+}
+
+func (m *Manager) runFsRead(env protocol.Envelope, p fsReadPayload, send func([]byte) error) {
 	root, code, ok := m.openSessionWorkspace(p.SessionID)
 	if !ok {
 		m.replyError(send, env.RequestID, orSessionNotFound(code))
@@ -283,7 +294,10 @@ func (m *Manager) handleFsStore(env protocol.Envelope, data []byte, send func([]
 // handler answers every denial with an error frame, because the browser's body
 // on this path is the file itself and there is nowhere for a denial to live
 // except the status line.
-func (m *Manager) handleFsDownload(env protocol.Envelope, data []byte, send func([]byte) error) {
+//
+// Like handleFsRead, only the frame validation runs on the dispatch loop; the
+// open, read and base64 encoding run on a bounded worker (issue #83).
+func (m *Manager) handleFsDownload(workers *fsWorkers, env protocol.Envelope, data []byte, send func([]byte) error) {
 	if protocol.ValidateControl(data) != nil {
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
@@ -293,6 +307,12 @@ func (m *Manager) handleFsDownload(env protocol.Envelope, data []byte, send func
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
 	}
+	workers.run(m.fs.downloadSlots, "download", env.RequestID, send, func(send func([]byte) error) {
+		m.runFsDownload(env, p, send)
+	})
+}
+
+func (m *Manager) runFsDownload(env protocol.Envelope, p fsDownloadPayload, send func([]byte) error) {
 	root, code, ok := m.openSessionWorkspace(p.SessionID)
 	if !ok {
 		m.replyError(send, env.RequestID, orSessionNotFound(code))

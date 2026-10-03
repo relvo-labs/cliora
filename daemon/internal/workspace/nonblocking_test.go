@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -99,5 +100,102 @@ func TestOpenFileNonBlockingConfinement(t *testing.T) {
 	}
 	if _, err := root.OpenFileNonBlocking("missing.png"); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing: got %v", err)
+	}
+}
+
+// openWithin fails the test if open has not returned within 200 ms, releasing a
+// blocked open with a writer so the goroutine does not outlive the test.
+func openWithin(t *testing.T, fifo string, open func() error) error {
+	t.Helper()
+	done := make(chan error, 1)
+	go func() { done <- open() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(200 * time.Millisecond):
+		for i := 0; i < 100; i++ {
+			if w, _ := os.OpenFile(fifo, os.O_WRONLY|syscall.O_NONBLOCK, 0); w != nil {
+				_ = w.Close()
+			}
+			select {
+			case <-done:
+				t.Fatal("open blocked on a FIFO (released by a writer)")
+			case <-time.After(20 * time.Millisecond):
+			}
+		}
+		t.Fatal("open blocked on a FIFO and could not be released")
+		return nil
+	}
+}
+
+// filesystem.list names a directory; a FIFO in its place must be refused as not
+// a directory without waiting for a writer (issue #83).
+func TestOpenDirOnFifoReturnsNotDir(t *testing.T) {
+	allowed, ws, _ := buildWorkspace(t)
+	fifo := filepath.Join(ws, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+	root, err := New([]string{allowed}).OpenWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	err = openWithin(t, fifo, func() error {
+		f, err := root.OpenDir("pipe")
+		if f != nil {
+			_ = f.Close()
+		}
+		return err
+	})
+	if !errors.Is(err, ErrNotDir) {
+		t.Fatalf("OpenDir on a FIFO: got %v, want ErrNotDir", err)
+	}
+	if f, err := root.OpenDir("sub"); err != nil {
+		t.Fatalf("a real directory: %v", err)
+	} else {
+		_ = f.Close()
+	}
+}
+
+// Search and upload pruning walk Root.FS(). WalkDir only reads entries the
+// kernel reported as directories, but one swapped for a FIFO between getdents and
+// the open would otherwise park the walk in open(2).
+func TestFSOpenOnFifoDoesNotBlock(t *testing.T) {
+	allowed, ws, _ := buildWorkspace(t)
+	fifo := filepath.Join(ws, "pipe")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("mkfifo unavailable: %v", err)
+	}
+	root, err := New([]string{allowed}).OpenWorkspace(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	fsys := root.FS()
+	_ = openWithin(t, fifo, func() error {
+		_, err := fs.ReadDir(fsys, "pipe")
+		return err
+	})
+	_ = openWithin(t, fifo, func() error {
+		f, err := fsys.Open("pipe")
+		if f != nil {
+			_ = f.Close()
+		}
+		return err
+	})
+	// Regular behaviour is unchanged: sorted entries, readable files, confinement.
+	entries, err := fs.ReadDir(fsys, ".")
+	if err != nil || len(entries) != 3 || entries[0].Name() != "main.go" || entries[1].Name() != "pipe" || entries[2].Name() != "sub" {
+		t.Fatalf("ReadDir: %v %v", entries, err)
+	}
+	if b, err := fs.ReadFile(fsys, "main.go"); err != nil || string(b) != "package main\n" {
+		t.Fatalf("ReadFile: %q %v", b, err)
+	}
+	if _, err := fsys.Open("../secrets/token"); err == nil {
+		t.Fatal("FS escaped the root")
+	}
+	if info, err := fs.Stat(fsys, "sub"); err != nil || !info.IsDir() {
+		t.Fatalf("Stat: %v %v", info, err)
 	}
 }

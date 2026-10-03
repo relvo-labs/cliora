@@ -48,7 +48,36 @@ func (r *Root) Canonical() string { return r.canonical }
 // FS returns a read-only fs.FS confined to the workspace root, suitable for
 // fs.WalkDir during filename search. Like the other handle operations it does
 // not follow symlinks out of the root.
-func (r *Root) FS() fs.FS { return r.root.FS() }
+//
+// It is not os.Root.FS(): that opens every name with a blocking O_RDONLY, so a
+// directory swapped for a FIFO between getdents and the open (search and upload
+// pruning walk a tree a terminal user can change) would park the walk in open(2)
+// until something wrote to the FIFO. This one opens with NonBlockingReadFlags,
+// like every other open on Root (issue #83).
+func (r *Root) FS() fs.FS { return nonBlockingFS{r.root} }
+
+// nonBlockingFS is os.Root's fs.FS with the open made non-blocking. It
+// implements Open and Stat only; fs.ReadDir and fs.ReadFile fall back to Open,
+// and fs.ReadDir sorts the entries as os.Root's ReadDir does.
+type nonBlockingFS struct{ root *os.Root }
+
+func (f nonBlockingFS) Open(name string) (fs.File, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
+	}
+	file, err := f.root.OpenFile(name, NonBlockingReadFlags, 0)
+	if err != nil {
+		return nil, err
+	}
+	return file, nil
+}
+
+func (f nonBlockingFS) Stat(name string) (fs.FileInfo, error) {
+	if !fs.ValidPath(name) {
+		return nil, &fs.PathError{Op: "stat", Path: name, Err: fs.ErrInvalid}
+	}
+	return f.root.Stat(name)
+}
 
 // Close releases the underlying directory handle.
 func (r *Root) Close() error { return r.root.Close() }
@@ -75,13 +104,16 @@ func relClean(rel string) (string, error) {
 }
 
 // OpenDir opens a directory relative to the workspace root for listing. The
-// returned file is a confined handle; its entries are read via ReadDir.
+// returned file is a confined handle; its entries are read via ReadDir. The open
+// is non-blocking, so a FIFO named as the directory is answered ErrNotDir by the
+// fd check below instead of waiting for a writer (issue #83); O_NONBLOCK has no
+// effect on reading a directory.
 func (r *Root) OpenDir(rel string) (*os.File, error) {
 	clean, err := relClean(rel)
 	if err != nil {
 		return nil, err
 	}
-	f, err := r.root.Open(clean)
+	f, err := r.root.OpenFile(clean, NonBlockingReadFlags, 0)
 	if err != nil {
 		return nil, mapPathErr(err)
 	}
@@ -106,16 +138,14 @@ func (r *Root) OpenDir(rel string) (*os.File, error) {
 // sensitive in-root file (e.g. notes.txt -> .env) and bypass a name-only check,
 // callers must also classify RealRel(handle) — the fd's resolved name — before
 // serving content (ADR 0014).
+//
+// It is OpenFileNonBlocking. It used to be a blocking os.Root.Open, which made a
+// FIFO in the workspace hold the caller in open(2) until a writer appeared —
+// on the text preview and download paths, the daemon's whole dispatch loop
+// (issue #83, plan/31/09 §4 E1). No caller wants that, so the blocking form no
+// longer exists on Root.
 func (r *Root) OpenFile(rel string) (*os.File, error) {
-	clean, err := relClean(rel)
-	if err != nil {
-		return nil, err
-	}
-	f, err := r.root.Open(clean)
-	if err != nil {
-		return nil, mapPathErr(err)
-	}
-	return f, nil
+	return r.OpenFileNonBlocking(rel)
 }
 
 // NonBlockingReadFlags are the open flags of OpenFileNonBlocking. Exported so the
@@ -123,16 +153,17 @@ func (r *Root) OpenFile(rel string) (*os.File, error) {
 // same os.Root API (ADR 0029 §3 step 4).
 const NonBlockingReadFlags = os.O_RDONLY | syscall.O_NONBLOCK | syscall.O_NOCTTY
 
-// OpenFileNonBlocking is OpenFile with O_NONBLOCK|O_NOCTTY, for the binary
-// preview path (ADR 0029 §3 step 4). Confinement is identical to OpenFile: ".."
-// and escaping symlinks are refused, and an in-root symlink is followed (so the
-// caller must still classify RealRel). O_NONBLOCK makes a FIFO that was swapped
-// in after the caller's pre-open StatIn return at once instead of waiting for a
-// writer; it has no effect on reads from a regular file. The caller must fstat
-// the handle and refuse anything that is not a regular file before reading.
+// OpenFileNonBlocking opens rel read-only with O_NONBLOCK|O_NOCTTY. It is the
+// open of the binary preview (ADR 0029 §3 step 4), the text preview and the
+// download (issue #83). ".." and escaping symlinks are refused, and an in-root
+// symlink is followed (so the caller must still classify RealRel). O_NONBLOCK
+// makes a FIFO — including one swapped in after the caller's pre-open StatIn —
+// return at once instead of waiting for a writer; it has no effect on reads
+// from a regular file. The caller must fstat the handle and refuse anything that
+// is not a regular file before reading.
 //
-// OpenFile itself is deliberately unchanged: the text preview still uses it, and
-// its blocking FIFO open is a separate, pre-existing defect (plan/31/09 §4 E1).
+// The text preview's blocking FIFO open (plan/31/09 §4 E1) was fixed by moving
+// it here; OpenFile is now this function.
 func (r *Root) OpenFileNonBlocking(rel string) (*os.File, error) {
 	clean, err := relClean(rel)
 	if err != nil {

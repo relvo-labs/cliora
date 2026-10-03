@@ -6,6 +6,17 @@
   this ADR was altered by the approval. `BP-08`'s security review is still required before
   release: a `FAIL` verdict reopens this ADR, and `BP-11` may not start without a non-`FAIL`
   verdict (plan/31/01 §1). Implementation is tracked in `plan/31/09-implementation-status.md`.
+- Amended: 2026-10-03 (issue #83). The text-preview FIFO stall described in Context and in
+  §3 step 4 ("`Root.OpenFile` is left unchanged for `Read`") is fixed. `files.Read` and
+  `files.Download` now use this section's open sequence: a pre-open `StatIn`, then
+  `OpenFileNonBlocking`, with the fd `fstat` regular-file check and the `RealRel` check
+  unchanged. They add no `SameFile` step, because neither has a `changed` wire reason, and
+  the fd checks are binding anyway. `Root.OpenFile` and `Root.OpenDir` are now non-blocking
+  too, as is `Root.FS()` (used by search and upload pruning). `filesystem.read` and
+  `filesystem.download` run off the dispatch loop on bounded workers, following §15: 4 read
+  slots and 2 download slots per daemon. When all slots are busy the daemon answers
+  `NODE_BUSY` at once, and the workers end with their connection. No wire, code or policy
+  change; `plan/31/09` §4 E1.
 - Previously: **proposed** (design only, 2026-09-27).
 - Revised a third time: 2026-09-27, after the review of `653ff61` (BLOCKED). Changes:
   expanded-byte budget for compressed PNG metadata and length budgets for other formats'

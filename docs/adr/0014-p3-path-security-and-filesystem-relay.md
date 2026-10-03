@@ -37,3 +37,19 @@ Central accepts a **workspace-relative path** for list/read (absolute paths, `..
 - The guard exposes `OpenRoot`/handle helpers; callers must use them, not re-open resolved paths. A lint/review rule: no `os.Open`/`os.Stat` on a guard-returned path string in `internal/files`.
 - Outward existence-probing is closed; operators lose path detail in audit (accepted trade-off; can be revisited via a policy change in P4, still without content).
 - If `os.Root` proves insufficient for a case, fall back to `openat`/`O_NOFOLLOW` segment-walking — never relax containment.
+
+### Amendment (2026-10-03, issue #83): the handle's opens do not block
+
+The read and list paths above go through `Root.Open`, and that open was a plain blocking
+`O_RDONLY`. On a FIFO it waited for a writer **before** the fd `fstat` below it could
+refuse the FIFO. Both handlers ran on the daemon's dispatch loop, so one FIFO in a
+workspace could stall terminal input and control frames for every session on the node.
+
+Every open on `workspace.Root` (`OpenFile`, `OpenDir`, and the `fs.FS` used by search) is
+now `O_RDONLY|O_NONBLOCK|O_NOCTTY`. Read and download also stat the path through the root
+before opening it, so a special file is refused without being opened. The binding checks
+are unchanged: the regular-file (or directory) check on the **open fd**, the read from that
+same fd, and the `RealRel` sensitive check. `O_NONBLOCK` has no effect on reads from regular
+files or directories. Confinement is unchanged too: escaping symlinks are refused, and
+in-root symlinks are followed and then re-checked through `RealRel`. Text preview and
+download now run on bounded workers off the dispatch loop (ADR 0029 §15 pattern).
