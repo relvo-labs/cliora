@@ -1,4 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
+
+const localChromium = process.env.E2E_CHROMIUM_EXECUTABLE;
+
 export default defineConfig({
   use: { baseURL: "http://127.0.0.1:5173" },
   testDir: "./tests/e2e",
@@ -8,7 +11,15 @@ export default defineConfig({
     reuseExistingServer: true,
   },
   projects: [
-    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    {
+      name: "chromium",
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(localChromium
+          ? { launchOptions: { executablePath: localChromium } }
+          : {}),
+      },
+    },
     { name: "firefox", use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", use: { ...devices["Desktop Safari"] } },
     // EMULATION, NOT DEVICES (plan/29 MS-23).

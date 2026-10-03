@@ -13,10 +13,13 @@ import type { SessionDetail } from "../api/dto";
 // The composable owns a real xterm and a real WebSocket; neither belongs in a
 // component test. The mock keeps the shape the view depends on and records the
 // calls the tab logic is supposed to make.
-const { term, ticketProviders } = vi.hoisted(() => ({
+const { term, ticketProviders, displayOptions } = vi.hoisted(() => ({
   // The ticket provider each `useTerminalSession` call was handed, in call
   // order: the system shell's first, then the CLI's.
   ticketProviders: [] as Array<(sessionId: string) => Promise<string>>,
+  displayOptions: [] as Array<
+    { themeId?: string; fontSize?: number } | undefined
+  >,
   term: {
     mount: vi.fn(),
     connect: vi.fn(async () => {}),
@@ -42,8 +45,12 @@ const { term, ticketProviders } = vi.hoisted(() => ({
   },
 }));
 vi.mock("../composables/useTerminalSession", () => ({
-  useTerminalSession: (getTicket: (sessionId: string) => Promise<string>) => {
+  useTerminalSession: (
+    getTicket: (sessionId: string) => Promise<string>,
+    display?: { themeId?: string; fontSize?: number },
+  ) => {
     ticketProviders.push(getTicket);
+    displayOptions.push(display);
     return term;
   },
 }));
@@ -107,6 +114,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import SessionHeader from "../components/session/SessionHeader.vue";
 import * as auth from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
+import { usePreferencesStore } from "../stores/preferences";
 import { useSessionsStore } from "../stores/sessions";
 import SessionWorkspaceView from "./SessionWorkspaceView.vue";
 
@@ -214,6 +222,7 @@ beforeEach(() => {
   shellApi.terminateSession.mockResolvedValue({});
   shellApi.terminateSessionOnUnload.mockReset();
   ticketProviders.length = 0;
+  displayOptions.length = 0;
   Object.values(term).forEach((value) => {
     if (typeof value === "function")
       (value as ReturnType<typeof vi.fn>).mockClear();
@@ -222,6 +231,14 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("SessionWorkspaceView — centre tabs", () => {
+  it("starts both terminals with the rendered palette", async () => {
+    usePreferencesStore().renderedTheme = "pocket";
+    await render(vi.fn(async () => session()));
+    expect(displayOptions).toHaveLength(2);
+    expect(displayOptions[0]?.themeId).toBe("pocket"); // shell
+    expect(displayOptions[1]?.themeId).toBe("pocket"); // CLI
+  });
+
   it("starts on CLI with no preview tab", async () => {
     const wrapper = await render(vi.fn(async () => session()));
     const tabs = wrapper.findAll('[role="tab"]');
