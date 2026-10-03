@@ -18,7 +18,9 @@ Two shapes are provided deliberately:
 
 Every refusal raises the **same** `FORBIDDEN` with the same message, so a caller
 cannot use the response to learn whether a resource exists or who owns it. Where
-absence is legitimate, check `session.view` first and only then answer 404.
+absence is legitimate, check `session.view` first and only then answer 404 —
+`authorize_session_lookup` is that check, and every session-id route calls it
+before resolving the id.
 """
 
 from __future__ import annotations
@@ -181,6 +183,25 @@ def may_open_shell(user: User, session: TerminalSession) -> bool:
 
 
 # --- Raisers (HTTP boundary) ---
+
+
+def authorize_session_lookup(user: User) -> None:
+    """Settle `session.view` *before* a session id is resolved (issue #93, ADR 0016).
+
+    Every route that takes a session id calls this ahead of the lookup, so the
+    `SESSION_NOT_FOUND` 404 is only ever reachable by a caller who may already see
+    the fleet's sessions. Without it, a custom role holding a route's action (say
+    `file.browse` or `session.terminate`) but not `session.view` got 404 for a
+    random id and 403 for a real one — an existence oracle. Refusing first, with
+    the same `FORBIDDEN` every other refusal uses, makes the answer independent of
+    whether the id exists.
+
+    `session.view` rather than the route's own action: the route's action is
+    already checked by `require_action()` before this runs, and view access is the
+    one permission whose holders legitimately learn that a session exists.
+    """
+    if not has_action(user, SESSION_VIEW):
+        raise _forbidden(SESSION_VIEW, user, REASON_ACTION)
 
 
 def authorize_session_view(user: User, session: TerminalSession) -> None:

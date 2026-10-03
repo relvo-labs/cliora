@@ -96,6 +96,7 @@ async def get_session_detail(
     user: User = Depends(require_action(SESSION_VIEW)),
     session: AsyncSession = Depends(get_session),
 ) -> SessionDetail:
+    authz.authorize_session_lookup(user)
     result = await SessionService(session).get(session_id)
     authz.authorize_session_view(user, result)
     return SessionDetail.from_model(result, viewer=user)
@@ -109,8 +110,10 @@ async def terminate_session(
     registry: NodeConnectionRegistry = Depends(get_registry),
 ) -> SessionDetail:
     service = SessionService(session, registry=registry)
-    # Load first, then check ownership: `session.terminate` alone is not enough —
-    # only the owner or an Admin may end a session (ADR 0016).
+    # View access before the lookup, so a 404 cannot be told apart from a 403
+    # (issue #93). Then load, then check ownership: `session.terminate` alone is
+    # not enough — only the owner or an Admin may end a session (ADR 0016).
+    authz.authorize_session_lookup(user)
     existing = await service.get(session_id)
     authz.authorize_session_terminate(user, existing)
     result = await service.terminate(actor_id=user.id, session_id=session_id)
@@ -136,10 +139,13 @@ async def open_shell(
     created without one — that structural choice, not a validation rule, is what
     keeps shells out of the New Session dialog and the session list.
 
-    Two layers, in this order: `terminal.shell` (action) then ownership of the
-    parent (scope). An Admin holds the action but not other people's sessions.
+    Three checks, in this order: `terminal.shell` (action), `session.view`
+    (before the parent is looked up, so absence cannot be probed — issue #93),
+    then ownership of the parent (scope). An Admin holds the action but not
+    other people's sessions.
     """
     service = SessionService(session, registry=registry)
+    authz.authorize_session_lookup(user)
     parent = await service.get(session_id)
     if not authz.may_open_shell(user, parent):
         raise authz.forbidden_shell(user, parent)
@@ -162,6 +168,7 @@ async def delete_session(
     session: AsyncSession = Depends(get_session),
 ) -> Response:
     service = SessionService(session)
+    authz.authorize_session_lookup(user)
     existing = await service.get(session_id)
     authz.authorize_session_terminate(user, existing)
     await service.delete(session_id=session_id)
@@ -177,6 +184,7 @@ async def attach_session(
 ) -> AttachTicketResponse:
     """Mint a single-use ws-ticket bound to (user, session) for the terminal WS
     (P2-09). Verifies the session exists first (404 otherwise)."""
+    authz.authorize_session_lookup(user)
     existing = await SessionService(session).get(session_id)
     authz.authorize_session_view(user, existing)
     ticket = get_ws_ticket_service().issue(user.id, attach_resource(session_id))

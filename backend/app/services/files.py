@@ -331,11 +331,14 @@ class FileRelayService:
 
         Every filesystem operation goes through here, so the resource-scope check
         cannot be forgotten by a new caller: `viewer` is required (ADR 0016).
-        Order matters — existence and view access are settled before the online
-        check, so a user without access learns nothing about the node's state.
+        Order matters — `session.view` is settled before the lookup, so a user
+        without it cannot tell a missing session from someone else's (issue #93);
+        existence and file access are settled before the online check, so a user
+        without access learns nothing about the node's state.
         The session's workspace already sits inside an enabled root; the daemon
         re-canonicalizes on every operation regardless.
         """
+        authz.authorize_session_lookup(viewer)
         s = await self._repo.get(session_id)
         if s is None:
             raise ApiError("SESSION_NOT_FOUND", "Session not found", status.HTTP_404_NOT_FOUND)
@@ -951,6 +954,7 @@ class FileRelayService:
         """Same resolution as `_resolve`, gated on `file.upload` instead of
         `file.browse`. Kept separate rather than parameterised so that neither
         check can be reached by passing the wrong argument."""
+        authz.authorize_session_lookup(viewer)
         s = await self._repo.get(session_id)
         if s is None:
             raise ApiError("SESSION_NOT_FOUND", "Session not found", status.HTTP_404_NOT_FOUND)
