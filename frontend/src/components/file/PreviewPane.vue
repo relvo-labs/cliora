@@ -116,6 +116,9 @@ function route(): void {
 onMounted(() => {
   if (host.value) {
     preview.mount(host.value);
+    // The editor is created with its default theme. Apply the current palette
+    // after creation too, since the immediate watcher ran before this mount.
+    setPreviewTheme(preferences.renderedTheme);
   }
   if (props.relPath) {
     route();
@@ -210,7 +213,7 @@ const binaryMeta = computed(() => {
 // theme switch. Theming an editor is also not granting it a capability:
 // `readOnly` and the contribution list are untouched (ADR 0015).
 watch(
-  () => preferences.theme,
+  () => preferences.renderedTheme,
   (id) => setPreviewTheme(id),
   { immediate: true },
 );

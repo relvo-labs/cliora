@@ -375,7 +375,9 @@ watch(
 //
 // A second, independent instance of the same composable: the shell is an
 // ordinary session over the same relay, so nothing about the transport differs.
-const shellTerminal = useTerminalSession(shellTicket);
+const shellTerminal = useTerminalSession(shellTicket, {
+  themeId: preferences.renderedTheme,
+});
 const shellSession = ref<SessionDetail | null>(null);
 const shellHost = ref<HTMLElement | null>(null);
 const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
@@ -543,7 +545,7 @@ const resource = useAsyncResource<SessionDetail>(async () => {
 // the composable, so it stays testable without Pinia — the same reason the
 // ticket provider is injected.
 const terminal = useTerminalSession(cliTicket, {
-  themeId: preferences.theme,
+  themeId: preferences.renderedTheme,
   fontSize: preferences.terminalFontSize,
 });
 
