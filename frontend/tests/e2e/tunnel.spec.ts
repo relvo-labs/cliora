@@ -36,7 +36,12 @@ async function enableIntegration(page: Page): Promise<void> {
 
   const enable = page.getByRole("button", { name: "啟用埠轉發" });
   const disable = page.getByRole("button", { name: "停用埠轉發" });
-  if (await disable.isVisible().catch(() => false)) {
+  // The status loads after the heading. Wait for whichever control it settles
+  // on; `isVisible()` does not wait, and read too early it sent an
+  // already-enabled integration (an earlier run, the other project) down the
+  // enable path.
+  await expect(enable.or(disable)).toBeVisible();
+  if (await disable.isVisible()) {
     return; // already on from an earlier run against the same database
   }
   // The four statements, and the checkbox that has to be ticked before the button works.
@@ -160,6 +165,12 @@ test.describe("port forwarding", () => {
     // type the URL — is asserted by `AppLayout.test.ts` and by the API's authorization tests,
     // which is the right place for it: hiding the entry is a courtesy, the 403 is the control.
     await signIn(page);
-    await expect(page.getByRole("navigation")).toContainText("Integrations");
+    // By accessible name, not visible text: below 1440px the rail collapses to
+    // icons (plan/29), and on a phone it sits behind the menu button.
+    const toggle = page.getByRole("button", { name: "開啟主導覽" });
+    if (await toggle.isVisible()) await toggle.click();
+    await expect(
+      page.getByRole("link", { name: "Integrations" }).first(),
+    ).toBeVisible();
   });
 });

@@ -1,5 +1,7 @@
 import { expect, Page, test } from "@playwright/test";
 
+import { terminateSessions, trackSessions } from "./session-cleanup";
+
 // Full session → terminal flow (login → sessions → New Session → workspace →
 // live terminal → reconnect → terminate). Like nodes.spec.ts this needs the
 // whole stack — Central + PostgreSQL (migrated) + a seeded admin — and is
@@ -30,12 +32,24 @@ function newSessionDialog(page: Page) {
     .filter({ has: page.getByRole("heading", { name: "New session" }) });
 }
 
+// The page's create action. On an empty list the empty state offers the same
+// button a second time, so take the header's (first in document order).
+function createSessionButton(page: Page) {
+  return page.getByRole("button", { name: "建立 Session" }).first();
+}
+
+// The status bar reports session state, connection and control as words
+// (StatusBar.vue); the old `data-status` / `data-role` hooks are gone.
+const statusBar = (page: Page) => page.locator(".status-bar");
+const connected = (page: Page) =>
+  statusBar(page).getByText("已連線", { exact: true });
+
 // Opens the New Session dialog and returns the online nodes it offers. The
 // interactive tests use this to skip themselves when the stack has no node.
 async function openDialogAndCountNodes(page: Page): Promise<number> {
   await page.goto("/sessions");
   await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
-  await page.getByRole("button", { name: "New session" }).click();
+  await createSessionButton(page).click();
   const dialog = newSessionDialog(page);
   await expect(dialog).toBeVisible();
   // The dialog fetches nodes asynchronously on open; wait for the first real
@@ -70,11 +84,59 @@ async function terminate(page: Page): Promise<void> {
   ).toBeVisible({ timeout: 15_000 });
 }
 
+// The Sessions list reached *inside* the app (the primary navigation), not by
+// `page.goto`: a goto starts a new document, and the in-place switch below
+// depends on staying in one.
+async function sessionsInApp(page: Page): Promise<void> {
+  const menu = page.getByRole("button", { name: "開啟主導覽" });
+  if (await menu.isVisible()) await menu.click();
+  await page.getByRole("link", { name: "Sessions" }).first().click();
+  await expect(page).toHaveURL(/\/sessions$/);
+}
+
+// From the Sessions list: create a session on the first online node and land
+// on its workspace. Returns its id, or "" when the stack has no online node.
+async function startSessionFromList(page: Page, name: string): Promise<string> {
+  await createSessionButton(page).click();
+  const dialog = newSessionDialog(page);
+  await expect(dialog).toBeVisible();
+  const nodeSelect = dialog.locator("select").first();
+  const hasNode = await nodeSelect
+    .locator("option:not([disabled])")
+    .first()
+    .waitFor({ state: "attached", timeout: 8_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (!hasNode) return "";
+  await nodeSelect.selectOption({ index: 1 });
+  const runtime = dialog.locator("select").nth(1);
+  await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
+  await runtime.selectOption({ index: 1 });
+  await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
+  await dialog.locator('input[placeholder="e.g. refactor-api"]').fill(name);
+  await dialog.getByRole("button", { name: "Start" }).click();
+  await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
+  return page.url().split("/").pop() ?? "";
+}
+
 test.describe("session & terminal", () => {
   test.skip(
     !fullStack || !adminUser,
     "requires E2E_FULL_STACK + seeded admin credentials",
   );
+
+  // Unconditional cleanup: see session-cleanup.ts for why a leak here breaks
+  // unrelated tests.
+  let opened: string[] = [];
+  test.beforeEach(({ page }) => {
+    opened = trackSessions(page);
+  });
+  test.afterEach(async ({ request }) => {
+    await terminateSessions(request, opened, {
+      username: adminUser,
+      password: adminPass,
+    });
+  });
 
   test("admin sees the sessions list and the create action", async ({
     page,
@@ -82,9 +144,7 @@ test.describe("session & terminal", () => {
     await signIn(page);
     await page.goto("/sessions");
     await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "New session" }),
-    ).toBeVisible();
+    await expect(createSessionButton(page)).toBeVisible();
   });
 
   test("create → live terminal → reconnect → terminate", async ({ page }) => {
@@ -111,7 +171,7 @@ test.describe("session & terminal", () => {
     await expect(
       page.getByRole("heading", { name: "e2e-terminal" }),
     ).toBeVisible();
-    await expect(page.locator('[data-role="writer"]')).toBeVisible();
+    await expect(statusBar(page).getByText("你有控制權")).toBeVisible();
 
     const terminalHost = page.locator(
       '[aria-label="Interactive CLI terminal"]',
@@ -125,7 +185,7 @@ test.describe("session & terminal", () => {
         timeout: 15_000,
       },
     );
-    await expect(page.locator('[data-status="connected"]')).toBeVisible();
+    await expect(connected(page)).toBeVisible();
 
     // Browser refresh must reattach without killing the session (ADR 0012).
     await page.reload();
@@ -136,16 +196,12 @@ test.describe("session & terminal", () => {
         timeout: 15_000,
       },
     );
-    await expect(page.locator('[data-status="connected"]')).toBeVisible();
+    await expect(connected(page)).toBeVisible();
 
     // Terminate: graceful → force → state update (running leaves for good).
-    await page.getByRole("button", { name: "Terminate" }).click();
-    const confirm = page.getByRole("dialog", { name: "Terminate session" });
-    await expect(confirm).toBeVisible();
-    await confirm.getByRole("button", { name: "Terminate" }).click();
-    await expect(
-      page.locator('[data-status="terminated"], [data-status="exited"]'),
-    ).toBeVisible({ timeout: 15_000 });
+    // The helper confirms through the dialog and waits for the status bar to
+    // report the session ended.
+    await terminate(page);
   });
 
   // WT-01 + WT-03. The load-bearing assertion is not that the tabs render — it
@@ -225,7 +281,7 @@ test.describe("session & terminal", () => {
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
     );
-    await expect(page.locator('[data-status="connected"]')).toBeVisible();
+    await expect(connected(page)).toBeVisible();
 
     // Arrow keys move between tabs without leaving the bar.
     await tabs.first().press("ArrowRight");
@@ -366,6 +422,10 @@ test.describe("session & terminal", () => {
   test("layout: the CLI terminal fills the centre pane and the page does not scroll", async ({
     page,
   }) => {
+    test.skip(
+      (page.viewportSize()?.width ?? 1280) < 768,
+      "desktop geometry (rail width, 860px centre, file tree); the phone layout is measured in mobile.spec.ts",
+    );
     await signIn(page);
     const nodeCount = await openDialogAndCountNodes(page);
     test.skip(nodeCount === 0, "no online node available in this stack");
@@ -637,7 +697,7 @@ test.describe("session & terminal", () => {
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
     );
-    await expect(page.locator('[data-status="connected"]')).toBeVisible();
+    await expect(connected(page)).toBeVisible();
 
     await terminate(page);
   });
@@ -790,5 +850,107 @@ test.describe("session & terminal", () => {
     await expect(page.locator("#panel-terminal .terminal-hint")).toContainText(
       "Shift",
     );
+  });
+
+  // #82 / #76. When `/sessions/:id` changes in place the workspace component is
+  // reused, not remounted, so nothing tears the old terminal down for free. The
+  // failure this guards is a terminal that keeps showing — or keeps typing
+  // into — the session the user just left. The Fake CLI echoes each line, so a
+  // marker typed in one session is evidence of which PTY a keystroke reached.
+  test("switching sessions in place keeps each terminal on its own session", async ({
+    page,
+  }) => {
+    await signIn(page);
+    const cli = page.locator("#panel-cli .xterm-rows");
+
+    // Ready means attached as the writer, read from the status bar. Not the Fake
+    // CLI's banner: a session is created at 24x80 and shrunk to the panel on
+    // attach, and at phone width that reflow cuts the banner's first line off
+    // the screen — a separate defect this case is not about. The markers below
+    // are what prove a live, correctly routed PTY.
+    const ready = async () => {
+      await expect(connected(page)).toBeVisible({ timeout: 15_000 });
+      await expect(statusBar(page).getByText("你有控制權")).toBeVisible();
+    };
+
+    await sessionsInApp(page);
+    const a = await startSessionFromList(page, "e2e-switch-a");
+    test.skip(!a, "no online node available in this stack");
+    await ready();
+    await cli.click();
+    await page.keyboard.type("MARK-A\n");
+    await expect(cli).toContainText("MARK-A", { timeout: 15_000 });
+
+    await sessionsInApp(page);
+    const b = await startSessionFromList(page, "e2e-switch-b");
+    await ready();
+    await expect(cli).not.toContainText("MARK-A");
+    await cli.click();
+    await page.keyboard.type("MARK-B\n");
+    await expect(cli).toContainText("MARK-B", { timeout: 15_000 });
+
+    // History is now A → /sessions → B within one document. Two entries back
+    // (the back button's history menu) goes from B straight to A without the
+    // list in between, so the router reuses the mounted workspace. The flag
+    // proves it: a reload would have dropped it.
+    await page.evaluate(() => {
+      (window as unknown as { __sameDocument: boolean }).__sameDocument = true;
+    });
+    await page.evaluate(() => history.go(-2));
+    await expect(page).toHaveURL(new RegExp(`/sessions/${a}$`));
+    await expect(
+      page.getByRole("heading", { name: "e2e-switch-a" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __sameDocument?: boolean }).__sameDocument,
+      ),
+      "the switch reloaded the page, so it did not exercise the in-place path",
+    ).toBe(true);
+    await expect(cli).toContainText("MARK-A", { timeout: 15_000 });
+    await expect(cli).not.toContainText("MARK-B");
+    await ready();
+
+    // Input now reaches A, and only A.
+    await cli.click();
+    await page.keyboard.type("MARK-A2\n");
+    await expect(cli).toContainText("MARK-A2", { timeout: 15_000 });
+
+    await page.evaluate(() => history.go(2));
+    await expect(page).toHaveURL(new RegExp(`/sessions/${b}$`));
+    await expect(
+      page.getByRole("heading", { name: "e2e-switch-b" }),
+    ).toBeVisible();
+    await expect(cli).toContainText("MARK-B", { timeout: 15_000 });
+    await expect(cli).not.toContainText("MARK-A");
+    // Both sessions are ended by the afterEach cleanup, pass or fail.
+  });
+
+  // #82 / #76. Signing out is a browser-wide fact: the other tab must not keep
+  // showing (or keep using) a protected page for a user who is gone.
+  test("signing out in another tab signs this tab out too", async ({
+    page,
+  }) => {
+    await signIn(page);
+    await page.goto("/sessions");
+    await expect(page.getByRole("heading", { name: "Sessions" })).toBeVisible();
+
+    const other = await page.context().newPage();
+    await other.goto("/dashboard");
+    await other.getByRole("button", { name: /Administrator/ }).click();
+    await other.getByRole("menuitem", { name: "登出" }).click();
+    await expect(other).toHaveURL(/\/login/);
+
+    // This tab leaves the protected page for sign-in, keeping the way back.
+    await expect(page).toHaveURL(/\/login\?redirect=(?:%2F|\/)sessions/);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sessions" })).toHaveCount(
+      0,
+    );
+    expect(
+      await page.evaluate(() => localStorage.getItem("cliora.access_token")),
+    ).toBeNull();
+    await other.close();
   });
 });

@@ -136,7 +136,9 @@ for (const size of [
         await openWorkspace(page, narrow);
         await openFile(page, "ok.pdf", narrow);
         const input = page.getByRole("textbox", { name: "頁碼" });
-        await expect(input).toBeVisible();
+        // The field appears once PDF.js has opened the document; the same
+        // 15 s budget every other PDF.js wait in this file uses.
+        await expect(input).toBeVisible({ timeout: 15_000 });
         const fontSize = await input.evaluate((el) =>
           Number.parseFloat(getComputedStyle(el).fontSize),
         );
@@ -175,8 +177,10 @@ for (const size of [
 
       const before = (await visibleCanvas(page).boundingBox())!.width;
       await page.getByRole("button", { name: "放大", exact: true }).click();
+      // The canvas is replaced while the zoomed page renders, so for a moment
+      // there is no visible box; that reads as "not wider yet", not a throw.
       await expect
-        .poll(async () => (await visibleCanvas(page).boundingBox())!.width)
+        .poll(async () => (await visibleCanvas(page).boundingBox())?.width ?? 0)
         .toBeGreaterThan(before);
       expect(await page.locator("canvas").count()).toBeLessThanOrEqual(3);
 

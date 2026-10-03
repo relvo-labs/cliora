@@ -139,7 +139,11 @@ label {
   font-size: 13px;
   color: var(--text-primary);
 }
+/* `--density-control` is the touch floor below 768px (tokens.css, plan/29
+   MS-01), so these reach 44px on a phone and are unchanged on desktop, where
+   their padding already makes them taller than the token (#98). */
 input {
+  min-height: var(--density-control);
   padding: 10px 12px;
   border: 1px solid var(--border-control);
   border-radius: var(--radius-control);
@@ -151,6 +155,7 @@ input {
   font-size: 13px;
 }
 .primary {
+  min-height: var(--density-control);
   margin-top: 4px;
   padding: 11px;
   border: 0;
