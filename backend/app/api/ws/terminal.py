@@ -75,6 +75,14 @@ async def terminal_gateway(
         await websocket.close(code=1008)
         return
 
+    # `session.view` before the id is resolved, and with the same close as a
+    # missing session, so the handshake cannot be used to probe which ids exist
+    # (issue #93). Any authenticated user can mint a `session:` ticket, so this is
+    # the check that matters, not the ticket.
+    if not authz.may_look_up_session(user):
+        await websocket.close(code=1008)
+        return
+
     svc = SessionService(session)
     try:
         sess = await svc.get(session_id)

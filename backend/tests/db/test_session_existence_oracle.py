@@ -30,9 +30,9 @@ from app.api.http.sessions import attach_resource
 from app.api.ws.terminal import terminal_gateway
 from app.db.models import Node, NodeWorkspaceRoot, Role, TerminalSession, User
 from app.main import app
+from app.repositories.sessions import SessionRepository
 from app.security.passwords import hash_password
 from app.services.rbac import ROLE_ACTIONS, SESSION_VIEW
-from app.services.ws_ticket import get_ws_ticket_service
 
 _PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
@@ -225,26 +225,150 @@ class _FakeWebSocket:
         self.sent.append(data)
 
 
+async def _shell_row(maker: async_sessionmaker, parent_id: uuid.UUID) -> uuid.UUID:
+    """A system terminal inside `parent_id`, owned by the parent's owner (ADR 0021)."""
+    async with maker() as session:
+        parent = await session.get(TerminalSession, parent_id)
+        assert parent is not None
+        ts = TerminalSession(
+            node_id=parent.node_id,
+            user_id=parent.user_id,
+            parent_session_id=parent.id,
+            name="shell",
+            runtime="shell",
+            workspace=parent.workspace,
+            status="running",
+            rows=40,
+            columns=120,
+        )
+        session.add(ts)
+        await session.commit()
+        return ts.id
+
+
+async def _mint(client: AsyncClient, headers: dict[str, str], sid: uuid.UUID) -> str:
+    resp = await client.post(
+        "/api/ws-ticket", json={"resource": attach_resource(sid)}, headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    return str(resp.json()["ticket"])
+
+
+class _LookupSpy:
+    """Records every session-id lookup, whichever service makes it.
+
+    Both `SessionService.get` and the file relay's resolution go through
+    `SessionRepository.get`, so one spy sees every route's lookup.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self.calls: list[uuid.UUID] = []
+        original = SessionRepository.get
+
+        async def spy(repo: SessionRepository, session_id: uuid.UUID) -> Any:
+            self.calls.append(session_id)
+            return await original(repo, session_id)
+
+        monkeypatch.setattr(SessionRepository, "get", spy)
+
+
 async def test_terminal_websocket_closes_identically_without_session_view(
     drop_custom_roles: None, api: tuple
 ) -> None:
-    """The handshake refuses an existing and a missing session the same way.
+    """The handshake refuses every target the same way: 1008, nothing sent.
 
-    A ticket can only be minted with `session.view`, so this models a role that
-    lost it between minting and connecting — the case the handshake re-checks.
+    Any authenticated user can mint a `session:` ticket through `POST /api/ws-ticket`
+    — issuance does not look at the session — so the tickets here are minted that
+    way, exactly as a probing client would. The owned shell is the case that leaked
+    on base: a shell was owner-only *instead of* needing `session.view`, so the
+    owner got past the view check and on to the node check (1011) or a live
+    subscription.
     """
     client, maker = api
     _, other_id = await _user(client, maker, None, role_name="Admin")
-    _, uid = await _user(client, maker, _ALL_BUT_VIEW)
+    headers, uid = await _user(client, maker, _ALL_BUT_VIEW)
+    own_cli = await _session_row(maker, uid)
     targets = {
         "someone else's": await _session_row(maker, other_id),
-        "the caller's own": await _session_row(maker, uid),
+        "the caller's own CLI": own_cli,
+        "the caller's own shell": await _shell_row(maker, own_cli),
         "a random id": uuid.uuid4(),
     }
     outcomes = {}
     for label, sid in targets.items():
-        ws = _FakeWebSocket(get_ws_ticket_service().issue(uid, attach_resource(sid)))
+        ws = _FakeWebSocket(await _mint(client, headers, sid))
         async with maker() as session:
             await terminal_gateway(ws, sid, session)  # type: ignore[arg-type]
         outcomes[label] = (ws.closed_with, ws.sent)
     assert outcomes == dict.fromkeys(outcomes, (1008, []))
+
+
+async def test_terminal_websocket_checks_session_view_before_any_lookup(
+    drop_custom_roles: None, api: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client, maker = api
+    headers, uid = await _user(client, maker, _ALL_BUT_VIEW)
+    own_cli = await _session_row(maker, uid)
+    spy = _LookupSpy(monkeypatch)
+    for sid in (own_cli, await _shell_row(maker, own_cli), uuid.uuid4()):
+        ws = _FakeWebSocket(await _mint(client, headers, sid))
+        async with maker() as session:
+            await terminal_gateway(ws, sid, session)  # type: ignore[arg-type]
+        assert (ws.closed_with, ws.sent) == (1008, [])
+    assert spy.calls == []
+
+
+async def test_terminal_websocket_still_looks_up_for_a_session_view_holder(
+    api: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The spy is not vacuous: with `session.view` the handshake does resolve the
+    id, and a missing one still closes 1008."""
+    client, maker = api
+    headers, _ = await _user(client, maker, None, role_name="Viewer")
+    spy = _LookupSpy(monkeypatch)
+    sid = uuid.uuid4()
+    ws = _FakeWebSocket(await _mint(client, headers, sid))
+    async with maker() as session:
+        await terminal_gateway(ws, sid, session)  # type: ignore[arg-type]
+    assert (ws.closed_with, ws.sent, spy.calls) == (1008, [], [sid])
+
+
+@pytest.mark.parametrize(("method", "path", "kwargs"), _ROUTES, ids=_ROUTE_IDS)
+async def test_http_routes_check_session_view_before_any_lookup(
+    drop_custom_roles: None,
+    api: tuple,
+    monkeypatch: pytest.MonkeyPatch,
+    method: str,
+    path: str,
+    kwargs: dict[str, Any],
+) -> None:
+    client, maker = api
+    headers, uid = await _user(client, maker, _ALL_BUT_VIEW)
+    own = await _session_row(maker, uid)
+    spy = _LookupSpy(monkeypatch)
+    for sid in (own, uuid.uuid4()):
+        status, _ = await _call(client, method, sid, path, kwargs, headers)
+        assert status == 403
+    assert spy.calls == []
+
+
+async def test_ws_ticket_issuance_does_not_depend_on_existence(
+    drop_custom_roles: None, api: tuple, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Issuance is deliberately left open to any authenticated user (#93 repair
+    round 1): it never resolves the resource, so it cannot leak existence, and
+    the handshake — which must re-check anyway, since a role can change between
+    minting and connecting — is the authority. This pins both halves: the same
+    answer for a real and a random id, and no lookup."""
+    client, maker = api
+    headers, uid = await _user(client, maker, _ALL_BUT_VIEW)
+    own = await _session_row(maker, uid)
+    spy = _LookupSpy(monkeypatch)
+    answers = []
+    for sid in (own, uuid.uuid4()):
+        resp = await client.post(
+            "/api/ws-ticket", json={"resource": attach_resource(sid)}, headers=headers
+        )
+        answers.append((resp.status_code, sorted(resp.json())))
+    assert answers == [(200, ["ticket"])] * 2
+    assert spy.calls == []

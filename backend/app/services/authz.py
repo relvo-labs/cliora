@@ -98,6 +98,18 @@ def is_shell(session: TerminalSession) -> bool:
 # --- Predicates (terminal WebSocket) ---
 
 
+def may_look_up_session(user: User) -> bool:
+    """Whether `user` may learn anything about a session id at all: `session.view`.
+
+    Checked before the id is resolved, by `authorize_session_lookup` at the HTTP
+    boundary and directly by the terminal WebSocket handshake, so neither can tell
+    a missing session from an existing one to a caller without it (issue #93,
+    ADR 0016: "`session.view` is evaluated first and only then may a 404 be
+    returned").
+    """
+    return has_action(user, SESSION_VIEW)
+
+
 def may_view_session(user: User, session: TerminalSession) -> bool:
     """Read-only attach. Any holder of `session.view`, including Viewer, matching
     P2's read-only viewer attach (ADR 0013).
@@ -105,10 +117,19 @@ def may_view_session(user: User, session: TerminalSession) -> bool:
     A shell session is the exception: **owner only**. Read-only attach exists so a
     colleague can watch a CLI do its work; nobody has that reason to watch another
     person's shell, and the contents are unbounded by the workspace (ADR 0021).
+
+    Owner-only *narrows* `session.view`; it does not replace it. Without the
+    `may_look_up_session` term a role stripped of `session.view` could still attach
+    to its own shells — permission contraction would not contract — and the
+    handshake would answer differently for an owned shell than for a missing id
+    (issue #93). Every built-in role holds `session.view`, so for them this term is
+    always true.
     """
+    if not may_look_up_session(user):
+        return False
     if is_shell(session):
         return is_owner(user, session) and has_action(user, TERMINAL_SHELL)
-    return has_action(user, SESSION_VIEW)
+    return True
 
 
 def may_write_session(user: User, session: TerminalSession) -> bool:
@@ -200,7 +221,7 @@ def authorize_session_lookup(user: User) -> None:
     already checked by `require_action()` before this runs, and view access is the
     one permission whose holders legitimately learn that a session exists.
     """
-    if not has_action(user, SESSION_VIEW):
+    if not may_look_up_session(user):
         raise _forbidden(SESSION_VIEW, user, REASON_ACTION)
 
 
