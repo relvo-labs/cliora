@@ -40,6 +40,11 @@ type Manager struct {
 	workspace, binary string
 	stopGrace         time.Duration
 	sessions          map[uuid.UUID]*entry
+
+	// stopUnlockedHook, when set, runs in Stop right after m.mu is released and
+	// before the detached process is closed. Tests only (#95): it lets a test make
+	// the attach client exit inside that window. Nil in production.
+	stopUnlockedHook func()
 }
 
 func New(client ctmux.Client, workspace, binary string) *Manager {
@@ -190,23 +195,32 @@ func (m *Manager) ActiveCount() int {
 	return count
 }
 
-func (m *Manager) Input(id uuid.UUID, payload []byte) error {
+// attached returns the session's current attach process, read under m.mu. The
+// exit callback clears entry.process under the same lock, so the field must never
+// be read after unlocking (#95); callers act on the returned pointer instead.
+// terminal.Process tolerates use after its own exit or Close.
+func (m *Manager) attached(id uuid.UUID) *terminal.Process {
 	m.mu.Lock()
-	current := m.sessions[id]
-	m.mu.Unlock()
-	if current == nil || current.process == nil {
+	defer m.mu.Unlock()
+	if current := m.sessions[id]; current != nil {
+		return current.process
+	}
+	return nil
+}
+
+func (m *Manager) Input(id uuid.UUID, payload []byte) error {
+	process := m.attached(id)
+	if process == nil {
 		return errors.New("SESSION_NOT_RUNNING")
 	}
-	return current.process.Write(payload)
+	return process.Write(payload)
 }
 func (m *Manager) Resize(id uuid.UUID, rows, columns uint16) error {
-	m.mu.Lock()
-	current := m.sessions[id]
-	m.mu.Unlock()
-	if current == nil || current.process == nil {
+	process := m.attached(id)
+	if process == nil {
 		return errors.New("SESSION_NOT_RUNNING")
 	}
-	return current.process.Resize(rows, columns)
+	return process.Resize(rows, columns)
 }
 func (m *Manager) Detach(id uuid.UUID) {
 	m.mu.Lock()
@@ -228,14 +242,22 @@ func (m *Manager) Detach(id uuid.UUID) {
 // cleanly needs to see the difference, so the outcome is returned and logged
 // rather than collapsed into "stopped".
 func (m *Manager) Stop(ctx context.Context, id uuid.UUID) (ctmux.StopOutcome, error) {
+	// The process is taken and cleared under the lock, as Detach does: the attach
+	// exit callback clears the same field under m.mu, so reading it after Unlock
+	// was a data race that could close a stale process or miss a live one (#95).
 	m.mu.Lock()
-	current := m.sessions[id]
-	if current != nil {
+	var process *terminal.Process
+	if current := m.sessions[id]; current != nil {
 		current.state = Stopping
+		process = current.process
+		current.process = nil
 	}
 	m.mu.Unlock()
-	if current != nil && current.process != nil {
-		current.process.Close()
+	if m.stopUnlockedHook != nil {
+		m.stopUnlockedHook()
+	}
+	if process != nil {
+		process.Close()
 	}
 	outcome, err := m.tmux.Stop(ctx, id, m.stopGrace)
 	if err != nil {
