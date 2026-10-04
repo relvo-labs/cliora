@@ -952,9 +952,9 @@ watch(
 // The consequence is that something has to fit it once it is visible again, and
 // the existing `activeTab` watcher does not fire when only the mode changed.
 //
-// Nothing here relaxes the contract underneath: the composable still clamps to
-// 2-300 x 2-500, still sends only a size that actually changed, and still
-// refuses to send at all as a viewer.
+// Nothing here relaxes the contract underneath: the composable clamps live
+// resizes to 2-300 x 2-500, sends only a settled size that actually changed,
+// and sends none until this socket's role says it is the writer (#131, #132).
 watch(mobileMode, async (mode) => {
   if (mode !== "cli") return;
   await nextTick();
