@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
 
 import type {
@@ -20,7 +20,24 @@ const { impl } = vi.hoisted(() => ({
     listRecentWorkspaces: null as null | (() => Promise<RecentWorkspace[]>),
     addFavorite: null as null | ((input: unknown) => Promise<unknown>),
     removeFavorite: null as null | ((id: string) => Promise<void>),
+    createSession: null as null | ((input: unknown) => Promise<unknown>),
+    measure: null as
+      | null
+      | ((
+          box: { width: number; height: number },
+          fontSize: number,
+        ) => { rows: number; columns: number } | null),
   },
+}));
+
+// The real probe needs a laid-out xterm, which jsdom cannot give; what is under
+// test here is which box the dialog asks to measure and what it does with the
+// answer.
+vi.mock("../../composables/useTerminalSession", () => ({
+  measureTerminalSize: (
+    box: { width: number; height: number },
+    fontSize: number,
+  ) => impl.measure!(box, fontSize),
 }));
 
 vi.mock("../../stores/auth", () => ({
@@ -29,6 +46,7 @@ vi.mock("../../stores/auth", () => ({
     listRecentWorkspaces: () => impl.listRecentWorkspaces!(),
     addFavorite: (input: unknown) => impl.addFavorite!(input),
     removeFavorite: (id: string) => impl.removeFavorite!(id),
+    createSession: (input: unknown) => impl.createSession!(input),
     listNodes: async (): Promise<NodeSummary[]> => [nodeSummary()],
     getNode: async (): Promise<NodeDetail> => nodeDetail(),
   }),
@@ -313,5 +331,123 @@ describe("NewSessionDialog shortcuts", () => {
     for (const item of items) {
       expect(item.find("button").exists()).toBe(true);
     }
+  });
+});
+
+// #115. A CLI session used to start at the server's 24x80 whatever the screen.
+// On a phone the attach then narrowed it to ~40 columns, tmux reflowed the first
+// output line and pushed its head into history, and the user saw it cut. The
+// dialog has no panel to measure, so below 768px it measures the box the phone
+// CLI panel will have; on a desktop the request is unchanged.
+describe("NewSessionDialog terminal size (#115)", () => {
+  const sent: unknown[] = [];
+  let main: HTMLElement;
+
+  function setWidth(px: number): void {
+    Object.defineProperty(window, "innerWidth", {
+      value: px,
+      configurable: true,
+      writable: true,
+    });
+  }
+  // The shell's <main>, which the Sessions page and the workspace share.
+  // `height` is what the keyboard shrinks; `layoutHeight` is the layout
+  // viewport, which it does not.
+  function shell(rect: { top: number; width: number; height: number }) {
+    main = document.createElement("main");
+    main.id = "main";
+    main.getBoundingClientRect = () =>
+      ({ ...rect, left: 0, right: rect.width }) as DOMRect;
+    document.body.appendChild(main);
+  }
+  function setLayoutHeight(px: number): void {
+    Object.defineProperty(document.documentElement, "clientHeight", {
+      value: px,
+      configurable: true,
+    });
+  }
+
+  async function submit() {
+    const wrapper = await openWithNodeSelected();
+    const selects = wrapper.findAll("select");
+    await selects[1].setValue("claude");
+    await wrapper
+      .find('input[placeholder="e.g. refactor-api"]')
+      .setValue("phone");
+    await wrapper.find("button.primary").trigger("click");
+    await flush();
+    return wrapper;
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    impl.listFavorites = async () => [];
+    impl.listRecentWorkspaces = async () => [];
+    sent.length = 0;
+    impl.createSession = async (input) => {
+      sent.push(input);
+      return { id: "s-1" };
+    };
+    impl.measure = vi.fn(() => ({ rows: 18, columns: 40 }));
+  });
+  afterEach(() => {
+    main?.remove();
+    setWidth(1024);
+    delete (document.documentElement as unknown as { clientHeight?: number })
+      .clientHeight;
+  });
+
+  it("on a phone, starts the CLI at the size of the panel it will open in", async () => {
+    setWidth(390);
+    shell({ top: 56, width: 390, height: 608 });
+    setLayoutHeight(664);
+
+    await submit();
+
+    // 390 - 2x16 fill padding - 2x1 card border; 664 - 56 - 252 of workspace
+    // chrome. Font size is the user's terminal font (14 by default).
+    expect(impl.measure).toHaveBeenCalledWith({ width: 356, height: 356 }, 14);
+    expect(sent).toEqual([
+      expect.objectContaining({ name: "phone", rows: 18, columns: 40 }),
+    ]);
+  });
+
+  it("measures the keyboard-closed panel even while the keyboard is up", async () => {
+    // Typing the session name raised the keyboard: the shell (and main) are
+    // 300px shorter, but the workspace will open with the keyboard down.
+    setWidth(390);
+    shell({ top: 56, width: 390, height: 308 });
+    setLayoutHeight(664);
+
+    await submit();
+
+    expect(impl.measure).toHaveBeenCalledWith({ width: 356, height: 356 }, 14);
+  });
+
+  it("sends no size when the panel cannot be measured", async () => {
+    setWidth(390);
+    shell({ top: 56, width: 390, height: 608 });
+    setLayoutHeight(664);
+    impl.measure = vi.fn(() => null);
+
+    await submit();
+
+    // The server default, exactly as before — not a guess.
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("rows");
+    expect(sent[0]).not.toHaveProperty("columns");
+  });
+
+  it("leaves the desktop request unchanged", async () => {
+    setWidth(1024);
+    shell({ top: 56, width: 1024, height: 708 });
+    setLayoutHeight(764);
+
+    await submit();
+
+    expect(impl.measure).not.toHaveBeenCalled();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("rows");
+    expect(sent[0]).not.toHaveProperty("columns");
   });
 });

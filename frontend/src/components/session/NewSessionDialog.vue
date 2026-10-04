@@ -8,8 +8,10 @@ import type {
   NodeSummary,
   SessionDetail,
 } from "../../api/dto";
+import { useBreakpoint } from "../../composables/useBreakpoint";
 import { useFavoritesStore } from "../../stores/favorites";
 import { useNodesStore } from "../../stores/nodes";
+import { usePreferencesStore } from "../../stores/preferences";
 import { useSessionsStore } from "../../stores/sessions";
 
 const props = defineProps<{ open: boolean }>();
@@ -21,6 +23,8 @@ const emit = defineEmits<{
 const nodes = useNodesStore();
 const sessions = useSessionsStore();
 const favorites = useFavoritesStore();
+const preferences = usePreferencesStore();
+const { isNarrow } = useBreakpoint();
 
 const nodeList = ref<NodeSummary[]>([]);
 const nodeDetail = ref<NodeDetail | null>(null);
@@ -163,16 +167,75 @@ function reset(): void {
   nodeDetail.value = null;
 }
 
+// --- The size a CLI starts at on a phone (#115) ---
+//
+// Without a size the server starts the PTY at 24x80. On a phone the attach then
+// narrows it to ~40 columns; tmux reflows what the CLI has already printed and
+// pushes the head of its first line into history, where the browser never sees
+// it — the first thing the user reads is cut. Only *narrowing* loses output, and
+// a desktop panel is wider than 80 columns, so the request is unchanged at 768px
+// and up.
+//
+// The workspace panel does not exist yet, so its box is derived from the shell's
+// <main>, which this page and the workspace share. On a phone the workspace is
+// one column and its chrome does not depend on the viewport — measured in
+// chromium at 360x640, 375x553, 390x664, 412x839 and 430x932, the CLI host was
+// always exactly:
+//   width  = main - 2x16 (fill padding, AppLayout) - 2x1 (card border)
+//   height = main - 252  (work header 48, mode switch 54 + 8, tab strip and
+//                         drop bar 89, status bar 28, fill padding 2x12,
+//                         card border 1)
+// A change to that chrome in SessionWorkspaceView has to change these. Rows that
+// drift only add or remove blank lines, and the attach resize corrects them;
+// columns that drift wider than the panel bring the cut back.
+const PHONE_CLI_INSET_X = 2 * 16 + 2 * 1;
+const PHONE_CLI_CHROME_Y = 252;
+
+async function phoneCliSize(): Promise<{
+  rows: number;
+  columns: number;
+} | null> {
+  if (!isNarrow.value) return null;
+  const main = document.getElementById("main");
+  if (!main) return null;
+  const rect = main.getBoundingClientRect();
+  // Typing the session name raised the keyboard, which shrinks the shell, but
+  // the workspace opens with it down. The layout viewport is what the keyboard
+  // does not shrink.
+  const mainHeight = Math.max(
+    rect.height,
+    document.documentElement.clientHeight - rect.top,
+  );
+  try {
+    const { measureTerminalSize } = await import(
+      "../../composables/useTerminalSession"
+    );
+    return measureTerminalSize(
+      {
+        width: rect.width - PHONE_CLI_INSET_X,
+        height: mainHeight - PHONE_CLI_CHROME_Y,
+      },
+      preferences.terminalFontSize,
+    );
+  } catch {
+    // No measurement is not a reason to refuse the session: the server
+    // default applies, exactly as before.
+    return null;
+  }
+}
+
 async function submit(): Promise<void> {
   if (!canSubmit.value) return;
   busy.value = true;
   error.value = "";
   try {
+    const size = await phoneCliSize();
     const session = await sessions.create({
       node_id: nodeId.value,
       runtime: runtime.value,
       name: name.value.trim(),
       workspace: workspace.value.trim(),
+      ...(size ?? {}),
     });
     emit("created", session);
   } catch (caught) {

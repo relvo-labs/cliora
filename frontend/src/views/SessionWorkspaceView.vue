@@ -962,10 +962,9 @@ watch(mobileMode, async (mode) => {
 });
 
 function onOrientationChange(): void {
-  // Same debounce the composable already uses for window resizes rather than a
-  // second timing scheme: rotation is a resize that announces itself early, and
-  // the layout has not settled when the event fires.
-  window.setTimeout(() => terminal.fit(), 100);
+  // Rotation is a resize that announces itself early, before the layout has
+  // settled. `fit()` waits for it to settle (#127), so no second timer here.
+  terminal.fit();
 }
 
 // `popstate` is only listened to while this view is mounted, and the handler

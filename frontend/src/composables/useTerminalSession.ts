@@ -12,7 +12,7 @@ import { DEFAULT_THEME, xtermTheme, type ThemeId } from "../theme/themes";
 // always rendered in whatever came next in the list.
 const TERMINAL_FONT_FAMILY =
   'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace';
-// See the note at the Terminal constructor: 1.2, not the documents' 1.6.
+// See the note in `terminalOptions`: 1.2, not the documents' 1.6.
 const TERMINAL_LINE_HEIGHT = 1.2;
 
 export type TerminalStatus =
@@ -31,6 +31,95 @@ export type TerminalRole = "writer" | "viewer";
 export type TicketProvider = (sessionId: string) => Promise<string>;
 
 const RETRY_MS = [1000, 2000, 5000, 10000, 30000] as const;
+
+// The debounce every resize path goes through (plan/29 MS-09: one timing scheme,
+// 100 ms). On its own it was not enough (#127): a phone keyboard, a tab switch or
+// a rotation moves the layout in steps, and a step that held for more than
+// 100 ms reached the PTY — measured in chromium, one keyboard animated in 120 ms
+// steps sent eight resizes, 16 rows down to 2. So a size is sent only once it has
+// *settled*: measured the same twice, one debounce apart, with no layout change
+// in between. That is at least 200 ms of stillness, and one resize per size the
+// layout actually rests at.
+const RESIZE_DEBOUNCE_MS = 100;
+
+// Every Terminal this module builds gets these, so a size measured on a probe
+// (`measureTerminalSize`) is a size the real terminal will agree with: the cell
+// size comes from the font and line height, and FitAddon reserves scrollbar
+// width only when there is scrollback.
+function terminalOptions(fontSize: number, themeId: ThemeId) {
+  return {
+    cursorBlink: true,
+    convertEol: false,
+    scrollback: 10000,
+    fontFamily: TERMINAL_FONT_FAMILY,
+    fontSize,
+    // xterm's `lineHeight` is a multiplier on the *measured cell height*, not
+    // a CSS line-height. The five design documents say 1.6, which is the
+    // convention for UI body copy; applied here it costs 9 rows. Measured in
+    // chromium at the target geometry (1440x900, a 674px CLI panel):
+    // 14px/1.2 -> 19px cell -> 35 rows; 14px/1.4 -> 30 rows exactly;
+    // 14px/1.6 -> 25px cell -> 26 rows, under plan/09's floor of 30.
+    lineHeight: TERMINAL_LINE_HEIGHT,
+    theme: xtermTheme(themeId),
+  };
+}
+
+// Clamped to the wire contract's own bounds
+// (contracts/v1/schemas/messages/session-start.schema.json: rows 2-300,
+// columns 2-500), because a very wide window really can propose more than 500
+// columns and Central answers that with a 422 — the terminal would simply fail
+// to open. Under 2 the daemon's tmux rejects the size, so that is no answer.
+function clampProposal(
+  proposed: { rows: number; cols: number } | undefined,
+): { rows: number; columns: number } | null {
+  if (!proposed) return null;
+  if (proposed.rows < 2 || proposed.cols < 2) return null;
+  return {
+    rows: Math.min(proposed.rows, 300),
+    columns: Math.min(proposed.cols, 500),
+  };
+}
+
+/**
+ * The size a terminal would have in a box of `box` CSS pixels, measured on a
+ * throwaway xterm rather than computed, so the cell size is the one the real
+ * terminal will measure (#115). For a session that is created before its panel
+ * exists — the New Session dialog — and only for that: no socket, no observer,
+ * no focus (focus would raise a phone's keyboard), disposed before returning.
+ *
+ * The probe is laid out but invisible (`visibility: hidden`, not `display:
+ * none`, which measures nothing). Null when the box is empty or the
+ * measurement is degenerate; callers then fall back to the server default
+ * rather than guess.
+ */
+export function measureTerminalSize(
+  box: { width: number; height: number },
+  fontSize: number,
+): { rows: number; columns: number } | null {
+  if (!(box.width > 0) || !(box.height > 0)) return null;
+  const probe = document.createElement("div");
+  probe.setAttribute("aria-hidden", "true");
+  Object.assign(probe.style, {
+    position: "fixed",
+    left: "0px",
+    top: "0px",
+    width: `${box.width}px`,
+    height: `${box.height}px`,
+    visibility: "hidden",
+    pointerEvents: "none",
+  });
+  document.body.appendChild(probe);
+  const terminal = new Terminal(terminalOptions(fontSize, DEFAULT_THEME));
+  try {
+    const fit = new FitAddon();
+    terminal.loadAddon(fit);
+    terminal.open(probe);
+    return clampProposal(fit.proposeDimensions());
+  } finally {
+    terminal.dispose();
+    probe.remove();
+  }
+}
 
 // Display options the caller owns, passed in rather than read from a store so
 // the composable stays testable without Pinia — the same reason `getTicket` is
@@ -63,7 +152,9 @@ export function useTerminalSession(
     retryIndex = 0,
     currentSession = "",
     disposed = false,
-    lastSize = "";
+    lastSize = "",
+    // The size seen at the previous settle check, "" when there is none.
+    settling = "";
 
   function isWriter(): boolean {
     return role.value === "writer";
@@ -106,35 +197,56 @@ export function useTerminalSession(
     lastSize = size;
     sendResize();
   }
-  // The size a *new* session should be started at, or null when the container
-  // cannot be measured yet (hidden panel, no layout). Callers must fall back to
-  // the server's default rather than guess: starting a PTY at the wrong size and
-  // resizing it a moment later makes the shell redraw in front of the user.
-  //
-  // Clamped to the wire contract's own bounds
-  // (contracts/v1/schemas/messages/session-start.schema.json: rows 2-300,
-  // columns 2-500), because a very wide window really can propose more than 500
-  // columns and Central answers that with a 422 — the terminal would simply fail
-  // to open.
-  function proposeSize(): { rows: number; columns: number } | null {
+  // What the host measures right now, without applying it; null while hidden.
+  function measure(): string | null {
     if (!terminal || !hostElement) return null;
     if (hostElement.clientWidth === 0 || hostElement.clientHeight === 0) {
       return null;
     }
     const proposed = fit?.proposeDimensions();
-    if (!proposed) return null;
-    // Same floor as sendResize(): under 2 the daemon's tmux rejects the size.
-    if (proposed.rows < 2 || proposed.cols < 2) return null;
-    return {
-      rows: Math.min(proposed.rows, 300),
-      columns: Math.min(proposed.cols, 500),
-    };
+    return proposed ? `${proposed.rows}:${proposed.cols}` : null;
+  }
+  // How a layout change reaches the PTY (#127): the ResizeObserver and every
+  // caller of `fit()`. Only a font-size change (a deliberate user action, not a
+  // transition) and a re-mount into a new host fit at once. The local terminal is
+  // not fitted early either: xterm and the PTY must agree on the grid, so for the
+  // ~200 ms of a transition the terminal keeps its previous size and the pane
+  // clips it.
+  function scheduleFit(): void {
+    window.clearTimeout(resizeTimer);
+    // A layout change invalidates whatever was being confirmed.
+    settling = "";
+    resizeTimer = window.setTimeout(settle, RESIZE_DEBOUNCE_MS);
+  }
+  function settle(): void {
+    resizeTimer = undefined;
+    const size = measure();
+    // Hidden meanwhile: the next real fit happens when it is shown again.
+    if (size === null) {
+      settling = "";
+      return;
+    }
+    if (size !== settling) {
+      settling = size;
+      resizeTimer = window.setTimeout(settle, RESIZE_DEBOUNCE_MS);
+      return;
+    }
+    settling = "";
+    applyFit();
+  }
+  // The size a *new* session should be started at, or null when the container
+  // cannot be measured yet (hidden panel, no layout). Callers must fall back to
+  // the server's default rather than guess: starting a PTY at the wrong size and
+  // resizing it a moment later makes the shell redraw in front of the user.
+  function proposeSize(): { rows: number; columns: number } | null {
+    if (!terminal || !hostElement) return null;
+    if (hostElement.clientWidth === 0 || hostElement.clientHeight === 0) {
+      return null;
+    }
+    return clampProposal(fit?.proposeDimensions());
   }
   function makeObserver(): ResizeObserver {
-    return new ResizeObserver(() => {
-      window.clearTimeout(resizeTimer);
-      resizeTimer = window.setTimeout(applyFit, 100);
-    });
+    return new ResizeObserver(scheduleFit);
   }
   function requestControl(): void {
     sendJson("terminal.control_acquire", { session_id: currentSession });
@@ -176,6 +288,10 @@ export function useTerminalSession(
       retryIndex = 0;
       fitSafely();
       sendResize(); // server auto-attaches; align the PTY to our size
+      // Sent unconditionally — every attach starts at the size stored at
+      // creation — and recorded, so the fit that settles right after the attach
+      // does not send the same size a second time.
+      if (terminal) lastSize = `${terminal.rows}:${terminal.cols}`;
     };
     socket.onmessage = (event) => {
       if (typeof event.data === "string") {
@@ -235,21 +351,7 @@ export function useTerminalSession(
       applyFit();
       return;
     }
-    terminal = new Terminal({
-      cursorBlink: true,
-      convertEol: false,
-      scrollback: 10000,
-      fontFamily: TERMINAL_FONT_FAMILY,
-      fontSize: fontSize,
-      // xterm's `lineHeight` is a multiplier on the *measured cell height*, not
-      // a CSS line-height. The five design documents say 1.6, which is the
-      // convention for UI body copy; applied here it costs 9 rows. Measured in
-      // chromium at the target geometry (1440x900, a 674px CLI panel):
-      // 14px/1.2 -> 19px cell -> 35 rows; 14px/1.4 -> 30 rows exactly;
-      // 14px/1.6 -> 25px cell -> 26 rows, under plan/09's floor of 30.
-      lineHeight: TERMINAL_LINE_HEIGHT,
-      theme: xtermTheme(themeId),
-    });
+    terminal = new Terminal(terminalOptions(fontSize, themeId));
     fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.loadAddon(new SearchAddon());
@@ -356,9 +458,11 @@ export function useTerminalSession(
     takeover,
     disconnect,
     dispose,
-    // Re-measure after the host becomes visible again (tab activation). The
-    // caller must wait for the DOM to actually be laid out first.
-    fit: applyFit,
+    // Re-measure after the host becomes visible again (tab activation, a
+    // phone's mode switch, rotation). Settled like every other layout change
+    // (#127): a tab can be shown while the keyboard is still closing, and the
+    // size measured at that moment is not the one the layout ends at.
+    fit: scheduleFit,
     proposeSize,
     // Recolour and resize in place. Neither rebuilds the terminal.
     applyTheme: applyThemeOption,
