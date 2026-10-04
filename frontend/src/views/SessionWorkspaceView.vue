@@ -8,7 +8,7 @@ import {
   ref,
   watch,
 } from "vue";
-import { PanelRight } from "lucide-vue-next";
+import { ChevronDown, PanelRight } from "lucide-vue-next";
 
 import { ApiError } from "../api/client";
 import type { NodeDetail, SessionDetail } from "../api/dto";
@@ -617,6 +617,21 @@ const filesOpen = ref(false);
 // returns to the file list, which is where it was opened from.
 type MobileMode = "cli" | "files" | "preview";
 const mobileMode = ref<MobileMode>("cli");
+// AppLayout owns detection beside usable height. Only typing in a visible
+// terminal opts in; files/preview keep their navigation and read-only controls.
+const collapseOnKeyboard = computed(
+  () =>
+    workspaceLive.value &&
+    mobileMode.value === "cli" &&
+    activeTab.value !== "preview",
+);
+function dismissKeyboard(): void {
+  if (document.activeElement instanceof HTMLElement)
+    document.activeElement.blur();
+  // A stable, visible destination, rather than a button about to disappear.
+  // Focusing a tab does not refocus xterm or reopen the keyboard.
+  document.getElementById(`tab-${activeTab.value}`)?.focus();
+}
 
 // Visible means "occupying space or overlaying": a closed drawer is neither,
 // and on a phone the file browser is visible exactly when it is the mode.
@@ -1052,7 +1067,11 @@ async function confirmTerminate(): Promise<void> {
 <template>
   <!-- fill: this page is a fixed layout that owns the viewport. The terminal's
        height comes from the shell, so nothing here re-derives it (plan/09 D1). -->
-  <AppLayout fill>
+  <AppLayout
+    v-slot="{ keyboardCollapsed }"
+    fill
+    :collapse-on-keyboard="collapseOnKeyboard"
+  >
     <!-- The workspace container is never unmounted: the terminal host lives
          inside it, and xterm cannot survive its container being replaced.
          Loading / forbidden / error therefore render as an overlay on top
@@ -1064,6 +1083,7 @@ async function confirmTerminate(): Promise<void> {
            one that was left (#76 review 4). -->
       <SessionHeader
         v-if="session"
+        v-show="!keyboardCollapsed"
         v-bind="behindVeil"
         :name="session.name"
         :node-name="nodePosture?.name"
@@ -1112,6 +1132,7 @@ async function confirmTerminate(): Promise<void> {
       <nav
         v-if="isNarrow && session && mobileMode !== 'preview'"
         v-bind="behindVeil"
+        v-show="!keyboardCollapsed"
         class="modes"
         role="tablist"
         aria-label="工作區"
@@ -1154,6 +1175,14 @@ async function confirmTerminate(): Promise<void> {
             @close="closeTab"
           >
             <template #end>
+              <UiIconButton
+                v-show="keyboardCollapsed"
+                variant="on-terminal"
+                label="收起鍵盤"
+                @click="dismissKeyboard"
+              >
+                <ChevronDown />
+              </UiIconButton>
               <!-- The drawer's opening control. What this replaces was a
                    `display: none` on the tree below 1100px with no way at all
                    to bring it back, which is the one shape the shared
@@ -1198,6 +1227,7 @@ async function confirmTerminate(): Promise<void> {
                    terminal. -->
               <UiToolbar
                 v-if="canUploadImages"
+                v-show="!keyboardCollapsed"
                 class="drop-bar"
                 label="圖片投放"
                 on-terminal
@@ -1283,7 +1313,7 @@ async function confirmTerminate(): Promise<void> {
                 class="terminal-host"
                 aria-label="System terminal"
               />
-              <p class="terminal-hint">
+              <p v-show="!keyboardCollapsed" class="terminal-hint">
                 滾輪可往上檢視先前輸出（按 <kbd>q</kbd> 回到即時輸出）·
                 選取文字請按住 <kbd>Shift</kbd> 拖曳
               </p>
@@ -1463,6 +1493,7 @@ async function confirmTerminate(): Promise<void> {
            revised to say so). It renders even under the veil — a blank status
            bar behind a failure reads as "everything is fine back here". -->
       <StatusBar
+        v-show="!keyboardCollapsed"
         v-bind="behindVeil"
         :session-status="session?.status"
         :connection="terminal.status.value"

@@ -184,7 +184,10 @@ const shellApi = {
   terminateSessionOnUnload: vi.fn(),
 };
 
-async function render(getSession: ReturnType<typeof vi.fn>) {
+async function render(
+  getSession: ReturnType<typeof vi.fn>,
+  realLayout = false,
+) {
   vi.spyOn(auth, "api").mockReturnValue({
     getSession,
     attachSession: vi.fn(async () => ({ ticket: "t" })),
@@ -197,9 +200,12 @@ async function render(getSession: ReturnType<typeof vi.fn>) {
   await router.isReady();
   const wrapper = mount(SessionWorkspaceView, {
     props: { id: ID },
+    attachTo: realLayout ? document.body : undefined,
     global: {
       plugins: [router],
-      stubs: { AppLayout: { template: "<div><slot /></div>" } },
+      stubs: realLayout
+        ? {}
+        : { AppLayout: { template: "<div><slot /></div>" } },
     },
   });
   await flushPromises();
@@ -1052,5 +1058,112 @@ describe("SessionWorkspaceView — 終止確認對話框只作用在它顯示的
     expect(shellApi.terminateSession).toHaveBeenCalledOnce();
     expect(useSessionsStore().current?.id).toBe(OTHER);
     expect(wrapper.find(".veil").exists()).toBe(false);
+  });
+});
+
+describe("keyboard workspace chrome (#130)", () => {
+  let wrapper: Awaited<ReturnType<typeof render>>;
+  let viewport: EventTarget & { height: number; scale: number };
+  beforeEach(() => {
+    setViewportWidth(390);
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
+      664,
+    );
+    viewport = Object.assign(new EventTarget(), { height: 664, scale: 1 });
+    vi.stubGlobal("visualViewport", viewport);
+  });
+  afterEach(() => {
+    wrapper?.unmount();
+    document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+  });
+  async function keyboard(height: number) {
+    viewport.height = height;
+    viewport.dispatchEvent(new Event("resize"));
+    await flushPromises();
+  }
+  function terminalInput(selector = "#panel-cli .terminal-host") {
+    const input = document.createElement("textarea");
+    wrapper.get(selector).element.appendChild(input);
+    input.focus();
+    return input;
+  }
+  it("hides chrome from layout and AT, keeps tabs and focused host, then restores", async () => {
+    vi.spyOn(useNodesStore(), "fetchNode").mockResolvedValue({
+      image_upload: true,
+      runtimes: [],
+    } as never);
+    wrapper = await render(
+      vi.fn(async () => session()),
+      true,
+    );
+    const header = wrapper.getComponent(SessionHeader).element;
+    const host = wrapper.get("#panel-cli .terminal-host").element;
+    const input = terminalInput();
+    const mounts = term.mount.mock.calls.length;
+    const connects = term.connect.mock.calls.length;
+    await keyboard(360);
+    expect(wrapper.get(".shell > header").isVisible()).toBe(false);
+    expect(wrapper.getComponent(SessionHeader).isVisible()).toBe(false);
+    expect(wrapper.get(".modes").isVisible()).toBe(false);
+    expect(wrapper.get(".status-bar").isVisible()).toBe(false);
+    expect(wrapper.get(".drop-bar").isVisible()).toBe(false);
+    // display:none excludes the subtree from the accessibility tree and Tab order.
+    expect((header as HTMLElement).style.display).toBe("none");
+    expect(wrapper.get("#tab-cli").isVisible()).toBe(true);
+    expect(document.activeElement).toBe(input);
+    await keyboard(664);
+    expect(wrapper.getComponent(SessionHeader).isVisible()).toBe(true);
+    expect(wrapper.get(".modes").isVisible()).toBe(true);
+    expect(wrapper.get(".status-bar").isVisible()).toBe(true);
+    expect(wrapper.get(".drop-bar").isVisible()).toBe(true);
+    expect(wrapper.get("#panel-cli .terminal-host").element).toBe(host);
+    expect(term.mount).toHaveBeenCalledTimes(mounts);
+    expect(term.connect).toHaveBeenCalledTimes(connects);
+    expect(term.retry).not.toHaveBeenCalled();
+    expect(term.disconnect).not.toHaveBeenCalled();
+  });
+  it("keeps the system TERMINAL tab and its warning usable during collapse", async () => {
+    wrapper = await render(
+      vi.fn(async () =>
+        session({
+          capabilities: {
+            ...session().capabilities,
+            can_open_shell: true,
+          },
+        }),
+      ),
+      true,
+    );
+    await wrapper.get("#tab-terminal").trigger("click");
+    await flushPromises();
+    const host = wrapper.get("#panel-terminal .terminal-host").element;
+    terminalInput("#panel-terminal .terminal-host");
+    await keyboard(360);
+    expect(wrapper.getComponent(SessionHeader).isVisible()).toBe(false);
+    expect(wrapper.get("#tab-terminal").isVisible()).toBe(true);
+    expect(wrapper.get(".shell-notice").isVisible()).toBe(true);
+    await keyboard(664);
+    expect(wrapper.get("#panel-terminal .terminal-host").element).toBe(host);
+    expect(shellApi.openShell).toHaveBeenCalledOnce();
+    expect(shellApi.terminateSession).not.toHaveBeenCalled();
+  });
+  it("keeps file search and preview chrome available with a keyboard-sized viewport", async () => {
+    wrapper = await render(
+      vi.fn(async () => session()),
+      true,
+    );
+    terminalInput();
+    await keyboard(360);
+    // Switching away from terminal restores chrome even if dismissal is still animating.
+    await wrapper.get(".modes button:last-child").trigger("click");
+    expect(wrapper.getComponent(SessionHeader).isVisible()).toBe(true);
+    expect(wrapper.get(".modes").isVisible()).toBe(true);
+    await wrapper.get(".open-a").trigger("click");
+    await flushPromises();
+    const preview = wrapper.get(".preview").element;
+    expect(wrapper.get("#panel-preview").isVisible()).toBe(true);
+    await keyboard(664);
+    expect(wrapper.get(".preview").element).toBe(preview);
   });
 });
