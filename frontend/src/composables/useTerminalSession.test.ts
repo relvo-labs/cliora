@@ -8,12 +8,14 @@ const { terminals } = vi.hoisted(() => ({
   >,
 }));
 
-const { fits, proposals } = vi.hoisted(() => ({
+const { fits, proposals, nextProposal } = vi.hoisted(() => ({
   fits: [] as ReturnType<typeof vi.fn>[],
   // FitAddon.proposeDimensions() is what "what size should a new session open
   // at" reads; a test can hand back an oversized or degenerate proposal to
   // exercise the clamping and the floor.
   proposals: [] as ReturnType<typeof vi.fn>[],
+  // What the *next* FitAddon proposes, for code that builds its own terminal.
+  nextProposal: { value: null as null | { rows: number; cols: number } },
 }));
 
 vi.mock("@xterm/xterm", () => {
@@ -29,7 +31,7 @@ vi.mock("@xterm/xterm", () => {
     dispose = vi.fn();
     onData = vi.fn();
     onBinary = vi.fn();
-    constructor() {
+    constructor(public options: Record<string, unknown> = {}) {
       terminals.push(this as never);
     }
   }
@@ -38,7 +40,8 @@ vi.mock("@xterm/xterm", () => {
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: vi.fn(() => {
     const fit = vi.fn();
-    const proposeDimensions = vi.fn(() => ({ rows: 43, cols: 110 }));
+    const proposal = nextProposal.value ?? { rows: 43, cols: 110 };
+    const proposeDimensions = vi.fn(() => proposal);
     fits.push(fit);
     proposals.push(proposeDimensions);
     return { fit, proposeDimensions };
@@ -94,7 +97,7 @@ class MockObserver {
   }
 }
 
-import { useTerminalSession } from "./useTerminalSession";
+import { measureTerminalSize, useTerminalSession } from "./useTerminalSession";
 
 let scope: ReturnType<typeof effectScope>;
 
@@ -116,6 +119,7 @@ beforeEach(() => {
   observers.length = 0;
   fits.length = 0;
   proposals.length = 0;
+  nextProposal.value = null;
   scope = effectScope();
 });
 
@@ -273,8 +277,17 @@ describe("useTerminalSession", () => {
     await s.connect(SESSION);
     sockets[0].open();
     const before = sockets[0].sent.length;
+    // The real FitAddon applies its proposal (43x110 here) to the terminal; the
+    // attach above went out at the terminal's previous 24x80.
+    fits[0].mockImplementation(() => {
+      terminals[0].rows = 43;
+      terminals[0].cols = 110;
+    });
 
+    // Settled, not immediate (#127): nothing until the size has held.
     s.fit();
+    expect(sockets[0].sent).toHaveLength(before);
+    await vi.advanceTimersByTimeAsync(250);
     const afterFirst = sockets[0].sent.length;
     expect(afterFirst).toBe(before + 1);
     expect(JSON.parse(sockets[0].sent[afterFirst - 1] as string).type).toBe(
@@ -283,6 +296,7 @@ describe("useTerminalSession", () => {
 
     // Same measurement twice must not put a second resize on the wire.
     s.fit();
+    await vi.advanceTimersByTimeAsync(250);
     expect(sockets[0].sent).toHaveLength(afterFirst);
   });
 
@@ -447,6 +461,170 @@ describe("useTerminalSession", () => {
     expect(terminals[0].dispose).toHaveBeenCalledOnce();
     expect(observers[0].disconnect).toHaveBeenCalledOnce();
     expect(sockets[0].closed).toBe(true);
+  });
+
+  // #127. The layout behind a phone keyboard, a tab switch or a rotation moves in
+  // steps, and every step used to reach the PTY: the 100 ms debounce fired
+  // between steps, and `fit()` measured at once. A size goes on the wire only
+  // once it has settled, and each settled size goes exactly once.
+  describe("settling before a resize is sent (#127)", () => {
+    // Makes the mocked FitAddon behave like the real one: `fit()` applies the
+    // current proposal to the terminal, and the proposal follows the "host".
+    function liveHost(start: { rows: number; cols: number }) {
+      let current = { ...start };
+      proposals[0].mockImplementation(() => ({ ...current }));
+      fits[0].mockImplementation(() => {
+        terminals[0].rows = current.rows;
+        terminals[0].cols = current.cols;
+      });
+      return {
+        // The host changed size: the ResizeObserver reports it.
+        resize(rows: number, cols = current.cols) {
+          current = { rows, cols };
+          observers[observers.length - 1].cb();
+        },
+      };
+    }
+    function resizes(socket: MockSocket): string[] {
+      return socket.sent
+        .filter((frame): frame is string => typeof frame === "string")
+        .map((frame) => JSON.parse(frame))
+        .filter((message) => message.type === "terminal.resize")
+        .map((message) => `${message.payload.rows}x${message.payload.columns}`);
+    }
+    async function attached(start = { rows: 18, cols: 40 }) {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      const layout = liveHost(start);
+      await s.connect(SESSION);
+      sockets[0].open();
+      makeWriter(sockets[0]);
+      await vi.advanceTimersByTimeAsync(1000);
+      sockets[0].sent.length = 0;
+      return { s, layout, socket: sockets[0] };
+    }
+
+    it("a host collapsing in steps sends only the size it settles at, once", async () => {
+      const { layout, socket } = await attached();
+
+      // A keyboard animating up in steps 120 ms apart — each gap is longer
+      // than the 100 ms debounce, which is what used to send every step.
+      for (const rows of [16, 14, 12, 10, 8, 6, 4, 2]) {
+        layout.resize(rows);
+        await vi.advanceTimersByTimeAsync(120);
+      }
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(socket)).toEqual(["2x40"]);
+    });
+
+    it("fit() during a transition does not send the size measured mid-way", async () => {
+      const { s, layout, socket } = await attached();
+
+      // Files -> CLI while the keyboard is still up: the panel is shown at the
+      // keyboard-open height, then the keyboard finishes closing 60 ms later.
+      layout.resize(2);
+      s.fit();
+      await vi.advanceTimersByTimeAsync(60);
+      layout.resize(18);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      // 18x40 was already the PTY's size, so nothing at all is sent.
+      expect(resizes(socket)).toEqual([]);
+    });
+
+    it("each settled size is sent once per keyboard open and close", async () => {
+      const { layout, socket } = await attached();
+
+      layout.resize(2); // open, settles
+      await vi.advanceTimersByTimeAsync(1000);
+      layout.resize(18); // close, settles
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(socket)).toEqual(["2x40", "18x40"]);
+    });
+
+    it("an attach sends its size once, not again when the first fit settles", async () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      const layout = liveHost({ rows: 18, cols: 40 });
+      await s.connect(SESSION);
+      sockets[0].open();
+      makeWriter(sockets[0]);
+      // The observer's initial callback for the freshly observed host.
+      layout.resize(18);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(sockets[0])).toEqual(["18x40"]);
+    });
+
+    it("a host hidden while settling sends nothing", async () => {
+      const element = document.createElement("div");
+      let height = 600;
+      Object.defineProperty(element, "clientWidth", { value: 800 });
+      Object.defineProperty(element, "clientHeight", { get: () => height });
+      const s = newSession();
+      s.mount(element);
+      const layout = liveHost({ rows: 18, cols: 40 });
+      await s.connect(SESSION);
+      sockets[0].open();
+      await vi.advanceTimersByTimeAsync(1000);
+      sockets[0].sent.length = 0;
+
+      layout.resize(10);
+      height = 0; // `display: none` before the debounce came due
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(sockets[0])).toEqual([]);
+    });
+  });
+
+  // #115. A CLI is created before its panel exists, so the size it starts at is
+  // measured on a throwaway terminal in a box of the panel's size — the same
+  // font, line height and scrollback as the real one, so the same cell size.
+  describe("measureTerminalSize (#115)", () => {
+    it("measures the box with the CLI terminal's own font, then leaves nothing behind", () => {
+      const before = document.body.childElementCount;
+
+      expect(measureTerminalSize({ width: 356, height: 356 }, 15)).toEqual({
+        rows: 43,
+        columns: 110,
+      });
+
+      expect(terminals).toHaveLength(1);
+      expect(terminals[0].options).toMatchObject({
+        fontSize: 15,
+        lineHeight: 1.2,
+        scrollback: 10000,
+      });
+      // Measured in a real, laid-out box (visibility, not display: none).
+      const probe = terminals[0].open.mock.calls[0][0] as HTMLElement;
+      expect(probe.style.width).toBe("356px");
+      expect(probe.style.height).toBe("356px");
+      expect(probe.style.visibility).toBe("hidden");
+      // No focus (it would raise a phone keyboard), no observer, no socket.
+      expect(terminals[0].focus).not.toHaveBeenCalled();
+      expect(observers).toHaveLength(0);
+      expect(sockets).toHaveLength(0);
+      expect(terminals[0].dispose).toHaveBeenCalledOnce();
+      expect(document.body.childElementCount).toBe(before);
+    });
+
+    it("clamps to the wire contract and refuses a degenerate box", () => {
+      expect(measureTerminalSize({ width: 0, height: 356 }, 14)).toBeNull();
+      expect(terminals).toHaveLength(0);
+
+      const measure = (rows: number, cols: number) => {
+        nextProposal.value = { rows, cols };
+        return measureTerminalSize({ width: 356, height: 356 }, 14);
+      };
+      expect(measure(900, 620)).toEqual({ rows: 300, columns: 500 });
+      expect(measure(1, 40)).toBeNull();
+      // Disposed on the refusal path too.
+      expect(terminals.every((t) => t.dispose.mock.calls.length === 1)).toBe(
+        true,
+      );
+    });
   });
 
   it("leak gate: 20 mount/dispose cycles leave no live socket, observer, or timer", async () => {
