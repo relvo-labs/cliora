@@ -785,12 +785,12 @@ describe("SessionWorkspaceView — shell entry (#109, #128)", () => {
     });
   }
 
-  it("repair: parent termination suppresses a false shell failure announcement", async () => {
+  it("repair2: parent termination suppresses a false shell failure announcement", async () => {
     setViewportWidth(390);
     const wrapper = await render(vi.fn(async () => owner()));
     await openFromMenu(wrapper);
     shellApi.terminateSession.mockRejectedValueOnce(
-      new ApiError("SESSION_ALREADY_ENDED", "Session has already ended", 409),
+      new ApiError("SESSION_INVALID_STATE", "Session has already ended", 409),
     );
     useSessionsStore().current = session({
       status: "terminated",
@@ -807,16 +807,120 @@ describe("SessionWorkspaceView — shell entry (#109, #128)", () => {
     wrapper.unmount();
   });
 
-  it("repair: an already-ended child is a confirmed close", async () => {
+  for (const status of ["exited", "failed", "terminated"] as const) {
+    it(`repair2: an already-ended child is confirmed only after fetching ${status}`, async () => {
+      setViewportWidth(390);
+      const getSession = vi.fn(async (id: string) =>
+        id === SHELL_ID ? session({ id, runtime: "shell", status }) : owner(),
+      );
+      const wrapper = await render(getSession);
+      await openFromMenu(wrapper);
+      shellApi.terminateSession.mockRejectedValueOnce(
+        new ApiError("SESSION_INVALID_STATE", "Session has already ended", 409),
+      );
+      await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
+      await flushPromises();
+      expect(getSession).toHaveBeenCalledWith(SHELL_ID);
+      expect(wrapper.get(".shell-announcement").text()).toContain(
+        "已關閉並終止",
+      );
+      wrapper.unmount();
+    });
+  }
+
+  for (const status of ["starting", "running"] as const) {
+    it(`repair2: an illegal transition with a ${status} child cannot confirm termination`, async () => {
+      setViewportWidth(390);
+      const getSession = vi.fn(async (id: string) =>
+        id === SHELL_ID ? session({ id, runtime: "shell", status }) : owner(),
+      );
+      const wrapper = await render(getSession);
+      await openFromMenu(wrapper);
+      shellApi.terminateSession.mockRejectedValueOnce(
+        new ApiError(
+          "SESSION_INVALID_STATE",
+          "Illegal transition starting -> terminating",
+          409,
+        ),
+      );
+      await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
+      await flushPromises();
+      const announcement = wrapper.get(".shell-announcement").text();
+      expect(announcement).toContain("無法確認終止");
+      expect(announcement).not.toContain("已關閉並終止");
+      expect(getSession).toHaveBeenCalledWith(SHELL_ID);
+      wrapper.unmount();
+    });
+  }
+
+  it("repair2: NODE_OFFLINE cannot confirm shell termination", async () => {
     setViewportWidth(390);
-    const wrapper = await render(vi.fn(async () => owner()));
+    const getSession = vi.fn(async () => owner());
+    const wrapper = await render(getSession);
     await openFromMenu(wrapper);
     shellApi.terminateSession.mockRejectedValueOnce(
-      new ApiError("SESSION_ALREADY_ENDED", "Session has already ended", 409),
+      new ApiError("NODE_OFFLINE", "Node is not connected", 409),
     );
     await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
     await flushPromises();
-    expect(wrapper.get(".shell-announcement").text()).toContain("已關閉並終止");
+    const announcement = wrapper.get(".shell-announcement").text();
+    expect(announcement).toContain("無法確認終止");
+    expect(announcement).not.toContain("已關閉並終止");
+    expect(getSession).not.toHaveBeenCalledWith(SHELL_ID);
+    wrapper.unmount();
+  });
+
+  it("repair2: a failed child status fetch cannot confirm shell termination", async () => {
+    setViewportWidth(390);
+    const getSession = vi.fn(async (id: string) => {
+      if (id === SHELL_ID)
+        throw new ApiError("NETWORK_ERROR", "The request could not be sent", 0);
+      return owner();
+    });
+    const wrapper = await render(getSession);
+    await openFromMenu(wrapper);
+    shellApi.terminateSession.mockRejectedValueOnce(
+      new ApiError("SESSION_INVALID_STATE", "Session has already ended", 409),
+    );
+    await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
+    await flushPromises();
+    const announcement = wrapper.get(".shell-announcement").text();
+    expect(announcement).toContain("無法確認終止");
+    expect(announcement).not.toContain("已關閉並終止");
+    expect(getSession).toHaveBeenCalledWith(SHELL_ID);
+    wrapper.unmount();
+  });
+
+  it("repair2: RUNTIME_NOT_FOUND announcement survives the posture refresh", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => owner()));
+    const fetchNode = vi.mocked(useNodesStore().fetchNode);
+    let finishRefresh!: () => void;
+    fetchNode.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefresh = () =>
+            resolve(
+              nodeDetail({
+                runtimes: [{ runtime: "shell", available: false }],
+              }) as never,
+            );
+        }),
+    );
+    shellApi.openShell.mockRejectedValueOnce(
+      new ApiError("RUNTIME_NOT_FOUND", "Runtime unavailable", 409),
+    );
+    await openFromMenu(wrapper);
+    expect(fetchNode).toHaveBeenCalledTimes(2);
+    expect(wrapper.get(".shell-announcement").text()).toBe(
+      "系統 shell 無法使用，正在更新節點可用性。",
+    );
+    finishRefresh();
+    await flushPromises();
+    expect(wrapper.get(".shell-announcement").text()).toBe(
+      "系統 shell 無法使用，正在更新節點可用性。",
+    );
+    expect(wrapper.find("#tab-terminal").exists()).toBe(false);
     wrapper.unmount();
   });
 

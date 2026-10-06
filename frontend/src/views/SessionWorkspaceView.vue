@@ -502,7 +502,9 @@ async function openShellTab(): Promise<void> {
 // Closing the tab ends the session on the node. The server-side parent binding
 // and idle timeout are the backstop for the cases the browser cannot report
 // (a crash, a lost network), not a substitute for asking.
-async function closeShell(): Promise<void> {
+async function closeShell({
+  preserveAnnouncement = false,
+} = {}): Promise<void> {
   disownPendingShell();
   const owner = shellOwner;
   const open = shellSession.value;
@@ -514,7 +516,7 @@ async function closeShell(): Promise<void> {
     activeTab.value = "cli";
   }
   if (!open) {
-    shellAnnouncement.value = "";
+    if (!preserveAnnouncement) shellAnnouncement.value = "";
     return;
   }
   const announce = (message: string) => {
@@ -531,13 +533,25 @@ async function closeShell(): Promise<void> {
     await api().terminateSession(open.id);
     announce(confirmed);
   } catch (caught) {
-    // Best effort: the parent binding and the idle timeout still collect it.
+    // A conflict can mean either an ended child or a refused transition. Only
+    // the child's current state confirms termination; NODE_OFFLINE cannot.
     if (
       caught instanceof ApiError &&
-      (caught.status === 409 || /^SESSION_(?:.*_)?ENDED$/.test(caught.code))
-    )
-      announce(confirmed);
-    else announce("系統 shell 已關閉；無法確認終止，請檢查 Node 狀態。");
+      caught.status === 409 &&
+      caught.code === "SESSION_INVALID_STATE"
+    ) {
+      try {
+        const latest = await api().getSession(open.id);
+        if (["exited", "failed", "terminated"].includes(latest.status)) {
+          announce(confirmed);
+          return;
+        }
+      } catch {
+        // A failed lookup leaves the termination outcome unknown too.
+      }
+    }
+    // Best effort: the parent binding and the idle timeout still collect it.
+    announce("系統 shell 已關閉；無法確認終止，請檢查 Node 狀態。");
   }
 }
 
@@ -766,7 +780,8 @@ async function loadNodePosture(nodeId: string): Promise<void> {
 // Losing either gate removes the affordance and returns to CLI; a hidden
 // shell must not keep running locally with no remaining close control.
 watch(canOpenShell, (allowed) => {
-  if (!allowed && shellState.value !== "idle") void closeShell();
+  if (!allowed && shellState.value !== "idle")
+    void closeShell({ preserveAnnouncement: true });
 });
 // A desktop cached-page return can retain an idle TERMINAL selection. If it
 // becomes a phone (or loses availability), select the CLI rather than leaving
