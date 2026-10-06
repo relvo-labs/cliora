@@ -1,179 +1,170 @@
 # Cliora
 
-## 這是什麼（30 秒版）
+Cliora 是自架的 CLI coding-agent 管理平台，讓你從瀏覽器或手機操作自己 Linux 節點上的 Claude／Codex session，並集中管理節點、權限與稽核。
 
-Cliora 讓你從瀏覽器建立並操作一個跑在自己 Linux 主機上的 CLI coding agent session。`agentd` 會為每次工作建立一個 **Cliora 管理的 tmux session**，啟動 Claude CLI、Codex CLI 或允許的 shell runtime；瀏覽器透過 FastAPI **Central** 中介的認證 WebSocket 收看輸出與輸入指令。關掉分頁只會斷開瀏覽器連線，Cliora 建立的 tmux session 會繼續在主機上執行，之後可從另一個裝置重新連回去（見〈tmux session 語意〉）。**目前不會收編任意既有的 tmux／CLI process；可重連的是由 Cliora 建立與登記的 session。**
+> [!IMPORTANT]
+> 目前仍是 **pre-1.0**：[`daemon/VERSION`](daemon/VERSION) 為 `0.7.0`，backend／frontend 為 `0.1.0`。
+> 下方 demo 的 **Fake CLI runtime** 代替 Claude；Central、PostgreSQL、enrollment、daemon 與 tmux 都走實際路徑。
+> demo 的隧道 provider 也是假替身，顯示的 `.example.invalid` URL 不可開啟。
+> 截至 2026-10-06，最近一組實際執行（未因 Draft 而跳過）的 PR Actions 的 [CI](https://github.com/relvo-labs/cliora/actions/runs/37484315813)、[P1](https://github.com/relvo-labs/cliora/actions/runs/37484315820)、[P2](https://github.com/relvo-labs/cliora/actions/runs/37484315846)、[P3](https://github.com/relvo-labs/cliora/actions/runs/37484315834)、[P4](https://github.com/relvo-labs/cliora/actions/runs/37484315769)、[WT](https://github.com/relvo-labs/cliora/actions/runs/37484315716) 皆失敗，只有 [Requirement Traceability](https://github.com/relvo-labs/cliora/actions/runs/37484315712) 成功。
+> 這組 run 的 head 是 `c59410b`；本 README 核對的 `master@aa732f0` 沒有對應 run，不能宣稱該版本已通過 CI。
+> CI 的 frontend job 停在 npm audit；依賴問題見 [#99](https://github.com/relvo-labs/cliora/issues/99)，瀏覽器驗證缺口見 [#117](https://github.com/relvo-labs/cliora/issues/117)。
 
-**目標讀者**：希望從瀏覽器或手機啟動、監看及接手 CLI coding-agent session，而不必一直維持 SSH 視窗的開發者；以及要替多台主機（Cliora 稱為 *node*）建立一次性安裝、管理上線狀態與存取權限的管理員。目前只承載原生 CLI 互動，不解析、不代管、不自動化 agent 的審批或工具呼叫（`research/prd.md` §4 非目標 1–5）。
+## 可以做什麼
 
-**目前的成熟度邊界**：程式碼與測試把功能分批遞交（內部代號 P0–P4，以及之後的系統終端機、埠轉發、檔案上傳等幾波）。**P0** 是最早、刻意無資料庫、無正式驗證的原型垂直切片（Browser → Central → daemon → tmux → 決定性的 Fake CLI），連同它專用的開發用 WebSocket relay（`/ws/p0/*`、`CLIORA_P0_ENABLED`、共用靜態 token）**已經在後續階段整個移除**（[ADR 0006](docs/adr/0006-p1-auth-handoff.md) 由 [ADR 0016](docs/adr/0016-p4-rbac-and-audit-operations.md) 取代並在 P4-07 刪除相關程式碼），**不是**今天可以執行的路徑。從 P1 起，任何本機或 demo 路徑都一律走完整的 PostgreSQL 控制平面：使用者帳號密碼登入取得 JWT，節點以 Ed25519 challenge–response 向 Central 認證（見下方〈P1 認證與節點註冊〉）。今天最接近「明確禁止用於 production」的邊界，是 `Settings` 在 `CLIORA_ENVIRONMENT=production` 時，只要偵測到仍是開發預設的 `CLIORA_JWT_SECRET` 或 `CLIORA_TOKEN_PEPPER` 就直接拒絕啟動（`backend/tests/test_settings.py::test_development_secrets_fail_closed_in_production`）——這台專案本身仍是 pre-1.0（`daemon/VERSION` 為 `0.7.0`，backend／frontend 為 `0.1.0`），沒有對外客戶或正式維運紀錄可引用，請把它當作已經過大量自動化驗證、但尚未經正式維運驗證的系統。
+| 操作面 | 目前入口與能力 |
+|---|---|
+| 瀏覽器工作區 | 建立、重連、終止 CLI session；xterm.js 接收原始 PTY 輸出，採單一 writer 與唯讀 viewer，可要求接管。 |
+| 檔案面板 | 檔案樹、檔名搜尋、唯讀 Monaco 文字預覽、圖片投放、一般檔案上傳及下載；圖片／PDF 預覽另需啟用 rollout。 |
+| 手機 | 響應式 session 清單、terminal／files 切換與安全輸入控制；Playwright 有手機模擬專案，仍需實機驗收。 |
+| Nodes／daemon | 查看 online／degraded／offline／disabled 與 runtime 狀態；enrollment、憑證撤銷、`agentd` 安裝、診斷與更新。 |
+| 管理介面 | Dashboard、Admin／Developer／Viewer RBAC、workspace 收藏與最近使用、audit 查詢與整合設定；首位管理員由 bootstrap 建立。 |
+| 系統終端機 | 在 CLI session 旁開啟 `shell` runtime；有獨立的 owner／權限與閒置終止規則，可由節點關閉。 |
+| 埠轉發 | 整合 Pinggy，由節點的 SSH 子行程對外連線；開發中應用程式的流量經 provider，不經 Central。 |
+| 本機開發工具 | `Makefile` 管理三語言檢查；Fake CLI、enroll-dev 與隧道替身供 demo／E2E 使用。 |
 
----
+平台承載原生 CLI 互動，不解析 agent 對話、不建立中央審批或任務分派，也不自動化 Git 操作。
+預覽保持唯讀；瀏覽器只能新增上傳的檔案，編輯、改名、刪除交給 CLI 或 terminal。
+Claude／Codex 的安裝與帳號由節點使用者準備；demo 不需要真實 agent 帳號。
 
-## 最短本機成功路徑（Quick Start）
+## 架構
 
-目前 repository tree 可執行的路徑如下。
+```text
+Browser / Mobile（Vue 3、xterm.js、Monaco）
+       │ HTTPS / 認證 WebSocket
+       ▼
+FastAPI Central ── PostgreSQL（帳號、node/session metadata、RBAC、audit）
+       ▲
+       │ outbound WSS：由節點主動連出；Central 不 SSH 進節點
+       │
+Go daemon agentd ── runtime 偵測、workspace 驗證、PTY、session 管理
+       │
+       ▼
+daemon 專用 tmux ── claude / codex / shell（demo：Fake CLI）
+
+節點上的開發應用程式 ── SSH tunnel ── Pinggy ── 外部瀏覽器
+```
+
+Central 的 [connection registry](backend/app/services/registry.py) 與 [terminal relay](backend/app/services/terminal_relay.py) 都是 **process-local**，多副本無法共享連線，目前採單一行程／單一副本。
+瀏覽器登入使用 Argon2id 密碼驗證與 JWT；terminal WebSocket 使用一次性 ws-ticket。
+節點以 Ed25519 challenge–response 認證，Central 只持有公鑰；私鑰留在節點。
+詳細邊界見 [認證 ADR](docs/adr/0007-p1-authentication.md)、[節點憑證 ADR](docs/adr/0008-p1-node-credential-and-protocol.md) 與 [部署說明](docs/deployment.md)。
+
+每個登記的 CLI session 對應 `cliora-<uuid>` tmux session；關閉分頁只會 detach，runtime 自行退出或明確終止才會結束它。
+Cliora 不收編任意既有 tmux／CLI process。重連使用 `tmux attach-session -d`，並傳送最多 2 MiB 的快照；超出只保留最新內容並標示截斷。
+快照與 tmux 的 `history-limit` scrollback 是不同機制，見 [重連 ADR](docs/adr/0012-p2-recovery-attach-model.md)。
+
+## 本機試用
+
+這條路徑啟動一個 rootless enrolled 節點，以 Fake CLI 演示 terminal；使用專用、可丟棄的 DB。
 
 ### 先決條件
 
-- Linux 與 tmux 3.4 以上
-- Python 3.12.3 與 uv
-- Go 1.26.5
-- Node 22.14.0 與 npm 10
-- Docker（用來跑本機 PostgreSQL 16）
+- Linux、Bash、GNU Make、curl、Python 3；以一般使用者啟動 daemon。
+- tmux 3.4 以上、Python 3.12.3 與 uv、Go 1.26.5、Node 22.14.0 與 npm 10。
+- Docker 可啟動 PostgreSQL 16；本機 `55432`、`8000`、`5173`、`5199` 埠可用。
 
-用 `python --version`、`uv --version`、`go version`、`node --version`、`npm --version`、`tmux -V` 驗證。版本號來自 `.python-version`、`.go-version`、`.nvmrc`，CI 也讀同一份。
+若 `55432` 已佔用，將 `docker run` 的映射改為 `-p 127.0.0.1:55442:5432`，並同步使用 `make dev-stack DB_URL=postgresql+asyncpg://cliora:cliora@127.0.0.1:55442/cliora_demo`。這只調整 DB 埠，本流程的 `8000`／`5173`／`5199` 不會隨之改變。
 
-### 安裝與靜態檢查
+版本來源為 [`.python-version`](.python-version)、[`.go-version`](.go-version)、[`.nvmrc`](.nvmrc)；CI 的部分 P4 jobs 使用 Go module／Node major，詳見 [CONTRIBUTING](CONTRIBUTING.md)。
+下列指令從 repository 根目錄執行；三個終端機都先切到同一目錄。
 
 ```bash
 make bootstrap
-make check
 ```
 
-`make check` 會跑格式檢查、lint/vet、型別檢查、單元測試、contract 測試、build，以及 traceability 與 Railway 邊界設定的靜態檢查（見 `Makefile`）。
+### 1. 終端機 A：專用 PostgreSQL
 
-### 啟動一個可以在瀏覽器操作的完整 demo
-
-需要一個本機 PostgreSQL：
+前景執行，停止後自動刪除容器；這組帳密只用於本機 demo。
 
 ```bash
-docker run -d --name cliora-pg -p 5432:5432 \
-  -e POSTGRES_USER=cliora -e POSTGRES_PASSWORD=cliora -e POSTGRES_DB=cliora_test \
-  postgres:16-alpine
+docker run --rm --name cliora-demo-pg -p 127.0.0.1:55432:5432 \
+  -e POSTGRES_USER=cliora -e POSTGRES_PASSWORD=cliora \
+  -e POSTGRES_DB=cliora_demo postgres:16-alpine
 ```
 
-開兩個終端機：
+### 2. 終端機 B：Central + enrolled daemon
+
+先確認 DB 可連線，再啟動 stack：
 
 ```bash
-# 終端機 A：Central + 一個以 Fake CLI 充當 "claude" runtime 的真實 enrolled 節點（rootless）
-make dev-stack
+docker exec cliora-demo-pg pg_isready -U cliora -d cliora_demo
+make dev-stack DB_URL=postgresql+asyncpg://cliora:cliora@127.0.0.1:55432/cliora_demo
 ```
 
-`make dev-stack` 會自己跑 migration、建立第一個管理員、啟動 Central、簽發 enrollment token 並用它註冊一個節點，等節點回報 online 後印出：
+若 DB 尚未 ready，等 PostgreSQL 印出可接受連線訊息後重試 `pg_isready`。
+stack 會 migration、建立 admin、簽發 enrollment token、註冊 `e2e-node`，等它 online 後印出：
 
-```
+```text
 Stack ready at http://127.0.0.1:8000 (admin: e2e-admin / e2e-admin-pw).
 ```
 
-（帳密可用環境變數 `E2E_ADMIN_USER` / `E2E_ADMIN_PASSWORD` 覆寫；細節見 `scripts/e2e/run-stack.sh`。）
+帳密可由 `E2E_ADMIN_USER`／`E2E_ADMIN_PASSWORD` 覆寫；若設定 `CLIORA_ADMIN_PASSWORD`，須與登入密碼一致。
+完整腳本見 [`scripts/e2e/run-stack.sh`](scripts/e2e/run-stack.sh)。
+
+### 3. 終端機 C：確認健康並開啟前端
 
 ```bash
-# 終端機 B：前端開發伺服器
+curl -fsS http://127.0.0.1:8000/healthz
+curl -fsS http://127.0.0.1:8000/readyz
 make dev-frontend
 ```
 
-打開 `http://localhost:5173`，用終端機 A 印出的帳密登入，就會看到一個 online 的節點，可以建立 session、在瀏覽器打開終端機並輸入文字——這條路徑跑的是決定性的 Fake CLI，不是真正的 Claude/Codex（那是安裝到真實節點上的 `agentd` 才會啟動的 runtime，見〈架構概覽〉）。
+`/healthz` 應回傳 `{"status":"ok"}`；`/readyz` 應為 HTTP 200，且 DB 與 migration 檢查成功。
+若 `/readyz` 是 503，先看回應中的檢查結果與 stack 終端輸出，不要只以程序仍在執行判定成功。
 
-只想做後端 API 開發、不需要完整節點，可以單獨跑 `make dev-central`（讀 `CLIORA_DATABASE_URL`，預設指向 `postgresql+asyncpg://cliora:cliora@127.0.0.1:5432/cliora`），但沒有 `dev-stack` 幫你做的 enrollment，節點需要另外走真實流程。
+### 4. 瀏覽器中的成功訊號
 
----
+1. 開啟 [http://localhost:5173](http://localhost:5173)，用 `e2e-admin`／`e2e-admin-pw` 登入。
+2. 在 Nodes 看見 `e2e-node` 為 online；建立 session，選 `claude` 與 stack 印出的 workspace root。
+3. 開啟 CLI，看到 `FAKECLI_READY`；輸入 `:unicode`，應看到 `中文 café 🚀`。
+4. 重新整理後連回同一個 session；在檔案面板開啟 `src/main.py`，應看到 `E2E_PREVIEW_MARKER`。
 
-## 架構概覽
+這證明的是 demo 的登入、enrollment、terminal 與文字預覽路徑；真實 agent、真實 provider、TLS 部署與實機手機驗收另見下表。
 
-```
-Browser (Vue 3 + xterm.js + Monaco)
-   │  HTTPS / 認證過的 WebSocket
-   ▼
-FastAPI Central  ── 使用者認證(JWT) · 節點註冊表 · terminal relay · enrollment · RBAC · audit log
-   │  outbound WSS（永遠由節點主動連出，Central 不主動連節點，FR-CONN-001）
-   ▼
-Go daemon "agentd"  ── 連線管理 · runtime 偵測(claude/codex) · tmux/PTY session 管理 · workspace 驗證
-   │
-   ▼
-tmux session  ──  claude / codex（正式節點）或 deterministic Fake CLI（demo/測試）
-```
+### 清理
 
-Central 的節點註冊表與 terminal relay 是**單一行程內**的狀態（見 `app/services/registry.py`、`app/services/terminal_relay.py` 的 module docstring）：目前只能垂直擴充，多副本部署會讓節點連線各自散落在不同副本、彼此看不見對方（`docs/deployment.md` 開頭即說明，也是 §「部署」的第一個風險）。
+先在 UI 終止本次建立的 CLI sessions（其子 shell 也會終止），再對終端機 C、B、A 依序按 Ctrl-C。
+stack 清理自己的程序群與暫存 workspace，PostgreSQL 的 `--rm` 容器停止後刪除；試用資料不保留。
+不要對其他 tmux sessions 或既有 DB 執行清理。開發、測試與 API-only 啟動見 [CONTRIBUTING](CONTRIBUTING.md)。
 
-### P1 認證與節點註冊（Ed25519）
+## 成熟度與限制
 
-- **瀏覽器使用者**：帳號密碼登入，密碼以 Argon2id 雜湊；換回 15 分鐘的 access JWT 與 14 天、可撤銷的 refresh token。瀏覽器無法在 WebSocket 握手時夾帶 header，也不能把長效 JWT 放進 query string，所以連 terminal WebSocket 前要先用有效的 access token 換一張**一次性、60 秒過期、綁定使用者與資源**的 ws-ticket（[ADR 0007](docs/adr/0007-p1-authentication.md)）。
-- **節點（daemon）**：enrollment 時 daemon 用 OS CSPRNG 產生一組 **Ed25519** 金鑰對，只把公鑰送給 Central、私鑰以 `0600` 寫進本機的 `credentials.yaml`；Central 從不接觸私鑰。之後每次 WebSocket 連線，Central 送一個新的 32-byte nonce，daemon 對 domain-separated 的位元組簽章回傳，Central 用存好的公鑰驗證後才放行（[ADR 0008](docs/adr/0008-p1-node-credential-and-protocol.md)）。這是破壞性安全遷移：migration `0003` 撤銷了所有舊版共享密鑰憑證，既有節點必須重新 enroll。
-- 一行安裝指令、`agentd` 生命週期指令（`install` / `uninstall` / `doctor` / `update` 等）與簽章驗證的細節在 [`deploy/README.md`](deploy/README.md)。
-
-### tmux session 語意
-
-- 每個 Cliora session 對應**恰好一個** tmux session，命名為 `cliora-<uuid>`（`daemon/internal/tmux/client.go`），與主機上其他 tmux session 用前綴隔開。
-- 瀏覽器分頁關閉或網路中斷**只是分離（detach）連線**；只有使用者明確按下「停止」才會真的結束 tmux session（`Manager.Stop`，`daemon/internal/session/manager.go`）。
-- 重新連線時，daemon 對同一個 tmux session 執行 `tmux attach-session -d`：`-d` 會把任何殘留的舊 attach client（例如上一輪 daemon 掛掉後留下的、還活著的 client）直接踢掉，讓新的附加不會被卡住（[ADR 0012](docs/adr/0012-p2-recovery-attach-model.md)，回歸測試見 `daemon/internal/session/recovery_test.go`）。
-- 重新連線的畫面快照上限 2 MiB、超出只保留最新內容並標成截斷；使用者在瀏覽器裡往上捲動看到的歷史，來自 daemon 端 tmux 自己的 scrollback（`history-limit`），兩者是不同機制，不要混為一談（`research/prd.md` FR-TERM-004）。
-
-### 瀏覽器端 token 刷新與已知的 race（refresh race）
-
-多分頁同時使用、或者 access token 快過期時觸發並發刷新，曾經出現「舊分頁刷新失敗把新分頁剛換到的新 token 蓋掉」「已登出後，一個晚到的刷新成功又把 session 復活」兩類問題，已於 commit `b1053bd`（`fix(auth): stabilize refresh sessions across tabs`）修正並補上迴歸測試（`frontend/src/api/client.test.ts`、`frontend/src/stores/auth.test.ts`）：
-
-- `ApiClient.refresh()`（`frontend/src/api/client.ts`）用單一 in-flight promise 把並發的 401 收斂成一次刷新請求；刷新成功時若目前存的 refresh token 已經被別的分頁換過，就丟棄這次「過期」的結果而不覆蓋，讓原本的請求改用新 token 重試；若目前已經是登出狀態（token 被清空），一個晚到的成功也不會把 session 復活。
-- `installAuthStorageSync()`（`frontend/src/stores/auth.ts`）監聽 `storage` 事件，把其他分頁寫入 `localStorage` 的 token 變化鏡射進目前分頁的 Pinia state，並用遞增的 generation 計數器避免過期的非同步回應覆寫較新的狀態。
-
-這條路徑已有針對性測試覆蓋，但屬於分散式狀態同步問題，**沒有形式化證明「不存在任何 race」**；改動這段邏輯時請先讀那兩個測試檔。
-
----
-
-## 測試
-
-| 指令 | 涵蓋範圍 | 需要什麼 |
+| 範圍 | 目前邊界 | 證據／追蹤 |
 |---|---|---|
-| `make check` | format / lint / typecheck / 三語言單元測試 / contract / build / traceability 靜態檢查 / Railway 邊界設定檢查 | 無 tmux、無瀏覽器、無 DB |
-| `make integration` | daemon 的 `-tags integration` 套件（session / connection / files / workspace / tunnel） | 需要 tmux |
-| `make e2e` | Playwright 基本模式；只會啟動 Vite，未提供完整 Central／node 的案例會依前置條件 skip | 需要安裝瀏覽器；不等同 full-stack |
-| `E2E_FULL_STACK=1 ./scripts/e2e/run-stack.sh bash -c 'cd frontend && npm run test:e2e'` | 先拉起真實 Central + enrolled node，再執行 session／file 等 full-stack 案例；CI P2 使用此模式 | PostgreSQL、tmux、瀏覽器及可用的本機埠 |
-| `make test-db` | `backend/tests/db` 下的 DB-backed 認證/enrollment/node/status/audit 測試 | 需要已 migrate 的 PostgreSQL（`CLIORA_DATABASE_URL` 與 `CLIORA_TEST_DATABASE_URL`） |
-| `make traceability` | 需求-測試追溯（[ADR 0019](docs/adr/0019-requirement-traceability.md)）：每條 PRD 驗收條件都要連到一個確實存在的斷言 | 無 |
-| `make perf` | P2/P3 的延遲/退化量測，結果寫進 `artifacts/{p2,p3}/local/` | 需要 tmux |
+| 版本與交付 | pre-1.0；P0–P4 是歷史階段，報告的 Go 有條件，不代表目前 CI 全綠。 | [版本](daemon/VERSION)、[P4 報告](docs/p4-report.md)、[Actions](https://github.com/relvo-labs/cliora/actions) |
+| Demo | agent runtime 與 tunnel provider 使用替身；system shell 仍是節點上的實際 shell。 | [stack](scripts/e2e/run-stack.sh) |
+| Session | 只重連 Cliora 登記的 session；接管後前端角色更新仍有已知問題。 | [重連 ADR](docs/adr/0012-p2-recovery-attach-model.md)、[#133](https://github.com/relvo-labs/cliora/issues/133) |
+| Central 容量 | 單副本；P4 full 為 100 nodes／500 sockets，PR 與 `master` dispatch 只跑 5-node smoke。full 條件仍寫 `main`／`release/*`，目前沒有 `main`。 | [workflow](.github/workflows/p4.yml)、[重疊文件 PR #69](https://github.com/relvo-labs/cliora/pull/69) |
+| 手機與瀏覽器 | 模擬專案不能代替 iOS Safari／Android Chrome、鍵盤、IME 與輔助技術實機測試。 | [mobile 狀態](plan/29/09-implementation-status.md)、[#82](https://github.com/relvo-labs/cliora/issues/82)、[#117](https://github.com/relvo-labs/cliora/issues/117) |
+| Workspace 寫入 | image drop 與 file upload 預設開啟且可由節點拒絕；一般 upload 上限 4 MiB／檔、256 MiB／session、200 檔／日，不覆寫。一般檔案無 retention，counter 在 daemon 重啟歸零；image drop 預設在後續 session 啟動時清理超過 7 天的圖片。 | [寫入 ADR](docs/adr/0024-workspace-write-posture.md)、[upload ADR](docs/adr/0026-general-file-upload.md) |
+| 圖片／PDF 預覽 | 程式已存在；Central rollout 預設關閉，需 edge 驗證與節點 live capability；Viewer 可唯讀預覽，但不因此取得下載權限。 | [ADR 0029](docs/adr/0029-read-only-binary-preview.md)、[設定](backend/app/settings.py) |
+| 系統終端機／Codex | shell 不受 workspace root 限制；privileged posture 可用 sudo 到 root。Codex 的 `sandbox_bypass` 缺省開啟，設計對象是可拋棄的隔離 VM；只有節點能選擇姿態。 | [shell ADR](docs/adr/0021-system-terminal-and-shell-runtime.md)、[posture ADR](docs/adr/0023-privileged-node-posture.md) |
+| 埠轉發 | provider 故障即不可用；流量不經平台，無 preview 存取 log／內容政策；免費 hostname 可能揭露節點公網 IP。 | [PG 報告](docs/pg-report.md)、[release note](docs/release-note-tunnel.md) |
+| 安全性 | HTTPS/WSS 與 production 預設密鑰拒絕已配置；仍有跨節點訊息授權、ws-ticket 清理及 rate limiting 的 open issues。 | [安全審查](docs/security-review-p4.md)、[#47](https://github.com/relvo-labs/cliora/issues/47)、[#56](https://github.com/relvo-labs/cliora/issues/56)、[#57](https://github.com/relvo-labs/cliora/issues/57)、[#58](https://github.com/relvo-labs/cliora/issues/58)、[#59](https://github.com/relvo-labs/cliora/issues/59) |
+| 隱私與權限文件 | terminal 不設內容錄影；文字路徑／搜尋 query 的 access log 與 edge 暫存仍有追蹤項，不能宣稱所有 sink 絕不落地；產生的權限表也有漏列。 | [#84](https://github.com/relvo-labs/cliora/issues/84)、[#85](https://github.com/relvo-labs/cliora/issues/85)、[#87](https://github.com/relvo-labs/cliora/issues/87) |
+| 維運驗證 | 自簽 TLS 測試不證明 `ssl_stapling`；systemd 安裝矩陣與部分告警演練需真實節點。skip 要另外記錄。 | [P4 gaps](docs/p4-report.md)、[release checklist](docs/release-checklist.md) |
 
-CI 設定在 `.github/workflows/`：`ci.yml` 是所有 push/PR 都要過的基礎 gate（後端/daemon/前端各自的格式、lint、型別、單元測試、build，加上三個版面高度不變式的瀏覽器量測與一個防憑證外洩腳本）；`p1.yml`–`p4.yml` 疊加各階段的整合/DB/瀏覽器 E2E/容量測試；`traceability.yml` 跑上面的追溯驗證；`wt.yml` 覆蓋系統終端機。這些工作流程檔案存在且內容可讀，但 README 不把 workflow 定義當成當下執行成功的證據；請以 GitHub Actions 的實際 run 為準。
+## 依讀者找文件
 
-已知、寫在報告裡而非藏起來的落差（`docs/p4-report.md` §4）：完整規模的容量壓測（100 節點/500 連線）只在 main／release 分支跑，一般 push 只跑 5 節點的 smoke；五個告警演練裡有三個（`heartbeat-loss`、`timeout-surge`、`update-failure`）需要 systemd 與一個真實安裝的節點，在一般 sandbox/開發機上會被跳過而非算通過；多 OS/多瀏覽器引擎的安裝矩陣需要真正的 CI runner。這些都是「已實作、已審查，但不是每次都被自動執行」的項目，不是缺陷。
+| 讀者 | 先讀 | 接著看 |
+|---|---|---|
+| 評估者 | [產品需求](research/prd.md)（願景與非目標） | [P0](docs/p0-report.md)、[P1](docs/p1-report.md)、[P2](docs/p2-report.md)、[P3](docs/p3-report.md)、[P4](docs/p4-report.md) 歷史報告；[WT](docs/wt-report.md)、[PG](docs/pg-report.md)、[LY](docs/ly-report.md) 功能報告 |
+| 維運／部署者 | [單機 Compose](docs/deployment.md)、[Railway](docs/deployment-railway.md) | [daemon 安裝與生命週期](deploy/README.md)、[runbooks](docs/runbooks/)、[release checklist](docs/release-checklist.md)；CI 觸發以 [CONTRIBUTING](CONTRIBUTING.md) 為準 |
+| 貢獻者 | [CONTRIBUTING](CONTRIBUTING.md) | [技術規劃](research/tech.md)、[plan](plan/)（[P0](plan/01/README.md)、[P1](plan/02/README.md)）、[追溯報告](docs/traceability-report.md) 與 [明細](docs/traceability/) |
+| 整合／安全審查者 | [ADR](docs/adr/)、[協定變更](contracts/CHANGELOG.md)、[v1 schemas／fixtures](contracts/v1/) | [權限矩陣](docs/permission-matrix.md)（已知缺漏見 #87）、[錯誤碼](docs/error-catalog.md)、[安全審查](docs/security-review-p4.md) 與 [CONTRIBUTING 的信任邊界](CONTRIBUTING.md#信任邊界與回歸入口) |
 
----
+## Repository 結構
 
-## 安全性
-
-`docs/security-review-p4.md` 對照 15 條安全基準與一份攻擊手法清單逐項給證據（測試檔或演練產物），摘要如下——完整內容與每一條的證據連結請直接看該檔：
-
-- **正式環境只認 HTTPS/WSS**，且 `Settings` 在偵測到開發預設密鑰時拒絕以 `production` 環境啟動。
-- **daemon 服務程序預設以非 root 身分長駐**；但啟用「privileged node posture」時，服務帳號會取得 passwordless sudo，瀏覽器開啟的 system terminal 可透過其子程序提升到 root。這是明示的高權限模式，不是「daemon 永遠沒有提權路徑」（[ADR 0021](docs/adr/0021-system-terminal-and-shell-runtime.md)、[ADR 0023](docs/adr/0023-privileged-node-posture.md)）。
-- **enrollment token 一次性或限時**，節點憑證用 Ed25519（見上）而非共享密鑰，私鑰永不進中央資料庫。
-- **workspace 路徑在 Central 與 daemon 兩端各自重新驗證**，symlink 全部解析，前綴碰撞（如 `/a/projects-other` 誤判為 `/a/projects` 底下）已有回歸測試。
-- **session-start 協定不能由前端指定 binary／argv／任意路徑**：Central 只送 allowlisted runtime ID，由 daemon 決定啟動命令。但一旦使用者開啟允許的 `shell` runtime，該互動式 shell 本身可以執行任意命令；若節點採 privileged posture，也可能透過 sudo 取得 root。這兩層邊界不可混為一談。
-- **檔案寫入預設開啟**：image drop 與一般 file upload 預設為 enabled。一般上傳允許呼叫端指定 workspace 內的檔名，限制為每檔 4 MiB、每 session 256 MiB、每日 200 檔；repo 沒有自動 retention，且 in-memory counter 會在 `agentd` 重啟後歸零。部署者需把 workspace 視為持久資料邊界，必要時關閉功能或另訂清理政策（[ADR 0026](docs/adr/0026-general-file-upload.md)）。
-- **終端機內容、檔案內容、搜尋關鍵字、密碼、token、私鑰都不寫進 log、audit table 或備份 dump**——這條有一支腳本專門去真的資料庫 dump 裡掃這些東西（`scripts/p4/backup-restore-drill.sh`）。
-- **RBAC 是兩層**：角色可不可以做這件事（Admin/Developer/Viewer，見 `docs/permission-matrix.md`，此檔為程式碼自動產生）之外，還要檢查對這一個資源有沒有權限（例如 Developer 只能終止自己擁有的 session，除非是 Admin）。
-- **系統終端機（system terminal）與提權姿態**：node 可以用 sudo 讓系統終端機取得 root，這件事必須在介面上明示，不能悄悄發生（`docs/adr/0023-privileged-node-posture.md`）；`codex` runtime 在 node 上預設關閉審批流程與沙箱（`sandbox_bypass` 缺省即視為啟用），這是給「可拋棄的隔離 VM」設計的姿態，不是通用預設，node 可以自行關閉且平台無法覆寫。
-
-**已知的殘留限制**（不是待修的臭蟲，是寫下來的取捨，見 `docs/p4-report.md` §4）：TLS 只用自簽憑證測過，`ssl_stapling` 未被實際驗證過；Central 是 process-local 單一實例，無法水平擴充；`CLIORA_TOKEN_PEPPER` 輪替會讓所有 enrollment token 與節點憑證同時失效，必須視為一次性操作而非例行輪替（`docs/deployment.md`）。
-
----
-
-## 部署
-
-支援兩種目標拓樸，兩者共用同一批容器映像與安全設定，並用 `scripts/railway/check-edge-parity.sh` 防止兩份 edge 設定（CSP、安全標頭、body 上限、`/ws/` timeout）互相漂移：
-
-- **單機 Docker Compose**：nginx 終止 TLS、一個 Central、一個 PostgreSQL。步驟、密鑰輪替代價、升級/回滾與備份程序見 [`docs/deployment.md`](docs/deployment.md)。
-- **Railway**：Central 走內部私網、console 走公開網域，`agentd` 完全不受影響（仍在使用者自己的主機上、仍是它主動連出）。步驟、與 compose 拓樸的差異表見 [`docs/deployment-railway.md`](docs/deployment-railway.md)。
-
-部署前務必知道的風險（都已寫進上述文件，這裡只點名）：
-
-- **不能水平擴充**——見〈架構概覽〉，Central 的連線登記與 terminal relay 是行程內狀態。
-- **兩個密鑰輪替代價不對稱**：輪替 `CLIORA_JWT_SECRET` 只是讓所有人重新登入；輪替 `CLIORA_TOKEN_PEPPER` 會讓**所有**節點都需要重新 enroll，是單向門而非例行操作。
-- **migration 絕不在應用程式啟動時自動跑**（避免多副本各自搶著跑 migration），而是獨立的一次性步驟，`/readyz` 會在 schema 版本與程式碼不一致時回 503，讓還沒 migrate 的容器永遠拿不到流量。
-- **關站有 drain**：收到 SIGTERM 後，Central 會先通知每個訂閱中的瀏覽器「即將重啟、session 會保留」、再關閉節點連線讓它們走既有的重連退避，全程不對任何節點送出真正的 `session.stop`——重啟不等於幫你關掉任何一個 CLI session。
-- Go/No-Go 判斷本身列了尚待完成的條件（見 `docs/p4-report.md` §5）：在真正的 release 分支跑過完整 `p4.yml`（含全規模容量與三個瀏覽器引擎）、正式環境的兩個密鑰都已換成真的、在第一次跑 retention prune 之前先做過一次備份還原演練、針對實際要用的 nginx 設定跑過 `scripts/p4/verify-edge.sh`。這些是部署前的檢查清單項目，不是「已完成」的陳述。
-
----
-
-## 文件索引
-
-- **產品需求（願景，非全部已實作）**：[`research/prd.md`](research/prd.md)
-- **技術規劃**：[`research/tech.md`](research/tech.md)
-- **架構決策紀錄（ADR）**：[`docs/adr/`](docs/adr/)——按時間序記錄每個階段的取捨，含本 README 引用的 [0006](docs/adr/0006-p1-auth-handoff.md)、[0007](docs/adr/0007-p1-authentication.md)、[0008](docs/adr/0008-p1-node-credential-and-protocol.md)、[0012](docs/adr/0012-p2-recovery-attach-model.md)、[0023](docs/adr/0023-privileged-node-posture.md)
-- **各階段執行計畫與實作狀態**：[`plan/`](plan/)（例如 [`plan/01`](plan/01/README.md) 是 P0、[`plan/02`](plan/02/README.md) 是 P1；較後期目錄多含 `NN-implementation-status.md`，早期目錄則以 README／報告記錄狀態）
-- **Go/No-Go 報告**：[`docs/p0-report.md`](docs/p0-report.md) 到 [`docs/p4-report.md`](docs/p4-report.md)，以及後續功能波的 [`docs/wt-report.md`](docs/wt-report.md)（系統終端機）、[`docs/pg-report.md`](docs/pg-report.md)（埠轉發）、[`docs/ly-report.md`](docs/ly-report.md)（版面）
-- **安全審查**：[`docs/security-review-p4.md`](docs/security-review-p4.md) 及各功能波各自的審查（`docs/security-review-p8.md`、`p11`、`p12`、`p13`、`p15`）
-- **權限矩陣（程式碼自動產生）**：[`docs/permission-matrix.md`](docs/permission-matrix.md)
-- **需求追溯報告**：[`docs/traceability-report.md`](docs/traceability-report.md)、明細見 [`docs/traceability/`](docs/traceability/)
-- **通訊協定變更歷史**：[`contracts/CHANGELOG.md`](contracts/CHANGELOG.md)、schema 見 [`contracts/v1/`](contracts/v1/)
-- **daemon 安裝與生命週期**：[`deploy/README.md`](deploy/README.md)
-- **維運手冊（各類事故的處理步驟）**：[`docs/runbooks/`](docs/runbooks/)
-- **錯誤碼對照**：[`docs/error-catalog.md`](docs/error-catalog.md)
+```text
+backend/       FastAPI Central、Alembic migrations、Python tests、perf harness
+frontend/      Vue console、xterm／Monaco／PDF.js、Vitest 與 Playwright
+daemon/        Go agentd、tmux／PTY、workspace、installer／updater、測試替身
+contracts/     三語言共用的 protocol v1 schemas 與 fixtures
+deploy/        Compose、nginx、Railway、安裝／migration 入口
+scripts/       E2E stack、各項 gates、traceability 與維運演練
+docs/          ADR、功能／安全報告、runbooks、產生的追溯文件
+research/      PRD、技術與視覺規格
+plan/          各波執行計畫；後期多以 NN-implementation-status.md 記錄狀態
+.agent/skills/ 專案規範與工作方法
+```
