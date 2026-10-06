@@ -6,7 +6,7 @@ Cliora 是自架的 CLI coding-agent 管理平台，讓你從瀏覽器或手機�
 > 目前仍是 **pre-1.0**：[`daemon/VERSION`](daemon/VERSION) 為 `0.7.0`，backend／frontend 為 `0.1.0`。
 > 下方 demo 的 **Fake CLI runtime** 代替 Claude；Central、PostgreSQL、enrollment、daemon 與 tmux 都走實際路徑。
 > demo 的隧道 provider 也是假替身，顯示的 `.example.invalid` URL 不可開啟。
-> 截至 2026-10-06，最近一組 PR Actions 的 [CI](https://github.com/relvo-labs/cliora/actions/runs/37484315813)、[P1](https://github.com/relvo-labs/cliora/actions/runs/37484315820)、[P2](https://github.com/relvo-labs/cliora/actions/runs/37484315846)、[P3](https://github.com/relvo-labs/cliora/actions/runs/37484315834)、[P4](https://github.com/relvo-labs/cliora/actions/runs/37484315769)、[WT](https://github.com/relvo-labs/cliora/actions/runs/37484315716) 皆失敗，只有 [Requirement Traceability](https://github.com/relvo-labs/cliora/actions/runs/37484315712) 成功。
+> 截至 2026-10-06，最近一組實際執行（未因 Draft 而跳過）的 PR Actions 的 [CI](https://github.com/relvo-labs/cliora/actions/runs/37484315813)、[P1](https://github.com/relvo-labs/cliora/actions/runs/37484315820)、[P2](https://github.com/relvo-labs/cliora/actions/runs/37484315846)、[P3](https://github.com/relvo-labs/cliora/actions/runs/37484315834)、[P4](https://github.com/relvo-labs/cliora/actions/runs/37484315769)、[WT](https://github.com/relvo-labs/cliora/actions/runs/37484315716) 皆失敗，只有 [Requirement Traceability](https://github.com/relvo-labs/cliora/actions/runs/37484315712) 成功。
 > 這組 run 的 head 是 `c59410b`；本 README 核對的 `master@aa732f0` 沒有對應 run，不能宣稱該版本已通過 CI。
 > CI 的 frontend job 停在 npm audit；依賴問題見 [#99](https://github.com/relvo-labs/cliora/issues/99)，瀏覽器驗證缺口見 [#117](https://github.com/relvo-labs/cliora/issues/117)。
 
