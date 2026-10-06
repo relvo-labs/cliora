@@ -31,6 +31,11 @@ vi.mock("@xterm/xterm", () => {
     dispose = vi.fn();
     onData = vi.fn();
     onBinary = vi.fn();
+    // Like xterm's: the grid becomes exactly what was asked for.
+    resize = vi.fn((cols: number, rows: number) => {
+      this.cols = cols;
+      this.rows = rows;
+    });
     constructor(public options: Record<string, unknown> = {}) {
       terminals.push(this as never);
     }
@@ -195,10 +200,14 @@ describe("useTerminalSession", () => {
     s.mount(host()); // jsdom: clientWidth/Height are 0 → hidden
     await s.connect(SESSION);
     sockets[0].open();
+    // The attach settles first (#132); with nothing to measure it sends the
+    // grid the terminal already has, as an attach always did — once.
+    await vi.advanceTimersByTimeAsync(200);
     const sentOnOpen = sockets[0].sent.length;
+    expect(sentOnOpen).toBe(1);
 
     observers[0].cb();
-    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(1000);
 
     expect(fits[0]).not.toHaveBeenCalled();
     expect(sockets[0].sent).toHaveLength(sentOnOpen);
@@ -278,7 +287,7 @@ describe("useTerminalSession", () => {
     sockets[0].open();
     const before = sockets[0].sent.length;
     // The real FitAddon applies its proposal (43x110 here) to the terminal; the
-    // attach above went out at the terminal's previous 24x80.
+    // attach above is still settling, so nothing has gone out yet (#132).
     fits[0].mockImplementation(() => {
       terminals[0].rows = 43;
       terminals[0].cols = 110;
@@ -352,7 +361,9 @@ describe("useTerminalSession", () => {
     expect(sockets[0].url).toContain("ticket=ticket-123");
     sockets[0].open();
     expect(s.status.value).toBe("connected");
-    // On open it sends a resize (server auto-attaches; no session.attach frame).
+    // After open it sends a resize (server auto-attaches; no session.attach
+    // frame) — once the size has settled (#132).
+    await vi.advanceTimersByTimeAsync(200);
     const first = JSON.parse(sockets[0].sent[0] as string);
     expect(first.type).toBe("terminal.resize");
   });
@@ -569,6 +580,7 @@ describe("useTerminalSession", () => {
       await s.connect(SESSION);
       sockets[0].open();
       await vi.advanceTimersByTimeAsync(1000);
+      expect(resizes(sockets[0])).toEqual(["18x40"]);
       sockets[0].sent.length = 0;
 
       layout.resize(10);
@@ -576,6 +588,141 @@ describe("useTerminalSession", () => {
       await vi.advanceTimersByTimeAsync(1000);
 
       expect(resizes(sockets[0])).toEqual([]);
+    });
+
+    // #131: creation was clamped to the wire contract, live resizes were not,
+    // and the daemon rejects a frame outside 2-300 x 2-500 — leaving xterm and
+    // the PTY on different grids.
+    it("clamps a live resize to 300x500 and sizes xterm to the clamped grid (#131)", async () => {
+      const { layout, socket } = await attached();
+
+      layout.resize(900, 620);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(socket)).toEqual(["300x500"]);
+      expect([terminals[0].rows, terminals[0].cols]).toEqual([300, 500]);
+
+      // The floor is unchanged: under 2 rows is never put on the wire.
+      layout.resize(1, 40);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(resizes(socket)).toEqual(["300x500"]);
+    });
+
+    // #132.1: a notification that changes nothing about the grid is not a
+    // layout change, so it must not restart the confirmation.
+    it("notifications with an unchanged proposal do not postpone the settle (#132)", async () => {
+      const { layout, socket } = await attached();
+
+      for (let i = 0; i < 10; i += 1) {
+        layout.resize(18, 42);
+        await vi.advanceTimersByTimeAsync(120);
+      }
+      expect(resizes(socket)).toEqual(["18x42"]);
+
+      // Faster than the debounce, too.
+      for (let i = 0; i < 20; i += 1) {
+        layout.resize(18, 44);
+        await vi.advanceTimersByTimeAsync(50);
+      }
+      expect(resizes(socket)).toEqual(["18x42", "18x44"]);
+    });
+
+    // #132.2
+    it("fit() after dispose arms no timer (#132)", () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      s.dispose();
+
+      s.fit();
+
+      expect(vi.getTimerCount()).toBe(0);
+    });
+
+    // #132.3: a socket that opens while the layout is still moving used to send
+    // the mid-transition size at once, then the real one (2x40, then 18x40).
+    it("an attach mid-transition sends only the size the layout settles at (#132)", async () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      const layout = liveHost({ rows: 2, cols: 40 });
+      await s.connect(SESSION);
+      sockets[0].open();
+      makeWriter(sockets[0]);
+      await vi.advanceTimersByTimeAsync(60);
+      layout.resize(18);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(resizes(sockets[0])).toEqual(["18x40"]);
+    });
+
+    it("a stable attach sends its one resize within one settle", async () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      liveHost({ rows: 18, cols: 40 });
+      await s.connect(SESSION);
+      sockets[0].open();
+      makeWriter(sockets[0]);
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(resizes(sockets[0])).toEqual(["18x40"]);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(resizes(sockets[0])).toEqual(["18x40"]);
+    });
+
+    // A successful takeover is announced by Central as `terminal.role` carrying
+    // `writer_conn`, not `role` (backend/app/api/ws/terminal.py `_event`), and
+    // Central accepts this connection's resizes from then on. The client's role
+    // stays "viewer" (#133), so a client-side role gate would leave the PTY on
+    // the old grid while xterm moves to the new one.
+    it("after a takeover, a settled grid change still reaches the PTY", async () => {
+      const s = newSession();
+      s.mount(host({ visible: true }));
+      const layout = liveHost({ rows: 18, cols: 40 });
+      await s.connect(SESSION);
+      sockets[0].open();
+      sockets[0].emit(
+        JSON.stringify({ type: "terminal.role", payload: { role: "viewer" } }),
+      );
+      await vi.advanceTimersByTimeAsync(1000);
+      sockets[0].sent.length = 0;
+
+      s.takeover();
+      expect(JSON.parse(sockets[0].sent[0] as string)).toMatchObject({
+        type: "terminal.control_acquire",
+        payload: { session_id: SESSION },
+      });
+      sockets[0].emit(
+        JSON.stringify({
+          version: 1,
+          type: "terminal.role",
+          request_id: "00000000000000000000000000",
+          node_id: SESSION,
+          timestamp: "2026-10-06T00:00:00Z",
+          payload: { session_id: SESSION, writer_conn: "conn-1" },
+        }),
+      );
+      layout.resize(16);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect([terminals[0].rows, terminals[0].cols]).toEqual([16, 40]);
+      expect(resizes(sockets[0])).toEqual(["16x40"]);
+    });
+
+    // Every attach starts the PTY at the size stored at creation, so a new
+    // socket sends its settled size even when the previous socket already sent
+    // the same one — once, after one settle.
+    it("a reconnect sends the settled size once on the new socket", async () => {
+      const { socket } = await attached();
+      socket.close();
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(sockets).toHaveLength(2);
+      sockets[1].open();
+      makeWriter(sockets[1]);
+
+      await vi.advanceTimersByTimeAsync(200);
+      expect(resizes(sockets[1])).toEqual(["18x40"]);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(resizes(sockets[1])).toEqual(["18x40"]);
+      expect(resizes(socket)).toEqual([]);
     });
   });
 

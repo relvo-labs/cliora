@@ -64,19 +64,25 @@ function terminalOptions(fontSize: number, themeId: ThemeId) {
   };
 }
 
-// Clamped to the wire contract's own bounds
-// (contracts/v1/schemas/messages/session-start.schema.json: rows 2-300,
-// columns 2-500), because a very wide window really can propose more than 500
-// columns and Central answers that with a 422 — the terminal would simply fail
-// to open. Under 2 the daemon's tmux rejects the size, so that is no answer.
+// The wire contract's bounds (contracts/v1/schemas/messages/session-start and
+// terminal-size: rows 2-300, columns 2-500; the daemon's `validSize` enforces
+// the same), for a new session and a live resize alike.
+const MIN_SIZE = 2;
+const MAX_ROWS = 300;
+const MAX_COLUMNS = 500;
+
+// Clamped to the wire contract's own bounds, because a very wide window really
+// can propose more than 500 columns and Central answers that with a 422 — the
+// terminal would simply fail to open. Under 2 the daemon's tmux rejects the
+// size, so that is no answer.
 function clampProposal(
   proposed: { rows: number; cols: number } | undefined,
 ): { rows: number; columns: number } | null {
   if (!proposed) return null;
-  if (proposed.rows < 2 || proposed.cols < 2) return null;
+  if (proposed.rows < MIN_SIZE || proposed.cols < MIN_SIZE) return null;
   return {
-    rows: Math.min(proposed.rows, 300),
-    columns: Math.min(proposed.cols, 500),
+    rows: Math.min(proposed.rows, MAX_ROWS),
+    columns: Math.min(proposed.cols, MAX_COLUMNS),
   };
 }
 
@@ -152,82 +158,122 @@ export function useTerminalSession(
     retryIndex = 0,
     currentSession = "",
     disposed = false,
+    // The size this socket last sent the PTY; "" until it has sent one, which
+    // is what forces the first send after every attach.
     lastSize = "",
     // The size seen at the previous settle check, "" when there is none.
-    settling = "";
+    settling = "",
+    // The size measured by the latest layout notification or settle check
+    // while a settle is pending (#132).
+    observed = "";
 
   function isWriter(): boolean {
     return role.value === "writer";
   }
-  function sendJson(type: string, payload: Record<string, unknown>): void {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+  function sendJson(type: string, payload: Record<string, unknown>): boolean {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
     socket.send(JSON.stringify({ type, payload }));
+    return true;
   }
+  // Tell the PTY the local terminal's grid, so the two agree — when the PTY
+  // does not already have that grid.
   function sendResize(): void {
     // The server applies resize only for the writer; sending as a viewer is a
-    // harmless no-op, so no client-side role gate is needed here.
+    // harmless no-op, so no client-side role gate is needed here. Nor can there
+    // be one yet: a takeover is announced without this client's role (#133),
+    // so a gate would silence a new writer's resizes.
     if (!terminal) return;
-    // A measurement taken while the host was hidden collapses to 1x1 or smaller,
-    // and the daemon rejects anything under 2 (tmux `validSize`). Sending it
-    // anyway would reshape the PTY behind a tab the user cannot even see.
-    if (terminal.rows < 2 || terminal.cols < 2) return;
-    sendJson("terminal.resize", {
+    // The daemon rejects anything under 2 (tmux `validSize`); a host squeezed
+    // that small gets its local grid but no resize.
+    if (terminal.rows < MIN_SIZE || terminal.cols < MIN_SIZE) return;
+    const size = `${terminal.rows}:${terminal.cols}`;
+    if (size === lastSize) return;
+    const sent = sendJson("terminal.resize", {
       session_id: currentSession,
       rows: terminal.rows,
       columns: terminal.cols,
     });
+    if (sent) lastSize = size;
   }
   // A hidden host (`display: none`, an inactive tab panel) measures 0x0, and
   // FitAddon happily turns that into a nonsense rows/cols pair. Refusing to
   // measure at all is the only safe answer: the next real fit happens when the
   // panel is shown again.
   function fitSafely(): boolean {
-    if (!terminal || !hostElement) return false;
+    if (!terminal || !fit || !hostElement) return false;
     if (hostElement.clientWidth === 0 || hostElement.clientHeight === 0) {
       return false;
     }
-    fit?.fit();
+    const proposed = fit.proposeDimensions();
+    if (proposed && (proposed.rows > MAX_ROWS || proposed.cols > MAX_COLUMNS)) {
+      // #131: a very wide or tall host proposes more than the wire contract
+      // allows, and the daemon rejects that resize. The terminal is held at the
+      // clamped grid instead — the one the PTY will be sent — so the two still
+      // agree; the pane clips the rest.
+      const rows = Math.min(proposed.rows, MAX_ROWS);
+      const cols = Math.min(proposed.cols, MAX_COLUMNS);
+      if (terminal.rows !== rows || terminal.cols !== cols) {
+        terminal.resize(cols, rows);
+      }
+    } else {
+      fit.fit();
+    }
     return true;
   }
-  // Fit, then tell the daemon only when the size actually changed.
+  // Fit, then tell the daemon when the size actually changed.
   function applyFit(): void {
-    if (!fitSafely() || !terminal) return;
-    const size = `${terminal.rows}:${terminal.cols}`;
-    if (size === lastSize) return;
-    lastSize = size;
+    if (!fitSafely()) return;
     sendResize();
   }
-  // What the host measures right now, without applying it; null while hidden.
+  // What the host measures right now, clamped as a fit would clamp it, without
+  // applying it; null while hidden.
   function measure(): string | null {
     if (!terminal || !hostElement) return null;
     if (hostElement.clientWidth === 0 || hostElement.clientHeight === 0) {
       return null;
     }
     const proposed = fit?.proposeDimensions();
-    return proposed ? `${proposed.rows}:${proposed.cols}` : null;
+    if (!proposed) return null;
+    return `${Math.min(proposed.rows, MAX_ROWS)}:${Math.min(
+      proposed.cols,
+      MAX_COLUMNS,
+    )}`;
   }
-  // How a layout change reaches the PTY (#127): the ResizeObserver and every
-  // caller of `fit()`. Only a font-size change (a deliberate user action, not a
-  // transition) and a re-mount into a new host fit at once. The local terminal is
-  // not fitted early either: xterm and the PTY must agree on the grid, so for the
-  // ~200 ms of a transition the terminal keeps its previous size and the pane
-  // clips it.
+  // How a layout change reaches the PTY (#127): the ResizeObserver, every
+  // caller of `fit()`, and an attach (#132). Only a font-size change (a
+  // deliberate user action, not a transition) and a re-mount into a new host fit
+  // at once. The local terminal is not fitted early either: xterm and the PTY
+  // must agree on the grid, so for the ~200 ms of a transition the terminal keeps
+  // its previous size and the pane clips it.
   function scheduleFit(): void {
+    // A timer armed now would outlive the terminal it measures (#132).
+    if (disposed) return;
+    const size = measure() ?? "";
+    // A notification that leaves the proposed grid where it was is not a layout
+    // change, and must not restart the confirmation: an observer reporting the
+    // same grid every 50-120 ms (sub-cell pixel changes) used to postpone the
+    // send for as long as the notifications lasted (#132).
+    if (resizeTimer !== undefined && size === observed) return;
     window.clearTimeout(resizeTimer);
     // A layout change invalidates whatever was being confirmed.
+    observed = size;
     settling = "";
     resizeTimer = window.setTimeout(settle, RESIZE_DEBOUNCE_MS);
   }
   function settle(): void {
     resizeTimer = undefined;
     const size = measure();
-    // Hidden meanwhile: the next real fit happens when it is shown again.
     if (size === null) {
       settling = "";
+      // Hidden meanwhile: the next real fit happens when it is shown again. The
+      // PTY may still need the grid the terminal already has — right after an
+      // attach it has been sent nothing — so that goes; otherwise a no-op.
+      sendResize();
       return;
     }
     if (size !== settling) {
       settling = size;
+      observed = size;
       resizeTimer = window.setTimeout(settle, RESIZE_DEBOUNCE_MS);
       return;
     }
@@ -286,12 +332,15 @@ export function useTerminalSession(
       status.value = "connected";
       gap.value = undefined;
       retryIndex = 0;
-      fitSafely();
-      sendResize(); // server auto-attaches; align the PTY to our size
-      // Sent unconditionally — every attach starts at the size stored at
-      // creation — and recorded, so the fit that settles right after the attach
-      // does not send the same size a second time.
-      if (terminal) lastSize = `${terminal.rows}:${terminal.cols}`;
+      // The server auto-attaches at the size stored at creation, so this socket
+      // has sent the PTY nothing yet: the size it settles at goes out even when
+      // it equals the previous socket's — once.
+      lastSize = "";
+      // Settled like any other layout change (#132): a socket can open while a
+      // keyboard or a tab switch is still moving the layout, and the size
+      // measured at that moment is not the one it ends at. A stable attach
+      // sends after one settle (200 ms).
+      scheduleFit();
     };
     socket.onmessage = (event) => {
       if (typeof event.data === "string") {
