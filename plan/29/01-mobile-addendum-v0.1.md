@@ -52,7 +52,7 @@ Retention is deliberately bounded to the mounted, exact session and eight previe
 | Exact session detail | `/sessions/:id`; `views/SessionWorkspaceView.vue`; `GET /api/sessions/{id}`; `SessionDetail` | Mobile header and mode state; never substitute/create a session. |
 | Terminal owner | `composables/useTerminalSession.ts`; `POST /api/sessions/{id}/attach`; `/ws/sessions/{id}/terminal`; `terminal.resize`, `terminal.control_acquire` | Keep one owner; CSS-hide rather than unmount; fresh ticket per reconnect; no renderer command strings. |
 | Main CLI lifecycle | FR-SESSION-006; ADR 0012/0013; existing workspace view | Back/background/unmount detach only. A stop remains an explicit separately authorized confirmation, not part of this prototype. |
-| System shell lifecycle | `POST /api/sessions/{id}/shell`; `can_open_shell`; ADR 0021; `SessionWorkspaceView.vue` close/unmount/pagehide/route-id paths | Not exposed in prototype. If later adapted, keep owner-only server capability and terminate child shell on close/leave; never make it durable like main CLI. |
+| System shell lifecycle | `POST /api/sessions/{id}/shell`; `can_open_shell`; ADR 0021; `SessionWorkspaceView.vue` close/unmount/pagehide/route-id paths | Neil 決策（2026-10-06，#109／#128）：手機只從 `⋯` 選單開啟，不常駐分頁；開啟後顯示警示分頁與明確關閉鈕。入口須同時滿足伺服器 capability 與節點 `shell` runtime 的 `available === true`，缺少或取得失敗即隱藏（所有寬度）。關閉／離頁即終止子 shell；主 CLI 不受影響。 |
 | File session binding | `stores/files.ts::useSession/clearForSession/abortInflight`; `filesSessionId` in workspace view | Exact-session abort/wipe is load-bearing; no late old-session response may land. |
 | Folder listing | `FileTree.vue`; `useFileTree.ts`; `GET /api/sessions/{id}/files/tree`; `filesystem-list.schema.json`; `FileTreePage` | Mobile list, up, relative breadcrumb, lazy levels, `truncated` + `next_cursor`; no absolute path. |
 | Filename search | `FileSearchBar.vue`; `useFileTree.ts` calls `store.runSearch(keyword)` without `root`; `GET /api/sessions/{id}/files/search`; `filesystem-search.schema.json`; `FileSearchResult` | Whole current session workspace, case-insensitive filename substring only. Show `partial`, `stopped_reason`, `scanned_count`; never imply full text/current folder. |
@@ -144,4 +144,6 @@ Real xterm/Monaco validation must cover ANSI 16 normal/bright colors, selection,
 
 ## 8. Explicit non-goals
 
-No production code in this PR; no native app/PWA offline mode/push; no chat, approval inbox, agent-event parsing, summaries, shell command builder, session creation/stop fixture, system-shell control, editor, rename, delete, download, SFTP, full-text search, image/PDF/archive preview, arbitrary path, remote font/asset, or new dependency.
+No production code in this prototype PR; no native app/PWA offline mode/push; no chat, approval inbox, agent-event parsing, summaries, shell command builder, session creation/stop fixture, editor, rename, delete, download, SFTP, full-text search, image/PDF/archive preview, arbitrary path, remote font/asset, or new dependency.
+
+系統 shell 原屬原型非目標；行動端入口依 2026-10-06 Neil 決策改由 §2 與 `05` MS-07／MS-13 規範。

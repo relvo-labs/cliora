@@ -8,7 +8,7 @@
 // selecting one costs nothing.
 
 import { nextTick, ref } from "vue";
-import { X } from "lucide-vue-next";
+import { TriangleAlert, X } from "lucide-vue-next";
 
 import UiIconButton from "../ui/UiIconButton.vue";
 
@@ -18,6 +18,8 @@ export interface WorkspaceTab {
   // Full path or long form; shown on hover. Never a node absolute path.
   title?: string;
   closable?: boolean;
+  closeLabel?: string;
+  warning?: boolean;
 }
 
 const props = defineProps<{ tabs: WorkspaceTab[]; active: string }>();
@@ -64,7 +66,13 @@ function onKeydown(event: KeyboardEvent): void {
       :key="tab.id"
       class="tab"
       :data-active="tab.id === active || undefined"
+      :data-warning="tab.warning || undefined"
     >
+      <TriangleAlert
+        v-if="tab.warning"
+        class="warning-icon"
+        aria-hidden="true"
+      />
       <button
         :id="`tab-${tab.id}`"
         ref="buttons"
@@ -82,7 +90,7 @@ function onKeydown(event: KeyboardEvent): void {
         v-if="tab.closable"
         class="close"
         variant="on-terminal"
-        :label="`關閉 ${tab.label}`"
+        :label="tab.closeLabel ?? `關閉 ${tab.label}`"
         @click="emit('close', tab.id)"
       >
         <X />
@@ -167,6 +175,24 @@ function onKeydown(event: KeyboardEvent): void {
   /* accent-primary: a 2px fill that carries no text, which is exactly what that
      token is for. */
   background: var(--accent-primary);
+}
+.tab[data-warning] {
+  background: var(--status-warning-bg);
+  color: var(--status-warning-fg);
+}
+.tab[data-warning] button[role="tab"] {
+  color: var(--status-warning-fg);
+}
+.tab[data-warning][data-active] .underline {
+  background: var(--status-warning-border);
+}
+.warning-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+.tab[data-warning] .close {
+  color: var(--status-warning-fg);
 }
 .close {
   width: 22px;

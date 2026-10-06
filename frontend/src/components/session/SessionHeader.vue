@@ -25,7 +25,7 @@
 // `title` and behind a copy button.
 
 import { computed, ref } from "vue";
-import { Check, Copy, RefreshCw, Server } from "lucide-vue-next";
+import { Check, Copy, RefreshCw, Server, TriangleAlert } from "lucide-vue-next";
 
 import UiActionMenu from "../ui/UiActionMenu.vue";
 import UiButton from "../ui/UiButton.vue";
@@ -44,6 +44,8 @@ const props = defineProps<{
   isViewer?: boolean;
   canRetry?: boolean;
   canTerminate?: boolean;
+  /** Phone-only entry, already gated by server capability and node report. */
+  canOpenShell?: boolean;
   busy?: boolean;
   /** Below 1440px: one row, with the identity line behind a disclosure. */
   compact?: boolean;
@@ -53,6 +55,7 @@ const emit = defineEmits<{
   takeover: [];
   reconnect: [];
   terminate: [];
+  openShell: [];
 }>();
 
 const copied = ref(false);
@@ -117,6 +120,18 @@ const identity = computed(() =>
         <UiActionMenu label="Session 操作">
           <template #default="{ close }">
             <button
+              v-if="canOpenShell"
+              type="button"
+              role="menuitem"
+              @click="
+                close();
+                emit('openShell');
+              "
+            >
+              <TriangleAlert class="icon" aria-hidden="true" />
+              開啟系統 shell
+            </button>
+            <button
               type="button"
               role="menuitem"
               data-danger
@@ -179,7 +194,8 @@ const identity = computed(() =>
   gap: 4px;
   height: var(--layout-workhead);
   flex-shrink: 0;
-  overflow: hidden;
+  /* The ⋯ panel extends beyond this fixed row; labels truncate themselves. */
+  overflow: visible;
 }
 .head[data-compact] {
   height: var(--layout-workhead-compact);
