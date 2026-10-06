@@ -738,6 +738,186 @@ describe("SessionWorkspaceView — shell entry (#109, #128)", () => {
     wrapper.unmount();
   });
 
+  it("repair: opening and opened states use the persistent announcement region", async () => {
+    setViewportWidth(390);
+    let answer!: (detail: SessionDetail) => void;
+    shellApi.openShell.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          answer = resolve;
+        }),
+    );
+    const wrapper = await render(vi.fn(async () => owner()));
+    const region = wrapper.get(".shell-announcement").element;
+    await openFromMenu(wrapper);
+    expect(wrapper.get(".shell-announcement").text()).toContain("正在開啟");
+    answer(session({ id: SHELL_ID, runtime: "shell" }));
+    await flushPromises();
+    expect(wrapper.get(".shell-announcement").element).toBe(region);
+    expect(wrapper.get(".shell-announcement").text()).toContain("已開啟");
+    wrapper.unmount();
+  });
+
+  for (const width of [390, 1440]) {
+    it(`repair: ${width}px close restores the intended focus without reopening the phone keyboard`, async () => {
+      setViewportWidth(width);
+      const wrapper = await render(vi.fn(async () => owner()));
+      document.body.appendChild(wrapper.element);
+      if (width === 390) await openFromMenu(wrapper);
+      else {
+        await wrapper.get("#tab-terminal").trigger("click");
+        await flushPromises();
+      }
+      term.focus.mockClear();
+      await wrapper
+        .get(
+          width === 390
+            ? '[aria-label="關閉並終止系統 shell"]'
+            : '[aria-label="關閉 TERMINAL"]',
+        )
+        .trigger("click");
+      await flushPromises();
+      if (width === 390) {
+        expect(term.focus).not.toHaveBeenCalled();
+        expect(document.activeElement).toBe(wrapper.get("#tab-cli").element);
+      } else expect(term.focus).toHaveBeenCalledOnce();
+      wrapper.unmount();
+    });
+  }
+
+  it("repair: parent termination suppresses a false shell failure announcement", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => owner()));
+    await openFromMenu(wrapper);
+    shellApi.terminateSession.mockRejectedValueOnce(
+      new ApiError("SESSION_ALREADY_ENDED", "Session has already ended", 409),
+    );
+    useSessionsStore().current = session({
+      status: "terminated",
+      capabilities: { ...owner().capabilities, can_open_shell: false },
+    });
+    await flushPromises();
+    expect(shellApi.terminateSession).toHaveBeenCalledWith(SHELL_ID);
+    expect(wrapper.get(".shell-announcement").text()).not.toContain(
+      "無法確認終止",
+    );
+    expect(wrapper.get(".shell-announcement").text()).not.toContain(
+      "主 CLI 仍在執行",
+    );
+    wrapper.unmount();
+  });
+
+  it("repair: an already-ended child is a confirmed close", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => owner()));
+    await openFromMenu(wrapper);
+    shellApi.terminateSession.mockRejectedValueOnce(
+      new ApiError("SESSION_ALREADY_ENDED", "Session has already ended", 409),
+    );
+    await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".shell-announcement").text()).toContain("已關閉並終止");
+    wrapper.unmount();
+  });
+
+  it("repair: a close answered during a new open cannot announce the old close", async () => {
+    setViewportWidth(390);
+    const wrapper = await render(vi.fn(async () => owner()));
+    await openFromMenu(wrapper);
+    let finish!: () => void;
+    shellApi.terminateSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = () => resolve({});
+        }),
+    );
+    await wrapper.get('[aria-label="關閉並終止系統 shell"]').trigger("click");
+    await openFromMenu(wrapper);
+    finish();
+    await flushPromises();
+    expect(wrapper.get(".shell-announcement").text()).not.toContain(
+      "已關閉並終止",
+    );
+    expect(wrapper.get(".shell-announcement").text()).toContain("已開啟");
+    wrapper.unmount();
+  });
+
+  it("repair: pagehide at desktop then rotate to phone never leaves a shell panel without a tab", async () => {
+    let width = 1440;
+    const queries: Array<EventTarget & { media: string; matches: boolean }> =
+      [];
+    const matches = (media: string) => {
+      const min = /min-width:\s*(\d+)px/.exec(media);
+      const max = /max-width:\s*(\d+)px/.exec(media);
+      return (
+        !!(min || max) &&
+        (!min || width >= Number(min[1])) &&
+        (!max || width <= Number(max[1]))
+      );
+    };
+    vi.stubGlobal("matchMedia", (media: string) => {
+      const query = Object.assign(new EventTarget(), {
+        media,
+        matches: matches(media),
+      });
+      queries.push(query);
+      return query;
+    });
+    const wrapper = await render(vi.fn(async () => owner()));
+    try {
+      await wrapper.get("#tab-terminal").trigger("click");
+      await flushPromises();
+      window.dispatchEvent(new Event("pagehide"));
+      await flushPromises();
+      width = 390;
+      for (const query of queries) {
+        query.matches = matches(query.media);
+        query.dispatchEvent(
+          Object.assign(new Event("change"), { matches: query.matches }),
+        );
+      }
+      await flushPromises();
+      expect(wrapper.find("#tab-terminal").exists()).toBe(false);
+      expect(wrapper.get("#tab-cli").attributes("aria-selected")).toBe("true");
+      expect(wrapper.get("#panel-terminal").attributes("style")).toContain(
+        "display: none",
+      );
+    } finally {
+      wrapper.unmount();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  for (const width of [390, 1440]) {
+    it(`repair: ${width}px RUNTIME_NOT_FOUND refreshes the report and removes the dead-end retry`, async () => {
+      setViewportWidth(width);
+      const wrapper = await render(vi.fn(async () => owner()));
+      const fetchNode = vi.mocked(useNodesStore().fetchNode);
+      fetchNode.mockResolvedValueOnce(
+        nodeDetail({
+          runtimes: [{ runtime: "shell", available: false }],
+        }) as never,
+      );
+      shellApi.openShell.mockRejectedValueOnce(
+        new ApiError("RUNTIME_NOT_FOUND", "Runtime unavailable", 409),
+      );
+      if (width === 390) await openFromMenu(wrapper);
+      else {
+        await wrapper.get("#tab-terminal").trigger("click");
+        await flushPromises();
+      }
+      expect(fetchNode).toHaveBeenCalledTimes(2);
+      expect(wrapper.find("#tab-terminal").exists()).toBe(false);
+      expect(wrapper.find(".shell-status .link").exists()).toBe(false);
+      expect(
+        (await openMenu(wrapper)).some((item) =>
+          item.text().includes("系統 shell"),
+        ),
+      ).toBe(false);
+      wrapper.unmount();
+    });
+  }
+
   it("390px: closing during open terminates the late shell without connecting it", async () => {
     setViewportWidth(390);
     let answer!: (detail: SessionDetail) => void;

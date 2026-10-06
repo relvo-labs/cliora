@@ -151,6 +151,7 @@ const previewPath = ref<string | null>(null);
 // is open, so a closed preview always falls back to the terminal.
 type CentreTab = "cli" | "preview" | "terminal";
 const activeTab = ref<CentreTab>("cli");
+let focusCliTabAfterShellClose = false;
 
 const tabs = computed(() => [
   { id: "cli", label: "CLI" },
@@ -271,9 +272,12 @@ function closeTab(id: string): void {
 // measures 0x0, so the composable deliberately refuses to fit it.
 watch(activeTab, async (tab) => {
   if (tab === "cli") {
+    const focusTab = isNarrow.value && focusCliTabAfterShellClose;
+    focusCliTabAfterShellClose = false;
     await nextTick();
     terminal.fit();
-    terminal.focus();
+    if (focusTab) document.getElementById("tab-cli")?.focus();
+    else terminal.focus();
     return;
   }
   if (tab === "terminal") {
@@ -445,12 +449,14 @@ async function openShellTab(): Promise<void> {
     shellTerminal.focus();
     return;
   }
-  const owner = shellOwner;
+  // A new open owns its announcements too: a preceding close may still be
+  // awaiting termination, but its eventual answer cannot speak for this shell.
+  const owner = ++shellOwner;
   const parentId = props.id;
   const owned = () => owner === shellOwner;
   shellState.value = "starting";
   shellError.value = "";
-  shellAnnouncement.value = "";
+  shellAnnouncement.value = "正在開啟系統 shell…";
   try {
     // The panel was just revealed by `v-show`; it has no layout until the DOM
     // updates, and an unmeasurable host reports nothing. Opening at a hardcoded
@@ -470,6 +476,8 @@ async function openShellTab(): Promise<void> {
     }
     shellSession.value = created;
     shellState.value = "ready";
+    shellAnnouncement.value =
+      "系統 shell 已開啟；關閉即終止這個 shell，主 CLI 不受影響。";
     await nextTick();
     // Closed during that tick: `closeShell` already terminated it.
     if (!owned() || shellSession.value?.id !== created.id) return;
@@ -480,6 +488,14 @@ async function openShellTab(): Promise<void> {
     shellState.value = "error";
     shellError.value =
       caught instanceof ApiError ? caught.message : "無法開啟系統終端機。";
+    shellAnnouncement.value = "無法開啟系統 shell，請查看終端機的錯誤訊息。";
+    if (caught instanceof ApiError && caught.code === "RUNTIME_NOT_FOUND") {
+      // The node may have withdrawn the runtime since its last report. Clear
+      // the stale offer immediately, then learn its current posture.
+      shellAnnouncement.value = "系統 shell 無法使用，正在更新節點可用性。";
+      if (session.value?.id === parentId)
+        await loadNodePosture(session.value.node_id);
+    }
   }
 }
 
@@ -493,19 +509,35 @@ async function closeShell(): Promise<void> {
   shellSession.value = null;
   shellState.value = "idle";
   shellTerminal.disconnect();
-  if (activeTab.value === "terminal") activeTab.value = "cli";
-  if (!open) return;
+  if (activeTab.value === "terminal") {
+    focusCliTabAfterShellClose = isNarrow.value;
+    activeTab.value = "cli";
+  }
+  if (!open) {
+    shellAnnouncement.value = "";
+    return;
+  }
+  const announce = (message: string) => {
+    if (
+      owner === shellOwner &&
+      isNarrow.value &&
+      workspaceLive.value &&
+      !sessionEnded.value
+    )
+      shellAnnouncement.value = message;
+  };
+  const confirmed = "系統 shell 已關閉並終止；主 CLI 仍在執行";
   try {
     await api().terminateSession(open.id);
-    if (owner === shellOwner && isNarrow.value && workspaceLive.value) {
-      shellAnnouncement.value = "系統 shell 已關閉並終止；主 CLI 仍在執行";
-    }
-  } catch {
+    announce(confirmed);
+  } catch (caught) {
     // Best effort: the parent binding and the idle timeout still collect it.
-    if (owner === shellOwner && isNarrow.value && workspaceLive.value) {
-      shellAnnouncement.value =
-        "系統 shell 已關閉；無法確認終止，請檢查 Node 狀態。";
-    }
+    if (
+      caught instanceof ApiError &&
+      (caught.status === 409 || /^SESSION_(?:.*_)?ENDED$/.test(caught.code))
+    )
+      announce(confirmed);
+    else announce("系統 shell 已關閉；無法確認終止，請檢查 Node 狀態。");
   }
 }
 
@@ -534,6 +566,7 @@ function terminateShellOnUnload(): void {
   const open = shellSession.value;
   shellSession.value = null;
   shellState.value = "idle";
+  shellAnnouncement.value = "";
   if (isNarrow.value && activeTab.value === "terminal") activeTab.value = "cli";
   if (!open) return;
   shellTerminal.disconnect();
@@ -734,6 +767,18 @@ async function loadNodePosture(nodeId: string): Promise<void> {
 // shell must not keep running locally with no remaining close control.
 watch(canOpenShell, (allowed) => {
   if (!allowed && shellState.value !== "idle") void closeShell();
+});
+// A desktop cached-page return can retain an idle TERMINAL selection. If it
+// becomes a phone (or loses availability), select the CLI rather than leaving
+// an unreachable panel with no corresponding tab or close control.
+watch([activeTab, tabs], ([active, offered]) => {
+  if (active === "terminal" && !offered.some((tab) => tab.id === active)) {
+    focusCliTabAfterShellClose = isNarrow.value;
+    activeTab.value = "cli";
+  }
+});
+watch(sessionEnded, (ended) => {
+  if (ended) shellAnnouncement.value = "";
 });
 const sandboxBypassed = computed(() => {
   const runtime = session.value?.runtime;

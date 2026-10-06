@@ -1,4 +1,6 @@
-import { expect, Page, test } from "@playwright/test";
+import { expect, type Page, type Response, test } from "@playwright/test";
+
+import type { NodeDetail } from "../../src/api/dto";
 
 import { terminateSessions, trackSessions } from "./session-cleanup";
 
@@ -43,6 +45,56 @@ function createSessionButton(page: Page) {
 const statusBar = (page: Page) => page.locator(".status-bar");
 const connected = (page: Page) =>
   statusBar(page).getByText("已連線", { exact: true });
+
+const phoneWidth = (page: Page) => (page.viewportSize()?.width ?? 1440) < 768;
+
+// Arm before workspace navigation/reload. Only the node's own report can
+// justify skipping: a missing phone tab is the intended menu presentation.
+function shellNodeReport(page: Page): Promise<Response> {
+  return page.waitForResponse(
+    (response) =>
+      response.request().method() === "GET" &&
+      /\/api\/nodes\/[0-9a-f-]{36}$/.test(new URL(response.url()).pathname),
+  );
+}
+
+async function shellEntry(page: Page, report: Promise<Response>) {
+  const response = await report;
+  expect(
+    response.ok(),
+    "the node posture must load before checking shell availability",
+  ).toBe(true);
+  const node = (await response.json()) as NodeDetail;
+  test.skip(
+    !node.runtimes.some(
+      (runtime) => runtime.runtime === "shell" && runtime.available === true,
+    ),
+    "the node report has no available shell runtime",
+  );
+  if (phoneWidth(page)) {
+    await page
+      .getByRole("button", { name: "Session 操作", exact: true })
+      .click();
+    const item = page.getByRole("menuitem", {
+      name: "開啟系統 shell",
+      exact: true,
+    });
+    await expect(item).toBeVisible();
+    return item;
+  }
+  const tab = page.getByRole("tab", { name: "TERMINAL", exact: true });
+  await expect(tab).toBeVisible();
+  return tab;
+}
+
+async function closeSystemShell(page: Page): Promise<void> {
+  await page
+    .getByRole("button", {
+      name: phoneWidth(page) ? "關閉並終止系統 shell" : "關閉 TERMINAL",
+      exact: true,
+    })
+    .click();
+}
 
 // Opens the New Session dialog and returns the online nodes it offers. The
 // interactive tests use this to skip themselves when the stack has no node.
@@ -602,6 +654,7 @@ test.describe("session & terminal", () => {
     await dialog
       .locator('input[placeholder="e.g. refactor-api"]')
       .fill("e2e-shell");
+    const posture = shellNodeReport(page);
     await dialog.getByRole("button", { name: "Start" }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
@@ -613,16 +666,8 @@ test.describe("session & terminal", () => {
       },
     );
 
-    // The tab exists only when the server said yes to all three of: the user
-    // holds terminal.shell, they own this session, and the node has a usable
-    // shell. A node without bash reports available:false, and the honest outcome
-    // there is a skip, not a failure.
-    const terminalTab = page.getByRole("tab", { name: "TERMINAL" });
-    const offered = await terminalTab
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    test.skip(!offered, "this node reports no usable shell runtime");
+    // The server capability and node runtime report must both offer a shell.
+    const entry = await shellEntry(page, posture);
 
     // Armed before the click: the tab creates the session on first selection
     // (D8), and its id is how the close assertion below knows which session it
@@ -630,7 +675,7 @@ test.describe("session & terminal", () => {
     const created = page.waitForResponse(
       (res) => res.request().method() === "POST" && /\/shell$/.test(res.url()),
     );
-    await terminalTab.click();
+    await entry.click();
     const createdBody = await created.then((res) => res.json());
     expect(createdBody.runtime).toBe("shell");
     // plan/09 LY-04: the size the shell was *created* at, read from the server's
@@ -638,11 +683,17 @@ test.describe("session & terminal", () => {
     // measuring the terminal afterwards, because a later measurement would be
     // satisfied by "opened at 24×80, then resized" — the very thing that makes
     // bash redraw its prompt in front of the user.
+    // The desktop 30x60 floor does not fit a phone. Phones instead check the
+    // wire bounds; desktop retains the original geometry assertions.
     expect(
       createdBody.rows,
       `the shell opened at ${createdBody.rows}x${createdBody.columns}, not at the panel's size`,
-    ).toBeGreaterThanOrEqual(30);
-    expect(createdBody.columns).toBeGreaterThanOrEqual(60);
+    ).toBeGreaterThanOrEqual(phoneWidth(page) ? 2 : 30);
+    expect(createdBody.columns).toBeGreaterThanOrEqual(
+      phoneWidth(page) ? 2 : 60,
+    );
+    expect(createdBody.rows).toBeLessThanOrEqual(300);
+    expect(createdBody.columns).toBeLessThanOrEqual(500);
     const shellId: string = createdBody.id;
 
     const shellPanel = page.locator("#panel-terminal");
@@ -669,7 +720,7 @@ test.describe("session & terminal", () => {
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
     );
-    await page.getByRole("tab", { name: "TERMINAL" }).click();
+    await page.locator("#tab-terminal").click();
     await expect(shellRows).toContainText("shell-alive-42");
 
     // AC-08: closing the tab ends the shell on the node. Asserted from the
@@ -681,14 +732,16 @@ test.describe("session & terminal", () => {
         res.request().method() === "POST" &&
         res.url().endsWith(`/api/sessions/${shellId}/terminate`),
     );
-    await page.getByRole("button", { name: "關閉 TERMINAL" }).click();
+    await closeSystemShell(page);
     const terminatedBody = await terminated.then((res) => res.json());
     expect(
       ["terminating", "terminated", "exited", "failed"],
       `the shell was left in status ${terminatedBody.status}`,
     ).toContain(terminatedBody.status);
 
-    // The tab stays (the capability is still there); what goes is the session.
+    // Desktop keeps the eligible tab; phones remove the transient shell tab.
+    if (phoneWidth(page))
+      await expect(page.locator("#tab-terminal")).toHaveCount(0);
     await expect(page.locator("#panel-terminal")).toBeHidden();
 
     // The CLI session is untouched by the shell's termination — same page, same
@@ -724,20 +777,16 @@ test.describe("session & terminal", () => {
     await dialog
       .locator('input[placeholder="e.g. refactor-api"]')
       .fill("e2e-shell-reload");
+    const posture = shellNodeReport(page);
     await dialog.getByRole("button", { name: "Start" }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
 
-    const terminalTab = page.getByRole("tab", { name: "TERMINAL" });
-    const offered = await terminalTab
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    test.skip(!offered, "this node reports no usable shell runtime");
+    const entry = await shellEntry(page, posture);
 
     const created = page.waitForResponse(
       (res) => res.request().method() === "POST" && /\/shell$/.test(res.url()),
     );
-    await terminalTab.click();
+    await entry.click();
     const first: string = await created.then(
       async (res) => (await res.json()).id,
     );
@@ -752,6 +801,7 @@ test.describe("session & terminal", () => {
         req.method() === "POST" &&
         req.url().endsWith(`/api/sessions/${first}/terminate`),
     );
+    const refreshedPosture = shellNodeReport(page);
     await page.reload();
     await terminated;
 
@@ -762,7 +812,7 @@ test.describe("session & terminal", () => {
     const reopened = page.waitForResponse(
       (res) => res.request().method() === "POST" && /\/shell$/.test(res.url()),
     );
-    await page.getByRole("tab", { name: "TERMINAL" }).click();
+    await (await shellEntry(page, refreshedPosture)).click();
     const second = await reopened.then((res) => res.json());
     expect(second.id).not.toBe(first);
     expect(second.runtime).toBe("shell");
@@ -793,6 +843,7 @@ test.describe("session & terminal", () => {
     await dialog
       .locator('input[placeholder="e.g. refactor-api"]')
       .fill("e2e-scroll");
+    const posture = shellNodeReport(page);
     await dialog.getByRole("button", { name: "Start" }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -802,13 +853,8 @@ test.describe("session & terminal", () => {
 
     // A real shell is needed: the point is scrolling through *output*, and the CLI
     // stack runs fakecli, which does not produce pages of it.
-    const terminalTab = page.getByRole("tab", { name: "TERMINAL" });
-    const offered = await terminalTab
-      .waitFor({ state: "visible", timeout: 10_000 })
-      .then(() => true)
-      .catch(() => false);
-    test.skip(!offered, "this node reports no usable shell runtime");
-    await terminalTab.click();
+    const entry = await shellEntry(page, posture);
+    await entry.click();
     const shell = page.locator("#panel-terminal .xterm-rows");
     await expect(page.locator("#panel-terminal")).toBeVisible();
 

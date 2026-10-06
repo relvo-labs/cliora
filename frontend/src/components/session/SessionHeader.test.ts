@@ -74,4 +74,17 @@ describe("SessionHeader — 姿態在任何寬度都看得見", () => {
     // A warning that is always present stops being a warning.
     expect(render({ compact: true }).findAll(".posture")).toHaveLength(0);
   });
+
+  it("repair: compact details expansion marks the growing header and can collapse again", async () => {
+    const wrapper = render({ compact: true });
+    expect(wrapper.find(".row.identity").exists()).toBe(false);
+    await wrapper.get(".disclose").trigger("click");
+    expect(wrapper.get("header").attributes("data-details-open")).toBe("");
+    expect(wrapper.get(".disclose").attributes("aria-expanded")).toBe("true");
+    expect(wrapper.find(".row.identity").exists()).toBe(true);
+    await wrapper.get(".disclose").trigger("click");
+    expect(
+      wrapper.get("header").attributes("data-details-open"),
+    ).toBeUndefined();
+  });
 });

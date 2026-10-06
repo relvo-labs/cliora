@@ -17,7 +17,7 @@
 5. 檔名 substring 搜尋涵蓋**目前 session 的整個工作區**，不是全文搜尋，也不會暗中限縮於目前資料夾；UI 顯示 partial stop reason 與 scanned count。
 6. `PreviewPane.vue`／`readFileContent` 只支援唯讀 TEXT／CODE。圖片、SVG、PDF、archive、binary、unsupported encoding、sensitive、permission-denied、missing 與 oversized 都維持拒絕；本原型不是圖片檢視器。
 7. 編輯、重新命名及刪除維持不採用；下載尚未建置並排除。正式版既有 upload 不在本原型內，M3 才依既有安全契約調整行動呈現。
-8. 關閉／離開 main CLI 只代表 detach，不得 stop。System `TERMINAL` 是另一個 child shell，於關閉／離頁／route-id 變更／pagehide 時終止；本原型不暴露 shell 控制。
+8. 關閉／離開 main CLI 只代表 detach，不得 stop。System `TERMINAL` 是另一個 child shell，於關閉／離頁／route-id 變更／pagehide 時終止；本原型不暴露 shell 控制。正式行動入口依 Neil 2026-10-06 的 [`MS-D-15`](03-m0-decision-register.md) 決策，只從 `⋯` 選單開啟，並套用所有寬度的節點 shell 可用性閘門。
 9. 原型不提供 session 建立／停止、shell、command-send、chat、approval、agent semantic 或假 reconnect 控制。
 
 ## 階段摘要

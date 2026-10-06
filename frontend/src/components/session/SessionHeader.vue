@@ -80,7 +80,11 @@ const identity = computed(() =>
 </script>
 
 <template>
-  <header class="head" :data-compact="compact ? '' : undefined">
+  <header
+    class="head"
+    :data-compact="compact ? '' : undefined"
+    :data-details-open="compact && detailsOpen ? '' : undefined"
+  >
     <div class="row primary">
       <h1 :title="name">{{ name }}</h1>
       <!-- Posture is on the row that is never collapsed, and out of any menu:
@@ -199,6 +203,10 @@ const identity = computed(() =>
 }
 .head[data-compact] {
   height: var(--layout-workhead-compact);
+}
+.head[data-compact][data-details-open] {
+  height: auto;
+  min-height: var(--layout-workhead-compact);
 }
 .row {
   display: flex;

@@ -25,10 +25,14 @@ for (const { terminal, delayedFocus } of [
   { terminal: "cli", delayedFocus: false },
   { terminal: "terminal", delayedFocus: false },
   { terminal: "cli", delayedFocus: true },
+  { terminal: "unavailable", delayedFocus: false },
 ] as const) {
-  const behavior = delayedFocus
-    ? "focusin without viewport events sends only settled sizes"
-    : "keyboard keeps >=8 rows, one settled resize per open/close";
+  const behavior =
+    terminal === "unavailable"
+      ? "node without shell has no menu item"
+      : delayedFocus
+        ? "focusin without viewport events sends only settled sizes"
+        : "keyboard keeps >=8 rows, one settled resize per open/close";
   test(`${terminal}: ${behavior}`, async ({ page, context }) => {
     const resizes: Array<{
       rows: number;
@@ -37,6 +41,7 @@ for (const { terminal, delayedFocus } of [
     }> = [];
     let connections = 0;
     let attaches = 0;
+    const terminations: string[] = [];
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
     await page.addInitScript(() => {
@@ -89,7 +94,19 @@ for (const { terminal, delayedFocus } of [
             id: NODE,
             name: "Mock",
             image_upload: true,
-            runtimes: [],
+            runtimes:
+              terminal === "unavailable"
+                ? []
+                : [
+                    {
+                      runtime: "shell",
+                      available: true,
+                      version: null,
+                      binary_path: null,
+                      checked_at: "2026-10-04T00:00:00Z",
+                      sandbox_bypass: false,
+                    },
+                  ],
             workspace_roots: [],
           };
         else if (path.endsWith("/attach")) {
@@ -97,7 +114,10 @@ for (const { terminal, delayedFocus } of [
           body = { ticket: "mock-ticket" };
         } else if (path.endsWith("/shell"))
           body = { ...session, id: SHELL, runtime: "shell" };
-        else if (path.endsWith("/files/tree"))
+        else if (path.endsWith("/terminate")) {
+          terminations.push(path);
+          body = {};
+        } else if (path.endsWith("/files/tree"))
           body = {
             path: ".",
             truncated: false,
@@ -147,8 +167,26 @@ for (const { terminal, delayedFocus } of [
       .boundingBox();
     expect(mainBox!.height - cliBox!.height).toBe(252);
     expect(mainBox!.width - cliBox!.width).toBe(34);
+    if (terminal === "unavailable") {
+      await page
+        .getByRole("button", { name: "Session 操作", exact: true })
+        .click();
+      await expect(
+        page.getByRole("menuitem", { name: "開啟系統 shell", exact: true }),
+      ).toHaveCount(0);
+      await expect(page.locator("#tab-terminal")).toHaveCount(0);
+      expect(connections).toBe(1);
+      expect(attaches).toBe(1);
+      expect(errors).toEqual([]);
+      return;
+    }
     if (terminal === "terminal") {
-      await page.locator("#tab-terminal").click();
+      await page
+        .getByRole("button", { name: "Session 操作", exact: true })
+        .click();
+      await page
+        .getByRole("menuitem", { name: "開啟系統 shell", exact: true })
+        .click();
       await expect.poll(() => connections).toBe(2);
     }
     const panel = page.locator(`#panel-${terminal}`);
@@ -272,6 +310,19 @@ for (const { terminal, delayedFocus } of [
     await expect(
       page.getByRole("tab", { name: "檔案", exact: true }),
     ).toBeVisible();
+    if (terminal === "terminal") {
+      await page
+        .getByRole("button", { name: "關閉並終止系統 shell", exact: true })
+        .click();
+      await expect(page.locator("#tab-cli")).toBeFocused();
+      await expect(page.locator("#panel-cli textarea")).not.toBeFocused();
+      await expect(page.locator("#tab-terminal")).toHaveCount(0);
+      await expect(page.locator(".shell-announcement")).toContainText(
+        "已關閉並終止",
+      );
+      expect(terminations).toEqual([`/api/sessions/${SHELL}/terminate`]);
+      expect(attaches).toBe(beforeAttaches);
+    }
     await page.getByRole("tab", { name: "檔案", exact: true }).click();
     await page.getByRole("button", { name: /readme.txt/ }).click();
     await expect(page.locator("#panel-preview")).toBeVisible();

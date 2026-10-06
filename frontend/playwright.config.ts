@@ -33,7 +33,12 @@ export default defineConfig({
     // any. The project names say "emulated" so a report cannot imply otherwise.
     {
       name: "mobile-chrome-emulated",
-      use: { ...devices["Pixel 7"] },
+      use: {
+        ...devices["Pixel 7"],
+        ...(localChromium
+          ? { launchOptions: { executablePath: localChromium } }
+          : {}),
+      },
     },
     {
       name: "mobile-safari-emulated",
