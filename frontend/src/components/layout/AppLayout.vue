@@ -77,15 +77,32 @@ const collapsed = computed(() => preferences.navCollapsed || belowWide.value);
 const USABLE_HEIGHT = "--viewport-usable-height";
 let viewport: VisualViewport | undefined;
 const keyboardOpen = ref(false);
+let observedGeometry = "";
+let maxViewportHeight = 0;
+let focusFrame: number | undefined;
 // #130: toolbar movement is not a keyboard. Require BOTH 150 CSS px and 25%
-// of the layout height to disappear, at unzoomed scale, with editable focus.
-// Keep the state through blur while that deficit remains: iOS can blur before
-// its closing animation starts. Otherwise chrome would return early and cost
-// terminal rows during dismissal. Real Safari event timing still needs a device.
-function syncKeyboard(): void {
+// of the reference height to disappear, at unzoomed scale, with editable focus.
+// Cap the layout reference at the largest unzoomed visual height observed for
+// this width/orientation: an inflated Safari clientHeight alone must not hide
+// chrome. A fresh geometry needs an observed height drop before collapsing.
+// Keep the state through blur until the deficit recovers; iOS can blur before
+// its closing animation starts. Real Safari timing still needs a device.
+function syncUsableHeight(): void {
+  if (!viewport) return;
+  // One snapshot for both outputs, even if height changes without an event.
+  const height = viewport.height;
+  const unzoomed = Math.abs((viewport.scale ?? 1) - 1) < 0.01;
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const geometry = `${width}:${window.screen.orientation?.type ?? ""}`;
+  if (geometry !== observedGeometry) {
+    observedGeometry = geometry;
+    maxViewportHeight = 0;
+  }
+  if (unzoomed) maxViewportHeight = Math.max(maxViewportHeight, height);
   const layoutHeight =
     document.documentElement.clientHeight || window.innerHeight;
-  const deficit = layoutHeight - (viewport?.height ?? layoutHeight);
+  const referenceHeight = Math.min(layoutHeight, maxViewportHeight || height);
+  const deficit = referenceHeight - height;
   const active = document.activeElement;
   const textInput =
     active instanceof HTMLTextAreaElement ||
@@ -98,19 +115,21 @@ function syncKeyboard(): void {
     (active instanceof HTMLElement && active.isContentEditable);
   keyboardOpen.value =
     isNarrow.value &&
-    !!viewport &&
-    Math.abs((viewport.scale ?? 1) - 1) < 0.01 &&
-    deficit >= Math.max(150, layoutHeight * 0.25) &&
+    unzoomed &&
+    deficit >= Math.max(150, referenceHeight * 0.25) &&
     (editable || keyboardOpen.value);
+  document.documentElement.style.setProperty(USABLE_HEIGHT, `${height}px`);
 }
-watch(isNarrow, syncKeyboard);
-function syncUsableHeight(): void {
-  syncKeyboard();
-  if (!viewport) return;
-  document.documentElement.style.setProperty(
-    USABLE_HEIGHT,
-    `${viewport.height}px`,
-  );
+watch(isNarrow, syncUsableHeight);
+function onFocusIn(): void {
+  syncUsableHeight();
+  // Safari may update height just after focusin. Re-read once on the next
+  // frame, not on a fit timer; the existing ResizeObserver still owns settling.
+  if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
+  focusFrame = window.requestAnimationFrame(() => {
+    focusFrame = undefined;
+    syncUsableHeight();
+  });
 }
 onMounted(() => {
   viewport = window.visualViewport ?? undefined;
@@ -122,14 +141,15 @@ onMounted(() => {
   viewport.addEventListener("scroll", syncUsableHeight);
   // Focus can arrive after the viewport event. Layout resize covers rotation;
   // neither path introduces a fit timer or bypasses #129's settled observer.
-  document.addEventListener("focusin", syncKeyboard);
+  document.addEventListener("focusin", onFocusIn);
   window.addEventListener("resize", syncUsableHeight);
 });
 onBeforeUnmount(() => {
+  if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
   if (!viewport) return;
   viewport.removeEventListener("resize", syncUsableHeight);
   viewport.removeEventListener("scroll", syncUsableHeight);
-  document.removeEventListener("focusin", syncKeyboard);
+  document.removeEventListener("focusin", onFocusIn);
   window.removeEventListener("resize", syncUsableHeight);
   // Removed, not left behind: the login page has no shell, and a stale height
   // from the last session would size it.

@@ -21,11 +21,15 @@ async function viewportHeight(page: Page, height: number) {
   }, height);
 }
 
-for (const terminal of ["cli", "terminal"] as const) {
-  test(`${terminal}: keyboard keeps >=8 rows, one settled resize per open/close`, async ({
-    page,
-    context,
-  }) => {
+for (const { terminal, delayedFocus } of [
+  { terminal: "cli", delayedFocus: false },
+  { terminal: "terminal", delayedFocus: false },
+  { terminal: "cli", delayedFocus: true },
+] as const) {
+  const behavior = delayedFocus
+    ? "focusin without viewport events sends only settled sizes"
+    : "keyboard keeps >=8 rows, one settled resize per open/close";
+  test(`${terminal}: ${behavior}`, async ({ page, context }) => {
     const resizes: Array<{
       rows: number;
       columns: number;
@@ -163,6 +167,58 @@ for (const terminal of ["cli", "terminal"] as const) {
     const initial = resizes.length;
     const beforeConnections = connections;
     const beforeAttaches = attaches;
+    if (delayedFocus) {
+      // Reviewer repro: visualViewport changes without resize/scroll, then a
+      // focusin arrives. Hold longer than #129's settle so an oversize grid
+      // cannot hide as a brief intermediate layout (candidate sent 31 rows).
+      const expected = [18];
+      for (const deliverOpenEvent of [true, false]) {
+        await input.evaluate((element) => (element as HTMLElement).blur());
+        await page.evaluate(() =>
+          Object.defineProperty(window.visualViewport!, "height", {
+            configurable: true,
+            value: 360,
+          }),
+        );
+        await input.focus();
+        await page.waitForTimeout(350);
+        expected.push(15);
+        expect(resizes.map((size) => size.rows)).toEqual(expected);
+        await expect(page.locator(".shell")).toHaveAttribute(
+          "data-keyboard-collapsed",
+          "",
+        );
+        expect(
+          await page.evaluate(() =>
+            document.documentElement.style.getPropertyValue(
+              "--viewport-usable-height",
+            ),
+          ),
+        ).toBe("360px");
+        if (deliverOpenEvent) {
+          await viewportHeight(page, 360);
+          await page.waitForTimeout(350);
+          expect(resizes.map((size) => size.rows)).toEqual(expected);
+        }
+        await viewportHeight(page, 664);
+        await page.waitForTimeout(350);
+        expected.push(18);
+        expect(resizes.map((size) => size.rows)).toEqual(expected);
+      }
+      expect(connections).toBe(beforeConnections);
+      expect(attaches).toBe(beforeAttaches);
+      expect(errors).toEqual([]);
+      console.log(
+        JSON.stringify({
+          terminal,
+          delayedFocus,
+          rows: expected,
+          connections,
+          attaches,
+        }),
+      );
+      return;
+    }
     await panel.locator(".xterm").evaluate((element) => {
       element.setAttribute("data-original", "true");
     });
@@ -188,6 +244,8 @@ for (const terminal of ["cli", "terminal"] as const) {
       page.getByRole("button", { name: "收起鍵盤", exact: true }),
     ).toBeVisible();
     await page.getByRole("button", { name: "收起鍵盤", exact: true }).click();
+    await expect(input).not.toBeFocused();
+    await expect(page.locator(`#tab-${terminal}`)).toBeFocused();
     await expect(page.locator(".shell > header")).toBeHidden();
     await viewportHeight(page, 410);
     await page.waitForTimeout(120);

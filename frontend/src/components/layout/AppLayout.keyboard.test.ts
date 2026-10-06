@@ -16,6 +16,20 @@ class Viewport extends EventTarget {
 }
 let viewport: Viewport;
 let wrapper: ReturnType<typeof mount>;
+type FrameCallback = (timestamp: number) => void;
+let frames: Map<number, FrameCallback>;
+let nextFrame: number;
+function flushFrame() {
+  for (const [id, callback] of frames) {
+    frames.delete(id);
+    callback(0);
+  }
+}
+function usableHeight() {
+  return document.documentElement.style.getPropertyValue(
+    "--viewport-usable-height",
+  );
+}
 async function render(width = 390, optIn = true) {
   vi.stubGlobal("innerWidth", width);
   const router = createRouter({
@@ -42,6 +56,19 @@ function collapsed() {
 beforeEach(() => {
   setActivePinia(createPinia());
   viewport = new Viewport();
+  frames = new Map();
+  nextFrame = 0;
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn((callback: FrameCallback) => {
+      frames.set(++nextFrame, callback);
+      return nextFrame;
+    }),
+  );
+  vi.stubGlobal(
+    "cancelAnimationFrame",
+    vi.fn((id: number) => frames.delete(id)),
+  );
   vi.stubGlobal("visualViewport", viewport);
   vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
     664,
@@ -177,5 +204,120 @@ describe("phone keyboard detection (#130)", () => {
     focus();
     await flushPromises();
     expect(collapsed()).toBe(false);
+  });
+});
+
+describe("one viewport reading for keyboard chrome and shell height (#130 repair 1)", () => {
+  it("synchronizes height changed without an event before focusin", async () => {
+    await render();
+    viewport.height = 360;
+    focus();
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    expect(usableHeight()).toBe("360px");
+  });
+
+  it("reads visualViewport.height only once per sync", async () => {
+    await render();
+    focus();
+    const height = vi.fn().mockReturnValueOnce(360).mockReturnValue(664);
+    Object.defineProperty(viewport, "height", { get: height });
+    viewport.dispatchEvent(new Event("resize"));
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    expect(usableHeight()).toBe("360px");
+    expect(height).toHaveBeenCalledOnce();
+  });
+
+  it("re-reads once on the next frame when height changes after focusin", async () => {
+    await render();
+    focus();
+    expect(usableHeight()).toBe("664px");
+    viewport.height = 360;
+    flushFrame();
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    expect(usableHeight()).toBe("360px");
+    expect(frames.size).toBe(0);
+  });
+
+  it("cancels the pending focus frame on unmount", async () => {
+    await render();
+    focus();
+    expect(frames.size).toBe(1);
+    const id = [...frames.keys()][0];
+    wrapper.unmount();
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(id);
+    viewport.height = 360;
+    flushFrame();
+    expect(usableHeight()).toBe("");
+  });
+
+  it("rejects a large clientHeight deficit without an observed viewport drop", async () => {
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
+      1200,
+    );
+    await render();
+    focus();
+    await flushPromises();
+    expect(collapsed()).toBe(false);
+    expect(usableHeight()).toBe("664px");
+    viewport.change(360);
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    viewport.change(664);
+    await flushPromises();
+    expect(collapsed()).toBe(false);
+  });
+
+  it("forgets the observed maximum when layout width changes", async () => {
+    vi.spyOn(document.documentElement, "clientHeight", "get").mockReturnValue(
+      900,
+    );
+    viewport.height = 900;
+    await render(430);
+    focus();
+    vi.stubGlobal("innerWidth", 390);
+    viewport.height = 664;
+    window.dispatchEvent(new Event("resize"));
+    await flushPromises();
+    expect(collapsed()).toBe(false);
+    expect(usableHeight()).toBe("664px");
+    viewport.change(360);
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+  });
+
+  it("synchronizes a fresh height on a breakpoint change without a viewport event", async () => {
+    const narrow = Object.assign(new EventTarget(), { matches: true });
+    vi.stubGlobal("matchMedia", (query: string) =>
+      query === "(max-width: 767px)"
+        ? narrow
+        : Object.assign(new EventTarget(), { matches: false }),
+    );
+    await render();
+    focus();
+    viewport.change(360);
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    viewport.height = 664;
+    vi.stubGlobal("innerWidth", 768);
+    narrow.matches = false;
+    narrow.dispatchEvent(
+      Object.assign(new Event("change"), { matches: false }),
+    );
+    await flushPromises();
+    expect(collapsed()).toBe(false);
+    expect(usableHeight()).toBe("664px");
+  });
+
+  it("synchronizes both values on window resize without a viewport event", async () => {
+    await render();
+    focus();
+    viewport.height = 360;
+    window.dispatchEvent(new Event("resize"));
+    await flushPromises();
+    expect(collapsed()).toBe(true);
+    expect(usableHeight()).toBe("360px");
   });
 });
