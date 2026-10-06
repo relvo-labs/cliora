@@ -21,7 +21,7 @@
 // to know about the business. It belongs to the workspace page (style.md §9 was
 // revised to say so).
 
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Menu, X } from "lucide-vue-next";
 
 import { useBreakpoint } from "../../composables/useBreakpoint";
@@ -36,7 +36,7 @@ import PrimaryNav from "./PrimaryNav.vue";
 // `fill`: this view *is* a fixed layout that owns the viewport (the Session
 // Workspace), so main must not scroll and must not spend the generous padding a
 // table page wants. Anything that scrolls does so inside the view's own panels.
-defineProps<{ fill?: boolean }>();
+const props = defineProps<{ fill?: boolean; collapseOnKeyboard?: boolean }>();
 
 const auth = useAuthStore();
 const preferences = usePreferencesStore();
@@ -76,12 +76,60 @@ const collapsed = computed(() => preferences.navCollapsed || belowWide.value);
 // bottom edge.
 const USABLE_HEIGHT = "--viewport-usable-height";
 let viewport: VisualViewport | undefined;
+const keyboardOpen = ref(false);
+let observedGeometry = "";
+let maxViewportHeight = 0;
+let focusFrame: number | undefined;
+// #130: toolbar movement is not a keyboard. Require BOTH 150 CSS px and 25%
+// of the reference height to disappear, at unzoomed scale, with editable focus.
+// Cap the layout reference at the largest unzoomed visual height observed for
+// this width/orientation: an inflated Safari clientHeight alone must not hide
+// chrome. A fresh geometry needs an observed height drop before collapsing.
+// Keep the state through blur until the deficit recovers; iOS can blur before
+// its closing animation starts. Real Safari timing still needs a device.
 function syncUsableHeight(): void {
   if (!viewport) return;
-  document.documentElement.style.setProperty(
-    USABLE_HEIGHT,
-    `${viewport.height}px`,
-  );
+  // One snapshot for both outputs, even if height changes without an event.
+  const height = viewport.height;
+  const unzoomed = Math.abs((viewport.scale ?? 1) - 1) < 0.01;
+  const width = document.documentElement.clientWidth || window.innerWidth;
+  const geometry = `${width}:${window.screen.orientation?.type ?? ""}`;
+  if (geometry !== observedGeometry) {
+    observedGeometry = geometry;
+    maxViewportHeight = 0;
+  }
+  if (unzoomed) maxViewportHeight = Math.max(maxViewportHeight, height);
+  const layoutHeight =
+    document.documentElement.clientHeight || window.innerHeight;
+  const referenceHeight = Math.min(layoutHeight, maxViewportHeight || height);
+  const deficit = referenceHeight - height;
+  const active = document.activeElement;
+  const textInput =
+    active instanceof HTMLTextAreaElement ||
+    (active instanceof HTMLInputElement &&
+      ["text", "search", "email", "url", "tel", "password", "number"].includes(
+        active.type,
+      ));
+  const editable =
+    (textInput && !active.disabled && !active.readOnly) ||
+    (active instanceof HTMLElement && active.isContentEditable);
+  keyboardOpen.value =
+    isNarrow.value &&
+    unzoomed &&
+    deficit >= Math.max(150, referenceHeight * 0.25) &&
+    (editable || keyboardOpen.value);
+  document.documentElement.style.setProperty(USABLE_HEIGHT, `${height}px`);
+}
+watch(isNarrow, syncUsableHeight);
+function onFocusIn(): void {
+  syncUsableHeight();
+  // Safari may update height just after focusin. Re-read once on the next
+  // frame, not on a fit timer; the existing ResizeObserver still owns settling.
+  if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
+  focusFrame = window.requestAnimationFrame(() => {
+    focusFrame = undefined;
+    syncUsableHeight();
+  });
 }
 onMounted(() => {
   viewport = window.visualViewport ?? undefined;
@@ -91,11 +139,18 @@ onMounted(() => {
   // `scroll` as well as `resize`: iOS reports a keyboard-driven change by
   // scrolling the visual viewport, not by resizing it.
   viewport.addEventListener("scroll", syncUsableHeight);
+  // Focus can arrive after the viewport event. Layout resize covers rotation;
+  // neither path introduces a fit timer or bypasses #129's settled observer.
+  document.addEventListener("focusin", onFocusIn);
+  window.addEventListener("resize", syncUsableHeight);
 });
 onBeforeUnmount(() => {
+  if (focusFrame !== undefined) window.cancelAnimationFrame(focusFrame);
   if (!viewport) return;
   viewport.removeEventListener("resize", syncUsableHeight);
   viewport.removeEventListener("scroll", syncUsableHeight);
+  document.removeEventListener("focusin", onFocusIn);
+  window.removeEventListener("resize", syncUsableHeight);
   // Removed, not left behind: the login page has no shell, and a stale height
   // from the last session would size it.
   document.documentElement.style.removeProperty(USABLE_HEIGHT);
@@ -103,6 +158,11 @@ onBeforeUnmount(() => {
 });
 
 const menuOpen = ref(false);
+// Opt in only from a live workspace terminal, so file search, preview and other
+// pages retain their controls. The nav overlay must keep its dismissal control.
+const keyboardCollapsed = computed(
+  () => props.collapseOnKeyboard && keyboardOpen.value && !menuOpen.value,
+);
 const menuPanel = ref<HTMLElement>();
 
 // The narrow-viewport menu is an overlay, so it owes the same three things a
@@ -134,10 +194,11 @@ async function logout(): Promise<void> {
     class="shell"
     :data-collapsed="collapsed ? '' : undefined"
     :data-narrow="isNarrow ? '' : undefined"
+    :data-keyboard-collapsed="keyboardCollapsed ? '' : undefined"
   >
     <!-- First focusable element in the document. -->
     <a class="skip-link" href="#main">跳至主要內容</a>
-    <header>
+    <header v-show="!keyboardCollapsed">
       <UiIconButton
         v-if="isNarrow"
         class="menu-toggle"
@@ -171,7 +232,9 @@ async function logout(): Promise<void> {
       :product-name="productName"
       @update:collapsed="preferences.setNavCollapsed($event)"
     />
-    <main id="main" :data-fill="fill ? '' : undefined"><slot /></main>
+    <main id="main" :data-fill="fill ? '' : undefined">
+      <slot :keyboard-collapsed="keyboardCollapsed" />
+    </main>
 
     <!-- Narrow-viewport navigation. `position: fixed; inset: 0` rather than any
          viewport-unit height: plan/09 D1 keeps viewport height in the shell
@@ -237,6 +300,13 @@ async function logout(): Promise<void> {
 /* Below 768px the rail is gone from the grid entirely, so main gets the width. */
 .shell[data-narrow] {
   grid-template-columns: minmax(0, 1fr);
+}
+/* No height animation: the host's ResizeObserver uses #129's settle path. */
+.shell[data-keyboard-collapsed] {
+  grid-template-rows: minmax(0, 1fr);
+}
+.shell[data-keyboard-collapsed] > main {
+  grid-row: 1;
 }
 @media (prefers-reduced-motion: no-preference) {
   .shell {
