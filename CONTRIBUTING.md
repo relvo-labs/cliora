@@ -2,7 +2,7 @@
 
 先讀 [README](README.md) 了解目前能力與限制，再讀 [.agent/skills/README.md](.agent/skills/README.md)、[AUTHORING.md](.agent/skills/AUTHORING.md) 與 [cliora-project-context](.agent/skills/cliora-project-context/SKILL.md)。
 產品需求以 [research/prd.md](research/prd.md) 為準，技術與視覺規格在 [research/tech.md](research/tech.md)、[research/style.md](research/style.md)；範圍變更先記錄決策，再同步 contract、consumer 與追溯資料。
-P0–P4 報告是歷史證據；本文件的命令已對照 `master@aa732f0` 靜態核對，尚待本次改寫的執行驗證。
+P0–P4 報告是歷史證據；本文件的命令已對照 `master@aa732f0` 靜態核對。
 
 ## Bootstrap
 

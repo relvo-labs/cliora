@@ -57,13 +57,14 @@ Cliora 不收編任意既有 tmux／CLI process。重連使用 `tmux attach-sess
 ## 本機試用
 
 這條路徑啟動一個 rootless enrolled 節點，以 Fake CLI 演示 terminal；使用專用、可丟棄的 DB。
-本次文件改寫僅完成靜態核對，以下步驟仍待執行驗證。
 
 ### 先決條件
 
 - Linux、Bash、GNU Make、curl、Python 3；以一般使用者啟動 daemon。
 - tmux 3.4 以上、Python 3.12.3 與 uv、Go 1.26.5、Node 22.14.0 與 npm 10。
 - Docker 可啟動 PostgreSQL 16；本機 `55432`、`8000`、`5173`、`5199` 埠可用。
+
+若 `55432` 已佔用，將 `docker run` 的映射改為 `-p 127.0.0.1:55442:5432`，並同步使用 `make dev-stack DB_URL=postgresql+asyncpg://cliora:cliora@127.0.0.1:55442/cliora_demo`。這只調整 DB 埠，本流程的 `8000`／`5173`／`5199` 不會隨之改變。
 
 版本來源為 [`.python-version`](.python-version)、[`.go-version`](.go-version)、[`.nvmrc`](.nvmrc)；CI 的部分 P4 jobs 使用 Go module／Node major，詳見 [CONTRIBUTING](CONTRIBUTING.md)。
 下列指令從 repository 根目錄執行；三個終端機都先切到同一目錄。
