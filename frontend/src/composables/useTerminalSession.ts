@@ -161,10 +161,6 @@ export function useTerminalSession(
     // The size this socket last sent the PTY; "" until it has sent one, which
     // is what forces the first send after every attach.
     lastSize = "",
-    // Whether this socket's `terminal.role` has arrived. The role is per
-    // socket: until it arrives this client is not known to be the writer,
-    // whatever the previous socket was.
-    roleKnown = false,
     // The size seen at the previous settle check, "" when there is none.
     settling = "",
     // The size measured by the latest layout notification or settle check
@@ -179,14 +175,14 @@ export function useTerminalSession(
     socket.send(JSON.stringify({ type, payload }));
     return true;
   }
-  // Tell the PTY the local terminal's grid, so the two agree — when this client
-  // is the writer and the PTY does not already have that grid.
+  // Tell the PTY the local terminal's grid, so the two agree — when the PTY
+  // does not already have that grid.
   function sendResize(): void {
+    // The server applies resize only for the writer; sending as a viewer is a
+    // harmless no-op, so no client-side role gate is needed here. Nor can there
+    // be one yet: a takeover is announced without this client's role (#133),
+    // so a gate would silence a new writer's resizes.
     if (!terminal) return;
-    // Only the writer resizes (plan/29 MS-09). Central also drops a viewer's
-    // resize (ADR 0016) — that is the authorization; this is the client not
-    // asking for what it may not have (#132).
-    if (!roleKnown || !isWriter()) return;
     // The daemon rejects anything under 2 (tmux `validSize`); a host squeezed
     // that small gets its local grid but no resize.
     if (terminal.rows < MIN_SIZE || terminal.cols < MIN_SIZE) return;
@@ -338,9 +334,8 @@ export function useTerminalSession(
       retryIndex = 0;
       // The server auto-attaches at the size stored at creation, so this socket
       // has sent the PTY nothing yet: the size it settles at goes out even when
-      // it equals the previous socket's — once, and only as the writer.
+      // it equals the previous socket's — once.
       lastSize = "";
-      roleKnown = false;
       // Settled like any other layout change (#132): a socket can open while a
       // keyboard or a tab switch is still moving the layout, and the size
       // measured at that moment is not the one it ends at. A stable attach
@@ -374,11 +369,6 @@ export function useTerminalSession(
     }
     if (message.type === "terminal.role" && message.payload?.role) {
       role.value = message.payload.role === "writer" ? "writer" : "viewer";
-      roleKnown = true;
-      // Now the writer (an attach, or a viewer promoted): the PTY gets the
-      // settled size. A pending settle sends the size it lands on; with none
-      // pending, the terminal's grid is the settled size. A no-op as a viewer.
-      if (resizeTimer === undefined) sendResize();
     } else if (message.type === "terminal.gap") {
       gap.value = message.payload?.reason ?? "Output continuity was lost";
       status.value = "gap";
