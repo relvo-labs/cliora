@@ -622,8 +622,15 @@ export class ApiClient {
     options: { signal?: AbortSignal; onProgress?: (fraction: number) => void },
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
+      if (options.signal?.aborted) {
+        reject(new ApiError("CANCELLED", "The upload was cancelled", 0));
+        return;
+      }
       const xhr = new XMLHttpRequest();
       xhr.open("POST", `${BASE}${path}`);
+      // Includes body transfer and node storage confirmation. Never auto-retry
+      // a timeout: the node may have stored the image without a delivered reply.
+      xhr.timeout = 60000;
       xhr.setRequestHeader("Content-Type", contentType);
       const token = this.tokens.accessToken();
       if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
@@ -639,6 +646,16 @@ export class ApiClient {
           }
         };
       }
+      xhr.ontimeout = () => {
+        done();
+        reject(
+          new ApiError(
+            "REQUEST_TIMEOUT",
+            "Upload confirmation timed out; retry or check the workspace",
+            0,
+          ),
+        );
+      };
       xhr.onerror = () => {
         done();
         reject(

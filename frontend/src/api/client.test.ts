@@ -465,3 +465,33 @@ describe("uploadFile", () => {
     }
   });
 });
+
+// Issue #143: do not wait indefinitely after the upload body has been sent.
+it("bounds upload response wait and reports a retryable timeout", async () => {
+  let xhr!: FakeXHR;
+  class FakeXHR {
+    timeout = 0;
+    upload = { onprogress: null };
+    ontimeout: (() => void) | null = null;
+    open() {}
+    setRequestHeader() {}
+    send() {
+      xhr = this;
+    }
+    abort() {}
+  }
+  const original = globalThis.XMLHttpRequest;
+  vi.stubGlobal("XMLHttpRequest", FakeXHR);
+  try {
+    const pending = new ApiClient(makeStore("tok", null)).uploadImage(
+      "s1",
+      new File(["png"], "x.png", { type: "image/png" }),
+    );
+    expect(xhr.timeout).toBeGreaterThan(0);
+    expect(xhr.timeout).toBeLessThanOrEqual(60000);
+    xhr.ontimeout?.();
+    await expect(pending).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+  } finally {
+    vi.stubGlobal("XMLHttpRequest", original);
+  }
+});

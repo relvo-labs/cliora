@@ -55,6 +55,7 @@ _NOT_ACCESSIBLE = frozenset({"WORKSPACE_OUTSIDE_ALLOWED_ROOT", "WORKSPACE_NOT_FO
 # because every one of them has a different next step for the user, and none of
 # them reveals anything about the node's filesystem (ADR 0024).
 _UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
+    "NODE_BUSY": ("The node is busy; retry shortly", status.HTTP_503_SERVICE_UNAVAILABLE),
     "FILE_UPLOAD_TOO_LARGE": (
         "The image is larger than 4 MiB",
         status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,

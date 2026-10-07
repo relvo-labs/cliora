@@ -143,9 +143,8 @@ func (m *Manager) runFsRead(env protocol.Envelope, p fsReadPayload, send func([]
 }
 
 // handleFsUpload writes one image into the session workspace (FR-FILE-009).
-// This is the only handler in the daemon that writes to a workspace; it follows
-// the same shape as handleFsRead so the two are read side by side.
-func (m *Manager) handleFsUpload(env protocol.Envelope, data []byte, send func([]byte) error) {
+// Validation stays on dispatch; persistence owns one daemon-wide worker.
+func (m *Manager) handleFsUpload(workers *fsWorkers, env protocol.Envelope, data []byte, send func([]byte) error) {
 	if protocol.ValidateControl(data) != nil {
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
@@ -155,6 +154,12 @@ func (m *Manager) handleFsUpload(env protocol.Envelope, data []byte, send func([
 		m.replyError(send, env.RequestID, "INVALID_MESSAGE")
 		return
 	}
+	workers.run(m.fs.uploadSlots, "upload", env.RequestID, send, func(send func([]byte) error) {
+		m.runFsUpload(env, p, send)
+	})
+}
+
+func (m *Manager) runFsUpload(env protocol.Envelope, p fsUploadPayload, send func([]byte) error) {
 	// Strict base64: the permissive decoder accepts trailing garbage, and the
 	// wire schema already restricts the alphabet, so anything else is malformed
 	// rather than merely unusual.

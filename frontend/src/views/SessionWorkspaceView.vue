@@ -816,6 +816,10 @@ const privilegedNode = computed(
 const imageDrop = useImageDrop((file, onProgress, signal) =>
   api().uploadImage(props.id, file, { onProgress, signal }),
 );
+onBeforeUnmount(() => {
+  imageInsertGeneration++;
+  imageDrop.cancel();
+});
 const dragActive = ref(false);
 const pickerInput = ref<HTMLInputElement | null>(null);
 
@@ -829,6 +833,16 @@ const canUploadImages = computed(
     nodePosture.value?.image_upload === true,
 );
 const isWriter = computed(() => terminal.role.value === "writer");
+
+let imageInsertGeneration = 0;
+watch(
+  [() => props.id, () => terminal.status.value, isWriter],
+  () => {
+    imageInsertGeneration++;
+    imageDrop.cancel();
+  },
+  { flush: "sync" },
+);
 
 // --- General file upload (FU-06, ADR 0026) --------------------------------
 //
@@ -914,9 +928,19 @@ function swallowStrayDrop(event: DragEvent): void {
 }
 
 async function dropImage(file: File): Promise<void> {
-  if (!canUploadImages.value) return;
+  if (!canUploadImages.value || !isWriter.value) return;
+  const sessionId = props.id;
+  const insertion = ++imageInsertGeneration;
   const storedPath = await imageDrop.submit(file);
-  if (!storedPath) return;
+  if (
+    !storedPath ||
+    insertion !== imageInsertGeneration ||
+    props.id !== sessionId ||
+    !workspaceLive.value ||
+    !isWriter.value ||
+    terminal.status.value !== "connected"
+  )
+    return;
   // Type the path, with a trailing space and no Enter: the user usually still
   // has something to say about the image (ADR 0024 sec 2).
   if (terminal.typeText(`${storedPath} `)) {
@@ -1345,7 +1369,10 @@ async function confirmTerminate(): Promise<void> {
               >
                 <UiButton
                   variant="secondary"
-                  :disabled="!isWriter || imageDrop.state.value === 'uploading'"
+                  :disabled="
+                    !isWriter ||
+                    ['uploading', 'confirming'].includes(imageDrop.state.value)
+                  "
                   :disabled-reason="
                     isWriter ? '上傳中…' : '取得寫入權後可投放圖片'
                   "
@@ -1361,11 +1388,25 @@ async function confirmTerminate(): Promise<void> {
                   @change="onPicked"
                 />
                 <span
-                  v-if="imageDrop.state.value === 'uploading'"
+                  v-if="
+                    ['uploading', 'confirming'].includes(imageDrop.state.value)
+                  "
                   class="drop-status"
                   role="status"
                 >
-                  上傳中 {{ Math.round(imageDrop.progress.value * 100) }}%
+                  <template v-if="imageDrop.state.value === 'confirming'">
+                    圖片已傳送，等待節點儲存確認…
+                  </template>
+                  <template v-else>
+                    上傳中 {{ Math.round(imageDrop.progress.value * 100) }}%
+                  </template>
+                  <button
+                    type="button"
+                    class="link"
+                    @click="imageDrop.cancel()"
+                  >
+                    取消
+                  </button>
                 </span>
                 <template v-else-if="imageDrop.state.value === 'done'">
                   <img
