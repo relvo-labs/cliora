@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,10 +32,9 @@ func TestVersionCommand(t *testing.T) {
 	}
 }
 
-// daemon/VERSION is what the release is built as: GoReleaser tags against it and the
-// Central image compiles against it. This default is the fourth copy of that number and
-// the only one nothing else reads, so it is the one that drifts — and a stale value here
-// is what a developer's binary reports to Central at registration.
+// The unstamped development version and both CLI formats must follow the declared
+// release base while retaining -dev. Derive the expectation rather than duplicating
+// the patch number in the regression.
 func TestVersionMatchesTheVersionFile(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("..", "..", "VERSION"))
 	if err != nil {
@@ -44,6 +44,28 @@ func TestVersionMatchesTheVersionFile(t *testing.T) {
 	if version != want {
 		t.Errorf("main.version = %q, but daemon/VERSION implies %q", version, want)
 	}
+	t.Run("plain", func(t *testing.T) {
+		out, err := runCommand(t, "version")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if out != want+"\n" {
+			t.Errorf("version output = %q, want %q", out, want+"\n")
+		}
+	})
+	t.Run("json", func(t *testing.T) {
+		out, err := runCommand(t, "version", "--json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(out), &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload["version"] != want {
+			t.Errorf("JSON version = %q, want %q", payload["version"], want)
+		}
+	})
 }
 
 func TestConfigValidateCommand(t *testing.T) {
