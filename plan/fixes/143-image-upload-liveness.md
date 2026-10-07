@@ -22,48 +22,26 @@ Ranked, falsifiable paths on current master:
 ## Non-goals
 No generic list/search fix (#118), redesign, migrations, broader file editing, runtime change, new permission or upload destination contract. No restarting user Sessions or changing production nodes.
 
-## Local implementation checkpoint (2026-10-07)
+## Implementation and remaining boundaries
 
-Base and HEAD remain `20a2fab47407b9d5b5b74edbb8d61700b048ee24` on
-`fix/image-upload-liveness`; changes are uncommitted. This session's higher-priority
-writer boundary forbids commits, pushes and PR operations; publication is pending
-with the parent. No external writes or production operations were performed.
+Implementation PR: #144. Controlled regressions confirm all three defect classes;
+the production-specific trigger remains unknown.
 
-Controlled RED regressions confirmed the three defect classes: an upload blocked
-at workspace/storage entry stalls inline control dispatch; upload XHR waits with
-no finite deadline; obsolete callbacks can mutate state and return an insertable
-path. The actual intermittent production trigger and screenshot details remain
-unknown.
+Image persistence has one daemon-wide admission slot, preserving image-quota
+serialization across Sessions and reconnects. Excess uploads receive `NODE_BUSY`
+(HTTP 503); file-store quotas remain separate and unchanged. UI separates body
+transfer from storage confirmation, supports cancellation and a 60-second deadline,
+and fences stale state/path insertion on replacement, route/connection/role change
+and disposal. No automatic retry of an ambiguous write.
 
-Implementation: one daemon-wide image worker, immediate NODE_BUSY admission,
-strict decoding and persistence off dispatch, cancelled-connection reply fencing,
-and a retained slot across disconnect until IO returns. This serializes image
-quota recount/publication even for Sessions sharing a workspace. File-store was
-inspected but left unchanged: its quotas are distinct and mutex-protected.
-Central maps NODE_BUSY to safe HTTP 503. Browser XHR uses a 60-second deadline,
-with no automatic retry of an ambiguous completion. UI distinguishes body transfer
-from pending node confirmation, offers cancel, and fences callbacks and terminal
-insertion on replacement, cancellation, route/terminal change and disposal.
+Kernel I/O cannot be forcibly interrupted: a hung write retains the image slot,
+while control traffic and reconnect remain usable. Cancellation/timeout may leave
+a retention-managed image; manual retry can add another. Admission does not govern
+independent user-CLI writes.
 
-Evidence is outside source at `/opt/data/cliora-upload-hang-run/verification/`:
-- RED: frontend-red.log (7 failing, 22 passing); daemon-red.log (control deadline
-  failed under held storage); backend-red.log (busy mapping failed).
-- GREEN: frontend-final-full.log (53 files / 1,343 tests); frontend-final-focused.log
-  (85 tests after caller fence); frontend-lint-final.log, frontend-typecheck-final.log,
-  frontend-build-final.log; backend-green.log (181 tests); backend-lint.log;
-  daemon-race.log (full race suite, 14 tested packages); daemon-reconnect.log and
-  daemon-reconnect-quota.log (focused race regression).
-- Browser: browser-final.log, 2 Chromium tests at desktop 1440 and mobile width 390;
-  pending-{1440,390}.png and retry-{1440,390}.png. Native XHR talks to a task-owned
-  HTTP peer which consumes the body before delaying its response; Central and
-  terminal relay are local fixtures. The spec owns/cleans its HTTP server and
-  timers in finally, and creates no backend Sessions. This is viewport evidence,
-  not physical mobile-device or full-stack production evidence.
-
-Remaining limits: kernel IO cannot be interrupted by cancellation; one hung image
-write retains the upload slot and later uploads receive NODE_BUSY, while control
-traffic/reconnect remain usable. A cancelled/timed-out request may still persist a
-retention-managed image; retry can add another image. Admission limits daemon-owned
-workers, not writes made independently by a user CLI. Full-stack upload tests against
-an isolated Central database, actual device acceptance, publication and the parent's
-fresh frozen-head review remain pending. No Ready/reviewer action was taken.
+Regression coverage includes slow persistence/control liveness, reconnect and
+quota admission, XHR completion/error handling, stale callback fencing, and native
+XHR fault-state browser tests at desktop/mobile widths. Browser Central and
+terminal peers are fixtures, not full-stack or physical-device certification.
+Detailed validation and production-acceptance tracking live in #143 / #144;
+raw logs and screenshots remain repository-external. No merge or deployment.
