@@ -199,3 +199,64 @@ describe("useImageDrop", () => {
     expect(drop.errorCode.value).toBeUndefined();
   });
 });
+
+// Issue #143: body transfer is not storage confirmation; obsolete work owns nothing.
+describe("image upload liveness", () => {
+  it("shows storage confirmation as pending after body transfer", async () => {
+    stubObjectUrls();
+    let finish!: (value: FileUploadResult) => void;
+    const drop = run(() =>
+      useImageDrop((_file, progress) => {
+        progress(1);
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      }),
+    );
+    const pending = drop.submit(pngFile());
+    expect(drop.state.value).toBe("confirming");
+    finish(result());
+    await pending;
+    expect(drop.state.value).toBe("done");
+  });
+
+  it.each(["cancel", "clear", "replace", "invalid", "dispose"])(
+    "discards late progress and success after %s",
+    async (action) => {
+      stubObjectUrls();
+      let finish!: (value: FileUploadResult) => void;
+      let report!: (fraction: number) => void;
+      const scope = effectScope();
+      const drop = scope.run(() =>
+        useImageDrop((_file, progress) => {
+          report = progress;
+          return new Promise((resolve) => {
+            finish = resolve;
+          });
+        }),
+      )!;
+      const pending = drop.submit(pngFile());
+      const oldFinish = finish;
+      const oldReport = report;
+      if (action === "dispose") scope.stop();
+      else if (action === "replace") void drop.submit(pngFile("new.png"));
+      else if (action === "invalid")
+        await drop.submit(new File(["x"], "x.svg", { type: "image/svg+xml" }));
+      else drop[action as "cancel" | "clear"]();
+      const before = {
+        state: drop.state.value,
+        progress: drop.progress.value,
+        current: drop.current.value,
+      };
+      oldReport(0.9);
+      oldFinish(result());
+      expect(await pending).toBeNull();
+      expect({
+        state: drop.state.value,
+        progress: drop.progress.value,
+        current: drop.current.value,
+      }).toEqual(before);
+      scope.stop();
+    },
+  );
+});

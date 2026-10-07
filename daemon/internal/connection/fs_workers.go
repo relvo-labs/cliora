@@ -10,7 +10,7 @@ import (
 	"github.com/cliora/cliora/daemon/internal/workspace"
 )
 
-// Bounded workers for filesystem.read and filesystem.download (issue #83,
+// Bounded workers for filesystem.read/download (issue #83) and image upload (#143,
 // plan/31/09 §4 E1), following ADR 0029 §15's pattern for preview_open.
 //
 // Both used to run inline on the dispatch loop, which also carries terminal
@@ -29,19 +29,22 @@ import (
 // burst of downloads cannot starve the preview pane, or the reverse.
 //
 // Ownership: every worker belongs to the connection whose dispatch loop started
-// it. When that loop returns, its context is cancelled and the loop waits for
-// its workers before returning, so none outlives the connection. A worker that
+// it. When that loop returns, its context is cancelled. Read/download workers
+// are joined; persistence workers retain their daemon-wide slot until IO returns
+// without blocking reconnect. Cancellation cannot interrupt kernel IO. A worker that
 // finishes after the cancel drops its reply rather than writing it (the send
 // guard below); replies still go through the connection's single serialized
 // send, never a write of their own.
 const (
 	fsReadWorkers     = 4
 	fsDownloadWorkers = 2
+	fsUploadWorkers   = 1
 )
 
 type fsWorkerState struct {
 	readSlots     chan struct{}
 	downloadSlots chan struct{}
+	uploadSlots   chan struct{}
 
 	// Test seams; nil means production behaviour.
 	root      func(uuid.UUID) (*workspace.Root, string, bool)
@@ -52,6 +55,7 @@ func newFsWorkerState() *fsWorkerState {
 	return &fsWorkerState{
 		readSlots:     make(chan struct{}, fsReadWorkers),
 		downloadSlots: make(chan struct{}, fsDownloadWorkers),
+		uploadSlots:   make(chan struct{}, fsUploadWorkers),
 	}
 }
 
@@ -95,9 +99,19 @@ func (w *fsWorkers) run(slots chan struct{}, op, requestID string, send func([]b
 		}
 		return send(frame)
 	}
-	w.wg.Add(1)
+	// Persistence can be stuck in kernel IO even after context cancellation.
+	// Do not hold connection teardown/reconnect hostage to it. Its daemon-wide
+	// slot stays occupied until the IO actually returns; old replies are fenced.
+	// One slot also serializes image quota recount + publication across Sessions
+	// sharing a workspace. General Store has its own mutex-protected quotas.
+	persistence := slots == m.fs.uploadSlots
+	if !persistence {
+		w.wg.Add(1)
+	}
 	go func() {
-		defer w.wg.Done()
+		if !persistence {
+			defer w.wg.Done()
+		}
 		defer func() { <-slots }()
 		defer func() {
 			if recover() != nil {
@@ -107,6 +121,9 @@ func (w *fsWorkers) run(slots chan struct{}, op, requestID string, send func([]b
 		}()
 		if hook := m.fs.beforeRun; hook != nil {
 			hook(w.ctx, op)
+		}
+		if w.ctx.Err() != nil {
+			return
 		}
 		work(live)
 	}()

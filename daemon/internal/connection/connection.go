@@ -497,8 +497,8 @@ func (m *Manager) dispatch(
 ) error {
 	previews := m.beginPreviewTable(ctx) // this connection's snapshot handles
 	defer m.endPreviewTable(previews)
-	// This connection's file read/download workers. Ended (cancelled, then
-	// waited for) when the loop returns, so none outlives the connection.
+	// This connection's filesystem workers. Cancellation fences late replies;
+	// persistence retains its daemon-wide slot without blocking reconnect.
 	workers := m.beginFsWorkers(ctx)
 	defer workers.end()
 	for {
@@ -536,7 +536,7 @@ func (m *Manager) dispatch(
 		case "filesystem.search":
 			m.handleFsSearch(ctx, env, data, send)
 		case "filesystem.upload":
-			m.handleFsUpload(env, data, send)
+			m.handleFsUpload(workers, env, data, send)
 		case "filesystem.store":
 			m.handleFsStore(env, data, send)
 		case "filesystem.download":

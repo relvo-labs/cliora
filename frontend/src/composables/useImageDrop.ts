@@ -22,7 +22,12 @@ export const ACCEPTED_IMAGE_TYPES = [
 
 export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 
-export type UploadState = "idle" | "uploading" | "done" | "error";
+export type UploadState =
+  | "idle"
+  | "uploading"
+  | "confirming"
+  | "done"
+  | "error";
 
 export interface DroppedImage {
   // The user's own filename, kept only as a label. It never reaches the wire:
@@ -47,6 +52,7 @@ export function useImageDrop(upload: ImageUploader) {
   const errorCode = ref<string>();
   const errorMessage = ref<string>();
   let controller: AbortController | undefined;
+  let generation = 0;
 
   function revoke(): void {
     if (current.value) {
@@ -55,6 +61,9 @@ export function useImageDrop(upload: ImageUploader) {
   }
 
   function clear(): void {
+    generation++;
+    controller?.abort();
+    controller = undefined;
     revoke();
     current.value = null;
     state.value = "idle";
@@ -80,7 +89,8 @@ export function useImageDrop(upload: ImageUploader) {
    * than catching, because a refusal is a normal outcome here.
    */
   async function submit(file: File): Promise<string | null> {
-    revoke();
+    clear();
+    const ownGeneration = generation;
     errorCode.value = undefined;
     errorMessage.value = undefined;
     if (!accepts(file)) {
@@ -106,15 +116,21 @@ export function useImageDrop(upload: ImageUploader) {
       const result = await upload(
         file,
         (fraction) => {
-          progress.value = fraction;
+          if (generation !== ownGeneration) return;
+          progress.value = Math.max(0, Math.min(1, fraction));
+          state.value = progress.value === 1 ? "confirming" : "uploading";
         },
         controller.signal,
       );
-      current.value = { ...current.value, storedPath: result.path };
+      if (generation !== ownGeneration) return null;
+      controller = undefined;
+      current.value = { ...current.value!, storedPath: result.path };
       state.value = "done";
       progress.value = 1;
       return result.path;
     } catch (error) {
+      if (generation !== ownGeneration) return null;
+      controller = undefined;
       const api = error instanceof ApiError ? error : undefined;
       if (api?.code === "CANCELLED") {
         clear();
@@ -157,13 +173,10 @@ export function useImageDrop(upload: ImageUploader) {
   }
 
   function cancel(): void {
-    controller?.abort();
+    clear();
   }
 
-  onScopeDispose(() => {
-    controller?.abort();
-    revoke();
-  });
+  onScopeDispose(clear);
 
   return {
     submit,
