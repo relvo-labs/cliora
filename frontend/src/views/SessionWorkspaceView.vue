@@ -69,12 +69,16 @@ const canTakeover = computed(() => capabilities.value?.can_takeover === true);
 const canBrowseFiles = computed(
   () => capabilities.value?.can_browse_files === true,
 );
-// Whether a TERMINAL tab exists at all. The server already combined the action,
-// ownership and the node's own veto into this flag; recombining it here with
-// `hasPermission()` would show the tab on a colleague's session and only fail
-// when it was pressed.
+// The server combines action, ownership and session state. The node's own
+// runtime report is a separate veto: unknown or absent means no, just as for
+// image_upload (ADR 0024 W4). Never offer an entry that the node cannot use.
 const canOpenShell = computed(
-  () => capabilities.value?.can_open_shell === true,
+  () =>
+    capabilities.value?.can_open_shell === true &&
+    nodePosture.value?.id === session.value?.node_id &&
+    nodePosture.value?.runtimes.some(
+      (runtime) => runtime.runtime === "shell" && runtime.available === true,
+    ) === true,
 );
 
 // A session in a terminal state has no daemon-side workspace to browse.
@@ -147,6 +151,7 @@ const previewPath = ref<string | null>(null);
 // is open, so a closed preview always falls back to the terminal.
 type CentreTab = "cli" | "preview" | "terminal";
 const activeTab = ref<CentreTab>("cli");
+let focusCliTabAfterShellClose = false;
 
 const tabs = computed(() => [
   { id: "cli", label: "CLI" },
@@ -162,13 +167,15 @@ const tabs = computed(() => [
         },
       ]
     : []),
-  ...(canOpenShell.value
+  ...(canOpenShell.value && (!isNarrow.value || shellState.value !== "idle")
     ? [
         {
           id: "terminal",
-          label: "TERMINAL",
+          label: isNarrow.value ? "系統 shell" : "TERMINAL",
           title: "此 Node 上的系統終端機",
-          closable: shellSession.value !== null,
+          warning: isNarrow.value,
+          closable: isNarrow.value || shellSession.value !== null,
+          closeLabel: isNarrow.value ? "關閉並終止系統 shell" : undefined,
         },
       ]
     : []),
@@ -265,9 +272,12 @@ function closeTab(id: string): void {
 // measures 0x0, so the composable deliberately refuses to fit it.
 watch(activeTab, async (tab) => {
   if (tab === "cli") {
+    const focusTab = isNarrow.value && focusCliTabAfterShellClose;
+    focusCliTabAfterShellClose = false;
     await nextTick();
     terminal.fit();
-    terminal.focus();
+    if (focusTab) document.getElementById("tab-cli")?.focus();
+    else terminal.focus();
     return;
   }
   if (tab === "terminal") {
@@ -382,6 +392,17 @@ const shellSession = ref<SessionDetail | null>(null);
 const shellHost = ref<HTMLElement | null>(null);
 const shellState = ref<"idle" | "starting" | "ready" | "error">("idle");
 const shellError = ref("");
+const shellAnnouncement = ref("");
+
+// The phone keeps its two modes. Opening from ⋯ reveals the shell inside the
+// terminal mode, including when the user came from Files or its preview.
+async function openShellFromMenu(): Promise<void> {
+  if (!workspaceLive.value || !canOpenShell.value) return;
+  if (mobileMode.value === "preview") closePreview();
+  mobileMode.value = "cli";
+  if (activeTab.value === "terminal") await openShellTab();
+  else activeTab.value = "terminal";
+}
 
 watch(
   shellHost,
@@ -420,6 +441,7 @@ watch(
 // Started on first use, not on page load: a shell nobody opened would still
 // consume a slot against the node and user session caps (D8).
 async function openShellTab(): Promise<void> {
+  if (!workspaceLive.value || !canOpenShell.value) return;
   if (shellState.value === "starting") return;
   if (shellSession.value) {
     await nextTick();
@@ -427,18 +449,21 @@ async function openShellTab(): Promise<void> {
     shellTerminal.focus();
     return;
   }
-  const owner = shellOwner;
+  // A new open owns its announcements too: a preceding close may still be
+  // awaiting termination, but its eventual answer cannot speak for this shell.
+  const owner = ++shellOwner;
   const parentId = props.id;
   const owned = () => owner === shellOwner;
   shellState.value = "starting";
   shellError.value = "";
+  shellAnnouncement.value = "正在開啟系統 shell…";
   try {
     // The panel was just revealed by `v-show`; it has no layout until the DOM
     // updates, and an unmeasurable host reports nothing. Opening at a hardcoded
     // 24×80 and letting the first fit correct it made bash redraw its prompt at
     // a different width in front of the user (plan/09 LY-04).
     await nextTick();
-    if (!owned()) return;
+    if (!owned() || !canOpenShell.value) return;
     const size = shellTerminal.proposeSize() ?? { rows: 24, columns: 80 };
     const created = await api().openShell(parentId, size);
     if (!owned()) {
@@ -451,6 +476,8 @@ async function openShellTab(): Promise<void> {
     }
     shellSession.value = created;
     shellState.value = "ready";
+    shellAnnouncement.value =
+      "系統 shell 已開啟；關閉即終止這個 shell，主 CLI 不受影響。";
     await nextTick();
     // Closed during that tick: `closeShell` already terminated it.
     if (!owned() || shellSession.value?.id !== created.id) return;
@@ -461,23 +488,70 @@ async function openShellTab(): Promise<void> {
     shellState.value = "error";
     shellError.value =
       caught instanceof ApiError ? caught.message : "無法開啟系統終端機。";
+    shellAnnouncement.value = "無法開啟系統 shell，請查看終端機的錯誤訊息。";
+    if (caught instanceof ApiError && caught.code === "RUNTIME_NOT_FOUND") {
+      // The node may have withdrawn the runtime since its last report. Clear
+      // the stale offer immediately, then learn its current posture.
+      shellAnnouncement.value = "系統 shell 無法使用，正在更新節點可用性。";
+      if (session.value?.id === parentId)
+        await loadNodePosture(session.value.node_id);
+    }
   }
 }
 
 // Closing the tab ends the session on the node. The server-side parent binding
 // and idle timeout are the backstop for the cases the browser cannot report
 // (a crash, a lost network), not a substitute for asking.
-async function closeShell(): Promise<void> {
+async function closeShell({
+  preserveAnnouncement = false,
+} = {}): Promise<void> {
+  disownPendingShell();
+  const owner = shellOwner;
   const open = shellSession.value;
   shellSession.value = null;
   shellState.value = "idle";
   shellTerminal.disconnect();
-  if (activeTab.value === "terminal") activeTab.value = "cli";
-  if (!open) return;
+  if (activeTab.value === "terminal") {
+    focusCliTabAfterShellClose = isNarrow.value;
+    activeTab.value = "cli";
+  }
+  if (!open) {
+    if (!preserveAnnouncement) shellAnnouncement.value = "";
+    return;
+  }
+  const announce = (message: string) => {
+    if (
+      owner === shellOwner &&
+      isNarrow.value &&
+      workspaceLive.value &&
+      !sessionEnded.value
+    )
+      shellAnnouncement.value = message;
+  };
+  const confirmed = "系統 shell 已關閉並終止；主 CLI 仍在執行";
   try {
     await api().terminateSession(open.id);
-  } catch {
+    announce(confirmed);
+  } catch (caught) {
+    // A conflict can mean either an ended child or a refused transition. Only
+    // the child's current state confirms termination; NODE_OFFLINE cannot.
+    if (
+      caught instanceof ApiError &&
+      caught.status === 409 &&
+      caught.code === "SESSION_INVALID_STATE"
+    ) {
+      try {
+        const latest = await api().getSession(open.id);
+        if (["exited", "failed", "terminated"].includes(latest.status)) {
+          announce(confirmed);
+          return;
+        }
+      } catch {
+        // A failed lookup leaves the termination outcome unknown too.
+      }
+    }
     // Best effort: the parent binding and the idle timeout still collect it.
+    announce("系統 shell 已關閉；無法確認終止，請檢查 Node 狀態。");
   }
 }
 
@@ -504,9 +578,11 @@ onBeforeUnmount(() => {
 function terminateShellOnUnload(): void {
   disownPendingShell();
   const open = shellSession.value;
-  if (!open) return;
   shellSession.value = null;
   shellState.value = "idle";
+  shellAnnouncement.value = "";
+  if (isNarrow.value && activeTab.value === "terminal") activeTab.value = "cli";
+  if (!open) return;
   shellTerminal.disconnect();
   api().terminateSessionOnUnload(open.id);
 }
@@ -690,13 +766,35 @@ function onResizeKey(event: KeyboardEvent): void {
 }
 
 const nodePosture = ref<NodeDetail | null>(null);
+let postureRequest = 0;
 async function loadNodePosture(nodeId: string): Promise<void> {
+  const request = ++postureRequest;
+  nodePosture.value = null;
   try {
-    nodePosture.value = await nodes.fetchNode(nodeId);
+    const detail = await nodes.fetchNode(nodeId);
+    if (request === postureRequest) nodePosture.value = detail;
   } catch {
-    nodePosture.value = null;
+    if (request === postureRequest) nodePosture.value = null;
   }
 }
+// Losing either gate removes the affordance and returns to CLI; a hidden
+// shell must not keep running locally with no remaining close control.
+watch(canOpenShell, (allowed) => {
+  if (!allowed && shellState.value !== "idle")
+    void closeShell({ preserveAnnouncement: true });
+});
+// A desktop cached-page return can retain an idle TERMINAL selection. If it
+// becomes a phone (or loses availability), select the CLI rather than leaving
+// an unreachable panel with no corresponding tab or close control.
+watch([activeTab, tabs], ([active, offered]) => {
+  if (active === "terminal" && !offered.some((tab) => tab.id === active)) {
+    focusCliTabAfterShellClose = isNarrow.value;
+    activeTab.value = "cli";
+  }
+});
+watch(sessionEnded, (ended) => {
+  if (ended) shellAnnouncement.value = "";
+});
 const sandboxBypassed = computed(() => {
   const runtime = session.value?.runtime;
   if (!runtime || !nodePosture.value) return false;
@@ -939,6 +1037,9 @@ watch(
       previewPath.value = null;
       activeTab.value = "cli";
       mobileMode.value = "cli";
+      nodePosture.value = null;
+      postureRequest += 1;
+      shellAnnouncement.value = "";
       // The previous session's CLI stops here, before the first await (#76
       // review 4). What follows waits on the network twice — the shell's
       // termination and B's payload — and all that time A's socket was open
@@ -973,7 +1074,8 @@ watch(
 watch(mobileMode, async (mode) => {
   if (mode !== "cli") return;
   await nextTick();
-  terminal.fit();
+  if (activeTab.value === "terminal") shellTerminal.fit();
+  else terminal.fit();
 });
 
 function onOrientationChange(): void {
@@ -1095,12 +1197,21 @@ async function confirmTerminate(): Promise<void> {
         :is-viewer="terminal.role.value === 'viewer'"
         :can-retry="terminal.canRetry.value"
         :can-terminate="canTerminate"
+        :can-open-shell="isNarrow && canOpenShell"
         :busy="busy"
         :compact="compactHeader"
         @takeover="terminal.takeover()"
         @reconnect="terminal.retry()"
         @terminate="askTerminate()"
+        @open-shell="openShellFromMenu()"
       />
+      <p
+        v-if="isNarrow"
+        class="visually-hidden shell-announcement"
+        role="status"
+      >
+        {{ shellAnnouncement }}
+      </p>
 
       <!-- Notices, not toasts. A failure that removes itself is a failure the
            user may never have read, and the gap banner in particular is
@@ -1297,6 +1408,7 @@ async function confirmTerminate(): Promise<void> {
               v-show="activeTab === 'terminal'"
               id="panel-terminal"
               class="pane terminal-pane"
+              :data-mobile-shell="isNarrow ? '' : undefined"
               role="tabpanel"
               aria-labelledby="tab-terminal"
             >
@@ -1306,6 +1418,8 @@ async function confirmTerminate(): Promise<void> {
                 >。指令內容不會被記錄。<template v-if="privilegedNode">
                   此 Node <strong>可經 sudo 取得 root</strong>（ADR
                   0023）。</template
+                ><template v-if="isNarrow">
+                  關閉即終止這個 shell；主 CLI 不受影響。</template
                 >
               </p>
               <div
@@ -1741,6 +1855,9 @@ async function confirmTerminate(): Promise<void> {
   background: var(--status-warning-bg);
   color: var(--status-warning-fg);
   font-size: 11px;
+}
+.terminal-pane[data-mobile-shell] {
+  border-left: 3px solid var(--status-warning-border);
 }
 .shell-status {
   margin: 0;

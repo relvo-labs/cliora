@@ -6,6 +6,8 @@
 
 ## 1. 截至目前的真實狀態
 
+2026-10-06（#109／#128）：已實作手機 `⋯` 專用系統 shell 入口、開啟後警示分頁與關閉即終止，以及所有寬度的伺服器 capability ＋節點 shell availability 閘門（缺項／未知／讀取失敗即隱藏）。390px、768px 與桌面單元回歸已驗；另更新 `keyboard-chrome` 與 `session` e2e 的手機選單／關閉路徑及缺少 shell 案例，補上焦點、朗讀、競態與標頭展開修復。`keyboard-chrome` 在 Chromium 與 mobile-chrome-emulated 已驗；`session` 僅列舉與型別檢查，未跑完整服務。真機 iPhone 未驗，未改後端契約或主 CLI 生命週期。決策同步於 `01`／`03`／`05`。
+
 分支 `feat/mobile-rwd`，10 個 commit。
 
 **已完成**：`MS-01`～`MS-09`、`MS-14`～`MS-16`、`MS-18`～`MS-23`、`MS-25`。
@@ -61,6 +63,7 @@ daemon、RBAC 或 session 生命週期；上面那些綠燈證明的是「改動
 | MS-D-12 | 推出旗標 | 提案，待 release owner |
 | MS-D-13 | 需求編號 `NFR-007` | 提案，待 M0 |
 | MS-D-14 | 上傳範圍 | 提案，待 M0 ＋ 安全 |
+| MS-D-15 | 行動系統 shell 入口與節點可用性 | **已裁定（Neil，2026-10-06，#109／#128），已實作** |
 
 `01-mobile-addendum-v0.1.md` 狀態仍為 **Proposed**，尚未成為 VDS 1.0 或 ADR 0027 的修訂。
 `07-…md` 對 v0.1 提出兩處具名修訂（per-theme ANSI、Monaco `base` 分支），需與 addendum 一併核准。
@@ -144,8 +147,10 @@ daemon、RBAC 或 session 生命週期；上面那些綠燈證明的是「改動
 沿用 `01-mobile-addendum-v0.1.md` §8，逐條保留：
 
 native app、PWA 離線、推播、chat、approval inbox、agent 事件解析、摘要、shell 命令組裝器、
-session 建立／停止、system shell 控制、編輯、重新命名、刪除、下載、SFTP、全文搜尋、
+session 建立／停止、編輯、重新命名、刪除、下載、SFTP、全文搜尋、
 圖片／PDF／archive 預覽、任意路徑、遠端字型或資產、新相依套件。
+
+系統 shell 的行動入口另依 `MS-D-15`（2026-10-06）納入；原型非目標不再限制該入口。
 
 另外，依本次補完新增的三條：
 

@@ -176,11 +176,21 @@
 | 決定者 | M0 ＋ 安全 reviewer |
 | 擋住 | `MS-17` |
 
+## MS-D-15 行動系統 shell 入口（#109／#128）
+
+| | |
+|---|---|
+| **裁定** | Neil：2026-10-04 確認手機暴露系統 shell；2026-10-06 確定只從 `⋯` 選單開啟，不常駐分頁。開啟後顯示警示分頁與明確關閉鈕，頂層仍為 `cli`／`files`。 |
+| 可用性 | 所有寬度同時檢查伺服器 `can_open_shell` 與節點 `shell` runtime 的 `available === true`；缺項／未知／讀取失敗皆隱藏，不提供死路重試（ADR 0024 W4）。 |
+| 生命週期 | 關閉／離頁／route-id 變更／`pagehide` 即終止子 shell（ADR 0021）；主 CLI 不受影響。警示帶與關閉朗讀依 `plan/32` §5，桌面既有 `TERMINAL` 行為只增加可用性閘門。 |
+| 影響 | `01` §2、`05` §0／MS-07／MS-13、`SessionWorkspaceView.vue`、`SessionHeader.vue`、`WorkspaceTabs.vue` |
+| 決定者 | Neil（已裁定） |
+
 ---
 
 ## 決策狀態表
 
-全部為 **提案（proposed）**；本 PR 不核准任何一項。
+原 M0 項目保留以下狀態；`MS-D-15` 另記錄 Neil 已裁定的系統 shell 入口決策。
 
 | ID | 主題 | 狀態 | 擋住 |
 |---|---|---|---|
@@ -198,3 +208,4 @@
 | MS-D-12 | 推出旗標 | proposed | MS-25 |
 | MS-D-13 | 需求編號 | proposed | MS-25 |
 | MS-D-14 | 上傳範圍 | proposed | MS-17 |
+| MS-D-15 | 行動系統 shell 入口與節點可用性 | **已裁定（Neil，2026-10-06）** | MS-07／MS-13（#109／#128） |

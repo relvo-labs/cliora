@@ -21,15 +21,17 @@
 **決定**：行動端模式列舉使用 **`cli` 與 `files`** 兩個 id（與正式程式同名），UI 顯示字樣為「終端機」與「檔案」。
 `MobileWorkspaceState.mode` 的值域從 addendum §1 的 `terminal | files | preview` 修正為
 **`cli | files | preview`**。這是對 v0.1 的一處具名修訂，需在 M0 一併核准（記為 `MS-D-02` 的附帶項）。
-System shell 在行動端**不暴露**（addendum §2 已定），因此不需要第三個 id。
+System shell 在行動端**只從 `⋯` 選單開啟，不常駐分頁**（Neil，2026-10-06，#109／#128）。
+開啟後使用中央 `terminal` 警示分頁；頂層模式仍為 `cli`／`files`，不增加第三個模式 id。
 
 ## MS-07 行動模式外殼
 
 寫入 `SessionWorkspaceView.vue`、`components/session/WorkspaceTabs.vue`。
 
-- `< 768px`：`WorkspaceTabs` 改為兩段式切換（終端機／檔案），直接可見，不藏在選單後。
+- `< 768px`：`.modes` 維持兩段式切換（終端機／檔案），直接可見，不藏在選單後。
   `preview` **不是第三段**——它是 files 的全幅子狀態，切換器在 preview 開啟時仍在 DOM 但被 preview 覆蓋。
-- `≥ 768px`：分頁列維持現況三個 id 與關閉行為，**桌面 DOM 不變**。
+- 系統 shell 只從 `⋯` 的「開啟系統 shell」進入；開啟後 `WorkspaceTabs` 顯示帶警示圖示與警示色的「系統 shell」分頁及「關閉並終止系統 shell」關閉鈕。警示帶說明不受 workspace 路徑限制、節點回報的 sudo 姿態與「關閉即終止；主 CLI 不受影響」。確認終止後朗讀「系統 shell 已關閉並終止；主 CLI 仍在執行」；終止失敗不得宣稱已終止。
+- `≥ 768px`：分頁列維持現況 `TERMINAL` 入口與關閉行為，僅增加下述節點可用性閘門。
 - 檔案在行動端是**模式**而不是抽屜：`filesAreDrawer`（`:318`）在 `isNarrow` 為 false，`rail` 佔滿主區。
   抽屜維持在 768–1023（`isTablet`），與 addendum §4「file browser is an accessible overlay/dedicated mode」一致。
 - **面板一律 `v-show`，不得 `v-if`**：`:673`／`:761` 現行已是 `v-show`，理由寫在 `:393`——unmount 會拆掉一條活的 WebSocket 與 xterm buffer。行動端切到檔案再切回來屬於高頻操作，這條比桌面更關鍵。
@@ -122,6 +124,8 @@ spike 不得宣稱任何 `MSP-R-*` 已達成；它只解鎖 `MS-D-10`。
 
 - 一個 writer、多個 viewer，`terminal.control_acquire` 明確取得，接管由伺服器裁決——**契約不變**。
 - 行動端不得假設「只有我在用」而略過控制權檢查。
+- 所有寬度的 shell 入口須同時滿足 `capabilities.can_open_shell === true`（伺服器 action／ownership／state）與節點 `runtimes` 中 `runtime === "shell"` 且 `available === true`。缺少 shell 項目、未知姿態或節點讀取失敗皆隱藏入口（ADR 0024 W4 的 absent-means-no），不提供無法成功的重試；後端 `sessions.py` 的 runtime veto 不變。
+- Shell 關閉即終止；離頁、route-id 變更與 `pagehide` 沿用 ADR 0021 的終止路徑。切換到檔案只隱藏，不終止 shell；主 CLI 的 detach／續存契約不變。
 - 多裝置同時開同一 session 時的 orientation／posture 衝突：**沿用現行伺服器契約**；若發現現行契約無法表達（例如兩裝置各自要不同 PTY 尺寸），停止本票並開一份新 ADR，**不得**在前端自行仲裁。
 - 節點 privileged 與 Codex sandbox-bypass 姿態在打字前可見（`MS-06` 的硬性條件）。
 - 平台只說 runtime id，**永不**顯示 shell 命令／binary／argv／環境變數／entrypoint。
