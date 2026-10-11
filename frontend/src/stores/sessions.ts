@@ -12,6 +12,15 @@ interface SessionsState {
   current: SessionDetail | null;
 }
 
+// Request ownership is plumbing, not session data. Keep it per store instance
+// and out of reactive/serialized state, including across reset on auth loss.
+const requests = new WeakMap<object, number>();
+function nextRequest(store: object): number {
+  const request = (requests.get(store) ?? 0) + 1;
+  requests.set(store, request);
+  return request;
+}
+
 export const useSessionsStore = defineStore("sessions", {
   state: (): SessionsState => ({ list: [], current: null }),
   actions: {
@@ -23,8 +32,9 @@ export const useSessionsStore = defineStore("sessions", {
       return this.list;
     },
     async fetchSession(id: string): Promise<SessionDetail> {
+      const request = nextRequest(this);
       const session = await api().getSession(id);
-      this.current = session;
+      if (requests.get(this) === request) this.current = session;
       return session;
     },
     async create(input: CreateSessionInput): Promise<SessionDetail> {
@@ -33,8 +43,10 @@ export const useSessionsStore = defineStore("sessions", {
       return session;
     },
     async terminate(id: string): Promise<SessionDetail> {
+      const request = requests.get(this);
       const session = await api().terminateSession(id);
-      this.current = session;
+      if (requests.get(this) === request && this.current?.id === id)
+        this.current = session;
       this.patchList(session);
       return session;
     },
@@ -45,6 +57,7 @@ export const useSessionsStore = defineStore("sessions", {
       }
     },
     reset(): void {
+      nextRequest(this);
       this.list = [];
       this.current = null;
     },

@@ -540,3 +540,35 @@ describe("FileBrowser — 搜尋範圍不能被誤讀", () => {
     });
   }
 });
+
+describe("#80 cancelled search after leaving Files", () => {
+  it("remount shows the folder and keeps the query editable instead of loading forever", async () => {
+    const pending = deferred<unknown>();
+    unboundApi({
+      searchFiles: vi.fn(
+        (_id, _params, options) =>
+          new Promise((resolve, reject) => {
+            options.signal.addEventListener("abort", () =>
+              reject(new DOMException("aborted", "AbortError")),
+            );
+            pending.promise.then(resolve, reject);
+          }),
+      ),
+    });
+    const first = render({ sessionId: A });
+    await flushPromises();
+    await first.get('input[type="search"]').setValue("needle");
+    await first.get("form").trigger("submit");
+    expect(first.text()).toContain("搜尋中");
+    first.unmount();
+    await flushPromises();
+    const second = render({ sessionId: A });
+    await flushPromises();
+    expect(second.text()).not.toContain("搜尋中");
+    expect(second.text()).toContain("README.md");
+    expect(
+      (second.get('input[type="search"]').element as HTMLInputElement).value,
+    ).toBe("needle");
+    second.unmount();
+  });
+});

@@ -632,3 +632,36 @@ describe("SessionWorkspaceView — session 載入失敗後重試：CLI 只連線
     expect(api.attachesFor(ID)).toBe(1);
   });
 });
+
+describe("#78 closeShell transport cleanup", () => {
+  it("closing a shell leaves zero reconnects for the child and keeps the CLI socket", async () => {
+    stubApi();
+    const original = auth.api();
+    const shellId = "88888888-8888-4888-8888-888888888888";
+    vi.spyOn(auth, "api").mockReturnValue({
+      ...original,
+      getSession: vi.fn(async () => ({
+        ...session(),
+        capabilities: { ...session().capabilities, can_open_shell: true },
+      })),
+      getNode: vi.fn(async () => ({
+        id: session().node_id,
+        runtimes: [{ runtime: "shell", available: true }],
+      })),
+      openShell: vi.fn(async () => ({ ...session(shellId), runtime: "shell" })),
+    } as never);
+    const { wrapper } = await render();
+    const cli = await connectedAsWriter();
+    await wrapper.get("#tab-terminal").trigger("click");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    const child = sockets[1];
+    child.open();
+    await wrapper.get('[aria-label="關閉 TERMINAL"]').trigger("click");
+    await flushPromises();
+    expect(child.readyState).toBe(MockSocket.CLOSED);
+    await pastFirstRetry();
+    expect(sockets).toHaveLength(2);
+    expect(cli.readyState).toBe(MockSocket.OPEN);
+    wrapper.unmount();
+  });
+});

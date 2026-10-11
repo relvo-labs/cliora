@@ -946,38 +946,43 @@ describe("SessionWorkspaceView — shell entry (#109, #128)", () => {
     wrapper.unmount();
   });
 
-  it("repair2: RUNTIME_NOT_FOUND announcement survives the posture refresh", async () => {
-    setViewportWidth(390);
-    const wrapper = await render(vi.fn(async () => owner()));
-    const fetchNode = vi.mocked(useNodesStore().fetchNode);
-    let finishRefresh!: () => void;
-    fetchNode.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          finishRefresh = () =>
-            resolve(
-              nodeDetail({
-                runtimes: [{ runtime: "shell", available: false }],
-              }) as never,
-            );
-        }),
-    );
-    shellApi.openShell.mockRejectedValueOnce(
-      new ApiError("RUNTIME_NOT_FOUND", "Runtime unavailable", 409),
-    );
-    await openFromMenu(wrapper);
-    expect(fetchNode).toHaveBeenCalledTimes(2);
-    expect(wrapper.get(".shell-announcement").text()).toBe(
-      "系統 shell 無法使用，正在更新節點可用性。",
-    );
-    finishRefresh();
-    await flushPromises();
-    expect(wrapper.get(".shell-announcement").text()).toBe(
-      "系統 shell 無法使用，正在更新節點可用性。",
-    );
-    expect(wrapper.find("#tab-terminal").exists()).toBe(false);
-    wrapper.unmount();
-  });
+  it.each([false, true])(
+    "#139 RUNTIME_NOT_FOUND settles after refresh (available=%s)",
+    async (available) => {
+      setViewportWidth(390);
+      const wrapper = await render(vi.fn(async () => owner()));
+      const fetchNode = vi.mocked(useNodesStore().fetchNode);
+      let finishRefresh!: () => void;
+      fetchNode.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            finishRefresh = () =>
+              resolve(
+                nodeDetail({
+                  runtimes: [{ runtime: "shell", available }],
+                }) as never,
+              );
+          }),
+      );
+      shellApi.openShell.mockRejectedValueOnce(
+        new ApiError("RUNTIME_NOT_FOUND", "Runtime unavailable", 409),
+      );
+      await openFromMenu(wrapper);
+      expect(fetchNode).toHaveBeenCalledTimes(2);
+      expect(wrapper.get(".shell-announcement").text()).toBe(
+        "系統 shell 無法使用，正在更新節點可用性。",
+      );
+      finishRefresh();
+      await flushPromises();
+      expect(wrapper.get(".shell-announcement").text()).toBe(
+        available
+          ? "系統 shell 可用，可重新開啟。"
+          : "此 Node 目前沒有可用的系統 shell。",
+      );
+      expect(wrapper.find("#tab-terminal").exists()).toBe(false);
+      wrapper.unmount();
+    },
+  );
 
   it("repair: a close answered during a new open cannot announce the old close", async () => {
     setViewportWidth(390);
@@ -1790,4 +1795,143 @@ describe("keyboard workspace chrome (#130)", () => {
     await keyboard(664);
     expect(wrapper.get(".preview").element).toBe(preview);
   });
+});
+
+describe("#79 and #81 workspace request lifecycle", () => {
+  const B = "66666666-6666-4666-8666-666666666666";
+  const C = "77777777-7777-4777-8777-777777777777";
+  function held<T>() {
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const promise = new Promise<T>((r, j) => {
+      resolve = r;
+      reject = j;
+    });
+    return { promise, resolve, reject };
+  }
+
+  it.each(["success", "error"])(
+    "#79 A → B → C drops B's late %s from payload, posture and resource state",
+    async (outcome) => {
+      const b = held<SessionDetail>();
+      const getSession = vi.fn((id: string) =>
+        id === B
+          ? b.promise
+          : Promise.resolve(session({ id, node_id: id === C ? C : ID })),
+      );
+      const wrapper = await render(getSession);
+      await wrapper.setProps({ id: B });
+      await flushPromises();
+      await wrapper.setProps({ id: C });
+      await flushPromises();
+      expect(wrapper.find(".veil").exists()).toBe(false);
+      const postureCalls = vi.mocked(useNodesStore().fetchNode).mock.calls
+        .length;
+      if (outcome === "success") b.resolve(session({ id: B, node_id: B }));
+      else b.reject(new ApiError("FORBIDDEN", "old denial", 403));
+      await flushPromises();
+      expect(useSessionsStore().current?.id).toBe(C);
+      expect(wrapper.find(".veil").exists()).toBe(false);
+      expect(useNodesStore().fetchNode).toHaveBeenCalledTimes(postureCalls);
+      wrapper.unmount();
+    },
+  );
+
+  it("#81 forced dialog close focuses the loading veil, away from the old inert trigger", async () => {
+    const b = held<SessionDetail>();
+    const wrapper = await render(
+      vi.fn((id: string) =>
+        id === B ? b.promise : Promise.resolve(session()),
+      ),
+    );
+    const mounted = wrapper.element;
+    document.body.appendChild(mounted);
+    const trigger = wrapper.get('[aria-label="Session 操作"]')
+      .element as HTMLElement;
+    trigger.focus();
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    expect(wrapper.findComponent(ConfirmDialog).props("open")).toBe(true);
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    expect(wrapper.findComponent(ConfirmDialog).props("open")).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get(".veil").element);
+    expect(document.activeElement?.closest("[inert]")).toBeNull();
+    b.resolve(session({ id: B }));
+    await flushPromises();
+    wrapper.unmount();
+    mounted.remove();
+  });
+
+  it("#81 old termination cannot keep B busy or clear B's newer pending action", async () => {
+    const aEnd = held<SessionDetail>();
+    const bEnd = held<SessionDetail>();
+    const wrapper = await render(vi.fn(async (id: string) => session({ id })));
+    shellApi.terminateSession
+      .mockReturnValueOnce(aEnd.promise)
+      .mockReturnValueOnce(bEnd.promise);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    expect(wrapper.findComponent(SessionHeader).props("busy")).toBe(true);
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    expect(wrapper.findComponent(SessionHeader).props("busy")).toBe(false);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    expect(wrapper.findComponent(SessionHeader).props("busy")).toBe(true);
+    aEnd.resolve(session({ status: "terminated" }));
+    await flushPromises();
+    expect(wrapper.findComponent(SessionHeader).props("busy")).toBe(true);
+    expect(useSessionsStore().current?.id).toBe(B);
+    bEnd.resolve(session({ id: B, status: "terminated" }));
+    await flushPromises();
+    expect(wrapper.findComponent(SessionHeader).props("busy")).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each([390, 1440])(
+    "#81 counter-evidence: %spx pending shell pagehide resets starting and permits a new open",
+    async (width) => {
+      setViewportWidth(width);
+      const pending = held<SessionDetail>();
+      const owner = () =>
+        session({
+          capabilities: { ...session().capabilities, can_open_shell: true },
+        });
+      const wrapper = await render(vi.fn(async () => owner()));
+      shellApi.openShell.mockReturnValueOnce(pending.promise);
+      async function open() {
+        if (width === 390) {
+          await wrapper.get('[aria-label="Session 操作"]').trigger("click");
+          const item = wrapper
+            .findAll('[role="menuitem"]')
+            .find((button) => button.text().includes("系統 shell"));
+          await item!.trigger("click");
+        } else await wrapper.get("#tab-terminal").trigger("click");
+        await flushPromises();
+      }
+      await open();
+      expect(wrapper.get(".shell-status").text()).toContain("正在開啟");
+      window.dispatchEvent(
+        new PageTransitionEvent("pagehide", { persisted: true }),
+      );
+      await flushPromises();
+      pending.resolve(session({ id: SHELL_ID, runtime: "shell" }));
+      await flushPromises();
+      expect(shellApi.terminateSession).toHaveBeenCalledWith(SHELL_ID);
+      expect(term.connect).not.toHaveBeenCalledWith(SHELL_ID);
+      window.dispatchEvent(
+        new PageTransitionEvent("pageshow", { persisted: true }),
+      );
+      if (width === 1440) await wrapper.get("#tab-cli").trigger("click");
+      await open();
+      expect(shellApi.openShell).toHaveBeenCalledTimes(2);
+      expect(term.connect).toHaveBeenCalledWith(SHELL_ID);
+      wrapper.unmount();
+    },
+  );
 });

@@ -196,8 +196,9 @@ export const useFilesStore = defineStore("files", {
           { path, cursor: options.cursor },
           { signal: controller.signal },
         );
-        // A late response for a session we no longer show is dropped.
-        if (this.sessionId !== sessionId) {
+        // Session identity alone cannot reject an older refresh of the same
+        // folder, or the first A's reply after A → B → A.
+        if (this.sessionId !== sessionId || inflight.get(path) !== controller) {
           return undefined;
         }
         const entries = appending
@@ -217,14 +218,14 @@ export const useFilesStore = defineStore("files", {
         this.dirs[path] = node;
         return node;
       } catch (caught) {
+        if (this.sessionId !== sessionId || inflight.get(path) !== controller) {
+          return undefined;
+        }
         if (isAbortError(caught)) {
           // Superseded or cancelled: leave no error state behind.
           if (this.dirs[path]?.state === "loading") {
             delete this.dirs[path];
           }
-          return undefined;
-        }
-        if (this.sessionId !== sessionId) {
           return undefined;
         }
         const { state, message } = classify(caught);
@@ -275,7 +276,10 @@ export const useFilesStore = defineStore("files", {
           { keyword, root },
           { signal: controller.signal },
         );
-        if (this.sessionId !== sessionId) {
+        if (
+          this.sessionId !== sessionId ||
+          inflight.get("__search__") !== controller
+        ) {
           return;
         }
         this.search = {
@@ -291,10 +295,14 @@ export const useFilesStore = defineStore("files", {
           scanned: result.scanned_count,
         };
       } catch (caught) {
-        if (isAbortError(caught)) {
+        if (
+          this.sessionId !== sessionId ||
+          inflight.get("__search__") !== controller
+        ) {
           return;
         }
-        if (this.sessionId !== sessionId) {
+        if (isAbortError(caught)) {
+          this.search = { ...emptySearch(), keyword };
           return;
         }
         const { state, message } = classify(caught);
@@ -314,6 +322,13 @@ export const useFilesStore = defineStore("files", {
     // Abort every in-flight request without dropping the cache (view unmount).
     abortInflight(): void {
       abortAll();
+      // Settle immediately: an aborted fetch need not reject promptly (or at
+      // all). A remounted browser must not inherit an endless loading slice.
+      for (const [path, node] of Object.entries(this.dirs)) {
+        if (node.state === "loading") delete this.dirs[path];
+      }
+      if (this.search.state === "loading")
+        this.search = { ...emptySearch(), keyword: this.search.keyword };
     },
   },
 });

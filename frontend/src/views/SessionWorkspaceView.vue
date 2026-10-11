@@ -6,6 +6,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  shallowRef,
   watch,
 } from "vue";
 import { ChevronDown, PanelRight } from "lucide-vue-next";
@@ -32,7 +33,7 @@ import UiToolbar from "../components/ui/UiToolbar.vue";
 const PreviewPane = defineAsyncComponent(
   () => import("../components/file/PreviewPane.vue"),
 );
-import { useAsyncResource } from "../composables/useAsyncResource";
+import type { ResourceState } from "../composables/useAsyncResource";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useFileDownload } from "../composables/useFileDownload";
 import { useFileUpload, suggestRename } from "../composables/useFileUpload";
@@ -291,13 +292,11 @@ watch(activeTab, async (tab) => {
 // terminal may send a byte. `App.vue` already makes the page inert, which stops
 // the keyboard reaching xterm; this stops the socket existing at all.
 //
-// `disconnect()` closes the socket, but the composable's own close handler then
-// schedules a reconnect, and a reconnect is only a new ticket away. So the
-// ticket is what is gated: every (re)connect of either terminal asks this
+// `disconnect()` stops retries as well as closing the socket. The ticket is
+// gated too: every explicit (re)connect of either terminal asks this
 // function, and while the identity is unconfirmed it refuses without calling
-// Central. The composable backs off and keeps asking; nothing reaches the
-// relay. A ticket requested *before* the suspension and answered after it is
-// refused too, by the epoch check. No transport code changes: this is the seam
+// Central. A ticket requested *before* the suspension and answered after it is
+// refused too, by the epoch check. Route and auth policy stay at the seam
 // the composable was given a ticket provider for.
 //
 // When the same user is confirmed again, both reconnect at once with fresh
@@ -305,11 +304,12 @@ watch(activeTab, async (tab) => {
 // here: the page is left and unmounted, which disposes both.
 //
 // The same seam fences the *session* a ticket is for (#76 review 4). The route
-// component is reused when `/sessions/:id` changes, and the composable has no
-// notion of a superseded connect: an attach request for session A answered
-// after the switch to B would open a socket to A under B's page, and the B view
-// would type into it. So each terminal gets its own provider that knows which
-// session is current for it, and a ticket is handed over only if, when it
+// component is reused when `/sessions/:id` changes. An attach request for A
+// answered after the switch to B must never open a socket under B's page. The transport
+// fences superseded connects too; this seam additionally checks route and auth
+// ownership before asking Central or handing over a ticket. Each terminal gets
+// its own provider that knows which session is current for it. A ticket is
+// handed over only if, when it
 // arrives, it is still for that session *and* is the latest one that terminal
 // asked for.
 //
@@ -433,7 +433,12 @@ function disownPendingShell(): void {
 watch(
   () => auth.isAuthenticated && !auth.discarding,
   (ownUser) => {
-    if (!ownUser) disownPendingShell();
+    if (!ownUser) {
+      disownPendingShell();
+      sessionRequest += 1;
+      pendingTerminate.value = null;
+      forceCloseTerminateDialog();
+    }
   },
   { flush: "sync" },
 );
@@ -493,8 +498,25 @@ async function openShellTab(): Promise<void> {
       // The node may have withdrawn the runtime since its last report. Clear
       // the stale offer immediately, then learn its current posture.
       shellAnnouncement.value = "系統 shell 無法使用，正在更新節點可用性。";
-      if (session.value?.id === parentId)
+      if (session.value?.id === parentId) {
+        // Clearing posture closes the shell tab and changes shellOwner. This
+        // refresh owns the final status independently of that tab cleanup.
+        const refresh = postureRequest + 1;
         await loadNodePosture(session.value.node_id);
+        if (
+          refresh === postureRequest &&
+          props.id === parentId &&
+          workspaceLive.value &&
+          auth.isAuthenticated &&
+          !auth.discarding
+        ) {
+          shellAnnouncement.value = canOpenShell.value
+            ? "系統 shell 可用，可重新開啟。"
+            : nodePosture.value
+              ? "此 Node 目前沒有可用的系統 shell。"
+              : "無法確認此 Node 的系統 shell 可用性，請稍後重試。";
+        }
+      }
     }
   }
 }
@@ -599,19 +621,42 @@ const host = ref<HTMLElement | null>(null);
 // route id changes, and a confirmation is refused unless the route still is
 // that session.
 const terminateTarget = ref<{ id: string; name: string } | null>(null);
+function forceCloseTerminateDialog(): void {
+  if (!terminateTarget.value) return;
+  terminateTarget.value = null;
+  const id = props.id;
+  // Let the shared dialog return focus first, then move it out of the old
+  // header, which may now be inert. The loading veil is this view's visible
+  // destination until the new session's controls exist.
+  void nextTick(() => {
+    if (id !== props.id || !auth.isAuthenticated || auth.discarding) return;
+    const workspace = host.value?.closest(".workspace");
+    const target = workspace?.querySelector<HTMLElement>(
+      workspaceLive.value ? "#tab-cli" : ".veil",
+    );
+    if (!target) return;
+    if (!workspaceLive.value) target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+  });
+}
 function askTerminate(): void {
-  if (!workspaceLive.value || !session.value) return;
+  if (!workspaceLive.value || !session.value || busy.value) return;
   terminateTarget.value = { id: session.value.id, name: session.value.name };
 }
 const actionError = ref("");
-const busy = ref(false);
+const pendingTerminate = shallowRef<{ id: string } | null>(null);
+const busy = computed(() => pendingTerminate.value?.id === props.id);
 
-const resource = useAsyncResource<SessionDetail>(async () => {
-  const detail = await sessions.fetchSession(props.id);
-  // Posture is fetched alongside, not awaited into the critical path's failure
-  // modes: a node read that fails must not make the workspace unopenable.
-  void loadNodePosture(detail.node_id);
-  return detail;
+// The store fences its current payload; the view must fence loading/errors
+// and the dependent posture/terminal work too, including late failures.
+let sessionRequest = 0;
+const resource = {
+  state: ref<ResourceState>("idle"),
+  error: shallowRef<unknown>(null),
+};
+onBeforeUnmount(() => {
+  sessionRequest += 1;
+  postureRequest += 1;
 });
 
 // The composable owns the xterm + socket; it mints a fresh single-use ws-ticket
@@ -994,10 +1039,25 @@ watch(
 // which offers no reconnect.
 async function loadSession(): Promise<void> {
   const id = props.id;
-  await resource.run();
-  // Superseded while loading (A → B → C): the later load connects.
-  if (props.id !== id || !workspaceLive.value) return;
-  void terminal.connect(id);
+  const request = ++sessionRequest;
+  const owned = () => request === sessionRequest && props.id === id;
+  resource.state.value = "loading";
+  resource.error.value = null;
+  try {
+    const detail = await sessions.fetchSession(id);
+    if (!owned()) return;
+    resource.state.value = "success";
+    // A failed node read must not make the workspace unopenable.
+    void loadNodePosture(detail.node_id);
+    if (workspaceLive.value) void terminal.connect(id);
+  } catch (caught) {
+    if (!owned()) return;
+    resource.error.value = caught;
+    resource.state.value =
+      caught instanceof ApiError && caught.status === 403
+        ? "forbidden"
+        : "error";
+  }
 }
 
 onMounted(() => {
@@ -1048,6 +1108,9 @@ watch(
   () => props.id,
   async (next, prev) => {
     if (next && next !== prev) {
+      sessionRequest += 1;
+      pendingTerminate.value = null;
+      actionError.value = "";
       // 3. The third way out of a workspace: the route param changes and this
       //    component is *reused*, so neither unmount nor pagehide fires. Without
       //    this the previous session's shell stayed alive, and worse, its id stayed
@@ -1070,14 +1133,14 @@ watch(
       // termination and B's payload — and all that time A's socket was open
       // under a page that already says B: a focused xterm kept sending
       // keystrokes to A. Closing it synchronously leaves nothing to carry
-      // them. The composable will try to reconnect it; `cliTicket` abandons
-      // that without asking Central, because A is no longer the route. The
+      // them. Intentional disconnect suppresses retry; `cliTicket` also
+      // fences explicit connects to the session that owns the page. The
       // page itself goes inert in the same tick (`workspaceLive`). The
       // shell is closed synchronously too: `closeShell` disconnects before
       // its own first await.
       terminal.disconnect();
       disownPendingShell();
-      terminateTarget.value = null;
+      forceCloseTerminateDialog();
       await closeShell();
       if (props.id !== next) return;
       await loadSession();
@@ -1167,26 +1230,22 @@ async function confirmTerminate(): Promise<void> {
     terminateTarget.value = null;
     return;
   }
-  busy.value = true;
+  if (busy.value) return;
+  const action = { id: target.id };
+  pendingTerminate.value = action;
   actionError.value = "";
   try {
     await sessions.terminate(target.id);
-    if (props.id === target.id) {
+    if (pendingTerminate.value === action && props.id === target.id) {
       terminateTarget.value = null;
-    } else if (resource.data.value?.id === props.id) {
-      // The route moved on while the request was out. The store keeps the
-      // terminated payload as `current`; the page now belongs to another
-      // session, whose own payload is put back (or, still loading, lands
-      // when it arrives).
-      sessions.current = resource.data.value;
     }
   } catch (caught) {
-    if (props.id === target.id) {
+    if (pendingTerminate.value === action && props.id === target.id) {
       actionError.value =
         caught instanceof ApiError ? caught.message : "Terminate failed.";
     }
   } finally {
-    busy.value = false;
+    if (pendingTerminate.value === action) pendingTerminate.value = null;
   }
 }
 </script>
