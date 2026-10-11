@@ -60,6 +60,32 @@ const filesStore = useFilesStore();
 const nodes = useNodesStore();
 const preferences = usePreferencesStore();
 
+// Async work may finish after this instance is gone, or after a round trip to
+// the same route id. Check the lifetime before issuing any dependent request.
+let disposed = false;
+let workspaceGeneration = 0;
+function ownWorkspace(): () => boolean {
+  const generation = workspaceGeneration;
+  const id = props.id;
+  return () =>
+    !disposed &&
+    generation === workspaceGeneration &&
+    props.id === id &&
+    auth.isAuthenticated &&
+    !auth.discarding;
+}
+watch(
+  () => props.id,
+  () => {
+    workspaceGeneration += 1;
+  },
+  { flush: "sync" },
+);
+onBeforeUnmount(() => {
+  disposed = true;
+  workspaceGeneration += 1;
+});
+
 // Capabilities come from the session payload, computed server-side from the role
 // *and* ownership (ADR 0016) — a Developer may see a colleague's session but not
 // terminate or take it over, which a role-only check cannot express. Until the
@@ -271,13 +297,23 @@ function closeTab(id: string): void {
 
 // Re-measure on the way into either terminal: while a panel is hidden its host
 // measures 0x0, so the composable deliberately refuses to fit it.
-watch(activeTab, async (tab) => {
+watch(activeTab, async (tab, _previous, onCleanup) => {
+  const owned = ownWorkspace();
+  let superseded = false;
+  onCleanup(() => {
+    superseded = true;
+  });
   if (tab === "cli") {
     const focusTab = isNarrow.value && focusCliTabAfterShellClose;
     focusCliTabAfterShellClose = false;
     await nextTick();
+    if (!owned() || superseded) return;
     terminal.fit();
-    if (focusTab) document.getElementById("tab-cli")?.focus();
+    if (focusTab)
+      host.value
+        ?.closest(".workspace")
+        ?.querySelector<HTMLElement>("#tab-cli")
+        ?.focus();
     else terminal.focus();
     return;
   }
@@ -328,7 +364,7 @@ function fencedTicket(
   let latest = 0;
   return async (sessionId) => {
     const request = ++latest;
-    const stale = () => request !== latest || !isCurrent(sessionId);
+    const stale = () => disposed || request !== latest || !isCurrent(sessionId);
     // Not current before anything is asked: Central is not even called.
     if (stale()) return abandoned();
     const epoch = identityEpoch;
@@ -397,7 +433,8 @@ const shellAnnouncement = ref("");
 // The phone keeps its two modes. Opening from ⋯ reveals the shell inside the
 // terminal mode, including when the user came from Files or its preview.
 async function openShellFromMenu(): Promise<void> {
-  if (!workspaceLive.value || !canOpenShell.value) return;
+  const owned = ownWorkspace();
+  if (!owned() || !workspaceLive.value || !canOpenShell.value) return;
   if (mobileMode.value === "preview") closePreview();
   mobileMode.value = "cli";
   if (activeTab.value === "terminal") await openShellTab();
@@ -434,6 +471,7 @@ watch(
   () => auth.isAuthenticated && !auth.discarding,
   (ownUser) => {
     if (!ownUser) {
+      workspaceGeneration += 1;
       disownPendingShell();
       sessionRequest += 1;
       pendingTerminate.value = null;
@@ -446,10 +484,20 @@ watch(
 // Started on first use, not on page load: a shell nobody opened would still
 // consume a slot against the node and user session caps (D8).
 async function openShellTab(): Promise<void> {
-  if (!workspaceLive.value || !canOpenShell.value) return;
+  const workspaceOwned = ownWorkspace();
+  if (!workspaceOwned() || !workspaceLive.value || !canOpenShell.value) return;
   if (shellState.value === "starting") return;
   if (shellSession.value) {
+    const shellId = shellSession.value.id;
+    const owner = shellOwner;
     await nextTick();
+    if (
+      !workspaceOwned() ||
+      owner !== shellOwner ||
+      shellSession.value?.id !== shellId ||
+      activeTab.value !== "terminal"
+    )
+      return;
     shellTerminal.fit();
     shellTerminal.focus();
     return;
@@ -458,7 +506,7 @@ async function openShellTab(): Promise<void> {
   // awaiting termination, but its eventual answer cannot speak for this shell.
   const owner = ++shellOwner;
   const parentId = props.id;
-  const owned = () => owner === shellOwner;
+  const owned = () => workspaceOwned() && owner === shellOwner;
   shellState.value = "starting";
   shellError.value = "";
   shellAnnouncement.value = "正在開啟系統 shell…";
@@ -504,6 +552,7 @@ async function openShellTab(): Promise<void> {
         const refresh = postureRequest + 1;
         await loadNodePosture(session.value.node_id);
         if (
+          workspaceOwned() &&
           refresh === postureRequest &&
           props.id === parentId &&
           workspaceLive.value &&
@@ -529,6 +578,8 @@ async function closeShell({
 } = {}): Promise<void> {
   disownPendingShell();
   const owner = shellOwner;
+  const workspaceOwned = ownWorkspace();
+  const owned = () => workspaceOwned() && owner === shellOwner;
   const open = shellSession.value;
   shellSession.value = null;
   shellState.value = "idle";
@@ -542,12 +593,7 @@ async function closeShell({
     return;
   }
   const announce = (message: string) => {
-    if (
-      owner === shellOwner &&
-      isNarrow.value &&
-      workspaceLive.value &&
-      !sessionEnded.value
-    )
+    if (owned() && isNarrow.value && workspaceLive.value && !sessionEnded.value)
       shellAnnouncement.value = message;
   };
   const confirmed = "系統 shell 已關閉並終止；主 CLI 仍在執行";
@@ -557,6 +603,7 @@ async function closeShell({
   } catch (caught) {
     // A conflict can mean either an ended child or a refused transition. Only
     // the child's current state confirms termination; NODE_OFFLINE cannot.
+    if (!owned()) return;
     if (
       caught instanceof ApiError &&
       caught.status === 409 &&
@@ -624,12 +671,12 @@ const terminateTarget = ref<{ id: string; name: string } | null>(null);
 function forceCloseTerminateDialog(): void {
   if (!terminateTarget.value) return;
   terminateTarget.value = null;
-  const id = props.id;
+  const owned = ownWorkspace();
   // Let the shared dialog return focus first, then move it out of the old
   // header, which may now be inert. The loading veil is this view's visible
   // destination until the new session's controls exist.
   void nextTick(() => {
-    if (id !== props.id || !auth.isAuthenticated || auth.discarding) return;
+    if (!owned()) return;
     const workspace = host.value?.closest(".workspace");
     const target = workspace?.querySelector<HTMLElement>(
       workspaceLive.value ? "#tab-cli" : ".veil",
@@ -813,13 +860,16 @@ function onResizeKey(event: KeyboardEvent): void {
 const nodePosture = ref<NodeDetail | null>(null);
 let postureRequest = 0;
 async function loadNodePosture(nodeId: string): Promise<void> {
+  const workspaceOwned = ownWorkspace();
+  if (!workspaceOwned()) return;
   const request = ++postureRequest;
+  const owned = () => workspaceOwned() && request === postureRequest;
   nodePosture.value = null;
   try {
     const detail = await nodes.fetchNode(nodeId);
-    if (request === postureRequest) nodePosture.value = detail;
+    if (owned()) nodePosture.value = detail;
   } catch {
-    if (request === postureRequest) nodePosture.value = null;
+    if (owned()) nodePosture.value = null;
   }
 }
 // Losing either gate removes the affordance and returns to CLI; a hidden
@@ -917,9 +967,11 @@ const fileUpload = useFileUpload(
 const uploadRefusal = ref("");
 
 async function uploadFiles(files: File[], directory: string): Promise<void> {
-  if (!canUploadFiles.value) return;
+  const owned = ownWorkspace();
+  if (!owned() || !workspaceLive.value || !canUploadFiles.value) return;
   uploadRefusal.value = "";
   const outcome = await fileUpload.submit(files, directory);
+  if (!owned() || !workspaceLive.value) return;
   // One refresh per batch, and only for directories that actually gained a file:
   // three uploads should not make the tree jump three times.
   for (const dir of outcome.touched) {
@@ -953,6 +1005,8 @@ function downloadFile(relPath: string): void {
 }
 
 function renameAndRetry(id: string): void {
+  const owned = ownWorkspace();
+  if (!owned() || !workspaceLive.value || !canUploadFiles.value) return;
   const item = fileUpload.items.value.find((entry) => entry.id === id);
   if (!item) return;
   const suggestion = suggestRename(item.name);
@@ -961,6 +1015,7 @@ function renameAndRetry(id: string): void {
   const next = window.prompt("以新檔名重新上傳：", suggestion);
   if (!next) return;
   void fileUpload.retryAs(id, next).then((outcome) => {
+    if (!owned() || !workspaceLive.value) return;
     for (const dir of outcome.touched) void filesStore.refreshDir(dir);
   });
 }
@@ -974,11 +1029,13 @@ function swallowStrayDrop(event: DragEvent): void {
 }
 
 async function dropImage(file: File): Promise<void> {
-  if (!canUploadImages.value || !isWriter.value) return;
+  const owned = ownWorkspace();
+  if (!owned() || !canUploadImages.value || !isWriter.value) return;
   const sessionId = props.id;
   const insertion = ++imageInsertGeneration;
   const storedPath = await imageDrop.submit(file);
   if (
+    !owned() ||
     !storedPath ||
     insertion !== imageInsertGeneration ||
     props.id !== sessionId ||
@@ -1038,9 +1095,11 @@ watch(
 // refetched, then had nothing to start the terminal: it sat at `connecting`,
 // which offers no reconnect.
 async function loadSession(): Promise<void> {
+  const workspaceOwned = ownWorkspace();
+  if (!workspaceOwned()) return;
   const id = props.id;
   const request = ++sessionRequest;
-  const owned = () => request === sessionRequest && props.id === id;
+  const owned = () => workspaceOwned() && request === sessionRequest;
   resource.state.value = "loading";
   resource.error.value = null;
   try {
@@ -1108,7 +1167,8 @@ watch(
   () => props.id,
   async (next, prev) => {
     if (next && next !== prev) {
-      sessionRequest += 1;
+      const owned = ownWorkspace();
+      const request = ++sessionRequest;
       pendingTerminate.value = null;
       actionError.value = "";
       // 3. The third way out of a workspace: the route param changes and this
@@ -1142,7 +1202,7 @@ watch(
       disownPendingShell();
       forceCloseTerminateDialog();
       await closeShell();
-      if (props.id !== next) return;
+      if (!owned() || request !== sessionRequest) return;
       await loadSession();
     }
   },
@@ -1159,9 +1219,15 @@ watch(
 // Nothing here relaxes the contract underneath: the composable still clamps to
 // 2-300 x 2-500, still sends only a size that actually changed, and still
 // refuses to send at all as a viewer.
-watch(mobileMode, async (mode) => {
+watch(mobileMode, async (mode, _previous, onCleanup) => {
   if (mode !== "cli") return;
+  const owned = ownWorkspace();
+  let superseded = false;
+  onCleanup(() => {
+    superseded = true;
+  });
   await nextTick();
+  if (!owned() || superseded) return;
   if (activeTab.value === "terminal") shellTerminal.fit();
   else terminal.fit();
 });
@@ -1225,6 +1291,8 @@ watch(
 );
 
 async function confirmTerminate(): Promise<void> {
+  const owned = ownWorkspace();
+  if (!owned()) return;
   const target = terminateTarget.value;
   if (!target || target.id !== props.id || !workspaceLive.value) {
     terminateTarget.value = null;
@@ -1236,16 +1304,17 @@ async function confirmTerminate(): Promise<void> {
   actionError.value = "";
   try {
     await sessions.terminate(target.id);
-    if (pendingTerminate.value === action && props.id === target.id) {
+    if (owned() && pendingTerminate.value === action) {
       terminateTarget.value = null;
     }
   } catch (caught) {
-    if (pendingTerminate.value === action && props.id === target.id) {
+    if (owned() && pendingTerminate.value === action) {
       actionError.value =
         caught instanceof ApiError ? caught.message : "Terminate failed.";
     }
   } finally {
-    if (pendingTerminate.value === action) pendingTerminate.value = null;
+    if (owned() && pendingTerminate.value === action)
+      pendingTerminate.value = null;
   }
 }
 </script>

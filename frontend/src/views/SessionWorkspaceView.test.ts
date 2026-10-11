@@ -114,6 +114,7 @@ import ConfirmDialog from "../components/common/ConfirmDialog.vue";
 import ErrorNotice from "../components/common/ErrorNotice.vue";
 import SessionHeader from "../components/session/SessionHeader.vue";
 import * as auth from "../stores/auth";
+import { useFilesStore } from "../stores/files";
 import { useNodesStore } from "../stores/nodes";
 import { usePreferencesStore } from "../stores/preferences";
 import { useSessionsStore } from "../stores/sessions";
@@ -188,6 +189,7 @@ const shellApi = {
 async function render(
   getSession: ReturnType<typeof vi.fn>,
   realLayout = false,
+  id = ID,
 ) {
   vi.spyOn(auth, "api").mockReturnValue({
     getSession,
@@ -197,10 +199,10 @@ async function render(
     terminateSessionOnUnload: shellApi.terminateSessionOnUnload,
   } as never);
   const router = testRouter();
-  router.push(`/sessions/${ID}`);
+  router.push(`/sessions/${id}`);
   await router.isReady();
   const wrapper = mount(SessionWorkspaceView, {
-    props: { id: ID },
+    props: { id },
     attachTo: realLayout ? document.body : undefined,
     global: {
       plugins: [router],
@@ -1932,6 +1934,216 @@ describe("#79 and #81 workspace request lifecycle", () => {
       expect(shellApi.openShell).toHaveBeenCalledTimes(2);
       expect(term.connect).toHaveBeenCalledWith(SHELL_ID);
       wrapper.unmount();
+    },
+  );
+});
+
+describe("T2 independent lifecycle probes", () => {
+  const B = "66666666-6666-4666-8666-666666666666";
+  it("successful terminate after A -> B -> A settles the current header", async () => {
+    let resolve!: (value: SessionDetail) => void;
+    const end = new Promise<SessionDetail>((r) => {
+      resolve = r;
+    });
+    const wrapper = await render(vi.fn(async (id: string) => session({ id })));
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    resolve(
+      session({
+        status: "terminated",
+        capabilities: {
+          ...session().capabilities,
+          can_terminate: false,
+          can_open_shell: false,
+          can_browse_files: false,
+        },
+      }),
+    );
+    await flushPromises();
+    expect(useSessionsStore().current?.status).toBe("terminated");
+    expect(wrapper.findComponent(SessionHeader).props("canTerminate")).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+  it("unmount while route switch awaits shell close cannot start B's load", async () => {
+    let finish!: (value: Record<string, never>) => void;
+    const end = new Promise<Record<string, never>>((r) => {
+      finish = r;
+    });
+    const getSession = vi.fn(async (id: string) =>
+      session({
+        id,
+        capabilities: { ...session().capabilities, can_open_shell: true },
+      }),
+    );
+    const wrapper = await render(getSession);
+    await wrapper.get("#tab-terminal").trigger("click");
+    await flushPromises();
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    expect(getSession).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+    finish({});
+    await flushPromises();
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("T2 unmounted route continuation versus next workspace", () => {
+  it("the next workspace's C reply stays current when old B close completes", async () => {
+    const B = "66666666-6666-4666-8666-666666666666";
+    const C = "77777777-7777-4777-8777-777777777777";
+    let finishClose!: (value: Record<string, never>) => void;
+    let finishC!: (value: SessionDetail) => void;
+    const closing = new Promise<Record<string, never>>((r) => {
+      finishClose = r;
+    });
+    const c = new Promise<SessionDetail>((r) => {
+      finishC = r;
+    });
+    const getSession = vi.fn((id: string) =>
+      id === C
+        ? c
+        : Promise.resolve(
+            session({
+              id,
+              capabilities: { ...session().capabilities, can_open_shell: true },
+            }),
+          ),
+    );
+    const old = await render(getSession);
+    await old.get("#tab-terminal").trigger("click");
+    await flushPromises();
+    shellApi.terminateSession.mockReturnValueOnce(closing);
+    await old.setProps({ id: B });
+    await flushPromises();
+    old.unmount();
+    const current = await render(getSession, false, C);
+    await flushPromises();
+    finishClose({});
+    await flushPromises();
+    finishC(session({ id: C }));
+    await flushPromises();
+    expect({
+      currentId: useSessionsStore().current?.id,
+      veil: current.find(".veil").exists(),
+      connectsToC: term.connect.mock.calls.filter(([id]) => id === C).length,
+    }).toEqual({ currentId: C, veil: false, connectsToC: 1 });
+    current.unmount();
+  });
+});
+
+describe("Repair 1 route continuation ownership", () => {
+  const B = "66666666-6666-4666-8666-666666666666";
+  const C = "77777777-7777-4777-8777-777777777777";
+  it.each(["return to B", "auth loss"])(
+    "old shell close cannot start a superseded load after %s",
+    async (exit) => {
+      let finish!: (value: Record<string, never>) => void;
+      const closing = new Promise<Record<string, never>>((r) => {
+        finish = r;
+      });
+      const getSession = vi.fn(async (id: string) =>
+        session({
+          id,
+          capabilities: { ...session().capabilities, can_open_shell: true },
+        }),
+      );
+      const wrapper = await render(getSession);
+      await wrapper.get("#tab-terminal").trigger("click");
+      await flushPromises();
+      shellApi.terminateSession.mockReturnValueOnce(closing);
+      await wrapper.setProps({ id: B });
+      await flushPromises();
+      if (exit === "return to B") {
+        await wrapper.setProps({ id: C });
+        await flushPromises();
+        await wrapper.setProps({ id: B });
+        await flushPromises();
+      } else auth.useAuthStore().accessToken = null;
+      const calls = getSession.mock.calls.length;
+      finish({});
+      await flushPromises();
+      expect(getSession).toHaveBeenCalledTimes(calls);
+      wrapper.unmount();
+    },
+  );
+
+  it("a stale shell-close conflict cannot start a lookup after unmount", async () => {
+    let reject!: (reason: unknown) => void;
+    const closing = new Promise<Record<string, never>>((_r, j) => {
+      reject = j;
+    });
+    const getSession = vi.fn(async (id: string) =>
+      session({
+        id,
+        capabilities: { ...session().capabilities, can_open_shell: true },
+      }),
+    );
+    const wrapper = await render(getSession);
+    await wrapper.get("#tab-terminal").trigger("click");
+    await flushPromises();
+    shellApi.terminateSession.mockReturnValueOnce(closing);
+    wrapper.unmount();
+    reject(new ApiError("SESSION_INVALID_STATE", "already ended", 409));
+    await flushPromises();
+    expect(getSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("Repair 1 upload continuation ownership", () => {
+  it.each(["unmount", "session switch", "auth loss"])(
+    "late upload cannot refresh the shared file store after %s",
+    async (exit) => {
+      let finish!: (value: {
+        path: string;
+        size: number;
+        modified_at: string;
+      }) => void;
+      const uploaded = new Promise<{
+        path: string;
+        size: number;
+        modified_at: string;
+      }>((r) => {
+        finish = r;
+      });
+      vi.mocked(useNodesStore().fetchNode).mockResolvedValue(
+        nodeDetail({ file_upload: true }) as never,
+      );
+      const wrapper = await render(
+        vi.fn(async (id: string) => session({ id })),
+      );
+      vi.mocked(auth.api).mockReturnValue({
+        ...auth.api(),
+        uploadFile: () => uploaded,
+      } as never);
+      const refresh = vi
+        .spyOn(useFilesStore(), "refreshDir")
+        .mockResolvedValue(undefined);
+      await wrapper.get(".do-upload").trigger("click");
+      await flushPromises();
+      if (exit === "unmount") wrapper.unmount();
+      else if (exit === "session switch") {
+        await wrapper.setProps({ id: "66666666-6666-4666-8666-666666666666" });
+        await flushPromises();
+      } else auth.useAuthStore().accessToken = null;
+      finish({
+        path: "datasets/data.csv",
+        size: 1,
+        modified_at: "2026-08-03T00:00:00Z",
+      });
+      await flushPromises();
+      expect(refresh).not.toHaveBeenCalled();
+      if (exit !== "unmount") wrapper.unmount();
     },
   );
 });

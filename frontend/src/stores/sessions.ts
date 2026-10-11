@@ -14,11 +14,20 @@ interface SessionsState {
 
 // Request ownership is plumbing, not session data. Keep it per store instance
 // and out of reactive/serialized state, including across reset on auth loss.
-const requests = new WeakMap<object, number>();
-function nextRequest(store: object): number {
-  const request = (requests.get(store) ?? 0) + 1;
-  requests.set(store, request);
-  return request;
+interface RequestOwnership {
+  epoch: number;
+  detail: number;
+  target: string | null;
+  list: number;
+}
+const requests = new WeakMap<object, RequestOwnership>();
+function ownership(store: object): RequestOwnership {
+  let value = requests.get(store);
+  if (!value) {
+    value = { epoch: 0, detail: 0, target: null, list: 0 };
+    requests.set(store, value);
+  }
+  return value;
 }
 
 export const useSessionsStore = defineStore("sessions", {
@@ -28,25 +37,43 @@ export const useSessionsStore = defineStore("sessions", {
       node_id?: string;
       status?: string;
     }): Promise<SessionSummary[]> {
-      this.list = await api().listSessions(params);
-      return this.list;
+      const owner = ownership(this);
+      const epoch = owner.epoch;
+      const request = ++owner.list;
+      const list = await api().listSessions(params);
+      if (owner.epoch === epoch && owner.list === request) this.list = list;
+      return list;
     },
     async fetchSession(id: string): Promise<SessionDetail> {
-      const request = nextRequest(this);
+      const owner = ownership(this);
+      const request = ++owner.detail;
+      owner.target = id;
       const session = await api().getSession(id);
-      if (requests.get(this) === request) this.current = session;
+      if (owner.detail === request) this.current = session;
       return session;
     },
     async create(input: CreateSessionInput): Promise<SessionDetail> {
+      const owner = ownership(this);
+      const request = ++owner.detail;
+      owner.target = null;
       const session = await api().createSession(input);
-      this.current = session;
+      if (owner.detail === request) this.current = session;
       return session;
     },
     async terminate(id: string): Promise<SessionDetail> {
-      const request = requests.get(this);
+      const owner = ownership(this);
+      const epoch = owner.epoch;
       const session = await api().terminateSession(id);
-      if (requests.get(this) === request && this.current?.id === id)
+      // A mutation belongs to the authenticated store lifetime, not the fetch
+      // that happened to be current when it started. A → B → A still accepts it.
+      if (owner.epoch !== epoch) return session;
+      if (this.current?.id === id) {
         this.current = session;
+        // An older detail for this target cannot undo the mutation. Leave a
+        // pending fetch for a different workspace alone.
+        if (owner.target === id) owner.detail += 1;
+      }
+      owner.list += 1;
       this.patchList(session);
       return session;
     },
@@ -57,7 +84,11 @@ export const useSessionsStore = defineStore("sessions", {
       }
     },
     reset(): void {
-      nextRequest(this);
+      const owner = ownership(this);
+      owner.epoch += 1;
+      owner.detail += 1;
+      owner.list += 1;
+      owner.target = null;
       this.list = [];
       this.current = null;
     },
