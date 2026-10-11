@@ -308,11 +308,11 @@ function listMarkup() {
           .map((s, i) => {
             const [label, t] = SESSION_STATUS[s.status];
             const kind = s.kind === "structured" ? " · 活動＋終端（假設）" : "";
-            return `<li><button type="button" class="srow" data-action="open-session" data-id="${s.id}" aria-label="開啟 ${esc(s.name)}（${esc(s.workspace)}），${label}">
+            return `<li><button type="button" class="srow" data-action="open-session" data-id="${esc(s.id)}" aria-label="開啟 ${esc(s.name)}（${esc(s.workspace)}），${label}">
               <span class="name">${esc(s.name)}</span>${stMarkup(label, t, t === "error" ? "alert" : "")}
               <span class="meta">${RUNTIME[s.runtime]} · ${esc(NODES[s.node].name)} · ${esc(s.last)}<span class="kind">${kind}</span></span>
               <span class="path mono"><bdi>${esc(s.workspace)}</bdi></span>
-            </button><button type="button" class="icon-btn srow-more" id="more-${s.id}" data-action="row-info" data-id="${s.id}" aria-haspopup="dialog" aria-label="第 ${i + 1} 列 ${esc(s.name)}：完整路徑與資訊">${icon("more")}</button></li>`;
+            </button><button type="button" class="icon-btn srow-more" id="more-${esc(s.id)}" data-action="row-info" data-id="${esc(s.id)}" aria-haspopup="dialog" aria-label="第 ${i + 1} 列 ${esc(s.name)}：完整路徑與資訊">${icon("more")}</button></li>`;
           })
           .join("")}</ul>`;
   const filters = rows.length
@@ -580,7 +580,7 @@ function sheetMarkup() {
       <div class="sheet-head"><h2 id="sheet-title">${esc(r.name)}</h2><button class="icon-btn" type="button" data-action="close-sheet" aria-label="關閉">${icon("close")}</button></div>
       <div class="sheet-body">
         <dl class="kv"><dt>工作目錄</dt><dd class="mono"><bdi>${esc(r.workspace)}</bdi></dd><dt>Node</dt><dd>${esc(NODES[r.node].name)}</dd><dt>Runtime</dt><dd>${RUNTIME[r.runtime]}</dd><dt>狀態</dt><dd>${esc(label)} · ${esc(r.last)}</dd><dt>Session ID</dt><dd class="mono">${esc(r.id)}</dd></dl>
-        <button class="btn primary" type="button" data-action="open-session" data-id="${r.id}">開啟這個 Session</button>
+        <button class="btn primary" type="button" data-action="open-session" data-id="${esc(r.id)}">開啟這個 Session</button>
       </div></div>`;
   } else if (state.sheet === "nav") {
     inner = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title">

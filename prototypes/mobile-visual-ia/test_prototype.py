@@ -517,6 +517,45 @@ def review_followups_suite(browser: Browser, base: str, passed) -> None:
            "the right Session opens; changing Node keeps focus on the Node select")
 
 
+# #111: a Session ID is fixture data, and fixture data reaches HTML attributes.
+# The current demo-* IDs are harmless, so this swaps in one that is not: a
+# quote would close data-id="…" and turn the rest of the value into markup.
+HOSTILE_ID = 'sess-"q\'<x>&y-demo" data-injected="1'
+
+
+def escaping_suite(browser: Browser, base: str, passed) -> None:
+    fails: list[str] = []
+    context = browser.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
+    page = context.new_page()
+    load(page, base, "c", "list")
+    before = page.evaluate("document.querySelectorAll('#app button').length")
+    page.evaluate("(id) => { SESSIONS[0].id = id; render(); }", HOSTILE_ID)
+    after = page.evaluate("document.querySelectorAll('#app button').length")
+    if after != before:
+        fails.append(f"button count changed {before} -> {after}")
+    if page.locator("[data-injected]").count():
+        fails.append("the ID broke out of its attribute into markup")
+    row = page.locator("button.srow").first
+    if row.get_attribute("data-id") != HOSTILE_ID:
+        fails.append(f"row data-id is {row.get_attribute('data-id')!r}")
+    more = page.locator("button.srow-more").first
+    if more.get_attribute("id") != f"more-{HOSTILE_ID}" or more.get_attribute("data-id") != HOSTILE_ID:
+        fails.append(f"reveal id/data-id are {more.get_attribute('id')!r} / {more.get_attribute('data-id')!r}")
+    else:
+        more.click()
+        action = page.get_by_role("dialog").get_by_role("button", name="開啟這個 Session")
+        if action.get_attribute("data-id") != HOSTILE_ID:
+            fails.append(f"dialog action data-id is {action.get_attribute('data-id')!r}")
+        else:
+            action.click()
+            page.get_by_role("button", name="Session 選單與資訊").click()
+            if HOSTILE_ID not in page.get_by_role("dialog").inner_text():
+                fails.append("the reveal action did not open the Session it names")
+    context.close()
+    expect(not fails, "Session ID escaping failing:\n" + "\n".join(fails))
+    passed("Session IDs with quotes and <>& stay inside data-id/id attributes; reveal and open still reach that Session")
+
+
 RADIUS_PROBE = """() => {
   const px = (sel) => [...document.querySelectorAll(sel)].filter((e) => e.getClientRects().length)
     .map((e) => getComputedStyle(e).borderTopLeftRadius);
@@ -602,6 +641,7 @@ def main() -> int:
             behaviour_suite(browser, base, passed)
             c_direction_suite(browser, base, passed)
             review_followups_suite(browser, base, passed)
+            escaping_suite(browser, base, passed)
             radius_suite(browser, base, passed)
             motion_suite(browser, base, passed)
         finally:

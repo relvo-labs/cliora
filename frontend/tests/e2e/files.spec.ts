@@ -26,7 +26,7 @@ async function signIn(page: Page): Promise<void> {
 function newSessionDialog(page: Page) {
   return page
     .getByRole("dialog")
-    .filter({ has: page.getByRole("heading", { name: "New session" }) });
+    .filter({ has: page.getByRole("heading", { name: "建立 Session" }) });
 }
 
 // Creates a session on the first online node and lands on its workspace.
@@ -58,8 +58,8 @@ async function openWorkspace(page: Page, name: string): Promise<boolean> {
   await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
   await runtime.selectOption({ index: 1 });
   await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
-  await dialog.locator('input[placeholder="e.g. refactor-api"]').fill(name);
-  await dialog.getByRole("button", { name: "Start" }).click();
+  await dialog.locator('input[placeholder="例如 refactor-api"]').fill(name);
+  await dialog.getByRole("button", { name: "建立", exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
   return true;
 }

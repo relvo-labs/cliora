@@ -95,17 +95,17 @@ export const THEMES: Record<ThemeId, Theme> = {
     // Surfaces and boundaries
     "surface-canvas": "#111518",
     "surface-default": "#191E22",
-    "surface-raised": "#20272C",
+    "surface-raised": "#2B3237",
     "surface-scrim": "#00000099",
     "border-subtle": "#2B3339",
-    "border-control": "#647784",
+    "border-control": "#697C89",
     "focus-ring": "#81C9B9",
     // Text
     "text-primary": "#E4E9EB",
     "text-secondary": "#8E9AA3",
     "text-on-accent": "#111518",
     "text-on-terminal": "#C9D3D8",
-    "text-disabled": "#6D767D",
+    "text-disabled": "#727B82",
     // Accent and actions
     "accent-primary": "#81C9B9",
     "accent-strong": "#81C9B9",

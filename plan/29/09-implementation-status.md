@@ -16,6 +16,8 @@
 
 2026-10-06（#109／#128）：已實作手機 `⋯` 專用系統 shell 入口、開啟後警示分頁與關閉即終止，以及所有寬度的伺服器 capability ＋節點 shell availability 閘門（缺項／未知／讀取失敗即隱藏）。390px、768px 與桌面單元回歸已驗；另更新 `keyboard-chrome` 與 `session` e2e 的手機選單／關閉路徑及缺少 shell 案例，補上焦點、朗讀、競態與標頭展開修復。`keyboard-chrome` 在 Chromium 與 mobile-chrome-emulated 已驗；`session` 僅列舉與型別檢查，未跑完整服務。真機 iPhone 未驗，未改後端契約或主 CLI 生命週期。決策同步於 `01`／`03`／`05`。
 
+2026-10-11（#105／#106／#112／#116／#111）：Sessions 卡片路徑以 `<bdi dir="ltr">` 隔離，開頭 `/` 不再被移到結尾；卡片與桌面表格改顯示 Node 名稱（讀不到時顯示 8 字元短 id）。建立 Session 對話框改建於 `UiDialog`（名稱、焦點陷阱、Esc、焦點返回），文案中文化，選定 Node／Runtime 後在送出前顯示與工作標頭同字樣的提權／沙箱停用警示；手機 backdrop 跟隨 `--viewport-usable-height`，送出列固定於面板底。標題「New session」、「Start」與名稱 placeholder 仍為英文，因 `files.spec`／`mobile.spec` 以其選取。e2e 清理改為只追蹤建立成功的 Session，`session.spec` 桌面幾何改用 1440×900 並扣除 drop bar；原型 Session ID 屬性已跳脫。chromium 與 mobile-chrome-emulated 已驗（鍵盤為模擬）；`theme.spec` scrim 在 Graphite＋chromium 仍未過（共用面板 `--surface-raised` 對黑 1.39:1）。真機、Safari、Firefox、螢幕閱讀器未驗。
+
 分支 `feat/mobile-rwd`，10 個 commit。
 
 **已完成**：`MS-01`～`MS-09`、`MS-14`～`MS-16`、`MS-18`～`MS-23`、`MS-25`。

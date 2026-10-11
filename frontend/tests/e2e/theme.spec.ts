@@ -72,11 +72,88 @@ async function chooseTheme(page: Page, theme: string): Promise<void> {
   await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
 }
 
-function parseRgb(value: string): [number, number, number] {
-  const m = value.match(/(\d+(?:\.\d+)?)/g);
+type Rgb = [number, number, number];
+type Rgba = [number, number, number, number];
+
+/**
+ * `rgb()`/`rgba()` as the browser reports it, alpha included. The previous
+ * parser kept the first three numbers and dropped the fourth, so the scrim
+ * `rgba(0, 0, 0, 0.6)` was measured as opaque black — a colour that is never on
+ * screen (#151 review). Alpha defaults to 1 when the browser reports `rgb()`.
+ */
+function parseRgba(value: string): Rgba {
+  const m = value.match(/-?\d+(?:\.\d+)?/g);
   if (!m || m.length < 3) throw new Error(`not an rgb value: ${value}`);
-  return [Number(m[0]), Number(m[1]), Number(m[2])];
+  const alpha = m.length >= 4 ? Number(m[3]) : 1;
+  return [Number(m[0]), Number(m[1]), Number(m[2]), alpha];
 }
+
+/**
+ * Source-over: `out = a·top + (1 − a)·below`, per channel, over an opaque
+ * `below`. This is how the browser paints a translucent layer, in the same
+ * 0–255 sRGB space it reports colours in.
+ */
+function compositeOver([r, g, b, a]: Rgba, below: Rgb): Rgb {
+  return [
+    a * r + (1 - a) * below[0],
+    a * g + (1 - a) * below[1],
+    a * b + (1 - a) * below[2],
+  ];
+}
+
+/**
+ * Paints a stack of backgrounds, listed top first, onto an opaque base — what
+ * the eye sees through all of them at one point.
+ */
+function compositeStack(layersTopFirst: Rgba[], base: Rgb): Rgb {
+  return [...layersTopFirst]
+    .reverse()
+    .reduce<Rgb>((below, layer) => compositeOver(layer, below), base);
+}
+
+// Pure arithmetic, so it runs on any stack and needs no browser: the helpers
+// the scrim measurement depends on are checked against values worked by hand.
+test.describe("theme: scrim compositing arithmetic", () => {
+  test("parses alpha and defaults it to 1", () => {
+    expect(parseRgba("rgba(0, 0, 0, 0.6)")).toEqual([0, 0, 0, 0.6]);
+    expect(parseRgba("rgb(32, 39, 44)")).toEqual([32, 39, 44, 1]);
+  });
+
+  test("source-over mixes by alpha, and the end points are exact", () => {
+    // 0.6 black over #111518 (17, 21, 24) leaves 40 % of the canvas.
+    const out = compositeOver([0, 0, 0, 0.6], [17, 21, 24]);
+    expect(out[0]).toBeCloseTo(6.8, 6);
+    expect(out[1]).toBeCloseTo(8.4, 6);
+    expect(out[2]).toBeCloseTo(9.6, 6);
+    expect(compositeOver([10, 20, 30, 1], [200, 200, 200])).toEqual([
+      10, 20, 30,
+    ]);
+    expect(compositeOver([10, 20, 30, 0], [200, 200, 200])).toEqual([
+      200, 200, 200,
+    ]);
+  });
+
+  test("a stack is painted bottom-up and transparent layers change nothing", () => {
+    const out = compositeStack(
+      [
+        [0, 0, 0, 0.5],
+        [0, 0, 0, 0],
+        [255, 255, 255, 0.5],
+      ],
+      [0, 0, 0],
+    );
+    // White at 0.5 over black is 127.5; black at 0.5 over that is 63.75.
+    expect(out.map((v) => Number(v.toFixed(2)))).toEqual([63.75, 63.75, 63.75]);
+  });
+
+  test("the contrast of a translucent scrim is not the contrast of its RGB", () => {
+    // The failure this replaces: the old parser measured 1.39 against black.
+    const panel: Rgb = [32, 39, 44];
+    const seen = compositeOver([0, 0, 0, 0.6], [17, 21, 24]);
+    expect(ratioOf(panel, [0, 0, 0])).toBeCloseTo(1.388, 3);
+    expect(ratioOf(panel, seen)).toBeCloseTo(1.323, 3);
+  });
+});
 
 test.describe("theme: cold load", () => {
   test.skip(
@@ -354,23 +431,58 @@ test.describe("theme: contrast the arithmetic cannot reach", () => {
       // composited pixels. theme/contrast.ts refuses to guess at an alpha
       // channel by design, which is why this is here rather than in the unit
       // test.
+      //
+      // What is behind the scrim is read from the page itself: every element
+      // under the panel's centre that is not part of the dialog, top first,
+      // with the root's own background as the opaque base. Their backgrounds
+      // are painted bottom-up and the scrim is painted over the result.
       const composited = await page.evaluate(() => {
         const scrim = document.querySelector(".backdrop") as HTMLElement;
         const panel = document.querySelector("[role='dialog']") as HTMLElement;
+        const box = panel.getBoundingClientRect();
+        const behind = document
+          .elementsFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+          .filter((el) => !scrim.contains(el));
         return {
           scrim: getComputedStyle(scrim).backgroundColor,
           panel: getComputedStyle(panel).backgroundColor,
+          behind: behind.map((el) => ({
+            what: `${el.tagName}.${el.className}`.slice(0, 40),
+            background: getComputedStyle(el).backgroundColor,
+          })),
+          root: getComputedStyle(document.documentElement).backgroundColor,
+          theme: document.documentElement.getAttribute("data-theme"),
         };
       });
+      // The root paints on the browser's own canvas, which is white when the
+      // root itself is transparent.
+      const base = compositeOver(parseRgba(composited.root), [255, 255, 255]);
+      const page_ = compositeStack(
+        composited.behind.map((layer) => parseRgba(layer.background)),
+        base,
+      );
+      const underPanel = compositeOver(parseRgba(composited.scrim), page_);
+      const panelColour = parseRgba(composited.panel);
+      expect(
+        panelColour[3],
+        "the dialog panel is translucent; this measurement assumes it is not",
+      ).toBe(1);
       // The panel must stand clear of the scrim it sits on, or the dialog reads
       // as part of the dimmed page rather than as the thing in front of it.
       const contrast = ratioOf(
-        parseRgb(composited.panel),
-        parseRgb(composited.scrim),
+        [panelColour[0], panelColour[1], panelColour[2]],
+        underPanel,
       );
+      const evidence = {
+        ...composited,
+        page: page_.map((v) => Number(v.toFixed(1))),
+        underPanel: underPanel.map((v) => Number(v.toFixed(1))),
+        contrast: Number(contrast.toFixed(3)),
+      };
+      console.log(`SCRIM ${theme} ${JSON.stringify(evidence)}`);
       expect(
         contrast,
-        `the dialog panel does not separate from the scrim: ${JSON.stringify(composited)}`,
+        `the dialog panel does not separate from the scrim: ${JSON.stringify(evidence)}`,
       ).toBeGreaterThanOrEqual(1.5);
 
       // Escape closes it, and focus goes back to the trigger.
