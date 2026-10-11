@@ -60,9 +60,19 @@ function testRouter(): Router {
   });
 }
 
-async function render(rows = ROWS) {
+// The node list the page reads to name each row's node (#105).
+const NODES = [
+  { id: "node-alpha", name: "build-vm", hostname: "build-vm.internal" },
+  { id: "node-beta", name: "docs-vm", hostname: "docs-vm.internal" },
+];
+
+async function render(
+  rows = ROWS,
+  listNodes: () => Promise<unknown> = async () => NODES,
+) {
   vi.spyOn(auth, "api").mockReturnValue({
     listSessions: vi.fn(async () => rows),
+    listNodes: vi.fn(listNodes),
   } as never);
   const store = useAuthStore();
   store.user = {
@@ -110,7 +120,7 @@ describe("SessionsView — 行動卡片清單", () => {
     const wrapper = await render();
     const first = wrapper.findAll(".card")[0];
     const text = first.text();
-    for (const value of ["refactor-api", "node-alpha", "claude"]) {
+    for (const value of ["refactor-api", "build-vm", "claude"]) {
       expect(text, `${value} 不見了`).toContain(value);
     }
     // The path is in the DOM with its full value in `title`, because the card
@@ -151,5 +161,61 @@ describe("SessionsView — 行動卡片清單", () => {
     const empty = await render([]);
     expect(empty.text()).toContain("尚未建立 Session");
     expect(empty.text()).not.toContain("沒有符合條件的項目");
+  });
+});
+
+// #105: the card reversed absolute paths (`direction: rtl` let the bidi
+// algorithm move the leading "/" to the end) and named the node by its UUID.
+describe("SessionsView — 卡片的路徑與 Node 名稱 (#105)", () => {
+  const UUID_ROWS = ROWS.map((row, i) => ({
+    ...row,
+    node_id: i === 0 ? "26ae21b0-78a3-4352-a5f4-c25e400fa95b" : row.node_id,
+  }));
+  const UUID_NODES = [
+    { ...NODES[0], id: "26ae21b0-78a3-4352-a5f4-c25e400fa95b" },
+    NODES[1],
+  ];
+
+  it("names the node, not its UUID, on the card and in the table", async () => {
+    setWidth(390);
+    const narrow = await render(UUID_ROWS, async () => UUID_NODES);
+    const meta = narrow.findAll(".card")[0].find(".card-meta").text();
+    expect(meta).toContain("build-vm");
+    expect(meta).not.toContain("26ae21b0-78a3-4352-a5f4-c25e400fa95b");
+
+    setWidth(1440);
+    const wide = await render(UUID_ROWS, async () => UUID_NODES);
+    const row = wide.findAll("tbody tr")[0].text();
+    expect(row).toContain("build-vm");
+    expect(row).not.toContain("26ae21b0-78a3-4352-a5f4-c25e400fa95b");
+  });
+
+  it("does not print a full UUID when the node list cannot be read", async () => {
+    setWidth(390);
+    const wrapper = await render(UUID_ROWS, async () => {
+      throw new Error("offline");
+    });
+    const card = wrapper.findAll(".card")[0];
+    // The list itself still renders: naming a node is not worth losing it.
+    expect(card.find(".card-name").text()).toBe("refactor-api");
+    const node = card.find(".card-node");
+    expect(node.text()).not.toContain("26ae21b0-78a3-4352-a5f4-c25e400fa95b");
+    expect(node.text()).toContain("26ae21b0");
+    // The whole id stays reachable rather than being thrown away.
+    expect(node.attributes("title")).toBe(
+      "26ae21b0-78a3-4352-a5f4-c25e400fa95b",
+    );
+  });
+
+  it("isolates the path as left-to-right text so its leading / stays first", async () => {
+    setWidth(390);
+    const wrapper = await render();
+    const path = wrapper.findAll(".card")[0].find(".card-path");
+    // The start-truncating container may be right-to-left; the path inside it
+    // must be its own left-to-right run, or the bidi algorithm reorders the
+    // neutral "/" characters.
+    const run = path.find('bdi[dir="ltr"]');
+    expect(run.exists(), "path is not an isolated LTR run").toBe(true);
+    expect(run.text()).toBe("/srv/work/api");
   });
 });

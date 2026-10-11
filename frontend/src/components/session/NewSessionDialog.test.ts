@@ -21,6 +21,8 @@ const { impl } = vi.hoisted(() => ({
     addFavorite: null as null | ((input: unknown) => Promise<unknown>),
     removeFavorite: null as null | ((id: string) => Promise<void>),
     createSession: null as null | ((input: unknown) => Promise<unknown>),
+    // The node report the dialog reads after a node is chosen; null = default.
+    node: null as null | (() => NodeDetail),
     measure: null as
       | null
       | ((
@@ -48,7 +50,8 @@ vi.mock("../../stores/auth", () => ({
     removeFavorite: (id: string) => impl.removeFavorite!(id),
     createSession: (input: unknown) => impl.createSession!(input),
     listNodes: async (): Promise<NodeSummary[]> => [nodeSummary()],
-    getNode: async (): Promise<NodeDetail> => nodeDetail(),
+    getNode: async (): Promise<NodeDetail> =>
+      impl.node ? impl.node() : nodeDetail(),
   }),
 }));
 
@@ -142,7 +145,7 @@ describe("NewSessionDialog shortcuts", () => {
   it("does not show the shortcut region until a node is chosen", async () => {
     const wrapper = await open();
     // A path only means something on one machine, so there is nothing to offer yet.
-    expect(wrapper.find('[aria-label="Shortcuts"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="工作目錄捷徑"]').exists()).toBe(false);
   });
 
   it("lists recents and favourites for the selected node only", async () => {
@@ -156,7 +159,7 @@ describe("NewSessionDialog shortcuts", () => {
     ];
     const wrapper = await openWithNodeSelected();
 
-    const text = wrapper.find('[aria-label="Shortcuts"]').text();
+    const text = wrapper.find('[aria-label="工作目錄捷徑"]').text();
     expect(text).toContain("/home/neil/projects/app");
     expect(text).toContain("/home/neil/projects/api");
     expect(text).not.toContain("/elsewhere/x");
@@ -170,9 +173,7 @@ describe("NewSessionDialog shortcuts", () => {
     const buttons = wrapper.findAll("button.shortcut");
     await buttons[0].trigger("click");
 
-    const input = wrapper.find(
-      'input[placeholder="/path/inside/an/allowed/root"]',
-    );
+    const input = wrapper.find('input[placeholder="允許根目錄內的絕對路徑"]');
     expect((input.element as HTMLInputElement).value).toBe(
       "/home/neil/projects/api",
     );
@@ -182,9 +183,9 @@ describe("NewSessionDialog shortcuts", () => {
     // Both groups can legitimately be empty on a fresh account, and each says so —
     // an absent group would read as a broken dialog.
     const wrapper = await openWithNodeSelected();
-    const text = wrapper.find('[aria-label="Shortcuts"]').text();
-    expect(text).toContain("No recent workspaces on this node yet.");
-    expect(text).toContain("No favourites yet.");
+    const text = wrapper.find('[aria-label="工作目錄捷徑"]').text();
+    expect(text).toContain("這台 Node 還沒有最近使用的工作目錄。");
+    expect(text).toContain("還沒有我的最愛。");
   });
 
   it("offers a retry when the shortcut fetch fails", async () => {
@@ -192,8 +193,8 @@ describe("NewSessionDialog shortcuts", () => {
       throw new Error("boom");
     };
     const wrapper = await openWithNodeSelected();
-    const region = wrapper.find('[aria-label="Shortcuts"]');
-    expect(region.text()).toContain("Could not load shortcuts.");
+    const region = wrapper.find('[aria-label="工作目錄捷徑"]');
+    expect(region.text()).toContain("無法載入捷徑。");
     expect(region.find("button.link").exists()).toBe(true);
   });
 
@@ -205,7 +206,7 @@ describe("NewSessionDialog shortcuts", () => {
     const wrapper = await openWithNodeSelected();
     // No retry button either: retrying a permission the role does not hold would
     // never succeed.
-    expect(wrapper.find('[aria-label="Shortcuts"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="工作目錄捷徑"]').exists()).toBe(false);
   });
 
   it("marks an offline node's recent entry as unusable and refuses the click", async () => {
@@ -213,7 +214,7 @@ describe("NewSessionDialog shortcuts", () => {
     const wrapper = await openWithNodeSelected();
 
     const shortcut = wrapper.find("button.shortcut");
-    expect(shortcut.text()).toContain("Node is offline");
+    expect(shortcut.text()).toContain("Node 已離線");
     // Shown rather than hidden (FR-NODE-002), but not selectable.
     expect(shortcut.attributes("disabled")).toBeDefined();
   });
@@ -226,10 +227,10 @@ describe("NewSessionDialog shortcuts", () => {
     ];
     const wrapper = await openWithNodeSelected();
 
-    const text = wrapper.find('[aria-label="Shortcuts"]').text();
-    expect(text).toContain("Node is offline");
-    expect(text).toContain("Node is disabled");
-    expect(text).toContain("No longer inside an allowed root");
+    const text = wrapper.find('[aria-label="工作目錄捷徑"]').text();
+    expect(text).toContain("Node 已離線");
+    expect(text).toContain("Node 已停用");
+    expect(text).toContain("已不在允許的根目錄內");
   });
 
   it("offers removal only for a favourite that can never work again", async () => {
@@ -264,14 +265,12 @@ describe("NewSessionDialog shortcuts", () => {
     // Selecting the node pre-fills the first enabled root, which is favourited.
     const star = wrapper.find("button.star");
     expect(star.attributes("aria-pressed")).toBe("true");
-    expect(star.attributes("aria-label")).toContain("Remove");
+    expect(star.attributes("aria-label")).toContain("移除");
   });
 
   it("saves the typed path and turns the star on", async () => {
     const wrapper = await openWithNodeSelected();
-    const input = wrapper.find(
-      'input[placeholder="/path/inside/an/allowed/root"]',
-    );
+    const input = wrapper.find('input[placeholder="允許根目錄內的絕對路徑"]');
     await input.setValue("/home/neil/projects/new");
     const sent: unknown[] = [];
     impl.addFavorite = async (body: unknown) => {
@@ -296,7 +295,7 @@ describe("NewSessionDialog shortcuts", () => {
     const { ApiError } = await import("../../api/client");
     const wrapper = await openWithNodeSelected();
     await wrapper
-      .find('input[placeholder="/path/inside/an/allowed/root"]')
+      .find('input[placeholder="允許根目錄內的絕對路徑"]')
       .setValue("/etc");
     impl.addFavorite = async () => {
       throw new ApiError("WORKSPACE_OUTSIDE_ALLOWED_ROOT", "outside", 400);
@@ -306,7 +305,7 @@ describe("NewSessionDialog shortcuts", () => {
     await flush();
 
     expect(wrapper.find('[role="alert"]').text()).toContain(
-      "not inside an allowed root",
+      "不在允許的根目錄內",
     );
     // The rollback has to be visible: a star left on would claim the refusal saved.
     expect(wrapper.find("button.star").attributes("aria-pressed")).toBe(
@@ -326,7 +325,7 @@ describe("NewSessionDialog shortcuts", () => {
     impl.listFavorites = async () => [favorite()];
     const wrapper = await openWithNodeSelected();
 
-    const items = wrapper.findAll('[aria-label="Shortcuts"] li');
+    const items = wrapper.findAll('[aria-label="工作目錄捷徑"] li');
     expect(items.length).toBe(2);
     for (const item of items) {
       expect(item.find("button").exists()).toBe(true);
@@ -449,5 +448,253 @@ describe("NewSessionDialog terminal size (#115)", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).not.toHaveProperty("rows");
     expect(sent[0]).not.toHaveProperty("columns");
+  });
+});
+
+// #112: the create dialog was a bare `role="dialog"` overlay — no name, no
+// focus trap, no Escape and no focus return. These hold it to UiDialog's
+// behaviour rather than to UiDialog's markup, so they would also catch a
+// re-implementation that drifts.
+describe("NewSessionDialog accessibility (#112)", () => {
+  let trigger: HTMLButtonElement;
+  const restore: Array<() => void> = [];
+
+  // jsdom does no layout, so `offsetParent` is always null and the shared
+  // trap would see no focusable control at all. Any attached element counts
+  // as laid out here.
+  function pretendLaidOut(): void {
+    const original = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetParent",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetParent", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.isConnected ? document.body : null;
+      },
+    });
+    restore.push(() => {
+      if (original)
+        Object.defineProperty(HTMLElement.prototype, "offsetParent", original);
+    });
+  }
+
+  async function frame(): Promise<void> {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    await flush();
+  }
+
+  async function openFromTrigger() {
+    const wrapper = mount(NewSessionDialog, {
+      props: { open: false },
+      attachTo: document.body,
+    });
+    trigger.focus();
+    await wrapper.setProps({ open: true });
+    await flush();
+    await frame();
+    return wrapper;
+  }
+
+  function dialog(): HTMLElement {
+    const el = document.querySelector<HTMLElement>('[role="dialog"]');
+    expect(el, "no dialog in the document").not.toBeNull();
+    return el!;
+  }
+
+  function tab(shift = false): void {
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: shift }),
+    );
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    impl.listFavorites = async () => [];
+    impl.listRecentWorkspaces = async () => [];
+    impl.node = null;
+    pretendLaidOut();
+    trigger = document.createElement("button");
+    trigger.textContent = "建立 Session";
+    document.body.appendChild(trigger);
+  });
+  afterEach(() => {
+    while (restore.length) restore.pop()!();
+    trigger.remove();
+    document.body.innerHTML = "";
+    document.body.style.overflow = "";
+  });
+
+  it("is a modal dialog named by its visible title", async () => {
+    const wrapper = await openFromTrigger();
+    const el = dialog();
+    expect(el.getAttribute("aria-modal")).toBe("true");
+    const labelledBy = el.getAttribute("aria-labelledby");
+    expect(labelledBy, "the dialog has no accessible name").toBeTruthy();
+    const title = document.getElementById(labelledBy!);
+    expect(title?.tagName).toBe("H2");
+    expect(title?.textContent?.trim()).toBe("New session");
+    wrapper.unmount();
+  });
+
+  it("uses the shared backdrop", async () => {
+    const wrapper = await openFromTrigger();
+    expect(document.querySelector(".backdrop")).not.toBeNull();
+    expect(document.querySelector(".overlay")).toBeNull();
+    wrapper.unmount();
+  });
+
+  it("moves focus into the dialog on open", async () => {
+    const wrapper = await openFromTrigger();
+    expect(dialog().contains(document.activeElement)).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("closes on Escape", async () => {
+    const wrapper = await openFromTrigger();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flush();
+    expect(wrapper.emitted("cancel")).toHaveLength(1);
+    wrapper.unmount();
+  });
+
+  it("keeps Tab and Shift+Tab inside the dialog", async () => {
+    const wrapper = await openFromTrigger();
+    const el = dialog();
+    const controls = Array.from(
+      el.querySelectorAll<HTMLElement>(
+        "button:not([disabled]), select:not([disabled]), input:not([disabled])",
+      ),
+    );
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+
+    last.focus();
+    tab();
+    expect(document.activeElement).toBe(first);
+
+    first.focus();
+    tab(true);
+    expect(document.activeElement).toBe(last);
+
+    // Focus that escaped to the page behind is pulled back in.
+    trigger.focus();
+    tab();
+    expect(el.contains(document.activeElement)).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("returns focus to the control that opened it", async () => {
+    const wrapper = await openFromTrigger();
+    expect(document.activeElement).not.toBe(trigger);
+    await wrapper.setProps({ open: false });
+    await flush();
+    expect(document.activeElement).toBe(trigger);
+    wrapper.unmount();
+  });
+});
+
+// #106: the dialog was English-only and said nothing about the node's
+// execution posture (ADR 0023) before the session was started. The wording
+// is the work header's, so the warning reads the same before and after.
+describe("NewSessionDialog posture and copy (#106)", () => {
+  function postureNode(over: {
+    privileged?: boolean;
+    codexBypass?: boolean;
+  }): () => NodeDetail {
+    return () =>
+      ({
+        ...nodeSummary(),
+        privileged_terminal: over.privileged ?? false,
+        runtimes: [
+          { runtime: "claude", available: true, sandbox_bypass: false },
+          {
+            runtime: "codex",
+            available: true,
+            sandbox_bypass: over.codexBypass ?? false,
+          },
+        ],
+        workspace_roots: [{ path: "/home/neil/projects", is_enabled: true }],
+      }) as unknown as NodeDetail;
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    impl.listFavorites = async () => [];
+    impl.listRecentWorkspaces = async () => [];
+    impl.node = null;
+  });
+
+  it("says nothing about posture before a node is chosen", async () => {
+    impl.node = postureNode({ privileged: true, codexBypass: true });
+    const wrapper = await open();
+    expect(wrapper.text()).not.toContain("可提權");
+    expect(wrapper.text()).not.toContain("沙箱");
+  });
+
+  it("warns that a privileged node can reach root, as soon as it is chosen", async () => {
+    impl.node = postureNode({ privileged: true });
+    const wrapper = await openWithNodeSelected();
+    const notice = wrapper.find('[data-posture="privileged"]');
+    expect(notice.exists()).toBe(true);
+    expect(notice.text()).toContain("此 Node 可提權（sudo）");
+  });
+
+  it("shows no privilege warning for an unprivileged node", async () => {
+    impl.node = postureNode({ privileged: false });
+    const wrapper = await openWithNodeSelected();
+    expect(wrapper.find('[data-posture="privileged"]').exists()).toBe(false);
+  });
+
+  it("warns that the chosen runtime runs without a sandbox, before it is started", async () => {
+    impl.node = postureNode({ codexBypass: true });
+    const wrapper = await openWithNodeSelected();
+    const runtime = wrapper.findAll("select")[1];
+
+    // Marked in the option itself, so it is visible while choosing.
+    const codexOption = runtime
+      .findAll("option")
+      .find((o) => o.attributes("value") === "codex");
+    expect(codexOption?.text()).toContain("沙箱已停用");
+
+    await runtime.setValue("claude");
+    await flush();
+    expect(wrapper.find('[data-posture="sandbox"]').exists()).toBe(false);
+
+    await runtime.setValue("codex");
+    await flush();
+    expect(wrapper.find('[data-posture="sandbox"]').text()).toContain(
+      "沙箱：已停用",
+    );
+  });
+
+  it("announces the posture and places it directly above the actions", async () => {
+    impl.node = postureNode({ privileged: true, codexBypass: true });
+    const wrapper = await openWithNodeSelected();
+    await wrapper.findAll("select")[1].setValue("codex");
+    await flush();
+    // Announced (role=status) and placed last in the form, directly above
+    // the actions, rather than at the top where a scrolled form hides it.
+    const notice = wrapper.find(".posture-notice");
+    expect(notice.attributes("role")).toBe("status");
+    const form = notice.element.parentElement!;
+    expect(form.lastElementChild).toBe(notice.element);
+  });
+
+  it("speaks the app's language", async () => {
+    const wrapper = await openWithNodeSelected();
+    const text = wrapper.text();
+    for (const word of ["取消", "工作目錄", "Session 名稱", "最近使用"]) {
+      expect(text, `missing ${word}`).toContain(word);
+    }
+    for (const english of [
+      "Cancel",
+      "Session name",
+      "Recently used",
+      "Favourites",
+      "Select a runtime",
+    ]) {
+      expect(text, `still English: ${english}`).not.toContain(english);
+    }
   });
 });

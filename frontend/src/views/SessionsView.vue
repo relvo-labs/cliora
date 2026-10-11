@@ -33,6 +33,7 @@ import UiLoadingState from "../components/ui/UiLoadingState.vue";
 import { useAsyncResource } from "../composables/useAsyncResource";
 import { useBreakpoint } from "../composables/useBreakpoint";
 import { useAuthStore } from "../stores/auth";
+import { useNodesStore } from "../stores/nodes";
 import { useSessionsStore } from "../stores/sessions";
 import { formatInstant } from "../utils/time";
 
@@ -53,6 +54,7 @@ const NO_RESULTS = {
 
 const auth = useAuthStore();
 const sessions = useSessionsStore();
+const nodes = useNodesStore();
 const router = useRouter();
 
 const canCreate = computed(() => auth.hasPermission(ACTION_SESSION_CREATE));
@@ -98,7 +100,22 @@ function clearFilters(): void {
   runtimeFilter.value = "all";
 }
 
-onMounted(() => resource.run());
+// Rows carry only `node_id`, a 36-character UUID that tells nobody which
+// machine a session is on (#105). The names come from the node list every role
+// can already read (`node.view`); no new endpoint. A failed read costs the
+// names, not the list: the row then shows a short id with the full one in
+// `title`, rather than a UUID wrapping the card onto extra lines.
+const nodeNames = computed(
+  () => new Map(nodes.list.map((node) => [node.id, node.name])),
+);
+function nodeLabel(id: string): string {
+  return nodeNames.value.get(id) ?? id.slice(0, 8);
+}
+
+onMounted(() => {
+  void resource.run();
+  nodes.fetchList().catch(() => undefined);
+});
 
 function open(id: string): void {
   void router.push({ name: "session-workspace", params: { id } });
@@ -211,11 +228,18 @@ function onCreated(session: SessionDetail): void {
             <span class="card-name">{{ s.name }}</span>
             <StatusBadge :status="s.status" kind="session" />
           </span>
-          <code class="card-path" :title="s.workspace">{{ s.workspace }}</code>
+          <!-- The container truncates at the start; the <bdi> keeps the path
+               one left-to-right run inside it, so the bidi algorithm cannot
+               move its leading "/" to the end (issue 105). -->
+          <code class="card-path" :title="s.workspace"
+            ><bdi dir="ltr">{{ s.workspace }}</bdi></code
+          >
           <!-- Node, runtime and last activity on one secondary line. All three
                are kept: the table shows them, so the phone shows them. -->
           <span class="card-meta">
-            <span>{{ s.node_id }}</span>
+            <span class="card-node" :title="s.node_id">{{
+              nodeLabel(s.node_id)
+            }}</span>
             <span aria-hidden="true">·</span>
             <span>{{ s.runtime }}</span>
             <span aria-hidden="true">·</span>
@@ -252,7 +276,7 @@ function onCreated(session: SessionDetail): void {
           <!-- The path as a second line. -->
           <small :title="s.workspace">{{ s.workspace }}</small>
         </td>
-        <td>{{ s.node_id }}</td>
+        <td :title="s.node_id">{{ nodeLabel(s.node_id) }}</td>
         <td>{{ s.runtime }}</td>
         <td><StatusBadge :status="s.status" kind="session" /></td>
         <td :title="s.last_activity_at ?? ''">
@@ -396,7 +420,11 @@ function onCreated(session: SessionDetail): void {
   flex-shrink: 0;
 }
 /* Truncated at the start: the end of a workspace path is the part that
-   identifies it, which is the opposite of the session name above. */
+   identifies it, which is the opposite of the session name above. The
+   right-to-left direction only moves the ellipsis to the start; the path
+   itself is an isolated left-to-right <bdi>, because without the isolation
+   a leading "/" is a neutral character in an RTL paragraph and is drawn at
+   the end (`/srv/demo` rendered as `srv/demo/`, issue 105). */
 .card-path {
   font-family: var(--font-mono);
   font-size: 12px;

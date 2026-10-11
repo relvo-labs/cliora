@@ -9,10 +9,14 @@ import type {
   SessionDetail,
 } from "../../api/dto";
 import { useBreakpoint } from "../../composables/useBreakpoint";
+import { errorGuidance } from "../../utils/errorCatalog";
 import { useFavoritesStore } from "../../stores/favorites";
 import { useNodesStore } from "../../stores/nodes";
 import { usePreferencesStore } from "../../stores/preferences";
 import { useSessionsStore } from "../../stores/sessions";
+import UiButton from "../ui/UiButton.vue";
+import UiDialog from "../ui/UiDialog.vue";
+import UiInlineNotice from "../ui/UiInlineNotice.vue";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{
@@ -45,6 +49,21 @@ const availableRuntimes = computed(() =>
 );
 const enabledRoots = computed(() =>
   (nodeDetail.value?.workspace_roots ?? []).filter((r) => r.is_enabled),
+);
+
+// The node's execution posture (ADR 0023), shown before the session exists
+// (#106). Same data and same wording as the work header, which shows it after:
+// the node reports it, the console only repeats it, and there is nothing here
+// that could set it. Absent or unread means nothing is shown — a guessed
+// posture is worse than none.
+const privilegedNode = computed(
+  () => nodeDetail.value?.privileged_terminal === true,
+);
+const sandboxBypassed = computed(
+  () =>
+    runtime.value !== "" &&
+    availableRuntimes.value.find((r) => r.runtime === runtime.value)
+      ?.sandbox_bypass === true,
 );
 
 const canSubmit = computed(
@@ -88,9 +107,9 @@ const favoriteToggleBusy = computed(
 );
 
 const UNUSABLE_REASON: Record<Exclude<FavoriteUsability, "usable">, string> = {
-  node_offline: "Node is offline — a session cannot be started",
-  node_disabled: "Node is disabled — unavailable",
-  outside_allowed_root: "No longer inside an allowed root",
+  node_offline: "Node 已離線，無法建立 Session",
+  node_disabled: "Node 已停用，無法使用",
+  outside_allowed_root: "已不在允許的根目錄內",
 };
 
 function reasonFor(usability: FavoriteUsability): string | null {
@@ -115,13 +134,13 @@ async function toggleFavorite(): Promise<void> {
 function favoriteErrorMessage(err: ApiError): string {
   switch (err.code) {
     case "WORKSPACE_OUTSIDE_ALLOWED_ROOT":
-      return "That path is not inside an allowed root, so it cannot be saved.";
+      return "此路徑不在允許的根目錄內，無法儲存。";
     case "WORKSPACE_INVALID":
-      return "That path cannot be saved. Use an absolute path with no '..'.";
+      return "此路徑無法儲存：請使用不含「..」的絕對路徑。";
     case "NODE_DISABLED":
-      return "That node is disabled, so it cannot be saved.";
+      return "此 Node 已停用，無法儲存。";
     default:
-      return err.message || "Could not save the favourite.";
+      return "無法儲存到我的最愛。";
   }
 }
 
@@ -136,7 +155,7 @@ watch(
       try {
         nodeList.value = await nodes.fetchList();
       } catch {
-        error.value = "Could not load nodes.";
+        error.value = "無法載入 Node 清單。";
       }
     }
   },
@@ -153,7 +172,7 @@ watch(nodeId, async (id) => {
     const root = enabledRoots.value[0];
     if (root) workspace.value = root.path;
   } catch {
-    error.value = "Could not load node details.";
+    error.value = "無法載入 Node 詳細資料。";
   }
 });
 
@@ -242,7 +261,7 @@ async function submit(): Promise<void> {
     error.value =
       caught instanceof ApiError
         ? sessionErrorMessage(caught)
-        : "Could not start the session.";
+        : "無法建立 Session。";
   } finally {
     busy.value = false;
   }
@@ -251,31 +270,42 @@ async function submit(): Promise<void> {
 function sessionErrorMessage(err: ApiError): string {
   switch (err.code) {
     case "NODE_OFFLINE":
-      return "That node is offline; pick an online node.";
+      return "這台 Node 已離線，請改選在線的 Node。";
     case "SESSION_LIMIT_REACHED":
-      return "This node has reached its session limit.";
+      return "這台 Node 已達 Session 數量上限。";
     case "WORKSPACE_OUTSIDE_ALLOWED_ROOT":
-      return "The workspace must be inside an allowed root.";
+      return "工作目錄必須位於允許的根目錄內。";
     case "RUNTIME_NOT_FOUND":
-      return "That runtime is not available on this node.";
+      return "這台 Node 上沒有這個 Runtime。";
     case "REQUEST_TIMEOUT":
-      return "The node did not respond in time. Try again.";
+      return "Node 未在時限內回應，請重試。";
     default:
-      return err.message || "Could not start the session.";
+      // The catalog's wording rather than the server's message, which is
+      // English and is not this dialog's to show verbatim.
+      return errorGuidance(err.code).cause;
   }
 }
 </script>
 
 <template>
-  <div v-if="open" class="overlay" role="dialog" aria-modal="true">
-    <div class="dialog">
-      <h2>New session</h2>
+  <!-- UiDialog owns the name, the focus trap, Escape and focus return (#112).
+       `busy` blocks both dismissals while the create request is in flight.
+       The title, the submit label and the session-name placeholder stay as
+       they were: other full-stack specs select the dialog by them. -->
+  <UiDialog
+    class="new-session"
+    :open="open"
+    title="New session"
+    :busy="busy"
+    @cancel="emit('cancel')"
+  >
+    <div class="form">
       <p v-if="error" class="error" role="alert">{{ error }}</p>
 
       <label>
         Node
         <select v-model="nodeId">
-          <option value="" disabled>Select an online node…</option>
+          <option value="" disabled>選擇一台在線的 Node…</option>
           <option v-for="n in selectableNodes" :key="n.id" :value="n.id">
             {{ n.name }} ({{ n.hostname }})
           </option>
@@ -285,34 +315,36 @@ function sessionErrorMessage(err: ApiError): string {
       <label>
         Runtime
         <select v-model="runtime" :disabled="!nodeDetail">
-          <option value="" disabled>Select a runtime…</option>
+          <option value="" disabled>選擇 Runtime…</option>
+          <!-- Marked in the option, so the posture is visible while choosing
+               and not only after. -->
           <option
             v-for="r in availableRuntimes"
             :key="r.runtime"
             :value="r.runtime"
           >
-            {{ r.runtime }}
+            {{ r.runtime }}{{ r.sandbox_bypass ? "（沙箱已停用）" : "" }}
           </option>
         </select>
       </label>
       <p v-if="nodeDetail && availableRuntimes.length === 0" class="hint">
-        No runtimes detected on this node.
+        這台 Node 沒有偵測到可用的 Runtime。
       </p>
 
       <!-- Shortcuts: fill the workspace field, never bypass its authorization. -->
-      <section v-if="showShortcuts" class="shortcuts" aria-label="Shortcuts">
-        <p v-if="shortcutsLoading" class="hint">Loading shortcuts…</p>
+      <section v-if="showShortcuts" class="shortcuts" aria-label="工作目錄捷徑">
+        <p v-if="shortcutsLoading" class="hint">正在載入捷徑…</p>
         <p v-else-if="shortcutsFailed" class="hint">
-          Could not load shortcuts.
+          無法載入捷徑。
           <button type="button" class="link" @click="favorites.load()">
-            Retry
+            重試
           </button>
         </p>
         <template v-else>
           <div class="group">
-            <h3 id="recent-heading">Recently used</h3>
+            <h3 id="recent-heading">最近使用</h3>
             <p v-if="recentForNode.length === 0" class="hint">
-              No recent workspaces on this node yet.
+              這台 Node 還沒有最近使用的工作目錄。
             </p>
             <ul v-else aria-labelledby="recent-heading">
               <li v-for="item in recentForNode" :key="item.path">
@@ -324,10 +356,10 @@ function sessionErrorMessage(err: ApiError): string {
                 >
                   <span class="path">{{ item.path }}</span>
                   <span v-if="!item.node_enabled" class="why">
-                    Node is disabled — unavailable
+                    {{ UNUSABLE_REASON.node_disabled }}
                   </span>
                   <span v-else-if="!item.node_online" class="why">
-                    Node is offline — a session cannot be started
+                    {{ UNUSABLE_REASON.node_offline }}
                   </span>
                 </button>
               </li>
@@ -335,9 +367,9 @@ function sessionErrorMessage(err: ApiError): string {
           </div>
 
           <div class="group">
-            <h3 id="favorites-heading">Favourites</h3>
+            <h3 id="favorites-heading">我的最愛</h3>
             <p v-if="favoritesForNode.length === 0" class="hint">
-              No favourites yet. Star a workspace below to save it.
+              還沒有我的最愛。在下方工作目錄欄按星號即可儲存。
             </p>
             <ul v-else aria-labelledby="favorites-heading">
               <li v-for="item in favoritesForNode" :key="item.id">
@@ -359,7 +391,7 @@ function sessionErrorMessage(err: ApiError): string {
                   class="link"
                   @click="favorites.remove(item.id)"
                 >
-                  Remove
+                  移除
                 </button>
               </li>
             </ul>
@@ -368,12 +400,12 @@ function sessionErrorMessage(err: ApiError): string {
       </section>
 
       <label>
-        Workspace
+        工作目錄
         <span class="field">
           <input
             v-model="workspace"
             type="text"
-            placeholder="/path/inside/an/allowed/root"
+            placeholder="允許根目錄內的絕對路徑"
             list="roots"
           />
           <button
@@ -383,8 +415,8 @@ function sessionErrorMessage(err: ApiError): string {
             :disabled="!nodeId || workspace.trim() === '' || favoriteToggleBusy"
             :aria-label="
               currentIsFavorite
-                ? `Remove ${workspace.trim()} from favourites`
-                : `Add ${workspace.trim()} to favourites`
+                ? `從我的最愛移除 ${workspace.trim()}`
+                : `將 ${workspace.trim()} 加入我的最愛`
             "
             @click="toggleFavorite"
           >
@@ -401,44 +433,57 @@ function sessionErrorMessage(err: ApiError): string {
       </label>
 
       <label>
-        Session name
+        Session 名稱
         <input v-model="name" type="text" placeholder="e.g. refactor-api" />
       </label>
 
-      <div class="buttons">
-        <button class="ghost" :disabled="busy" @click="emit('cancel')">
-          Cancel
-        </button>
-        <button class="primary" :disabled="!canSubmit" @click="submit">
-          {{ busy ? "Starting…" : "Start" }}
-        </button>
-      </div>
+      <!-- Last in the form, directly above the actions: ADR 0023 D10 wants
+           the posture in view before the user commits, and this is the spot
+           the eye passes on the way to the submit button. A status region,
+           so choosing a node that carries a warning is announced. -->
+      <UiInlineNotice
+        v-if="privilegedNode || sandboxBypassed"
+        class="posture-notice"
+        tone="warning"
+        title="這台 Node 的執行姿態（ADR 0023）"
+      >
+        <p v-if="sandboxBypassed" data-posture="sandbox">
+          沙箱：已停用 — {{ runtime }} 在這台 Node
+          上不經核准流程、不受沙箱限制。
+        </p>
+        <p v-if="privilegedNode" data-posture="privileged">
+          此 Node 可提權（sudo）— 系統終端機可經 sudo 取得 root。
+        </p>
+      </UiInlineNotice>
     </div>
-  </div>
+
+    <template #actions>
+      <UiButton
+        variant="secondary"
+        :disabled="busy"
+        disabled-reason="正在建立 Session"
+        @click="emit('cancel')"
+      >
+        取消
+      </UiButton>
+      <UiButton
+        variant="primary"
+        :disabled="!canSubmit"
+        :busy="busy"
+        disabled-reason="請先選擇 Node 與 Runtime，並填寫工作目錄與 Session 名稱"
+        @click="submit"
+      >
+        {{ busy ? "Starting…" : "Start" }}
+      </UiButton>
+    </template>
+  </UiDialog>
 </template>
 
 <style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: var(--surface-scrim);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 50;
-}
-.dialog {
-  width: min(440px, 92vw);
-  background: var(--surface-default);
-  border-radius: var(--radius-dialog);
-  padding: 24px;
+.form {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-.dialog h2 {
-  margin: 0;
-  font-size: 18px;
 }
 label {
   display: flex;
@@ -454,6 +499,7 @@ input {
   border: 1px solid var(--border-control);
   border-radius: var(--radius-control);
   background: var(--surface-raised);
+  color: var(--text-primary);
   font-size: 14px;
 }
 .hint {
@@ -564,36 +610,37 @@ input {
   color: var(--status-error-fg);
   font-size: 13px;
 }
-.buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 4px;
+.posture-notice p {
+  margin: 0;
 }
-.ghost,
-.primary {
-  padding: 8px 16px;
-  border-radius: var(--radius-control);
-  font-weight: 600;
-}
-.ghost {
-  border: 1px solid var(--border-control);
-  background: var(--surface-raised);
-  color: var(--text-primary);
-}
-.primary {
-  border: 0;
-  background: var(--accent-strong);
-  color: var(--text-on-accent);
-}
-/* A colour, not an opacity. Opacity dims the label along with everything
-   else, so a disabled control stops being able to say what it is or why it is
-   disabled — and "disabled keeps an understandable reason" is the rule
-   (--text-disabled is measured at >= 3:1 on all three surfaces for this). */
-.primary:disabled {
-  background: var(--surface-raised);
-  border: 1px solid var(--border-control);
-  color: var(--text-disabled);
-  cursor: not-allowed;
+/* Phone (#106): the backdrop follows the height the software keyboard leaves,
+   the same `--viewport-usable-height` the shell sizes itself by (plan/29
+   MS-02), so the panel — which scrolls inside itself at `max-height: 100%` —
+   ends above the keyboard rather than under it. The actions stay pinned to
+   the bottom of that scrolling panel, so the submit button is reachable while
+   the session name is being typed. Without the property (no visualViewport)
+   this is the backdrop's own full height, exactly as before. */
+@media (max-width: 767px) {
+  /* Two classes: UiDialog's own `.backdrop { inset: 0 }` has the same
+     specificity as one and would win on source order. */
+  .backdrop.new-session {
+    bottom: auto;
+    height: var(--viewport-usable-height, 100%);
+  }
+  /* Focus scrolling (the browser bringing the typed-into field into view as
+     the keyboard opens) stops short of the pinned actions. */
+  .backdrop.new-session :deep(.panel) {
+    scroll-padding-bottom: 88px;
+  }
+  /* -24px: a sticky box stops at the scrollport's content edge, which is the
+     panel's 24px padding short of its visible edge. */
+  .backdrop.new-session :deep(.actions) {
+    position: sticky;
+    bottom: -24px;
+    margin: 22px -24px -24px;
+    padding: 12px 24px calc(12px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface-raised);
+    border-top: 1px solid var(--border-subtle);
+  }
 }
 </style>
