@@ -32,17 +32,17 @@
   /* Surfaces and boundaries */
   --surface-canvas: #111518;
   --surface-default: #191e22;
-  --surface-raised: #20272c;
+  --surface-raised: #2b3237;
   --surface-scrim: #00000099;
   --border-subtle: #2b3339;
-  --border-control: #647784;
+  --border-control: #697c89;
   --focus-ring: #81c9b9;
   /* Text */
   --text-primary: #e4e9eb;
   --text-secondary: #8e9aa3;
   --text-on-accent: #111518;
   --text-on-terminal: #c9d3d8;
-  --text-disabled: #6d767d;
+  --text-disabled: #727b82;
   /* Accent and actions */
   --accent-primary: #81c9b9;
   --accent-strong: #81c9b9;
@@ -163,17 +163,17 @@
   /* Surfaces and boundaries */
   --surface-canvas: #111518;
   --surface-default: #191e22;
-  --surface-raised: #20272c;
+  --surface-raised: #2b3237;
   --surface-scrim: #00000099;
   --border-subtle: #2b3339;
-  --border-control: #647784;
+  --border-control: #697c89;
   --focus-ring: #81c9b9;
   /* Text */
   --text-primary: #e4e9eb;
   --text-secondary: #8e9aa3;
   --text-on-accent: #111518;
   --text-on-terminal: #c9d3d8;
-  --text-disabled: #6d767d;
+  --text-disabled: #727b82;
   /* Accent and actions */
   --accent-primary: #81c9b9;
   --accent-strong: #81c9b9;
