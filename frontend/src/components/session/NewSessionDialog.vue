@@ -290,12 +290,12 @@ function sessionErrorMessage(err: ApiError): string {
 <template>
   <!-- UiDialog owns the name, the focus trap, Escape and focus return (#112).
        `busy` blocks both dismissals while the create request is in flight.
-       The title, the submit label and the session-name placeholder stay as
-       they were: other full-stack specs select the dialog by them. -->
+       The title is the trigger's own wording, so the dialog is named for the
+       button that opened it. -->
   <UiDialog
     class="new-session"
     :open="open"
-    title="New session"
+    title="建立 Session"
     :busy="busy"
     @cancel="emit('cancel')"
   >
@@ -434,7 +434,7 @@ function sessionErrorMessage(err: ApiError): string {
 
       <label>
         Session 名稱
-        <input v-model="name" type="text" placeholder="e.g. refactor-api" />
+        <input v-model="name" type="text" placeholder="例如 refactor-api" />
       </label>
 
       <!-- Last in the form, directly above the actions: ADR 0023 D10 wants
@@ -473,7 +473,7 @@ function sessionErrorMessage(err: ApiError): string {
         disabled-reason="請先選擇 Node 與 Runtime，並填寫工作目錄與 Session 名稱"
         @click="submit"
       >
-        {{ busy ? "Starting…" : "Start" }}
+        {{ busy ? "建立中…" : "建立" }}
       </UiButton>
     </template>
   </UiDialog>

@@ -371,7 +371,7 @@ describe("NewSessionDialog terminal size (#115)", () => {
     const selects = wrapper.findAll("select");
     await selects[1].setValue("claude");
     await wrapper
-      .find('input[placeholder="e.g. refactor-api"]')
+      .find('input[placeholder="例如 refactor-api"]')
       .setValue("phone");
     await wrapper.find("button.primary").trigger("click");
     await flush();
@@ -533,7 +533,7 @@ describe("NewSessionDialog accessibility (#112)", () => {
     expect(labelledBy, "the dialog has no accessible name").toBeTruthy();
     const title = document.getElementById(labelledBy!);
     expect(title?.tagName).toBe("H2");
-    expect(title?.textContent?.trim()).toBe("New session");
+    expect(title?.textContent?.trim()).toBe("建立 Session");
     wrapper.unmount();
   });
 
@@ -681,13 +681,41 @@ describe("NewSessionDialog posture and copy (#106)", () => {
     expect(form.lastElementChild).toBe(notice.element);
   });
 
+  it("names the submit 建立, says 建立中… while busy, and shows a localized example name", async () => {
+    let finish: (value: unknown) => void = () => undefined;
+    impl.createSession = () => new Promise((resolve) => (finish = resolve));
+    const wrapper = await openWithNodeSelected();
+    await wrapper.findAll("select")[1].setValue("claude");
+    const name = wrapper.find('input[placeholder="例如 refactor-api"]');
+    expect(name.exists(), "session-name placeholder is not localized").toBe(
+      true,
+    );
+    await name.setValue("demo");
+    const submit = wrapper.find("button.primary");
+    expect(submit.text()).toBe("建立");
+    await submit.trigger("click");
+    await flush();
+    expect(submit.text()).toBe("建立中…");
+    finish({ id: "s-1" });
+    await flush();
+  });
+
   it("speaks the app's language", async () => {
     const wrapper = await openWithNodeSelected();
     const text = wrapper.text();
-    for (const word of ["取消", "工作目錄", "Session 名稱", "最近使用"]) {
+    for (const word of [
+      "建立 Session",
+      "取消",
+      "工作目錄",
+      "Session 名稱",
+      "最近使用",
+    ]) {
       expect(text, `missing ${word}`).toContain(word);
     }
     for (const english of [
+      "New session",
+      "Start",
+      "e.g.",
       "Cancel",
       "Session name",
       "Recently used",

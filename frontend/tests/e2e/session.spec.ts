@@ -31,7 +31,7 @@ async function signIn(page: Page): Promise<void> {
 function newSessionDialog(page: Page) {
   return page
     .getByRole("dialog")
-    .filter({ has: page.getByRole("heading", { name: "New session" }) });
+    .filter({ has: page.getByRole("heading", { name: "建立 Session" }) });
 }
 
 // The page's create action. On an empty list the empty state offers the same
@@ -165,8 +165,8 @@ async function startSessionFromList(page: Page, name: string): Promise<string> {
   await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
   await runtime.selectOption({ index: 1 });
   await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
-  await dialog.locator('input[placeholder="e.g. refactor-api"]').fill(name);
-  await dialog.getByRole("button", { name: "Start" }).click();
+  await dialog.locator('input[placeholder="例如 refactor-api"]').fill(name);
+  await dialog.getByRole("button", { name: "建立", exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
   return page.url().split("/").pop() ?? "";
 }
@@ -271,7 +271,7 @@ test.describe("session & terminal", () => {
   // this models one the way keyboard-chrome.spec.ts does: a visualViewport
   // whose height drops while the layout viewport stays put. Emulation — only a
   // phone can confirm a real keyboard's timing.
-  test("create dialog: Start stays above an emulated phone keyboard", async ({
+  test("create dialog: 建立 stays above an emulated phone keyboard", async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 664 });
@@ -293,7 +293,7 @@ test.describe("session & terminal", () => {
     await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
-    const name = dialog.locator('input[placeholder="e.g. refactor-api"]');
+    const name = dialog.locator('input[placeholder="例如 refactor-api"]');
     await name.fill("e2e-keyboard-dialog");
 
     const keyboardTop = 664 - 300;
@@ -311,11 +311,11 @@ test.describe("session & terminal", () => {
     await name.blur();
     await name.focus();
 
-    const start = dialog.getByRole("button", { name: "Start" });
+    const start = dialog.getByRole("button", { name: "建立", exact: true });
     await expect(start).toBeEnabled();
     await expect
       .poll(async () => (await start.boundingBox())?.y ?? Infinity, {
-        message: "Start is hidden behind the emulated keyboard",
+        message: "建立 is hidden behind the emulated keyboard",
       })
       .toBeLessThanOrEqual(keyboardTop - 44);
     const box = (await start.boundingBox())!;
@@ -345,9 +345,9 @@ test.describe("session & terminal", () => {
     const workspace = dialog.locator('input[list="roots"]');
     await expect(workspace).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-terminal");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     // Landed on the workspace route as the writer.
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
@@ -413,9 +413,9 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-tabs");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -512,9 +512,9 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-layout");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -624,13 +624,13 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-fill");
     // The node report decides whether the image drop bar is shown, and the bar
     // arriving after the first fit takes two rows off the terminal. Measured
     // before it, the round trip below reads that late change as its own (#116).
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -810,10 +810,10 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-shell");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     const cliUrl = page.url();
@@ -933,10 +933,10 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-shell-reload");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
 
     const entry = await shellEntry(page, posture);
@@ -999,10 +999,10 @@ test.describe("session & terminal", () => {
     await dialog.locator("select").nth(1).selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-scroll");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
