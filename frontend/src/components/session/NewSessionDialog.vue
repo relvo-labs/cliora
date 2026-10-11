@@ -44,11 +44,20 @@ const error = ref("");
 const selectableNodes = computed(() =>
   nodeList.value.filter((n) => n.status === "online"),
 );
+// The report for the node that is selected *now*, or nothing. Runtime and root
+// options, the posture warning and submit all read this rather than
+// `nodeDetail`, so a report for any other node — however it got there — can
+// neither describe the selection nor be submitted against (#151 review).
+const selectedDetail = computed(() =>
+  nodeDetail.value !== null && nodeDetail.value.id === nodeId.value
+    ? nodeDetail.value
+    : null,
+);
 const availableRuntimes = computed(() =>
-  (nodeDetail.value?.runtimes ?? []).filter((r) => r.available),
+  (selectedDetail.value?.runtimes ?? []).filter((r) => r.available),
 );
 const enabledRoots = computed(() =>
-  (nodeDetail.value?.workspace_roots ?? []).filter((r) => r.is_enabled),
+  (selectedDetail.value?.workspace_roots ?? []).filter((r) => r.is_enabled),
 );
 
 // The node's execution posture (ADR 0023), shown before the session exists
@@ -57,7 +66,7 @@ const enabledRoots = computed(() =>
 // that could set it. Absent or unread means nothing is shown — a guessed
 // posture is worse than none.
 const privilegedNode = computed(
-  () => nodeDetail.value?.privileged_terminal === true,
+  () => selectedDetail.value?.privileged_terminal === true,
 );
 const sandboxBypassed = computed(
   () =>
@@ -70,6 +79,7 @@ const canSubmit = computed(
   () =>
     !busy.value &&
     nodeId.value !== "" &&
+    selectedDetail.value !== null &&
     runtime.value !== "" &&
     workspace.value.trim() !== "" &&
     name.value.trim() !== "",
@@ -147,6 +157,9 @@ function favoriteErrorMessage(err: ApiError): string {
 watch(
   () => props.open,
   async (open) => {
+    // Closing drops any node report still in flight, so it cannot land on
+    // the next opening.
+    if (!open) detailRequest += 1;
     if (open) {
       reset();
       // Loaded fresh on every open: usability is recomputed server-side per read,
@@ -161,22 +174,38 @@ watch(
   },
 );
 
+// One node report per selection, and only the newest one counts. Selecting A
+// then B issues two requests whose answers can arrive in either order; without
+// this, A's late answer replaced B's and the posture warning, the runtime and
+// the root described A while the create went to B (#151 review). Bumped on
+// every selection change and on close/reset, so a request from before a
+// reopen cannot land either — the same guard SessionWorkspaceView uses for
+// its posture read.
+const DETAIL_ERROR = "無法載入 Node 詳細資料。";
+let detailRequest = 0;
+
 watch(nodeId, async (id) => {
+  const request = ++detailRequest;
   nodeDetail.value = null;
   runtime.value = "";
   workspace.value = "";
+  // The previous node's load failure says nothing about this one.
+  if (error.value === DETAIL_ERROR) error.value = "";
   if (!id) return;
   try {
-    nodeDetail.value = await nodes.fetchNode(id);
+    const detail = await nodes.fetchNode(id);
+    if (request !== detailRequest) return;
+    nodeDetail.value = detail;
     // Pre-select the first enabled root so the path is a valid default.
     const root = enabledRoots.value[0];
     if (root) workspace.value = root.path;
   } catch {
-    error.value = "無法載入 Node 詳細資料。";
+    if (request === detailRequest) error.value = DETAIL_ERROR;
   }
 });
 
 function reset(): void {
+  detailRequest += 1;
   nodeId.value = "";
   runtime.value = "";
   workspace.value = "";
@@ -314,7 +343,7 @@ function sessionErrorMessage(err: ApiError): string {
 
       <label>
         Runtime
-        <select v-model="runtime" :disabled="!nodeDetail">
+        <select v-model="runtime" :disabled="!selectedDetail">
           <option value="" disabled>選擇 Runtime…</option>
           <!-- Marked in the option, so the posture is visible while choosing
                and not only after. -->
@@ -327,7 +356,7 @@ function sessionErrorMessage(err: ApiError): string {
           </option>
         </select>
       </label>
-      <p v-if="nodeDetail && availableRuntimes.length === 0" class="hint">
+      <p v-if="selectedDetail && availableRuntimes.length === 0" class="hint">
         這台 Node 沒有偵測到可用的 Runtime。
       </p>
 

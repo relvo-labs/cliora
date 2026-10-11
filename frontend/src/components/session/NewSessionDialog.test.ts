@@ -23,6 +23,9 @@ const { impl } = vi.hoisted(() => ({
     createSession: null as null | ((input: unknown) => Promise<unknown>),
     // The node report the dialog reads after a node is chosen; null = default.
     node: null as null | (() => NodeDetail),
+    // Per-id node reports and a two-node list, for the selection races.
+    getNode: null as null | ((id: string) => Promise<NodeDetail>),
+    listNodes: null as null | (() => Promise<NodeSummary[]>),
     measure: null as
       | null
       | ((
@@ -49,9 +52,12 @@ vi.mock("../../stores/auth", () => ({
     addFavorite: (input: unknown) => impl.addFavorite!(input),
     removeFavorite: (id: string) => impl.removeFavorite!(id),
     createSession: (input: unknown) => impl.createSession!(input),
-    listNodes: async (): Promise<NodeSummary[]> => [nodeSummary()],
-    getNode: async (): Promise<NodeDetail> =>
-      impl.node ? impl.node() : nodeDetail(),
+    listNodes: async (): Promise<NodeSummary[]> =>
+      impl.listNodes ? impl.listNodes() : [nodeSummary()],
+    getNode: (id: string): Promise<NodeDetail> =>
+      impl.getNode
+        ? impl.getNode(id)
+        : Promise.resolve(impl.node ? impl.node() : nodeDetail()),
   }),
 }));
 
@@ -724,5 +730,232 @@ describe("NewSessionDialog posture and copy (#106)", () => {
     ]) {
       expect(text, `still English: ${english}`).not.toContain(english);
     }
+  });
+});
+
+// #151 review: the node report is fetched per selection, and an older report
+// could land after a newer selection — so the posture warning, the runtime and
+// root options described node A while the create went to node B. Only the
+// report for the node currently selected may be shown or submitted against.
+describe("NewSessionDialog posture is bound to the selected node (#151 review)", () => {
+  const A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+
+  function report(id: string, risky: boolean): NodeDetail {
+    return {
+      id,
+      name: id === A ? "node-a" : "node-b",
+      hostname: id === A ? "node-a" : "node-b",
+      status: "online",
+      privileged_terminal: risky,
+      runtimes: [{ runtime: "codex", available: true, sandbox_bypass: risky }],
+      // The same root on both, so a create is valid whichever report is shown.
+      workspace_roots: [{ path: "/shared", is_enabled: true }],
+    } as unknown as NodeDetail;
+  }
+
+  interface Pending {
+    resolve: (detail: NodeDetail) => void;
+    reject: (error: unknown) => void;
+  }
+  // Every getNode call, in order, held until the test settles it.
+  let calls: Array<{ id: string } & Pending>;
+  let sent: Array<Record<string, unknown>>;
+
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    impl.listFavorites = async () => [];
+    impl.listRecentWorkspaces = async () => [];
+    impl.listNodes = async () =>
+      [A, B].map(
+        (id) =>
+          ({
+            id,
+            name: id === A ? "node-a" : "node-b",
+            hostname: id === A ? "node-a" : "node-b",
+            status: "online",
+          }) as unknown as NodeSummary,
+      );
+    calls = [];
+    impl.getNode = (id) =>
+      new Promise<NodeDetail>((resolve, reject) =>
+        calls.push({ id, resolve, reject }),
+      );
+    sent = [];
+    impl.createSession = async (input) => {
+      sent.push(input as Record<string, unknown>);
+      return { id: "s-new" };
+    };
+  });
+  afterEach(() => {
+    impl.getNode = null;
+    impl.listNodes = null;
+  });
+
+  async function openDialog() {
+    const wrapper = mount(NewSessionDialog, { props: { open: false } });
+    await wrapper.setProps({ open: true });
+    await flush();
+    return wrapper;
+  }
+  async function choose(wrapper: ReturnType<typeof mount>, id: string) {
+    await wrapper.findAll("select")[0].setValue(id);
+    await flush();
+  }
+  function settle(index: number, detail: NodeDetail) {
+    calls[index].resolve(detail);
+    return flush();
+  }
+  function observe(wrapper: ReturnType<typeof mount>) {
+    return {
+      privileged: wrapper.find('[data-posture="privileged"]').exists(),
+      sandbox: wrapper.find('[data-posture="sandbox"]').exists(),
+      notice: wrapper.find(".posture-notice").exists(),
+      codexOption:
+        wrapper.find('option[value="codex"]').exists() &&
+        wrapper.find('option[value="codex"]').text(),
+      submitDisabled:
+        wrapper.find("button.primary").attributes("disabled") !== undefined,
+    };
+  }
+  async function fillAndSubmit(wrapper: ReturnType<typeof mount>) {
+    await wrapper.findAll("select")[1].setValue("codex");
+    await wrapper
+      .find('input[placeholder="例如 refactor-api"]')
+      .setValue("race");
+    await flush();
+    await wrapper.find("button.primary").trigger("click");
+    await flush();
+  }
+
+  // The reviewer's probes: A is chosen, then B; B's report lands first and
+  // A's last. Run with B risky and with B ordinary — either way round, the
+  // late report for A must not speak for B.
+  for (const riskyB of [true, false]) {
+    it(`a late report for A does not overwrite selected B (B risky=${riskyB})`, async () => {
+      const wrapper = await openDialog();
+      await choose(wrapper, A);
+      await choose(wrapper, B);
+      await settle(1, report(B, riskyB));
+      await settle(0, report(A, !riskyB));
+
+      const seen = observe(wrapper);
+      expect(seen.privileged).toBe(riskyB);
+      expect(seen.sandbox).toBe(false); // no runtime chosen yet
+      expect(seen.codexOption).toBe(riskyB ? "codex（沙箱已停用）" : "codex");
+
+      await fillAndSubmit(wrapper);
+      expect(observe(wrapper).sandbox).toBe(riskyB);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].node_id).toBe(B);
+    });
+  }
+
+  it("the other order: A lands first, then B — nothing about A remains, and nothing is claimed while B is pending", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    await choose(wrapper, B);
+    // A's report arrives while B is still pending: it describes a node that
+    // is no longer selected, so nothing is shown and nothing can be sent.
+    await settle(0, report(A, true));
+    let seen = observe(wrapper);
+    expect(seen.notice).toBe(false);
+    expect(seen.codexOption).toBe(false);
+    expect(seen.submitDisabled).toBe(true);
+    expect(wrapper.find('input[list="roots"]').element).toHaveProperty(
+      "value",
+      "",
+    );
+
+    await settle(1, report(B, false));
+    seen = observe(wrapper);
+    expect(seen.notice).toBe(false);
+    expect(seen.codexOption).toBe("codex");
+    await fillAndSubmit(wrapper);
+    expect(sent.map((s) => s.node_id)).toEqual([B]);
+  });
+
+  it("claims nothing and refuses to submit while the selected node's report is pending", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, B);
+    await wrapper.find('input[placeholder="例如 refactor-api"]').setValue("x");
+    await flush();
+    const seen = observe(wrapper);
+    expect(seen.notice).toBe(false);
+    expect(seen.codexOption).toBe(false);
+    expect(seen.submitDisabled).toBe(true);
+    expect(wrapper.findAll("select")[1].attributes("disabled")).toBeDefined();
+  });
+
+  it("a failed report for the selected node says so, claims no posture, and blocks submit", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    await choose(wrapper, B);
+    calls[1].reject(new Error("boom"));
+    await flush();
+    // A late success for A must not stand in for the failed B.
+    await settle(0, report(A, true));
+    expect(wrapper.find('[role="alert"]').text()).toContain(
+      "無法載入 Node 詳細資料",
+    );
+    const seen = observe(wrapper);
+    expect(seen.notice).toBe(false);
+    expect(seen.codexOption).toBe(false);
+    expect(seen.submitDisabled).toBe(true);
+  });
+
+  it("a stale failure for A neither raises an error nor hides B's report", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    await choose(wrapper, B);
+    await settle(1, report(B, true));
+    calls[0].reject(new Error("late"));
+    await flush();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(observe(wrapper).privileged).toBe(true);
+  });
+
+  it("choosing another node clears the previous node's load error", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    calls[0].reject(new Error("boom"));
+    await flush();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(true);
+    await choose(wrapper, B);
+    await settle(1, report(B, false));
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+  });
+
+  it("a report still in flight when the dialog closes is dropped on reopen", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    await wrapper.setProps({ open: false });
+    await flush();
+    await wrapper.setProps({ open: true });
+    await flush();
+    await settle(0, report(A, true));
+    const seen = observe(wrapper);
+    expect(
+      (wrapper.findAll("select")[0].element as HTMLSelectElement).value,
+    ).toBe("");
+    expect(seen.notice).toBe(false);
+    expect(seen.codexOption).toBe(false);
+    expect(seen.submitDisabled).toBe(true);
+  });
+
+  it("re-choosing the same node after a reopen ignores the earlier, older report", async () => {
+    const wrapper = await openDialog();
+    await choose(wrapper, A);
+    await wrapper.setProps({ open: false });
+    await flush();
+    await wrapper.setProps({ open: true });
+    await flush();
+    await choose(wrapper, A);
+    // The current request (index 1) says ordinary; the old one, from before
+    // the close, says privileged and lands last. Same id, different request.
+    await settle(1, report(A, false));
+    await settle(0, report(A, true));
+    expect(observe(wrapper).notice).toBe(false);
+    expect(observe(wrapper).codexOption).toBe("codex");
   });
 });
