@@ -2147,3 +2147,57 @@ describe("Repair 1 upload continuation ownership", () => {
     },
   );
 });
+
+describe("T2 closure pending return detail", () => {
+  it("A's termination result survives returning A detail completing after termination", async () => {
+    const B = "66666666-6666-4666-8666-666666666666";
+    let finishEnd!: (value: SessionDetail) => void;
+    let finishReturn!: (value: SessionDetail) => void;
+    const end = new Promise<SessionDetail>((r) => {
+      finishEnd = r;
+    });
+    const back = new Promise<SessionDetail>((r) => {
+      finishReturn = r;
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ id: B }))
+      .mockReturnValueOnce(back);
+    const wrapper = await render(getSession);
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    expect(wrapper.find(".veil").exists()).toBe(true);
+    finishEnd(
+      session({
+        status: "terminated",
+        capabilities: {
+          ...session().capabilities,
+          can_terminate: false,
+          can_browse_files: false,
+        },
+      }),
+    );
+    await flushPromises();
+    finishReturn(session());
+    await flushPromises();
+    const result = {
+      status: useSessionsStore().current?.status,
+      canTerminate: wrapper.findComponent(SessionHeader).props("canTerminate"),
+      veil: wrapper.find(".veil").exists(),
+    };
+    wrapper.unmount();
+    expect(result).toEqual({
+      status: "terminated",
+      canTerminate: false,
+      veil: false,
+    });
+  });
+});

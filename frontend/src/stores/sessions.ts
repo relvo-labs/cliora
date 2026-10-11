@@ -17,17 +17,38 @@ interface SessionsState {
 interface RequestOwnership {
   epoch: number;
   detail: number;
-  target: string | null;
   list: number;
+  sequence: number;
+  terminations: Map<string, { sequence: number; session: SessionDetail }>;
 }
 const requests = new WeakMap<object, RequestOwnership>();
 function ownership(store: object): RequestOwnership {
   let value = requests.get(store);
   if (!value) {
-    value = { epoch: 0, detail: 0, target: null, list: 0 };
+    value = {
+      epoch: 0,
+      detail: 0,
+      list: 0,
+      sequence: 0,
+      terminations: new Map(),
+    };
     requests.set(store, value);
   }
   return value;
+}
+
+// Reads retain their own ordering and all returned rows. A successful mutation
+// supersedes only snapshots requested before it completed, for that same id.
+// Call only within the request's epoch: a reset must never mix identities.
+function reconcile<T extends SessionSummary>(
+  session: T,
+  owner: RequestOwnership,
+  sequence: number,
+): T {
+  const termination = owner.terminations.get(session.id);
+  return termination && termination.sequence > sequence
+    ? { ...session, ...termination.session }
+    : session;
 }
 
 export const useSessionsStore = defineStore("sessions", {
@@ -40,23 +61,34 @@ export const useSessionsStore = defineStore("sessions", {
       const owner = ownership(this);
       const epoch = owner.epoch;
       const request = ++owner.list;
-      const list = await api().listSessions(params);
-      if (owner.epoch === epoch && owner.list === request) this.list = list;
+      const sequence = owner.sequence;
+      const response = await api().listSessions(params);
+      if (owner.epoch !== epoch) return response;
+      const list = response.map((session) =>
+        reconcile(session, owner, sequence),
+      );
+      if (owner.list === request) this.list = list;
       return list;
     },
     async fetchSession(id: string): Promise<SessionDetail> {
       const owner = ownership(this);
+      const epoch = owner.epoch;
       const request = ++owner.detail;
-      owner.target = id;
-      const session = await api().getSession(id);
+      const sequence = owner.sequence;
+      const response = await api().getSession(id);
+      if (owner.epoch !== epoch) return response;
+      const session = reconcile(response, owner, sequence);
       if (owner.detail === request) this.current = session;
       return session;
     },
     async create(input: CreateSessionInput): Promise<SessionDetail> {
       const owner = ownership(this);
+      const epoch = owner.epoch;
       const request = ++owner.detail;
-      owner.target = null;
-      const session = await api().createSession(input);
+      const sequence = owner.sequence;
+      const response = await api().createSession(input);
+      if (owner.epoch !== epoch) return response;
+      const session = reconcile(response, owner, sequence);
       if (owner.detail === request) this.current = session;
       return session;
     },
@@ -64,16 +96,11 @@ export const useSessionsStore = defineStore("sessions", {
       const owner = ownership(this);
       const epoch = owner.epoch;
       const session = await api().terminateSession(id);
-      // A mutation belongs to the authenticated store lifetime, not the fetch
-      // that happened to be current when it started. A → B → A still accepts it.
+      // Retain the accepted result even while another workspace is displayed:
+      // a pending return fetch or first list still needs to reconcile this id.
       if (owner.epoch !== epoch) return session;
-      if (this.current?.id === id) {
-        this.current = session;
-        // An older detail for this target cannot undo the mutation. Leave a
-        // pending fetch for a different workspace alone.
-        if (owner.target === id) owner.detail += 1;
-      }
-      owner.list += 1;
+      owner.terminations.set(id, { sequence: ++owner.sequence, session });
+      if (this.current?.id === id) this.current = session;
       this.patchList(session);
       return session;
     },
@@ -88,7 +115,8 @@ export const useSessionsStore = defineStore("sessions", {
       owner.epoch += 1;
       owner.detail += 1;
       owner.list += 1;
-      owner.target = null;
+      owner.sequence = 0;
+      owner.terminations.clear();
       this.list = [];
       this.current = null;
     },

@@ -15,6 +15,7 @@ import { createRouter, createWebHistory, type Router } from "vue-router";
 import * as auth from "../stores/auth";
 import { useAuthStore } from "../stores/auth";
 import SessionsView from "./SessionsView.vue";
+import { useSessionsStore } from "../stores/sessions";
 
 const ROWS = [
   {
@@ -151,5 +152,46 @@ describe("SessionsView — 行動卡片清單", () => {
     const empty = await render([]);
     expect(empty.text()).toContain("尚未建立 Session");
     expect(empty.text()).not.toContain("沒有符合條件的項目");
+  });
+});
+
+describe("T2 closure list load during termination", () => {
+  it("shows a successful nonempty list after old workspace termination completes", async () => {
+    setWidth(390);
+    let end!: (value: unknown) => void;
+    let list!: (value: unknown) => void;
+    const ending = new Promise((r) => {
+      end = r;
+    });
+    const listing = new Promise((r) => {
+      list = r;
+    });
+    vi.spyOn(auth, "api").mockReturnValue({
+      terminateSession: () => ending,
+      listSessions: () => listing,
+    } as never);
+    const sessions = useSessionsStore();
+    sessions.current = ROWS[0] as never;
+    const terminating = sessions.terminate(ROWS[0].id);
+    const router = testRouter();
+    await router.push("/sessions");
+    await router.isReady();
+    const wrapper = mount(SessionsView, {
+      global: {
+        plugins: [router],
+        stubs: { AppLayout: { template: "<div><slot /></div>" } },
+      },
+    });
+    await flushPromises();
+    end({ ...ROWS[0], status: "terminated" });
+    await terminating;
+    list([{ ...ROWS[0], status: "terminated" }, ROWS[1]]);
+    await flushPromises();
+    const result = {
+      cards: wrapper.findAll(".card").length,
+      empty: wrapper.text().includes("尚未建立 Session"),
+    };
+    wrapper.unmount();
+    expect(result).toEqual({ cards: 2, empty: false });
   });
 });
