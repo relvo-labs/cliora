@@ -2284,3 +2284,178 @@ describe("T2 closure2 fresh return capabilities", () => {
     });
   });
 });
+
+describe("T2 closure3 refetch versus workspace resource", () => {
+  it("settles pending return A when the background refetch fails", async () => {
+    const B = "66666666-6666-4666-8666-666666666666";
+    let finishEnd!: (value: SessionDetail) => void;
+    let finishReturn!: (value: SessionDetail) => void;
+    const end = new Promise<SessionDetail>((r) => {
+      finishEnd = r;
+    });
+    const back = new Promise<SessionDetail>((r) => {
+      finishReturn = r;
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ id: B }))
+      .mockReturnValueOnce(back)
+      .mockRejectedValueOnce(
+        new ApiError("NODE_OFFLINE", "temporary", 503, "refresh-failed"),
+      );
+    const wrapper = await render(getSession);
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    finishEnd(session({ status: "terminated" }));
+    await flushPromises();
+    finishReturn(session({ status: "terminated" }));
+    await flushPromises();
+    const result = {
+      current: useSessionsStore().current?.id,
+      loading: wrapper.find('.veil [aria-busy="true"]').exists(),
+      retry: wrapper.find(".veil .retry").exists(),
+      reads: getSession.mock.calls.map(([id]) => id),
+    };
+    wrapper.unmount();
+    expect(result.loading, JSON.stringify(result)).toBe(false);
+  });
+
+  it("a successful newer server refetch is not hidden by the old load's late error", async () => {
+    const B = "66666666-6666-4666-8666-666666666666";
+    let finishEnd!: (value: SessionDetail) => void;
+    let rejectReturn!: (error: Error) => void;
+    const end = new Promise<SessionDetail>((r) => {
+      finishEnd = r;
+    });
+    const back = new Promise<SessionDetail>((_r, j) => {
+      rejectReturn = j;
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ id: B }))
+      .mockReturnValueOnce(back)
+      .mockResolvedValueOnce(session({ status: "terminated" }));
+    const wrapper = await render(getSession);
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    finishEnd(session({ status: "terminated" }));
+    await flushPromises();
+    rejectReturn(
+      new ApiError("NODE_OFFLINE", "old load failed", 503, "old-request"),
+    );
+    await flushPromises();
+    const result = {
+      current: useSessionsStore().current?.id,
+      status: useSessionsStore().current?.status,
+      veil: wrapper.find(".veil").exists(),
+    };
+    wrapper.unmount();
+    expect(result).toEqual({ current: ID, status: "terminated", veil: false });
+  });
+});
+
+describe("Repair 4 workspace refresh settlement", () => {
+  const B = "66666666-6666-4666-8666-666666666666";
+  function controlledRead() {
+    let resolve!: (value: SessionDetail) => void;
+    let reject!: (error: Error) => void;
+    const promise = new Promise<SessionDetail>((yes, no) => {
+      resolve = yes;
+      reject = no;
+    });
+    return { promise, resolve, reject };
+  }
+  async function pendingReturn() {
+    const original = controlledRead();
+    const refresh = controlledRead();
+    const end = controlledRead();
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ id: B }))
+      .mockReturnValueOnce(original.promise)
+      .mockReturnValueOnce(refresh.promise)
+      .mockResolvedValueOnce(session({ status: "terminated" }));
+    const wrapper = await render(getSession);
+    shellApi.terminateSession.mockReturnValueOnce(end.promise);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    end.resolve(session({ status: "terminated" }));
+    await flushPromises();
+    return { wrapper, getSession, original, refresh };
+  }
+
+  it.each(["original", "refresh"])(
+    "both reads failing (%s first) settles with Retry and recovers",
+    async (first) => {
+      const { wrapper, getSession, original, refresh } = await pendingReturn();
+      const failures =
+        first === "original" ? [original, refresh] : [refresh, original];
+      for (const read of failures) {
+        read.reject(
+          new ApiError("NODE_OFFLINE", "temporary", 503, "read-failed"),
+        );
+        await flushPromises();
+      }
+      expect(wrapper.find('.veil [aria-busy="true"]').exists()).toBe(false);
+      expect(wrapper.find(".veil .retry").exists()).toBe(true);
+      expect(getSession).toHaveBeenCalledTimes(4);
+      await wrapper.get(".veil .retry").trigger("click");
+      await flushPromises();
+      expect(wrapper.find(".veil").exists()).toBe(false);
+      expect(useSessionsStore().current?.id).toBe(ID);
+      expect(getSession).toHaveBeenCalledTimes(5);
+      wrapper.unmount();
+    },
+  );
+
+  it("an earlier success waits for the owning refresh and installs when that refresh fails", async () => {
+    const { wrapper, original, refresh } = await pendingReturn();
+    original.resolve(
+      session({
+        status: "terminated",
+        capabilities: {
+          ...session().capabilities,
+          can_terminate: false,
+          can_takeover: false,
+        },
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.find('.veil [aria-busy="true"]').exists()).toBe(true);
+    refresh.reject(
+      new ApiError("NODE_OFFLINE", "temporary", 503, "refresh-failed"),
+    );
+    await flushPromises();
+    expect(wrapper.find(".veil").exists()).toBe(false);
+    expect(wrapper.findComponent(SessionHeader).props("canTerminate")).toBe(
+      false,
+    );
+    expect(wrapper.findComponent(SessionHeader).props("canTakeover")).toBe(
+      false,
+    );
+    wrapper.unmount();
+  });
+});

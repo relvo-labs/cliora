@@ -186,7 +186,7 @@ describe("Repair 1 store continuation ownership", () => {
     const first = store.fetchList();
     await store.fetchList();
     old.resolve([{ id: "A" } as SessionSummary]);
-    await first;
+    expect(await first).toEqual([{ id: "A" }]);
     expect(store.list[0].id).toBe("B");
   });
 
@@ -284,7 +284,7 @@ describe("Repair 2 termination reads (server refetch contract)", () => {
       capabilities: { can_terminate: false, can_view: true },
     }) as SessionDetail;
 
-  it("refreshes the first list with all server rows and leaves old returned payloads unchanged", async () => {
+  it("settles the first list with the owning server response and retains all its rows", async () => {
     const old = deferred<SessionSummary[]>();
     const fresh = deferred<SessionSummary[]>();
     const listSessions = vi
@@ -306,7 +306,7 @@ describe("Repair 2 termination reads (server refetch contract)", () => {
     fresh.resolve(rows);
     await flushPromises();
     old.resolve([b, { ...detail("A"), status: "running" }]);
-    expect(await load).toEqual([b, { ...detail("A"), status: "running" }]);
+    expect(await load).toEqual(rows);
     expect(store.current?.id).toBe("B");
     expect(store.list).toEqual(rows);
     expect(listSessions).toHaveBeenCalledTimes(2);
@@ -495,7 +495,8 @@ describe("Repair 3 refresh ownership and failures", () => {
     const load = store.fetchSession("A");
     await store.terminate("A");
     await flushPromises();
-    old.resolve({ ...detail("A"), status: "running" });
+    // The failure path restores this still-pending server read.
+    old.resolve(terminated("A"));
     await load;
     expect(store.current).toEqual(terminated("A"));
     expect(store.list).toEqual([terminated("A"), detail("B")]);
@@ -623,5 +624,66 @@ describe("Repair 3 refresh ownership and failures", () => {
     expect(listSessions).toHaveBeenCalledTimes(1);
     expect(store.current).toBeNull();
     expect(store.list).toEqual([]);
+  });
+});
+
+describe("Repair 4 Pinia action wrapper ownership", () => {
+  const wrapped = () =>
+    new Proxy(useSessionsStore(), {
+      get: (...args) => Reflect.get(...args),
+      set: (...args) => Reflect.set(...args),
+    });
+
+  it("settles a read through a different development-tools action proxy", async () => {
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession: async () => detail("A"),
+    } as never);
+    await wrapped().fetchSession("A");
+    expect(await wrapped().settleSession("A")).toEqual(detail("A"));
+  });
+
+  it("A → B → C retains newest ownership across distinct action proxies", async () => {
+    const held = [
+      deferred<SessionDetail>(),
+      deferred<SessionDetail>(),
+      deferred<SessionDetail>(),
+    ];
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession: vi
+        .fn()
+        .mockReturnValueOnce(held[0].promise)
+        .mockReturnValueOnce(held[1].promise)
+        .mockReturnValueOnce(held[2].promise),
+    } as never);
+    const loads = [
+      wrapped().fetchSession("A"),
+      wrapped().fetchSession("B"),
+      wrapped().fetchSession("C"),
+    ];
+    for (const i of [2, 1, 0]) {
+      held[i].resolve(detail(["A", "B", "C"][i]));
+      await loads[i];
+    }
+    expect(useSessionsStore().current?.id).toBe("C");
+  });
+
+  it("termination refreshes the list loaded through a different action proxy", async () => {
+    const listSessions = vi
+      .fn()
+      .mockResolvedValueOnce([detail("A")])
+      .mockResolvedValueOnce([terminated("A")]);
+    vi.spyOn(auth, "api").mockReturnValue({
+      listSessions,
+      getSession: async () => terminated("A"),
+      terminateSession: async () => terminated("A"),
+    } as never);
+    await wrapped().fetchList({ node_id: "node" });
+    await wrapped().terminate("A");
+    await flushPromises();
+    expect(listSessions.mock.calls).toEqual([
+      [{ node_id: "node" }],
+      [{ node_id: "node" }],
+    ]);
+    expect(useSessionsStore().list).toEqual([terminated("A")]);
   });
 });
