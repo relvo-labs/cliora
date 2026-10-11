@@ -31,7 +31,7 @@ async function signIn(page: Page): Promise<void> {
 function newSessionDialog(page: Page) {
   return page
     .getByRole("dialog")
-    .filter({ has: page.getByRole("heading", { name: "New session" }) });
+    .filter({ has: page.getByRole("heading", { name: "建立 Session" }) });
 }
 
 // The page's create action. On an empty list the empty state offers the same
@@ -165,8 +165,8 @@ async function startSessionFromList(page: Page, name: string): Promise<string> {
   await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
   await runtime.selectOption({ index: 1 });
   await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
-  await dialog.locator('input[placeholder="e.g. refactor-api"]').fill(name);
-  await dialog.getByRole("button", { name: "Start" }).click();
+  await dialog.locator('input[placeholder="例如 refactor-api"]').fill(name);
+  await dialog.getByRole("button", { name: "建立", exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
   return page.url().split("/").pop() ?? "";
 }
@@ -199,6 +199,137 @@ test.describe("session & terminal", () => {
     await expect(createSessionButton(page)).toBeVisible();
   });
 
+  // #105. Only a real layout engine can show bidi reordering: jsdom has no
+  // text layout, so the unit test can only check the isolation markup.
+  test("sessions card: the path keeps its leading / and the node is named", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await signIn(page);
+    await page.goto("/sessions");
+    const id = await startSessionFromList(page, "e2e-card");
+    test.skip(!id, "no online node available in this stack");
+
+    await page.goto("/sessions");
+    const card = page
+      .getByRole("list", { name: "Sessions" })
+      .locator("button.card")
+      .filter({ hasText: "e2e-card" })
+      .first();
+    await expect(card).toBeVisible();
+
+    // Character positions as drawn. `/x...` must draw its "/" left of the
+    // next character; under `direction: rtl` without isolation it was drawn
+    // at the far end. And the path's last character, the part that names it,
+    // is inside the box rather than cut off.
+    const drawn = await card.locator(".card-path").evaluate((el) => {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      const text = walker.nextNode() as Text;
+      const rect = (start: number) => {
+        const range = document.createRange();
+        range.setStart(text, start);
+        range.setEnd(text, start + 1);
+        return range.getBoundingClientRect();
+      };
+      const box = el.getBoundingClientRect();
+      const n = text.data.length;
+      return {
+        path: text.data,
+        first: rect(0).left,
+        second: rect(1).left,
+        lastRight: rect(n - 1).right,
+        boxRight: box.right,
+      };
+    });
+    const why = JSON.stringify(drawn);
+    expect(drawn.path.startsWith("/"), why).toBe(true);
+    expect(drawn.first, `leading / is not drawn first: ${why}`).toBeLessThan(
+      drawn.second,
+    );
+    expect(drawn.lastRight, `path end is cut: ${why}`).toBeLessThanOrEqual(
+      drawn.boxRight + 1,
+    );
+
+    // The node's name, from the node list every role can read — not its UUID.
+    const token = await page.evaluate(() =>
+      localStorage.getItem("cliora.access_token"),
+    );
+    const session = await page.request.get(`/api/sessions/${id}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const nodeId = (await session.json()).node_id as string;
+    const node = await page.request.get(`/api/nodes/${nodeId}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const nodeName = (await node.json()).name as string;
+    const meta = card.locator(".card-meta");
+    await expect(meta).toContainText(nodeName);
+    await expect(meta).not.toContainText(nodeId);
+  });
+
+  // #106 / #112. A software keyboard cannot be raised in a desktop browser, so
+  // this models one the way keyboard-chrome.spec.ts does: a visualViewport
+  // whose height drops while the layout viewport stays put. Emulation — only a
+  // phone can confirm a real keyboard's timing.
+  test("create dialog: 建立 stays above an emulated phone keyboard", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 664 });
+    await page.addInitScript(() => {
+      const viewport = new EventTarget();
+      Object.defineProperties(viewport, {
+        height: { configurable: true, value: 664 },
+        scale: { value: 1 },
+      });
+      Object.defineProperty(window, "visualViewport", { value: viewport });
+    });
+    await signIn(page);
+    const nodeCount = await openDialogAndCountNodes(page);
+    test.skip(nodeCount === 0, "no online node available in this stack");
+
+    const dialog = newSessionDialog(page);
+    await dialog.locator("select").first().selectOption({ index: 1 });
+    const runtime = dialog.locator("select").nth(1);
+    await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
+    await runtime.selectOption({ index: 1 });
+    await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
+    const name = dialog.locator('input[placeholder="例如 refactor-api"]');
+    await name.fill("e2e-keyboard-dialog");
+
+    const keyboardTop = 664 - 300;
+    await page.evaluate((height) => {
+      const viewport = window.visualViewport!;
+      Object.defineProperty(viewport, "height", {
+        configurable: true,
+        value: height,
+      });
+      viewport.dispatchEvent(new Event("resize"));
+    }, keyboardTop);
+    // A real browser scrolls the focused field into view as its keyboard
+    // opens; here the field was already focused, so blur and focus again to
+    // take the same scroll path.
+    await name.blur();
+    await name.focus();
+
+    const start = dialog.getByRole("button", { name: "建立", exact: true });
+    await expect(start).toBeEnabled();
+    await expect
+      .poll(async () => (await start.boundingBox())?.y ?? Infinity, {
+        message: "建立 is hidden behind the emulated keyboard",
+      })
+      .toBeLessThanOrEqual(keyboardTop - 44);
+    const box = (await start.boundingBox())!;
+    expect(box.y + box.height).toBeLessThanOrEqual(keyboardTop);
+    // The field being typed into is above the keyboard too.
+    const field = (await name.boundingBox())!;
+    expect(field.y + field.height).toBeLessThanOrEqual(keyboardTop);
+
+    // Escape still closes it, and nothing was created.
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(createSessionButton(page)).toBeFocused();
+  });
+
   test("create → live terminal → reconnect → terminate", async ({ page }) => {
     await signIn(page);
     const nodeCount = await openDialogAndCountNodes(page);
@@ -214,9 +345,9 @@ test.describe("session & terminal", () => {
     const workspace = dialog.locator('input[list="roots"]');
     await expect(workspace).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-terminal");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     // Landed on the workspace route as the writer.
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
@@ -282,9 +413,9 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-tabs");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -381,9 +512,9 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-layout");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
@@ -478,6 +609,10 @@ test.describe("session & terminal", () => {
       (page.viewportSize()?.width ?? 1280) < 768,
       "desktop geometry (rail width, 860px centre, file tree); the phone layout is measured in mobile.spec.ts",
     );
+    // The reference desktop (plan/09). The 30-row floor below is defined at
+    // this size; the chromium project's default 1280x720 leaves 27 rows and
+    // was never what the floor meant (#116).
+    await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     const nodeCount = await openDialogAndCountNodes(page);
     test.skip(nodeCount === 0, "no online node available in this stack");
@@ -489,15 +624,22 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-fill");
-    await dialog.getByRole("button", { name: "Start" }).click();
+    // The node report decides whether the image drop bar is shown, and the bar
+    // arriving after the first fit takes two rows off the terminal. Measured
+    // before it, the round trip below reads that late change as its own (#116).
+    const posture = shellNodeReport(page);
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
       { timeout: 15_000 },
     );
+    await posture;
+    // The refit is debounced by 100ms; measuring sooner reads the old size.
+    await page.waitForTimeout(400);
 
     // One evaluate for the whole picture: a failure message that names only the
     // ratio cannot tell "the host did not grow" from "the host grew and xterm
@@ -511,8 +653,15 @@ test.describe("session & terminal", () => {
         const screen = pane.querySelector(".xterm-screen") as HTMLElement;
         const root = document.documentElement;
         const main = document.querySelector("main") as HTMLElement;
+        // The pane's other children — the image drop bar, when the node
+        // accepts images — are chrome the host is meant to sit beside, not
+        // space it failed to fill (#116: a 36px bar read as a fill failure).
+        const chrome = Array.from(pane.children)
+          .filter((el) => el !== host)
+          .reduce((sum, el) => sum + (el as HTMLElement).offsetHeight, 0);
         return {
           paneHeight: pane.clientHeight,
+          chromeHeight: chrome,
           hostHeight: host.clientHeight,
           screenHeight: Math.round(screen.getBoundingClientRect().height),
           // One <div> per row; xterm's own rows/cols are not exposed to the page.
@@ -532,14 +681,14 @@ test.describe("session & terminal", () => {
     expect(
       wide.hostHeight,
       `host did not fill the pane: ${why(wide)}`,
-    ).toBeGreaterThanOrEqual(wide.paneHeight - 4);
+    ).toBeGreaterThanOrEqual(wide.paneHeight - wide.chromeHeight - 4);
     // …and xterm actually re-fitted into it. The screen is rows × cell height, so
     // it always leaves under one row spare; 90% is well clear of that and well
     // clear of the 50% the collapsed layout produced.
     expect(
       wide.screenHeight,
       `xterm did not re-fit to the host: ${why(wide)}`,
-    ).toBeGreaterThanOrEqual(wide.paneHeight * 0.9);
+    ).toBeGreaterThanOrEqual((wide.paneHeight - wide.chromeHeight) * 0.9);
     // A ratio alone would also pass on a correct-but-tiny terminal. 24 rows was
     // the broken value at every window size, so the floor is set above it.
     expect(
@@ -580,6 +729,11 @@ test.describe("session & terminal", () => {
         .catch(() => false)
     ) {
       await readme.click();
+      // PreviewPane is an async component: measure it once it has rendered,
+      // not on the click (#116 — at 1280x720 this half was never reached).
+      await expect(page.locator("#panel-preview .monaco-editor")).toBeVisible({
+        timeout: 20_000,
+      });
       // The preview pane fills its own height too — the same defect lived in
       // PreviewPane, where the row template only worked while the meta line was
       // rendered.
@@ -613,11 +767,11 @@ test.describe("session & terminal", () => {
     expect(
       narrow.hostHeight,
       `host did not fill at 1000x800: ${why(narrow)}`,
-    ).toBeGreaterThanOrEqual(narrow.paneHeight - 4);
+    ).toBeGreaterThanOrEqual(narrow.paneHeight - narrow.chromeHeight - 4);
     expect(
       narrow.screenHeight,
       `xterm did not re-fit at 1000x800: ${why(narrow)}`,
-    ).toBeGreaterThanOrEqual(narrow.paneHeight * 0.9);
+    ).toBeGreaterThanOrEqual((narrow.paneHeight - narrow.chromeHeight) * 0.9);
     expect(
       narrow.rows,
       `too few rows at 1000x800: ${why(narrow)}`,
@@ -641,6 +795,10 @@ test.describe("session & terminal", () => {
   test("system terminal: TERMINAL tab opens a real shell and closing it ends the session", async ({
     page,
   }) => {
+    // The desktop 30x60 floor below is plan/09's, defined at the reference
+    // 1440x900; at the project default 1280x720 the panel holds 23 rows (#116).
+    if (!phoneWidth(page))
+      await page.setViewportSize({ width: 1440, height: 900 });
     await signIn(page);
     const nodeCount = await openDialogAndCountNodes(page);
     test.skip(nodeCount === 0, "no online node available in this stack");
@@ -652,10 +810,10 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-shell");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
 
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     const cliUrl = page.url();
@@ -775,10 +933,10 @@ test.describe("session & terminal", () => {
     await runtime.selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-shell-reload");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
 
     const entry = await shellEntry(page, posture);
@@ -841,10 +999,10 @@ test.describe("session & terminal", () => {
     await dialog.locator("select").nth(1).selectOption({ index: 1 });
     await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
     await dialog
-      .locator('input[placeholder="e.g. refactor-api"]')
+      .locator('input[placeholder="例如 refactor-api"]')
       .fill("e2e-scroll");
     const posture = shellNodeReport(page);
-    await dialog.getByRole("button", { name: "Start" }).click();
+    await dialog.getByRole("button", { name: "建立", exact: true }).click();
     await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
     await expect(page.locator("#panel-cli .xterm-rows")).toContainText(
       "FAKECLI_READY",
@@ -859,11 +1017,20 @@ test.describe("session & terminal", () => {
     await expect(page.locator("#panel-terminal")).toBeVisible();
 
     // A marker far enough back that it cannot still be on screen, then enough
-    // output to push it off.
+    // output to push it off. 120 lines rather than 500: one wheel notch moves
+    // tmux about four and a half lines, so 500 put the marker beyond any
+    // reasonable number of notches and the test failed on distance, not on
+    // behaviour (#116). The end line is computed so the typed command, which
+    // is also on screen, cannot satisfy the wait.
     const host = page.locator('[aria-label="System terminal"]');
+    // Typed only once bash has drawn its prompt: keys sent earlier were
+    // partly lost, and the command ran as `120; echo …` (#116).
+    await expect(shell).toContainText("$", { timeout: 15_000 });
     await host.click();
-    await page.keyboard.type("echo SCROLLBACK_MARKER; seq 1 500\n");
-    await expect(shell).toContainText("500", { timeout: 15_000 });
+    await page.keyboard.type(
+      "echo SCROLLBACK_MARKER; seq 1 120; echo SCROLLBACK_END_$((6*7))\n",
+    );
+    await expect(shell).toContainText("SCROLLBACK_END_42", { timeout: 15_000 });
     await expect(shell).not.toContainText("SCROLLBACK_MARKER");
 
     // The prompt as it stands before scrolling. If the wheel were still being turned
@@ -875,7 +1042,8 @@ test.describe("session & terminal", () => {
       .innerText();
 
     await host.hover();
-    for (let i = 0; i < 12; i += 1) await page.mouse.wheel(0, -240);
+    // More notches than the output needs; tmux stops at the top of history.
+    for (let i = 0; i < 40; i += 1) await page.mouse.wheel(0, -240);
 
     await expect(shell).toContainText("SCROLLBACK_MARKER", { timeout: 10_000 });
     const promptAfter = await page
@@ -887,8 +1055,8 @@ test.describe("session & terminal", () => {
     // And back: scrolling to the bottom leaves copy mode on its own (tmux's default
     // wheel binding uses `copy-mode -e`), so the user is not stranded in a mode the
     // console gives no indication of.
-    for (let i = 0; i < 20; i += 1) await page.mouse.wheel(0, 240);
-    await expect(shell).toContainText("500", { timeout: 10_000 });
+    for (let i = 0; i < 40; i += 1) await page.mouse.wheel(0, 240);
+    await expect(shell).toContainText("SCROLLBACK_END_42", { timeout: 10_000 });
     expect(promptBefore.length).toBeGreaterThanOrEqual(0);
 
     // The two sentences a user needs in order to know any of this. They are printed,

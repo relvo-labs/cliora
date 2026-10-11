@@ -239,7 +239,7 @@ async function createSession(page: Page, name: string): Promise<string> {
   await page.getByRole("button", { name: "建立 Session" }).first().click();
   const dialog = page
     .getByRole("dialog")
-    .filter({ has: page.getByRole("heading", { name: "New session" }) });
+    .filter({ has: page.getByRole("heading", { name: "建立 Session" }) });
   await expect(dialog).toBeVisible();
   const nodeSelect = dialog.locator("select").first();
   const hasNode = await nodeSelect
@@ -254,8 +254,8 @@ async function createSession(page: Page, name: string): Promise<string> {
   await expect(runtime.locator("option:not([disabled])")).not.toHaveCount(0);
   await runtime.selectOption({ index: 1 });
   await expect(dialog.locator('input[list="roots"]')).not.toHaveValue("");
-  await dialog.locator('input[placeholder="e.g. refactor-api"]').fill(name);
-  await dialog.getByRole("button", { name: "Start" }).click();
+  await dialog.locator('input[placeholder="例如 refactor-api"]').fill(name);
+  await dialog.getByRole("button", { name: "建立", exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/[0-9a-f-]{36}$/);
   return page.url().split("/").pop() ?? "";
 }
