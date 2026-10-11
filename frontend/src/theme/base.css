@@ -72,6 +72,10 @@ button {
 /* Hidden until focused. The keyboard route from the address bar to the terminal
  * otherwise runs through the whole nav rail and the account menu. */
 .skip-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--density-control);
+  min-width: var(--density-touch);
   position: absolute;
   top: 8px;
   left: 8px;

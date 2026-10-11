@@ -162,7 +162,7 @@ const identity = computed(() =>
            architecture lists name, node, runtime and workspace together as the
            session's identity, and the node was the only one missing — the data
            was already fetched, just never rendered. -->
-      <span class="who">{{ identity }}</span>
+      <span class="who" :title="identity">{{ identity }}</span>
       <span class="sep" aria-hidden="true">·</span>
       <code class="path truncate-middle" :title="workspace">{{
         workspace
@@ -198,6 +198,7 @@ const identity = computed(() =>
   gap: 4px;
   height: var(--layout-workhead);
   flex-shrink: 0;
+  min-width: 0;
   /* The ⋯ panel extends beyond this fixed row; labels truncate themselves. */
   overflow: visible;
 }
@@ -246,12 +247,17 @@ h1 {
   color: var(--text-secondary);
 }
 .who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sep {
   color: var(--text-disabled);
 }
 .path {
+  min-width: 0;
+  flex: 1 1 auto;
   font-family: var(--font-mono);
   font-size: 11px;
   max-width: min(46ch, 100%);
@@ -276,5 +282,39 @@ h1 {
   background: none;
   color: var(--accent-strong);
   font-size: 11px;
+}
+@media (max-width: 767px) {
+  .head[data-compact] {
+    height: auto;
+    min-height: var(--layout-workhead-compact);
+  }
+  .primary {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  h1 {
+    flex: 1;
+  }
+  /* Posture stays on the name row. Actions get a full row instead of
+     competing with warnings for the phone's remaining width (#104). */
+  .actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+    min-height: var(--density-touch);
+  }
+  /* Reserve the shared icon button's full hit area at the row edge. */
+  .head :deep(.icon-btn) {
+    width: var(--density-touch);
+    height: var(--density-touch);
+    flex-shrink: 0;
+  }
+  .identity {
+    min-height: var(--density-touch);
+  }
+  .disclose {
+    min-height: var(--density-touch);
+    min-width: var(--density-touch);
+    padding-inline: 8px;
+  }
 }
 </style>

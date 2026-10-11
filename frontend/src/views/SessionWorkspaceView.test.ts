@@ -111,6 +111,7 @@ vi.mock("../components/file/PreviewPane.vue", () => {
 });
 
 import ConfirmDialog from "../components/common/ConfirmDialog.vue";
+import ErrorNotice from "../components/common/ErrorNotice.vue";
 import SessionHeader from "../components/session/SessionHeader.vue";
 import * as auth from "../stores/auth";
 import { useNodesStore } from "../stores/nodes";
@@ -348,7 +349,7 @@ describe("SessionWorkspaceView — terminal host lifecycle (WT-02)", () => {
     const mountsAfterFailure = term.mount.mock.calls.length;
     expect(mountsAfterFailure).toBeGreaterThan(0);
 
-    await wrapper.get(".veil button").trigger("click");
+    await wrapper.get(".veil .retry").trigger("click");
     await flushPromises();
 
     // … and the same element is still there afterwards, so nothing needs a
@@ -363,10 +364,10 @@ describe("SessionWorkspaceView — terminal host lifecycle (WT-02)", () => {
       vi.fn().mockRejectedValue(new ApiError("FORBIDDEN", "no", 403, "req")),
     );
     expect(wrapper.find(".veil").exists()).toBe(true);
-    // Wording changed in plan/28: the forbidden state is now a UiInlineNotice
-    // in the user's language, and it says the thing that matters — hiding a UI
-    // entry is not authorization, the server refuses either way.
-    expect(wrapper.text()).toContain("無法存取此 Session");
+    expect(wrapper.findComponent(ErrorNotice).exists()).toBe(true);
+    expect(wrapper.text()).toContain("原因");
+    expect(wrapper.text()).toContain("下一步");
+    expect(wrapper.text()).toContain("req");
     expect(wrapper.find("#panel-cli").exists()).toBe(true);
   });
 
@@ -380,6 +381,60 @@ describe("SessionWorkspaceView — terminal host lifecycle (WT-02)", () => {
     expect(bar.text()).toContain("連線");
     expect(bar.text()).toContain("控制權");
   });
+});
+
+describe("SessionWorkspaceView — safe failure navigation (#108)", () => {
+  for (const status of [403, 500]) {
+    it(`${status}: identifies only the requested route and provides a way back`, async () => {
+      useSessionsStore().current = session({
+        id: "66666666-6666-4666-8666-666666666666",
+        name: "previous-private-session",
+        workspace: "/private/previous/workspace",
+      });
+      const wrapper = await render(
+        vi
+          .fn()
+          .mockRejectedValue(
+            new ApiError(
+              status === 403 ? "FORBIDDEN" : "BOOM",
+              "無法載入",
+              status,
+              "req-safe",
+            ),
+          ),
+      );
+      const veil = wrapper.get(".veil");
+      expect(veil.get("header").text()).toContain(ID);
+      expect(veil.text()).not.toContain("previous-private-session");
+      expect(veil.text()).not.toContain("/private/previous/workspace");
+      expect(veil.findComponent(ErrorNotice).exists()).toBe(true);
+      const back = veil
+        .findAll("button")
+        .find((button) => button.text() === "回到 Sessions");
+      expect(back).toBeDefined();
+      await back!.trigger("click");
+      await flushPromises();
+      expect(wrapper.vm.$route.path).toBe("/sessions");
+      wrapper.unmount();
+    });
+  }
+});
+
+describe("SessionWorkspaceView — ended image drop (#107)", () => {
+  for (const status of ["exited", "failed"] as const) {
+    it(`${status}: does not offer image drop even with stale write capabilities`, async () => {
+      vi.spyOn(useNodesStore(), "fetchNode").mockResolvedValue(
+        nodeDetail({ image_upload: true }) as never,
+      );
+      const wrapper = await render(vi.fn(async () => session()));
+      expect(wrapper.find(".drop-bar").exists()).toBe(true);
+      useSessionsStore().current!.status = status;
+      await flushPromises();
+      expect(wrapper.find(".drop-bar").exists()).toBe(false);
+      expect(wrapper.find('input[type="file"]').exists()).toBe(false);
+      wrapper.unmount();
+    });
+  }
 });
 
 describe("SessionWorkspaceView — system terminal (WT-08)", () => {

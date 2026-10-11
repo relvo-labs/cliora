@@ -6,6 +6,8 @@
 
 ## 1. 截至目前的真實狀態
 
+2026-10-11（#61 workspace-ux）：修正手機標頭／展開路徑溢出、觸控尺寸、預覽／圖片列留白、結束狀態、錯誤返回入口與桌面明亮主題對比；MS-07 補十次往返回歸。#126 終端內距保留待 iPhone 審查；真機、Safari、Firefox、螢幕閱讀器未驗。
+
 2026-10-06（#109／#128）：已實作手機 `⋯` 專用系統 shell 入口、開啟後警示分頁與關閉即終止，以及所有寬度的伺服器 capability ＋節點 shell availability 閘門（缺項／未知／讀取失敗即隱藏）。390px、768px 與桌面單元回歸已驗；另更新 `keyboard-chrome` 與 `session` e2e 的手機選單／關閉路徑及缺少 shell 案例，補上焦點、朗讀、競態與標頭展開修復。`keyboard-chrome` 在 Chromium 與 mobile-chrome-emulated 已驗；`session` 僅列舉與型別檢查，未跑完整服務。真機 iPhone 未驗，未改後端契約或主 CLI 生命週期。決策同步於 `01`／`03`／`05`。
 
 分支 `feat/mobile-rwd`，10 個 commit。
