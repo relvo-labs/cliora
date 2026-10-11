@@ -1103,20 +1103,14 @@ async function loadSession(): Promise<void> {
   resource.state.value = "loading";
   resource.error.value = null;
   try {
-    try {
-      await sessions.fetchSession(id);
-    } catch {
-      // A newer background GET may have verified this workspace. Its owning
-      // outcome (or restored earlier read) decides success/error below.
-      if (!owned()) return;
-    }
-    if (!owned()) return;
-    const detail = await sessions.settleSession(id);
+    const detail = await sessions.fetchSession(id);
     if (!owned()) return;
     resource.state.value = "success";
     // A failed node read must not make the workspace unopenable.
     void loadNodePosture(detail.node_id);
-    if (workspaceLive.value) void terminal.connect(id);
+    // Render the loaded workspace before the terminal measures its host.
+    await nextTick();
+    if (owned() && workspaceLive.value) void terminal.connect(id);
   } catch (caught) {
     if (!owned()) return;
     resource.error.value = caught;
