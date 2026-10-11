@@ -84,6 +84,7 @@ const identity = computed(() =>
     class="head"
     :data-compact="compact ? '' : undefined"
     :data-details-open="compact && detailsOpen ? '' : undefined"
+    :data-has-action="(canTakeover && isViewer) || canRetry ? '' : undefined"
   >
     <div class="row primary">
       <h1 :title="name">{{ name }}</h1>
@@ -257,7 +258,7 @@ h1 {
 }
 .path {
   min-width: 0;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   font-family: var(--font-mono);
   font-size: 11px;
   max-width: min(46ch, 100%);
@@ -285,36 +286,49 @@ h1 {
 }
 @media (max-width: 767px) {
   .head[data-compact] {
-    height: auto;
-    min-height: var(--layout-workhead-compact);
+    height: var(--layout-workhead);
+    gap: 0;
   }
   .primary {
-    flex-wrap: wrap;
     gap: 8px;
   }
   h1 {
     flex: 1;
   }
-  /* Posture stays on the name row. Actions get a full row instead of
-     competing with warnings for the phone's remaining width (#104). */
-  .actions {
+  /* Only a visible takeover/retry action needs extra room (#104). The
+     ordinary writer keeps the compact token height and terminal row budget. */
+  .head[data-compact][data-has-action] {
+    height: auto;
+    gap: 4px;
+  }
+  .head[data-has-action] .primary {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .head[data-has-action] .actions {
     flex-basis: 100%;
     justify-content: flex-end;
-    min-height: var(--density-touch);
   }
-  /* Reserve the shared icon button's full hit area at the row edge. */
+  /* Reserve horizontal hit area at the edge, retaining the compact visual
+     height. Shared icon buttons already extend their vertical hit area. */
   .head :deep(.icon-btn) {
     width: var(--density-touch);
-    height: var(--density-touch);
     flex-shrink: 0;
   }
   .identity {
     min-height: var(--density-touch);
   }
   .disclose {
-    min-height: var(--density-touch);
     min-width: var(--density-touch);
     padding-inline: 8px;
+    position: relative;
+  }
+  .disclose::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: var(--density-touch);
+    /* Extend upwards within the header, away from the mode tabs below. */
   }
 }
 </style>

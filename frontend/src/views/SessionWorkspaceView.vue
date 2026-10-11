@@ -1982,7 +1982,7 @@ async function confirmTerminate(): Promise<void> {
 }
 .grid[data-mobile] .drop-bar {
   height: auto;
-  padding: 8px 12px;
+  padding: 4px 12px;
 }
 .grid[data-mobile] :deep(.tabs [role="tab"]) {
   min-height: var(--density-touch);

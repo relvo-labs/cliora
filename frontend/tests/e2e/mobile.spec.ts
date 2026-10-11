@@ -57,6 +57,7 @@ async function workspaceFixture(
     | "failed"
     | "403"
     | "500" = "writer",
+  workspace = LONG_PATH,
 ) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -97,7 +98,7 @@ async function workspaceFixture(
           user_id: "u",
           name: "A very long synthetic session name that must truncate",
           runtime: "codex",
-          workspace: LONG_PATH,
+          workspace,
           status: state === "exited" || state === "failed" ? state : "running",
           rows: 24,
           columns: 80,
@@ -426,6 +427,56 @@ test.describe("mobile: geometry on any stack", () => {
 });
 
 test.describe("workspace: presentation regression fixtures", () => {
+  test("#104 writer 390x844: compact header preserves the terminal row budget", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await workspaceFixture(page);
+    await expect(page.locator("#panel-cli .xterm-screen")).toBeVisible();
+    await expect
+      .poll(() => page.locator("#panel-cli .xterm-rows > div").count())
+      .toBeGreaterThan(0);
+    const header = await page
+      .locator(".workspace > .head")
+      .evaluate((head) => ({
+        height: head.getBoundingClientRect().height,
+        token: parseFloat(
+          getComputedStyle(head).getPropertyValue("--layout-workhead"),
+        ),
+      }));
+    expect
+      .soft(header.height, "writer header must retain the compact token height")
+      .toBe(header.token);
+    // Immutable review/probe-base.json measured 28 rows with image drop enabled.
+    // Allow one row for the repaired image-bar spacing, never the five-row loss.
+    await expect
+      .poll(() => page.locator("#panel-cli .xterm-rows > div").count())
+      .toBeGreaterThanOrEqual(27);
+  });
+
+  test("desktop short workspace paths keep the copy action adjacent", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await workspaceFixture(page, "writer", "/srv/app");
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      if (width === 1280)
+        await page.getByRole("button", { name: "顯示 Session 資訊" }).click();
+      const gap = await page.locator(".identity").evaluate((identity) => {
+        const path = identity.querySelector(".path")!;
+        const range = document.createRange();
+        range.selectNodeContents(path);
+        return (
+          identity.querySelector(".icon-btn")!.getBoundingClientRect().left -
+          range.getBoundingClientRect().right
+        );
+      });
+      expect(gap, `short path copy gap at ${width}px`).toBeLessThanOrEqual(9);
+      expect(gap).toBeGreaterThanOrEqual(7);
+    }
+  });
+
   test("desktop 1440x900: header height and terminal geometry stay within the workspace", async ({
     page,
   }) => {
