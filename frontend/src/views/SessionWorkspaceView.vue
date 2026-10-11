@@ -829,6 +829,7 @@ const pickerInput = ref<HTMLInputElement | null>(null);
 // fails. The writer condition is separate because it is *temporary*.
 const canUploadImages = computed(
   () =>
+    !sessionEnded.value &&
     capabilities.value?.can_upload_files === true &&
     nodePosture.value?.image_upload === true,
 );
@@ -1431,7 +1432,7 @@ async function confirmTerminate(): Promise<void> {
                   {{ imageDrop.errorMessage.value }}
                 </span>
                 <span v-else class="drop-hint">
-                  可貼上（Ctrl+V）、拖放，或按上方按鈕選檔
+                  可貼上（Ctrl+V）、拖放，或用按鈕選檔
                 </span>
               </UiToolbar>
               <div
@@ -1669,32 +1670,41 @@ async function confirmTerminate(): Promise<void> {
       <!-- Signed out, or not sure as whom, is not this veil's job: `App.vue`
            makes the whole page inert behind `AuthGate` (#76). -->
       <div v-if="!workspaceLive" class="veil">
-        <!-- Three different situations, three different components. What was
+        <!-- The route id is already known to the caller. Never reuse a cached
+             session name or path after a refused load (#93/#108). -->
+        <header class="veil-head">
+          <UiButton @click="$router.push({ name: 'sessions' })">
+            回到 Sessions
+          </UiButton>
+          <h1 :title="id">Session {{ id }}</h1>
+        </header>
+        <div class="veil-body">
+          <!-- Three different situations, three different components. What was
              here printed the state's internal name on screen for all three.
              A route change that has not started its fetch yet (the old
              shell is still being closed) is loading too: the previous
              fetch's `success` is not about this id. -->
-        <UiLoadingState
-          v-if="
-            resource.state.value === 'loading' ||
-            resource.state.value === 'success'
-          "
-          label="正在載入 Session"
-        />
-        <UiInlineNotice
-          v-else-if="resource.state.value === 'forbidden'"
-          tone="error"
-          title="無法存取此 Session"
-          message="你的角色沒有檢視這個 Session 的權限。UI 隱藏不能取代伺服器授權：即使入口可見，伺服器仍會拒絕。"
-        />
-        <!-- ErrorNotice keeps the four-part shape from the error catalogue:
+          <UiLoadingState
+            v-if="
+              resource.state.value === 'loading' ||
+              resource.state.value === 'success'
+            "
+            label="正在載入 Session"
+          />
+          <!-- ErrorNotice keeps the four-part shape from the error catalogue:
              what happened, why, what to do, and the request id that ties this
              screen to the server log line. -->
-        <ErrorNotice
-          v-else
-          :error="resource.error.value"
-          @retry="loadSession()"
-        />
+          <div v-else class="veil-failure">
+            <p v-if="resource.state.value === 'forbidden'">
+              無法存取此 Session
+            </p>
+            <ErrorNotice
+              :error="resource.error.value"
+              :retryable="resource.state.value === 'forbidden' ? false : null"
+              @retry="loadSession()"
+            />
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1729,6 +1739,8 @@ async function confirmTerminate(): Promise<void> {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  /* A grid item must shrink below its identity row's intrinsic width. */
+  min-width: 0;
 }
 .notices {
   display: grid;
@@ -1913,9 +1925,39 @@ async function confirmTerminate(): Promise<void> {
 .veil {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
+  overflow: auto;
+}
+.veil-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  flex-shrink: 0;
+}
+.veil-head h1 {
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.veil-head :deep(.btn) {
+  flex-shrink: 0;
+}
+.veil-body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 16px;
+}
+.veil-body :deep(.notice) {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 /* No `height: 100%`: inside a flex column it feeds flex-basis, so the host would
  * ask for the whole pane while the notice asks for its own height, and shrinking
@@ -1937,6 +1979,14 @@ async function confirmTerminate(): Promise<void> {
   max-width: 48px;
   border-radius: var(--radius-panel);
   object-fit: cover;
+}
+.grid[data-mobile] .drop-bar {
+  height: auto;
+  padding: 4px 12px;
+}
+.grid[data-mobile] :deep(.tabs [role="tab"]) {
+  min-height: var(--density-touch);
+  min-width: var(--density-touch);
 }
 .drop-status code {
   font-family:

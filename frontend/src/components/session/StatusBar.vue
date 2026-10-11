@@ -24,13 +24,15 @@
 // The 28px is not free: it is roughly 1.7 terminal rows, and it is counted in
 // the row budget that measured 35 rows at 14px/1.2.
 
+import { computed } from "vue";
+
 import StatusBadge from "../common/StatusBadge.vue";
 import type {
   TerminalRole,
   TerminalStatus,
 } from "../../composables/useTerminalSession";
 
-defineProps<{
+const props = defineProps<{
   /** From the API. Absent while the session is still loading. */
   sessionStatus?: string;
   /** From the terminal composable — the browser's socket, not the session. */
@@ -39,6 +41,20 @@ defineProps<{
   /** Shown while the session itself could not be loaded. */
   loadError?: boolean;
 }>();
+
+const terminalStatuses = new Set(["exited", "failed", "terminated"]);
+const ended = computed(
+  () =>
+    props.connection === "exited" ||
+    terminalStatuses.has(props.sessionStatus ?? ""),
+);
+// The socket may be the first witness; preserve a known failure/termination.
+const sessionState = computed(() =>
+  props.connection === "exited" &&
+  !terminalStatuses.has(props.sessionStatus ?? "")
+    ? "exited"
+    : props.sessionStatus,
+);
 </script>
 
 <template>
@@ -51,8 +67,8 @@ defineProps<{
       <span class="cell">
         <span class="key">Session</span>
         <StatusBadge
-          v-if="sessionStatus"
-          :status="sessionStatus"
+          v-if="sessionState"
+          :status="sessionState"
           kind="session"
           live
         />
@@ -68,7 +84,7 @@ defineProps<{
 
       <!-- Control. Always words: "read-only" is a permission fact, and a colour
            cannot say who holds the write lock. -->
-      <span class="cell">
+      <span v-if="!ended" class="cell">
         <span class="key">控制權</span>
         <span class="plain" :class="{ accent: role === 'writer' }">{{
           role === "writer" ? "你有控制權" : "唯讀（他人持有）"

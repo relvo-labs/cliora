@@ -84,6 +84,7 @@ const identity = computed(() =>
     class="head"
     :data-compact="compact ? '' : undefined"
     :data-details-open="compact && detailsOpen ? '' : undefined"
+    :data-has-action="(canTakeover && isViewer) || canRetry ? '' : undefined"
   >
     <div class="row primary">
       <h1 :title="name">{{ name }}</h1>
@@ -162,7 +163,7 @@ const identity = computed(() =>
            architecture lists name, node, runtime and workspace together as the
            session's identity, and the node was the only one missing — the data
            was already fetched, just never rendered. -->
-      <span class="who">{{ identity }}</span>
+      <span class="who" :title="identity">{{ identity }}</span>
       <span class="sep" aria-hidden="true">·</span>
       <code class="path truncate-middle" :title="workspace">{{
         workspace
@@ -198,6 +199,7 @@ const identity = computed(() =>
   gap: 4px;
   height: var(--layout-workhead);
   flex-shrink: 0;
+  min-width: 0;
   /* The ⋯ panel extends beyond this fixed row; labels truncate themselves. */
   overflow: visible;
 }
@@ -246,12 +248,17 @@ h1 {
   color: var(--text-secondary);
 }
 .who {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .sep {
   color: var(--text-disabled);
 }
 .path {
+  min-width: 0;
+  flex: 0 1 auto;
   font-family: var(--font-mono);
   font-size: 11px;
   max-width: min(46ch, 100%);
@@ -276,5 +283,52 @@ h1 {
   background: none;
   color: var(--accent-strong);
   font-size: 11px;
+}
+@media (max-width: 767px) {
+  .head[data-compact] {
+    height: var(--layout-workhead);
+    gap: 0;
+  }
+  .primary {
+    gap: 8px;
+  }
+  h1 {
+    flex: 1;
+  }
+  /* Only a visible takeover/retry action needs extra room (#104). The
+     ordinary writer keeps the compact token height and terminal row budget. */
+  .head[data-compact][data-has-action] {
+    height: auto;
+    gap: 4px;
+  }
+  .head[data-has-action] .primary {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+  .head[data-has-action] .actions {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
+  /* Reserve horizontal hit area at the edge, retaining the compact visual
+     height. Shared icon buttons already extend their vertical hit area. */
+  .head :deep(.icon-btn) {
+    width: var(--density-touch);
+    flex-shrink: 0;
+  }
+  .identity {
+    min-height: var(--density-touch);
+  }
+  .disclose {
+    min-width: var(--density-touch);
+    padding-inline: 8px;
+    position: relative;
+  }
+  .disclose::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: var(--density-touch);
+    /* Extend upwards within the header, away from the mode tabs below. */
+  }
 }
 </style>

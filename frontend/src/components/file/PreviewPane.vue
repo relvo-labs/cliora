@@ -410,6 +410,8 @@ const fileName = computed(
   gap: 6px;
   min-height: 0;
   height: 100%;
+  /* Header and metadata use panel text, including Porcelain on desktop. */
+  background: var(--surface-default);
 }
 .head,
 .meta {
@@ -447,7 +449,13 @@ h2 {
 }
 .tools {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+}
+@media (max-width: 767px) {
+  .preview {
+    padding: 12px;
+  }
 }
 .tools button {
   padding: 3px 8px;

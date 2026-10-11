@@ -1,5 +1,6 @@
 import { expect, Page, test } from "@playwright/test";
 
+import { contrastRatio } from "../../src/theme/contrast";
 import { terminateSessions, trackSessions } from "./session-cleanup";
 
 // The measurements plan/29's two static gates cannot make.
@@ -37,6 +38,183 @@ const SIZES = [
 ];
 
 const TOUCH_FLOOR = 44;
+
+const FIXTURE_ID = "44444444-4444-4444-8444-444444444444";
+const FIXTURE_NODE = "11111111-1111-1111-1111-111111111111";
+const LONG_PATH =
+  "/srv/workspaces/a-long-project-directory/packages/frontend/src";
+
+// Synthetic state surfaces, rendered by the real components, xterm and Monaco.
+// Live detach/round-trip behavior is tested against the full stack below.
+async function workspaceFixture(
+  page: Page,
+  state:
+    | "writer"
+    | "viewer"
+    | "reconnecting"
+    | "retry"
+    | "exited"
+    | "failed"
+    | "403"
+    | "500" = "writer",
+  workspace = LONG_PATH,
+) {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.addInitScript(() => {
+    localStorage.setItem("cliora.access_token", "mock-access");
+    localStorage.setItem("cliora.refresh_token", "mock-refresh");
+  });
+  await page.route(
+    (url) => url.pathname.startsWith("/api/"),
+    async (route) => {
+      const path = new URL(route.request().url()).pathname;
+      let body: unknown = {};
+      if (path === "/api/auth/me") {
+        body = {
+          id: "u",
+          username: "mock",
+          display_name: "Mock",
+          role: "Admin",
+          permissions: ["session.view", "file.browse", "terminal.shell"],
+        };
+      } else if (path === `/api/sessions/${FIXTURE_ID}`) {
+        if (state === "403" || state === "500") {
+          await route.fulfill({
+            status: Number(state),
+            json: {
+              error: {
+                code: state === "403" ? "FORBIDDEN" : "INTERNAL_ERROR",
+                message: "無法載入 Session。",
+              },
+              request_id: "workspace-proof",
+            },
+          });
+          return;
+        }
+        body = {
+          id: FIXTURE_ID,
+          node_id: FIXTURE_NODE,
+          user_id: "u",
+          name: "A very long synthetic session name that must truncate",
+          runtime: "codex",
+          workspace,
+          status: state === "exited" || state === "failed" ? state : "running",
+          rows: 24,
+          columns: 80,
+          exit_code: state === "failed" ? 1 : 0,
+          capabilities: {
+            can_view: true,
+            can_write: true,
+            can_takeover: true,
+            can_terminate: true,
+            can_browse_files: true,
+            can_upload_files: true,
+            can_open_shell: true,
+          },
+        };
+      } else if (path === `/api/nodes/${FIXTURE_NODE}`) {
+        body = {
+          id: FIXTURE_NODE,
+          name: "A long synthetic node name",
+          image_upload: true,
+          privileged_terminal: true,
+          runtimes: [
+            { runtime: "codex", sandbox_bypass: true },
+            { runtime: "shell", available: true },
+          ],
+          workspace_roots: [],
+        };
+      } else if (path.endsWith("/attach")) {
+        if (state === "reconnecting") {
+          await route.fulfill({
+            status: 503,
+            json: { error: { code: "NODE_OFFLINE", message: "Node offline" } },
+          });
+          return;
+        }
+        body = { ticket: "mock-ticket" };
+      } else if (path.endsWith("/files/tree")) {
+        body = {
+          path: ".",
+          truncated: false,
+          entries: [
+            {
+              name: "note.txt",
+              rel_path: "note.txt",
+              type: "file",
+              size: 5,
+              expandable: false,
+              hidden: false,
+              symlink: false,
+              excluded: false,
+            },
+          ],
+        };
+      } else if (path.endsWith("/files/content")) {
+        body = {
+          success: true,
+          rel_path: "note.txt",
+          content: "hello",
+          size: 5,
+          encoding: "utf-8",
+          language_hint: "plaintext",
+        };
+      } else if (path === "/api/sessions" || path === "/api/nodes") body = [];
+      await route.fulfill({ json: body });
+    },
+  );
+  await page.routeWebSocket("**/ws/sessions/*/terminal?*", (socket) => {
+    socket.send(
+      JSON.stringify({
+        type: "terminal.role",
+        payload: { role: state === "viewer" ? "viewer" : "writer" },
+      }),
+    );
+    if (state === "retry")
+      socket.send(
+        JSON.stringify({
+          type: "terminal.gap",
+          payload: { reason: "Synthetic output gap" },
+        }),
+      );
+  });
+  await page.goto(`/sessions/${FIXTURE_ID}`);
+  await page
+    .locator(".workspace")
+    .waitFor({ state: "visible", timeout: 5000 })
+    .catch((error: Error) => {
+      throw new Error(`${error.message}\n${errors.join("\n")}`);
+    });
+  expect(errors, "workspace fixture failed before mounting").toEqual([]);
+}
+
+async function headerGeometry(page: Page) {
+  return page.locator(".workspace > .head").evaluate((head) => {
+    const main = head.closest("main")!;
+    const box = main.getBoundingClientRect();
+    const style = getComputedStyle(main);
+    const column = {
+      left: box.left + parseFloat(style.paddingLeft),
+      right: box.right - parseFloat(style.paddingRight),
+    };
+    return [
+      ...head.querySelectorAll(
+        ".primary, .identity, h1, .posture, .actions, .actions button, .path",
+      ),
+      head,
+    ].map((el) => {
+      const box = el.getBoundingClientRect();
+      return {
+        element: `${el.tagName}.${el.className}`,
+        fits: box.left >= column.left - 1 && box.right <= column.right + 1,
+        width: box.width,
+        scrollWidth: el.scrollWidth,
+        clientWidth: el.clientWidth,
+      };
+    });
+  });
+}
 
 async function signIn(page: Page): Promise<void> {
   await page.goto("/login");
@@ -91,16 +269,30 @@ async function undersizedControls(page: Page, floor: number) {
     );
     for (const el of nodes) {
       const style = getComputedStyle(el);
-      if (style.display === "none" || style.visibility === "hidden") continue;
+      if (!el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+        continue;
+      // A fully clipped picker is operated through the visible upload button.
+      // Detect the painted state, without exempting any control by name/class.
+      if (style.clip === "rect(0px, 0px, 0px, 0px)") continue;
       const box = el.getBoundingClientRect();
-      // Zero-sized means "not laid out", which is not the failure this is
-      // looking for; a visually-hidden input (the sr-only pattern) is one.
+      // Zero-sized means "not laid out".
       if (box.width === 0 || box.height === 0) continue;
-      // The hit area may be larger than the visual box: UiButton tops its own
-      // up with a pseudo-element. Measure the largest rect the element offers.
-      const rects = [...el.getClientRects()];
-      const widest = Math.max(box.width, ...rects.map((r) => r.width));
-      const tallest = Math.max(box.height, ...rects.map((r) => r.height));
+      // Client rects do not include pseudo-elements. Shared buttons extend
+      // their hit area with ::after; measure that computed box as well.
+      const after = getComputedStyle(el, "::after");
+      const extendsHitArea =
+        after.content !== "none" &&
+        after.content !== "normal" &&
+        after.position === "absolute" &&
+        after.pointerEvents !== "none";
+      const widest = Math.max(
+        box.width,
+        extendsHitArea ? parseFloat(after.width) || 0 : 0,
+      );
+      const tallest = Math.max(
+        box.height,
+        extendsHitArea ? parseFloat(after.height) || 0 : 0,
+      );
       if (widest + 0.5 < min || tallest + 0.5 < min) {
         out.push(
           `${el.tagName.toLowerCase()}.${el.className || "-"} ` +
@@ -234,6 +426,260 @@ test.describe("mobile: geometry on any stack", () => {
   });
 });
 
+test.describe("workspace: presentation regression fixtures", () => {
+  test("#104 writer 390x844: compact header preserves the terminal row budget", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await workspaceFixture(page);
+    await expect(page.locator("#panel-cli .xterm-screen")).toBeVisible();
+    await expect
+      .poll(() => page.locator("#panel-cli .xterm-rows > div").count())
+      .toBeGreaterThan(0);
+    const header = await page
+      .locator(".workspace > .head")
+      .evaluate((head) => ({
+        height: head.getBoundingClientRect().height,
+        token: parseFloat(
+          getComputedStyle(head).getPropertyValue("--layout-workhead"),
+        ),
+      }));
+    expect
+      .soft(header.height, "writer header must retain the compact token height")
+      .toBe(header.token);
+    // Immutable review/probe-base.json measured 28 rows with image drop enabled.
+    // Allow one row for the repaired image-bar spacing, never the five-row loss.
+    await expect
+      .poll(() => page.locator("#panel-cli .xterm-rows > div").count())
+      .toBeGreaterThanOrEqual(27);
+  });
+
+  test("desktop short workspace paths keep the copy action adjacent", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await workspaceFixture(page, "writer", "/srv/app");
+    for (const width of [1440, 1280]) {
+      await page.setViewportSize({ width, height: width === 1440 ? 900 : 800 });
+      if (width === 1280)
+        await page.getByRole("button", { name: "顯示 Session 資訊" }).click();
+      const gap = await page.locator(".identity").evaluate((identity) => {
+        const path = identity.querySelector(".path")!;
+        const range = document.createRange();
+        range.selectNodeContents(path);
+        return (
+          identity.querySelector(".icon-btn")!.getBoundingClientRect().left -
+          range.getBoundingClientRect().right
+        );
+      });
+      expect(gap, `short path copy gap at ${width}px`).toBeLessThanOrEqual(9);
+      expect(gap).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  test("desktop 1440x900: header height and terminal geometry stay within the workspace", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await workspaceFixture(page);
+    await expect(page.locator("#panel-cli .xterm-screen")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const pane = document.querySelector<HTMLElement>("#panel-cli")!;
+          const host = pane.querySelector<HTMLElement>(".terminal-host")!;
+          const drop = pane.querySelector<HTMLElement>(".drop-bar")!;
+          const screen = pane.querySelector<HTMLElement>(".xterm-screen")!;
+          return (
+            host.clientHeight >= pane.clientHeight - drop.clientHeight - 1 &&
+            screen.clientHeight >= host.clientHeight * 0.9 &&
+            pane.querySelectorAll(".xterm-rows > div").length >= 30
+          );
+        }),
+      )
+      .toBe(true);
+    expect(
+      await page
+        .locator(".workspace > .head")
+        .evaluate(
+          (el) =>
+            el.clientHeight ===
+            parseFloat(
+              getComputedStyle(el).getPropertyValue("--layout-workhead"),
+            ),
+        ),
+    ).toBe(true);
+    expect(
+      await page
+        .locator("main")
+        .evaluate(
+          (el) =>
+            el.scrollWidth <= el.clientWidth &&
+            el.scrollHeight <= el.clientHeight + 1,
+        ),
+    ).toBe(true);
+  });
+
+  for (const state of ["writer", "viewer", "reconnecting", "retry"] as const) {
+    test(`#104 ${state}: header actions and posture fit at 360/390/430px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 360, height: 844 });
+      await workspaceFixture(page, state);
+      await expect(page.locator(".posture")).toHaveCount(2);
+      if (state === "viewer" || state === "retry")
+        await expect(
+          page.getByRole("button", {
+            name: state === "viewer" ? "取得控制權" : "重新連線",
+            exact: true,
+          }),
+        ).toBeVisible();
+      for (const width of [360, 390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        await expect
+          .poll(async () =>
+            (await headerGeometry(page)).filter((row) => !row.fits),
+          )
+          .toEqual([]);
+        const name = page.locator(".workspace > .head h1");
+        expect(
+          await name.evaluate((el) => el.scrollWidth > el.clientWidth),
+        ).toBe(true);
+      }
+    });
+  }
+
+  test("#138 expanded identity fits at 390px and retains the full path", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await workspaceFixture(page);
+    await page.getByRole("button", { name: "顯示 Session 資訊" }).click();
+    await expect(page.locator(".identity .path")).toHaveAttribute(
+      "title",
+      LONG_PATH,
+    );
+    await expect
+      .poll(async () => (await headerGeometry(page)).filter((row) => !row.fits))
+      .toEqual([]);
+    const overflow = await page
+      .locator(".workspace > .head")
+      .evaluate((head) => ({
+        fits: head.scrollWidth <= head.clientWidth + 1,
+        widths: [head, ...head.querySelectorAll("*")].map((el) => ({
+          element: `${el.tagName}.${el.getAttribute("class")}`,
+          client: el.clientWidth,
+          scroll: el.scrollWidth,
+          right: el.getBoundingClientRect().right,
+        })),
+      }));
+    expect(overflow.fits, JSON.stringify(overflow.widths)).toBe(true);
+  });
+
+  test("#126 preview and image-drop rows have space inside the card", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await workspaceFixture(page);
+    const drop = page.locator(".drop-bar");
+    await expect(drop).toBeVisible();
+    const toolbar = (await drop.boundingBox())!;
+    const button = (await drop
+      .getByRole("button", { name: "投放圖片" })
+      .boundingBox())!;
+    expect(button.y - toolbar.y).toBeGreaterThanOrEqual(4);
+    expect(
+      toolbar.y + toolbar.height - button.y - button.height,
+    ).toBeGreaterThanOrEqual(4);
+    await expect(drop).toContainText("或用按鈕選檔");
+    await page.getByRole("tab", { name: "檔案" }).click();
+    await page.getByRole("button", { name: "note.txt", exact: true }).click();
+    await expect(page.locator(".preview .meta")).toBeVisible({
+      timeout: 20_000,
+    });
+    const card = (await page.locator(".center").boundingBox())!;
+    for (const selector of [
+      ".preview h2",
+      ".preview .tools",
+      ".preview .meta",
+      ".preview .body",
+    ]) {
+      const box = (await page.locator(selector).boundingBox())!;
+      expect(box.x - card.x, selector).toBeGreaterThanOrEqual(12);
+      expect(
+        card.x + card.width - box.x - box.width,
+        selector,
+      ).toBeGreaterThanOrEqual(12);
+    }
+  });
+
+  for (const status of ["403", "500"] as const) {
+    test(`#108 ${status}: safe identity and back control stay visible`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await workspaceFixture(page, status);
+      const veil = page.locator(".veil");
+      await expect(veil.getByRole("heading")).toContainText(FIXTURE_ID);
+      await expect(veil.getByRole("alert")).toContainText("workspace-proof");
+      await expect(veil).not.toContainText(LONG_PATH);
+      await veil.getByRole("button", { name: "回到 Sessions" }).click();
+      await expect(page).toHaveURL(/\/sessions$/);
+    });
+  }
+
+  test("#97 Porcelain desktop preview labels have readable contrast at 1440x900", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() =>
+      localStorage.setItem("cliora-theme", "porcelain"),
+    );
+    await workspaceFixture(page);
+    await page.getByRole("treeitem", { name: /note.txt/ }).click();
+    await expect(page.locator(".preview .meta")).toBeVisible({
+      timeout: 20_000,
+    });
+    const pairs = await page.locator(".preview").evaluate((preview) => {
+      return [".file", ".readonly", ".meta"].map((selector) => {
+        const el = preview.querySelector(selector)!;
+        let surface: Element | null = el;
+        while (
+          surface &&
+          getComputedStyle(surface).backgroundColor === "rgba(0, 0, 0, 0)"
+        )
+          surface = surface.parentElement;
+        const hex = (rgb: string) =>
+          "#" +
+          rgb
+            .match(/\d+/g)!
+            .slice(0, 3)
+            .map((n) => Number(n).toString(16).padStart(2, "0"))
+            .join("");
+        return {
+          selector,
+          fg: hex(getComputedStyle(el).color),
+          bg: hex(getComputedStyle(surface!).backgroundColor),
+        };
+      });
+    });
+    for (const pair of pairs)
+      expect(
+        contrastRatio(pair.fg, pair.bg),
+        JSON.stringify(pair),
+      ).toBeGreaterThanOrEqual(4.5);
+    expect(
+      await page
+        .locator("main")
+        .evaluate(
+          (el) =>
+            el.scrollWidth <= el.clientWidth &&
+            el.scrollHeight <= el.clientHeight + 1,
+        ),
+    ).toBe(true);
+  });
+});
+
 test.describe("mobile: the session workspace", () => {
   test.skip(
     !fullStack || !adminUser || !adminPass,
@@ -314,6 +760,10 @@ test.describe("mobile: the session workspace", () => {
   test("terminal and files are one tap apart, and the terminal is not rebuilt", async ({
     page,
   }) => {
+    let sockets = 0;
+    page.on("websocket", (socket) => {
+      if (socket.url().includes("/terminal?")) sockets++;
+    });
     await openFromList(page);
     await expect(page.locator(".modes")).toBeVisible();
 
@@ -333,9 +783,17 @@ test.describe("mobile: the session workspace", () => {
     await expect(rows).toContainText(marker, { timeout: 15_000 });
     const screen = await screens.elementHandle();
 
-    await page.getByRole("tab", { name: "檔案" }).click();
-    await expect(page.locator("#file-panel")).toBeVisible();
-    await page.getByRole("tab", { name: "終端機" }).click();
+    const socketsBefore = sockets;
+    expect(socketsBefore).toBe(1);
+    for (let trip = 0; trip < 10; trip++) {
+      await page.getByRole("tab", { name: "檔案" }).click();
+      await expect(page.locator("#file-panel")).toBeVisible();
+      await page.getByRole("tab", { name: "終端機" }).click();
+      await expect(screens).toBeVisible();
+      expect(sockets, `round trip ${trip + 1} opened another socket`).toBe(
+        socketsBefore,
+      );
+    }
 
     // Still one screen, and it is the *same element*: a rebuilt terminal is a
     // new node even when the count matches, and it takes the socket and the
@@ -471,6 +929,13 @@ test.describe("mobile: the session workspace", () => {
   }) => {
     await openFromList(page);
     await expect(page.locator(".modes")).toBeVisible();
+    await page.locator(".skip-link").focus();
+    expect(await undersizedControls(page, TOUCH_FLOOR)).toEqual([]);
+    await page.getByRole("button", { name: "顯示 Session 資訊" }).click();
+    expect(await undersizedControls(page, TOUCH_FLOOR)).toEqual([]);
+    await page.getByRole("button", { name: "Session 操作" }).click();
+    await page.getByRole("menuitem", { name: "開啟系統 shell" }).click();
+    await expect(page.locator("#tab-terminal")).toBeVisible();
     expect(await undersizedControls(page, TOUCH_FLOOR)).toEqual([]);
   });
 
