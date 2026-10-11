@@ -1,4 +1,5 @@
 import { defineStore } from "pinia";
+import { toRaw } from "vue";
 
 import type {
   CreateSessionInput,
@@ -12,6 +13,24 @@ interface SessionsState {
   current: SessionDetail | null;
 }
 
+// Keep request ordering outside reactive/serialized session data.
+interface RequestOwnership {
+  epoch: number;
+  detail: number;
+  list: number;
+}
+const requests = new WeakMap<object, RequestOwnership>();
+function ownership(store: object): RequestOwnership {
+  // Pinia devtools creates a new transparent action proxy for each invocation.
+  const key = toRaw(store);
+  let value = requests.get(key);
+  if (!value) {
+    value = { epoch: 0, detail: 0, list: 0 };
+    requests.set(key, value);
+  }
+  return value;
+}
+
 export const useSessionsStore = defineStore("sessions", {
   state: (): SessionsState => ({ list: [], current: null }),
   actions: {
@@ -19,22 +38,37 @@ export const useSessionsStore = defineStore("sessions", {
       node_id?: string;
       status?: string;
     }): Promise<SessionSummary[]> {
-      this.list = await api().listSessions(params);
-      return this.list;
+      const owner = ownership(this);
+      const epoch = owner.epoch;
+      const request = ++owner.list;
+      const list = await api().listSessions(params);
+      if (owner.epoch === epoch && owner.list === request) this.list = list;
+      return list;
     },
     async fetchSession(id: string): Promise<SessionDetail> {
+      const owner = ownership(this);
+      const epoch = owner.epoch;
+      const request = ++owner.detail;
       const session = await api().getSession(id);
-      this.current = session;
+      if (owner.epoch === epoch && owner.detail === request)
+        this.current = session;
       return session;
     },
     async create(input: CreateSessionInput): Promise<SessionDetail> {
+      const owner = ownership(this);
+      const epoch = owner.epoch;
+      const request = ++owner.detail;
       const session = await api().createSession(input);
-      this.current = session;
+      if (owner.epoch === epoch && owner.detail === request)
+        this.current = session;
       return session;
     },
     async terminate(id: string): Promise<SessionDetail> {
+      const owner = ownership(this);
+      const epoch = owner.epoch;
       const session = await api().terminateSession(id);
-      this.current = session;
+      if (owner.epoch !== epoch) return session;
+      if (this.current?.id === id) this.current = session;
       this.patchList(session);
       return session;
     },
@@ -45,6 +79,7 @@ export const useSessionsStore = defineStore("sessions", {
       }
     },
     reset(): void {
+      ownership(this).epoch += 1;
       this.list = [];
       this.current = null;
     },

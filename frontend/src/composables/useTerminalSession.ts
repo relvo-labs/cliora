@@ -158,6 +158,8 @@ export function useTerminalSession(
     retryIndex = 0,
     currentSession = "",
     disposed = false,
+    retryAllowed = false,
+    connectRequest = 0,
     // The size this socket last sent the PTY; "" until it has sent one, which
     // is what forces the first send after every attach.
     lastSize = "",
@@ -298,7 +300,7 @@ export function useTerminalSession(
     sendJson("terminal.control_acquire", { session_id: currentSession });
   }
   function scheduleRetry(): void {
-    if (disposed || status.value === "exited") return;
+    if (disposed || !retryAllowed || status.value === "exited") return;
     status.value = "reconnecting";
     window.clearTimeout(retryTimer);
     retryTimer = window.setTimeout(
@@ -308,27 +310,38 @@ export function useTerminalSession(
   }
   async function connect(sessionId: string): Promise<void> {
     if (disposed || !sessionId) return;
+    const request = ++connectRequest;
+    retryAllowed = true;
+    const owned = () => !disposed && retryAllowed && request === connectRequest;
     currentSession = sessionId;
     window.clearTimeout(retryTimer);
-    socket?.close();
+    // Disown before closing: even a synchronous close event belongs to the
+    // previous connection, and cannot schedule a retry against this one.
+    const previous = socket;
+    socket = undefined;
+    previous?.close();
     status.value = retryIndex ? "reconnecting" : "connecting";
     let ticket: string;
     try {
       ticket = await getTicket(sessionId);
     } catch {
+      if (!owned()) return;
       lastError.value = "Could not authorize the terminal session.";
       scheduleRetry();
       return;
     }
-    if (disposed) return;
+    if (!owned()) return;
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    socket = new WebSocket(
+    const connecting = new WebSocket(
       `${scheme}://${location.host}/ws/sessions/${encodeURIComponent(
         sessionId,
       )}/terminal?ticket=${encodeURIComponent(ticket)}`,
     );
-    socket.binaryType = "arraybuffer";
-    socket.onopen = () => {
+    socket = connecting;
+    const current = () => owned() && socket === connecting;
+    connecting.binaryType = "arraybuffer";
+    connecting.onopen = () => {
+      if (!current()) return;
       status.value = "connected";
       gap.value = undefined;
       retryIndex = 0;
@@ -342,18 +355,22 @@ export function useTerminalSession(
       // sends after one settle (200 ms).
       scheduleFit();
     };
-    socket.onmessage = (event) => {
+    connecting.onmessage = (event) => {
+      if (!current()) return;
       if (typeof event.data === "string") {
         handleControl(event.data);
       } else {
         terminal?.write(new Uint8Array(event.data as ArrayBuffer));
       }
     };
-    socket.onerror = () => {
+    connecting.onerror = () => {
+      if (!current()) return;
       lastError.value = "Unable to connect to the terminal relay.";
     };
-    socket.onclose = () => {
-      if (!disposed && status.value !== "exited") scheduleRetry();
+    connecting.onclose = () => {
+      if (!current()) return;
+      socket = undefined;
+      scheduleRetry();
     };
   }
   function handleControl(data: string): void {
@@ -481,9 +498,12 @@ export function useTerminalSession(
     requestControl();
   }
   function disconnect(): void {
+    retryAllowed = false;
+    connectRequest += 1;
     window.clearTimeout(retryTimer);
-    socket?.close();
+    const previous = socket;
     socket = undefined;
+    previous?.close();
     status.value = "disconnected";
   }
   function dispose(): void {

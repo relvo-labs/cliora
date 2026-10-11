@@ -791,3 +791,99 @@ describe("useTerminalSession", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 });
+
+// Delayed socket events and ticket replies must belong to the current connect.
+describe("#78 intentional disconnect and replaced sockets", () => {
+  it("disconnect leaves zero reconnects, including a late close", async () => {
+    const s = newSession();
+    await s.connect(SESSION);
+    sockets[0].open();
+    const lateClose = sockets[0].onclose;
+    s.disconnect();
+    lateClose?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(s.status.value).toBe("disconnected");
+    expect(sockets).toHaveLength(1);
+  });
+
+  it("A → B ignores A's late close and leaves B connected without retries", async () => {
+    const s = newSession();
+    await s.connect(SESSION);
+    sockets[0].open();
+    const lateClose = sockets[0].onclose;
+    // Model the browser: close() returns before its close event is dispatched.
+    sockets[0].onclose = null;
+    s.disconnect();
+    await s.connect("session-b");
+    sockets[1].open();
+    lateClose?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(s.status.value).toBe("connected");
+    expect(sockets).toHaveLength(2);
+    expect(sockets[1].closed).toBe(false);
+  });
+
+  it("disconnect cancels an already scheduled retry; explicit retry can reconnect", async () => {
+    const s = newSession();
+    await s.connect(SESSION);
+    sockets[0].close();
+    s.disconnect();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+    s.retry();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(2);
+  });
+
+  it.each(["resolve", "reject"])(
+    "disconnect ignores a pending ticket's %s",
+    async (outcome) => {
+      let resolve!: (value: string) => void;
+      let reject!: (reason: unknown) => void;
+      const ticket = new Promise<string>((r, j) => {
+        resolve = r;
+        reject = j;
+      });
+      let s!: ReturnType<typeof useTerminalSession>;
+      scope.run(() => {
+        s = useTerminalSession(() => ticket);
+      });
+      const connecting = s.connect(SESSION);
+      s.disconnect();
+      if (outcome === "resolve") resolve("late-ticket");
+      else reject(new Error("late failure"));
+      await connecting;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(s.status.value).toBe("disconnected");
+      expect(sockets).toHaveLength(0);
+    },
+  );
+
+  it("superseded ticket replies and socket messages cannot affect B", async () => {
+    let answer!: (value: string) => void;
+    let s!: ReturnType<typeof useTerminalSession>;
+    scope.run(() => {
+      s = useTerminalSession((id) =>
+        id === SESSION
+          ? new Promise<string>((resolve) => {
+              answer = resolve;
+            })
+          : Promise.resolve("b-ticket"),
+      );
+    });
+    const a = s.connect(SESSION);
+    await s.connect("session-b");
+    sockets[0].open();
+    answer("a-ticket");
+    await a;
+    expect(sockets).toHaveLength(1);
+    expect(sockets[0].url).toContain("session-b");
+    const staleMessage = sockets[0].onmessage;
+    await s.connect("session-c");
+    sockets[1].open();
+    staleMessage?.({
+      data: JSON.stringify({ type: "terminal.exited", payload: { code: 0 } }),
+    });
+    expect(s.status.value).toBe("connected");
+  });
+});

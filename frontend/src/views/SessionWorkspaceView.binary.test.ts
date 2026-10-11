@@ -251,47 +251,52 @@ afterEach(() => {
 
 describe("SessionWorkspaceView — focus_returns_to_row (phone)", () => {
   for (const how of ["back gesture", "tab close"] as const) {
-    it(`${how}: back in the same folder, scrolled where it was, focus on the row that opened it`, async () => {
-      stubApi();
-      const wrapper = await render();
-      await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
-      await flushPromises();
-      const folder = wrapper
-        .findAll("#file-panel .entry")
-        .find((e) => e.text().includes("img"));
-      await folder!.trigger("click");
-      await settle();
+    it.each([360, 390, 430])(
+      `${how}: %spx back in the same folder, scrolled where it was, focus on the row that opened it`,
+      async (px) => {
+        width = px;
+        installMatchMedia();
+        stubApi();
+        const wrapper = await render();
+        await wrapper.findAll('.modes [role="tab"]')[1].trigger("click");
+        await flushPromises();
+        const folder = wrapper
+          .findAll("#file-panel .entry")
+          .find((e) => e.text().includes("img"));
+        await folder!.trigger("click");
+        await settle();
 
-      // Either may be the scroller depending on layout; both come back.
-      wrapper.get("#file-panel .browser").element.scrollTop = 240;
-      wrapper.get("#file-panel").element.scrollTop = 120;
-      const row = wrapper
-        .findAll("#file-panel .entry")
-        .find((e) => e.text().includes("photo-12.png"))!;
-      (row.element as HTMLElement).focus();
-      await row.trigger("click");
-      await settle();
-      await vi.waitFor(
-        () => expect(fetchBinaryPreview).toHaveBeenCalledTimes(1),
-        { timeout: 5_000 },
-      );
-      expect(wrapper.find("#file-panel").exists()).toBe(false);
+        // Either may be the scroller depending on layout; both come back.
+        wrapper.get("#file-panel .browser").element.scrollTop = 240;
+        wrapper.get("#file-panel").element.scrollTop = 120;
+        const row = wrapper
+          .findAll("#file-panel .entry")
+          .find((e) => e.text().includes("photo-12.png"))!;
+        (row.element as HTMLElement).focus();
+        await row.trigger("click");
+        await settle();
+        await vi.waitFor(
+          () => expect(fetchBinaryPreview).toHaveBeenCalledTimes(1),
+          { timeout: 5_000 },
+        );
+        expect(wrapper.find("#file-panel").exists()).toBe(false);
 
-      if (how === "back gesture") {
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      } else {
-        const close = wrapper.find('[role="tablist"] .close');
-        await close.trigger("click");
-      }
-      await settle();
+        if (how === "back gesture") {
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        } else {
+          const close = wrapper.find('[role="tablist"] .close');
+          await close.trigger("click");
+        }
+        await settle();
 
-      expect(wrapper.find("#file-panel").exists()).toBe(true);
-      expect(wrapper.get("#file-panel .crumbs").text()).toContain("img");
-      expect(wrapper.get("#file-panel .browser").element.scrollTop).toBe(240);
-      expect(wrapper.get("#file-panel").element.scrollTop).toBe(120);
-      const active = document.activeElement as HTMLElement | null;
-      expect(active?.textContent).toContain("photo-12.png");
-    });
+        expect(wrapper.find("#file-panel").exists()).toBe(true);
+        expect(wrapper.get("#file-panel .crumbs").text()).toContain("img");
+        expect(wrapper.get("#file-panel .browser").element.scrollTop).toBe(240);
+        expect(wrapper.get("#file-panel").element.scrollTop).toBe(120);
+        const active = document.activeElement as HTMLElement | null;
+        expect(active?.textContent).toContain("photo-12.png");
+      },
+    );
   }
 
   it("from a search result: the query and the results are still there, focus on the hit", async () => {

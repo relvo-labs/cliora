@@ -484,12 +484,22 @@ function expectEndedOnFilePanel(wrapper: Awaited<ReturnType<typeof render>>) {
   expect(files.dirs).toEqual({});
 }
 
+// The post-termination GET observes the server's committed transition.
+function stubTerminableApi(overrides: Record<string, unknown> = {}) {
+  let status: SessionDetail["status"] = "running";
+  return stubApi(async () => session({ status }), {
+    terminateSession: vi.fn(async () => {
+      status = "terminated";
+      return session({ status });
+    }),
+    ...overrides,
+  });
+}
+
 describe("SessionWorkspaceView — session 在預覽開著時結束（#76）", () => {
   it("手機：終止後預覽關閉、模型釋放、回到檔案面板並說明，不再讀取或列目錄", async () => {
     width = 390;
-    const { listFileTree, readFileContent } = stubApi(async () => session(), {
-      terminateSession: vi.fn(async () => session({ status: "terminated" })),
-    });
+    const { listFileTree, readFileContent } = stubTerminableApi();
     const wrapper = await render();
     await openReadmeOnPhone(wrapper);
     await vi.waitFor(() => expect(shown).toEqual(["# synthetic\n"]), {
@@ -524,10 +534,7 @@ describe("SessionWorkspaceView — session 在預覽開著時結束（#76）", (
     width = 390;
     const pending = deferred<unknown>();
     const readFileContent = vi.fn(() => pending.promise);
-    stubApi(async () => session(), {
-      readFileContent,
-      terminateSession: vi.fn(async () => session({ status: "terminated" })),
-    });
+    stubTerminableApi({ readFileContent });
     const wrapper = await render();
     await openReadmeOnPhone(wrapper);
     await vi.waitFor(() => expect(readFileContent).toHaveBeenCalledTimes(1), {
@@ -571,9 +578,7 @@ describe("SessionWorkspaceView — session 在預覽開著時結束（#76）", (
   });
 
   it("桌面：終止後預覽分頁移除、回到 CLI、檔案樹說明原因，不動瀏覽歷史", async () => {
-    const { listFileTree, readFileContent } = stubApi(async () => session(), {
-      terminateSession: vi.fn(async () => session({ status: "terminated" })),
-    });
+    const { listFileTree, readFileContent } = stubTerminableApi();
     const wrapper = await render();
     await wrapper
       .get('[role="tree"]')
