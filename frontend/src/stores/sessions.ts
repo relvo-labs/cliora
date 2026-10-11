@@ -12,14 +12,18 @@ interface SessionsState {
   current: SessionDetail | null;
 }
 
+type ListParams = { node_id?: string; status?: string };
+
 // Request ownership is plumbing, not session data. Keep it per store instance
 // and out of reactive/serialized state, including across reset on auth loss.
 interface RequestOwnership {
   epoch: number;
   detail: number;
   list: number;
-  sequence: number;
-  terminations: Map<string, { sequence: number; session: SessionDetail }>;
+  detailTarget?: string | null;
+  listParams?: ListParams;
+  listLoaded: boolean;
+  listPending: number;
 }
 const requests = new WeakMap<object, RequestOwnership>();
 function ownership(store: object): RequestOwnership {
@@ -29,79 +33,81 @@ function ownership(store: object): RequestOwnership {
       epoch: 0,
       detail: 0,
       list: 0,
-      sequence: 0,
-      terminations: new Map(),
+      listLoaded: false,
+      listPending: 0,
     };
     requests.set(store, value);
   }
   return value;
 }
 
-// Reads retain their own ordering and all returned rows. A successful mutation
-// supersedes only snapshots requested before it completed, for that same id.
-// Call only within the request's epoch: a reset must never mix identities.
-function reconcile<T extends SessionSummary>(
-  session: T,
-  owner: RequestOwnership,
-  sequence: number,
-): T {
-  const termination = owner.terminations.get(session.id);
-  return termination && termination.sequence > sequence
-    ? { ...session, ...termination.session }
-    : session;
+// Background reads for another session must not take ownership from a pending
+// workspace load. Reads of the active target use the same ordering as navigation.
+async function readSession(
+  store: SessionsState,
+  id: string,
+  updateCurrent: boolean,
+): Promise<SessionDetail> {
+  const owner = ownership(store);
+  const epoch = owner.epoch;
+  const request = updateCurrent ? ++owner.detail : owner.detail;
+  if (updateCurrent) owner.detailTarget = id;
+  const session = await api().getSession(id);
+  if (updateCurrent && owner.epoch === epoch && owner.detail === request) {
+    store.current = session;
+  }
+  return session;
 }
 
 export const useSessionsStore = defineStore("sessions", {
   state: (): SessionsState => ({ list: [], current: null }),
   actions: {
-    async fetchList(params?: {
-      node_id?: string;
-      status?: string;
-    }): Promise<SessionSummary[]> {
+    async fetchList(params?: ListParams): Promise<SessionSummary[]> {
       const owner = ownership(this);
       const epoch = owner.epoch;
       const request = ++owner.list;
-      const sequence = owner.sequence;
-      const response = await api().listSessions(params);
-      if (owner.epoch !== epoch) return response;
-      const list = response.map((session) =>
-        reconcile(session, owner, sequence),
-      );
-      if (owner.list === request) this.list = list;
-      return list;
+      owner.listParams = params ? { ...params } : undefined;
+      owner.listPending += 1;
+      try {
+        const list = await api().listSessions(owner.listParams);
+        if (owner.epoch === epoch && owner.list === request) {
+          this.list = list;
+          owner.listLoaded = true;
+        }
+        return list;
+      } finally {
+        if (owner.epoch === epoch) owner.listPending -= 1;
+      }
     },
     async fetchSession(id: string): Promise<SessionDetail> {
-      const owner = ownership(this);
-      const epoch = owner.epoch;
-      const request = ++owner.detail;
-      const sequence = owner.sequence;
-      const response = await api().getSession(id);
-      if (owner.epoch !== epoch) return response;
-      const session = reconcile(response, owner, sequence);
-      if (owner.detail === request) this.current = session;
-      return session;
+      return readSession(this, id, true);
     },
     async create(input: CreateSessionInput): Promise<SessionDetail> {
       const owner = ownership(this);
       const epoch = owner.epoch;
       const request = ++owner.detail;
-      const sequence = owner.sequence;
-      const response = await api().createSession(input);
-      if (owner.epoch !== epoch) return response;
-      const session = reconcile(response, owner, sequence);
-      if (owner.detail === request) this.current = session;
+      owner.detailTarget = null;
+      const session = await api().createSession(input);
+      if (owner.epoch === epoch && owner.detail === request)
+        this.current = session;
       return session;
     },
     async terminate(id: string): Promise<SessionDetail> {
       const owner = ownership(this);
       const epoch = owner.epoch;
       const session = await api().terminateSession(id);
-      // Retain the accepted result even while another workspace is displayed:
-      // a pending return fetch or first list still needs to reconcile this id.
       if (owner.epoch !== epoch) return session;
-      owner.terminations.set(id, { sequence: ++owner.sequence, session });
       if (this.current?.id === id) this.current = session;
       this.patchList(session);
+      // Request start order cannot establish server snapshot freshness. Refresh
+      // once after the mutation, preserving the accepted state if a read fails.
+      const updateCurrent =
+        owner.detailTarget === id ||
+        (owner.detailTarget === undefined && this.current?.id === id);
+      void readSession(this, id, updateCurrent).catch(() => {});
+      if (owner.listLoaded || owner.listPending) {
+        void this.fetchList(owner.listParams).catch(() => {});
+      }
       return session;
     },
     patchList(session: SessionDetail): void {
@@ -115,8 +121,10 @@ export const useSessionsStore = defineStore("sessions", {
       owner.epoch += 1;
       owner.detail += 1;
       owner.list += 1;
-      owner.sequence = 0;
-      owner.terminations.clear();
+      owner.detailTarget = undefined;
+      owner.listParams = undefined;
+      owner.listLoaded = false;
+      owner.listPending = 0;
       this.list = [];
       this.current = null;
     },

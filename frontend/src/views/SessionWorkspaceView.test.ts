@@ -1945,7 +1945,8 @@ describe("T2 independent lifecycle probes", () => {
     const end = new Promise<SessionDetail>((r) => {
       resolve = r;
     });
-    const wrapper = await render(vi.fn(async (id: string) => session({ id })));
+    const getSession = vi.fn(async (id: string) => session({ id }));
+    const wrapper = await render(getSession);
     shellApi.terminateSession.mockReturnValueOnce(end);
     wrapper.findComponent(SessionHeader).vm.$emit("terminate");
     await flushPromises();
@@ -1955,17 +1956,17 @@ describe("T2 independent lifecycle probes", () => {
     await flushPromises();
     await wrapper.setProps({ id: ID });
     await flushPromises();
-    resolve(
-      session({
-        status: "terminated",
-        capabilities: {
-          ...session().capabilities,
-          can_terminate: false,
-          can_open_shell: false,
-          can_browse_files: false,
-        },
-      }),
-    );
+    const ended = session({
+      status: "terminated",
+      capabilities: {
+        ...session().capabilities,
+        can_terminate: false,
+        can_open_shell: false,
+        can_browse_files: false,
+      },
+    });
+    getSession.mockResolvedValueOnce(ended);
+    resolve(ended);
     await flushPromises();
     expect(useSessionsStore().current?.status).toBe("terminated");
     expect(wrapper.findComponent(SessionHeader).props("canTerminate")).toBe(
@@ -2163,7 +2164,19 @@ describe("T2 closure pending return detail", () => {
       .fn()
       .mockResolvedValueOnce(session())
       .mockResolvedValueOnce(session({ id: B }))
-      .mockReturnValueOnce(back);
+      .mockReturnValueOnce(back)
+      .mockResolvedValue(
+        session({
+          status: "terminated",
+          capabilities: {
+            ...session().capabilities,
+            can_terminate: false,
+            can_takeover: false,
+            can_browse_files: false,
+            can_upload_files: false,
+          },
+        }),
+      );
     const wrapper = await render(getSession);
     shellApi.terminateSession.mockReturnValueOnce(end);
     wrapper.findComponent(SessionHeader).vm.$emit("terminate");
@@ -2197,6 +2210,76 @@ describe("T2 closure pending return detail", () => {
     expect(result).toEqual({
       status: "terminated",
       canTerminate: false,
+      veil: false,
+    });
+  });
+});
+
+describe("T2 closure2 fresh return capabilities", () => {
+  it("renders the fresh already-terminated GET capabilities after A -> B -> pending A", async () => {
+    const B = "66666666-6666-4666-8666-666666666666";
+    let finishEnd!: (value: SessionDetail) => void;
+    let finishReturn!: (value: SessionDetail) => void;
+    const end = new Promise<SessionDetail>((r) => {
+      finishEnd = r;
+    });
+    const back = new Promise<SessionDetail>((r) => {
+      finishReturn = r;
+    });
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(session())
+      .mockResolvedValueOnce(session({ id: B }))
+      .mockReturnValueOnce(back)
+      .mockResolvedValue(
+        session({
+          status: "terminated",
+          capabilities: {
+            ...session().capabilities,
+            can_terminate: false,
+            can_takeover: false,
+            can_browse_files: false,
+            can_upload_files: false,
+          },
+        }),
+      );
+    const wrapper = await render(getSession);
+    shellApi.terminateSession.mockReturnValueOnce(end);
+    wrapper.findComponent(SessionHeader).vm.$emit("terminate");
+    await flushPromises();
+    wrapper.findComponent(ConfirmDialog).vm.$emit("confirm");
+    await flushPromises();
+    await wrapper.setProps({ id: B });
+    await flushPromises();
+    await wrapper.setProps({ id: ID });
+    await flushPromises();
+    // A POST retains its authorized user loaded before role contraction.
+    // The GET is already terminated, authorized for the same user now Viewer.
+    finishEnd(session({ status: "terminated" }));
+    await flushPromises();
+    finishReturn(
+      session({
+        status: "terminated",
+        capabilities: {
+          ...session().capabilities,
+          can_terminate: false,
+          can_takeover: false,
+          can_upload_files: false,
+        },
+      }),
+    );
+    await flushPromises();
+    const result = {
+      status: useSessionsStore().current?.status,
+      canTerminate: wrapper.findComponent(SessionHeader).props("canTerminate"),
+      canTakeover: wrapper.findComponent(SessionHeader).props("canTakeover"),
+      veil: wrapper.find(".veil").exists(),
+    };
+    wrapper.unmount();
+    expect(result).toEqual({
+      status: "terminated",
+      canTerminate: false,
+      canTakeover: false,
       veil: false,
     });
   });

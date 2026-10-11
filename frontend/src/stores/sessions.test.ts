@@ -1,4 +1,5 @@
 import { createPinia, setActivePinia } from "pinia";
+import { flushPromises } from "@vue/test-utils";
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 import type {
   CreateSessionInput,
@@ -16,6 +17,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 const detail = (id: string) => ({ id }) as SessionDetail;
+const terminated = (id: string) =>
+  ({ id, status: "terminated" }) as SessionDetail;
 beforeEach(() => setActivePinia(createPinia()));
 afterEach(() => vi.restoreAllMocks());
 
@@ -83,8 +86,9 @@ describe("#79 session request generation", () => {
 describe("T2 terminate acceptance after returning to A", () => {
   it("a successful termination updates A after A -> B -> A", async () => {
     const end = deferred<SessionDetail>();
+    const getSession = vi.fn(async (id: string) => ({ id, status: "running" }));
     vi.spyOn(auth, "api").mockReturnValue({
-      getSession: async (id: string) => ({ id, status: "running" }),
+      getSession,
       terminateSession: () => end.promise,
     } as never);
     const store = useSessionsStore();
@@ -92,7 +96,8 @@ describe("T2 terminate acceptance after returning to A", () => {
     const ending = store.terminate("A");
     await store.fetchSession("B");
     await store.fetchSession("A");
-    end.resolve({ id: "A", status: "terminated" } as SessionDetail);
+    getSession.mockResolvedValueOnce(terminated("A"));
+    end.resolve(terminated("A"));
     await ending;
     expect(store.current?.id).toBe("A");
     expect(store.current?.status).toBe("terminated");
@@ -103,7 +108,10 @@ describe("Repair 1 store continuation ownership", () => {
   it("a pre-termination detail cannot undo a successful mutation", async () => {
     const fetch = deferred<SessionDetail>();
     vi.spyOn(auth, "api").mockReturnValue({
-      getSession: () => fetch.promise,
+      getSession: vi
+        .fn()
+        .mockReturnValueOnce(fetch.promise)
+        .mockResolvedValue(terminated("A")),
       terminateSession: async () => ({ id: "A", status: "terminated" }),
     } as never);
     const store = useSessionsStore();
@@ -201,7 +209,10 @@ describe("Repair 1 list mutation ordering", () => {
   it("an older list cannot undo a successful termination", async () => {
     const list = deferred<SessionSummary[]>();
     vi.spyOn(auth, "api").mockReturnValue({
-      listSessions: () => list.promise,
+      listSessions: vi
+        .fn()
+        .mockReturnValueOnce(list.promise)
+        .mockResolvedValue([terminated("A")]),
       terminateSession: async () => ({ id: "A", status: "terminated" }),
     } as never);
     const store = useSessionsStore();
@@ -223,7 +234,8 @@ describe("T2 closure delta interleavings", () => {
       .fn()
       .mockResolvedValueOnce({ id: "A", status: "running" })
       .mockResolvedValueOnce({ id: "B", status: "running" })
-      .mockReturnValueOnce(returning.promise);
+      .mockReturnValueOnce(returning.promise)
+      .mockResolvedValue(terminated("A"));
     vi.spyOn(auth, "api").mockReturnValue({
       getSession,
       terminateSession: () => ending.promise,
@@ -263,7 +275,7 @@ describe("T2 closure delta interleavings", () => {
   });
 });
 
-describe("Repair 2 termination reconciliation", () => {
+describe("Repair 2 termination reads (server refetch contract)", () => {
   const ended = (id: string) =>
     ({
       id,
@@ -272,10 +284,17 @@ describe("Repair 2 termination reconciliation", () => {
       capabilities: { can_terminate: false, can_view: true },
     }) as SessionDetail;
 
-  it("reconciles a running row without losing the first list's other rows or returned payload", async () => {
-    const listing = deferred<SessionSummary[]>();
+  it("refreshes the first list with all server rows and leaves old returned payloads unchanged", async () => {
+    const old = deferred<SessionSummary[]>();
+    const fresh = deferred<SessionSummary[]>();
+    const listSessions = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockReturnValueOnce(fresh.promise);
+    const getSession = vi.fn().mockResolvedValue(ended("A"));
     vi.spyOn(auth, "api").mockReturnValue({
-      listSessions: () => listing.promise,
+      listSessions,
+      getSession,
       terminateSession: async () => ended("A"),
     } as never);
     const store = useSessionsStore();
@@ -283,11 +302,15 @@ describe("Repair 2 termination reconciliation", () => {
     const load = store.fetchList();
     await store.terminate("A");
     const b = { ...detail("B"), name: "unaffected" };
-    listing.resolve([b, { ...detail("A"), status: "running" }]);
-    const rows = await load;
+    const rows = [b, ended("A")];
+    fresh.resolve(rows);
+    await flushPromises();
+    old.resolve([b, { ...detail("A"), status: "running" }]);
+    expect(await load).toEqual([b, { ...detail("A"), status: "running" }]);
     expect(store.current?.id).toBe("B");
-    expect(rows).toEqual([b, ended("A")]);
     expect(store.list).toEqual(rows);
+    expect(listSessions).toHaveBeenCalledTimes(2);
+    expect(getSession).toHaveBeenCalledExactlyOnceWith("A");
   });
 
   it("trusts detail and list reads started after the termination", async () => {
@@ -309,83 +332,102 @@ describe("Repair 2 termination reconciliation", () => {
     expect(store.list).toEqual([fresh]);
   });
 
-  it("reconciles each id from its request-start sequence and keeps newest-list ordering", async () => {
-    const old = deferred<SessionSummary[]>();
-    const latest = deferred<SessionSummary[]>();
+  it("two terminations each refresh once and the newest server list wins", async () => {
+    const held = Array.from({ length: 4 }, () => deferred<SessionSummary[]>());
+    const listSessions = vi.fn();
+    for (const load of held) listSessions.mockReturnValueOnce(load.promise);
     vi.spyOn(auth, "api").mockReturnValue({
-      listSessions: vi
-        .fn()
-        .mockReturnValueOnce(old.promise)
-        .mockReturnValueOnce(latest.promise),
+      listSessions,
+      getSession: async (id: string) => ended(id),
       terminateSession: async (id: string) => ended(id),
     } as never);
     const store = useSessionsStore();
     const first = store.fetchList();
-    await store.terminate("A");
     const second = store.fetchList();
+    await store.terminate("A");
     await store.terminate("B");
     const freshA = {
       ...ended("A"),
-      name: "read after A ended",
+      name: "fresh authorized read",
       capabilities: { ...ended("A").capabilities, can_view: false },
     };
-    const c = { ...detail("C"), name: "keep C" };
-    latest.resolve([freshA, detail("B"), c]);
-    expect(await second).toEqual([freshA, ended("B"), c]);
-    old.resolve([detail("A"), detail("B")]);
-    expect(await first).toEqual([ended("A"), ended("B")]);
-    expect(store.list).toEqual([freshA, ended("B"), c]);
+    const rows = [freshA, ended("B"), detail("C")];
+    held[3].resolve(rows);
+    await flushPromises();
+    held[2].resolve([ended("A"), detail("B")]);
+    held[1].resolve([detail("B")]);
+    held[0].resolve([detail("A"), detail("B")]);
+    await Promise.all([first, second]);
+    await flushPromises();
+    expect(store.list).toEqual(rows);
+    expect(listSessions).toHaveBeenCalledTimes(4);
   });
 
-  it("a reconciled superseded detail cannot replace the newer workspace", async () => {
+  it("a superseded detail and A's fresh termination read cannot replace workspace C", async () => {
     const old = deferred<SessionDetail>();
+    const refresh = deferred<SessionDetail>();
+    const getSession = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValueOnce(detail("C"))
+      .mockReturnValueOnce(refresh.promise);
     vi.spyOn(auth, "api").mockReturnValue({
-      getSession: vi
-        .fn()
-        .mockReturnValueOnce(old.promise)
-        .mockResolvedValueOnce(detail("C")),
+      getSession,
       terminateSession: async () => ended("A"),
     } as never);
     const store = useSessionsStore();
     const first = store.fetchSession("A");
     await store.fetchSession("C");
     await store.terminate("A");
+    refresh.resolve(ended("A"));
     old.resolve(detail("A"));
-    expect(await first).toEqual(ended("A"));
+    expect(await first).toEqual(detail("A"));
+    await flushPromises();
     expect(store.current?.id).toBe("C");
+    expect(getSession.mock.calls).toEqual([["A"], ["C"], ["A"]]);
   });
 
-  it("reset clears recorded terminations and isolates old replies from the new epoch", async () => {
+  it("reset isolates accepted mutation refreshes and old replies from new same-id reads", async () => {
     const old = deferred<SessionDetail>();
+    const refresh = deferred<SessionDetail>();
+    const listRefresh = deferred<SessionSummary[]>();
     vi.spyOn(auth, "api").mockReturnValue({
       getSession: vi
         .fn()
         .mockReturnValueOnce(old.promise)
+        .mockReturnValueOnce(refresh.promise)
         .mockResolvedValue(detail("A")),
-      listSessions: async () => [detail("A")],
+      listSessions: vi
+        .fn()
+        .mockResolvedValueOnce([detail("A")])
+        .mockReturnValueOnce(listRefresh.promise)
+        .mockResolvedValue([detail("A")]),
       terminateSession: async () => ended("A"),
     } as never);
     const store = useSessionsStore();
     const first = store.fetchSession("A");
+    await store.fetchList();
     await store.terminate("A");
     store.reset();
     await store.fetchSession("A");
     await store.fetchList();
-    expect(store.current).toEqual(detail("A"));
-    expect(store.list).toEqual([detail("A")]);
-    await store.terminate("A");
+    refresh.resolve(ended("A"));
+    listRefresh.resolve([ended("A")]);
     old.resolve({ ...detail("A"), name: "old identity reply" });
     expect(await first).toEqual({ ...detail("A"), name: "old identity reply" });
-    expect(store.current).toEqual(ended("A"));
-    expect(store.list).toEqual([ended("A")]);
+    await flushPromises();
+    expect(store.current).toEqual(detail("A"));
+    expect(store.list).toEqual([detail("A")]);
   });
 
-  it("a refused termination leaves pending successful reads intact", async () => {
+  it("a refused termination leaves pending successful reads intact without refetching", async () => {
     const listing = deferred<SessionSummary[]>();
     const fetching = deferred<SessionDetail>();
+    const listSessions = vi.fn(() => listing.promise);
+    const getSession = vi.fn(() => fetching.promise);
     vi.spyOn(auth, "api").mockReturnValue({
-      listSessions: () => listing.promise,
-      getSession: () => fetching.promise,
+      listSessions,
+      getSession,
       terminateSession: async () => {
         throw new Error("refused");
       },
@@ -399,19 +441,187 @@ describe("Repair 2 termination reconciliation", () => {
     await Promise.all([list, fetch]);
     expect(store.list).toEqual([detail("A"), detail("B")]);
     expect(store.current).toEqual(detail("A"));
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(getSession).toHaveBeenCalledTimes(1);
   });
 
-  it("does not insert terminated rows absent from a filtered list response", async () => {
-    const listing = deferred<SessionSummary[]>();
+  it("preserves filters and does not insert rows absent from the refreshed server list", async () => {
+    const old = deferred<SessionSummary[]>();
+    const listSessions = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockResolvedValue([detail("B")]);
     vi.spyOn(auth, "api").mockReturnValue({
-      listSessions: () => listing.promise,
+      listSessions,
+      getSession: async () => ended("A"),
       terminateSession: async () => ended("A"),
     } as never);
     const store = useSessionsStore();
-    const load = store.fetchList({ status: "running" });
+    const params = { status: "running", node_id: "node" };
+    const load = store.fetchList(params);
+    params.status = "terminated";
     await store.terminate("A");
-    listing.resolve([detail("B")]);
+    old.resolve([detail("B")]);
     expect(await load).toEqual([detail("B")]);
+    await flushPromises();
     expect(store.list).toEqual([detail("B")]);
+    expect(listSessions.mock.calls).toEqual([
+      [{ status: "running", node_id: "node" }],
+      [{ status: "running", node_id: "node" }],
+    ]);
+  });
+});
+
+describe("Repair 3 refresh ownership and failures", () => {
+  it("failed refreshes preserve the accepted current/list and do not retry", async () => {
+    const old = deferred<SessionDetail>();
+    const getSession = vi
+      .fn()
+      .mockResolvedValueOnce(detail("A"))
+      .mockReturnValueOnce(old.promise)
+      .mockRejectedValue(new Error("refresh unavailable"));
+    const listSessions = vi
+      .fn()
+      .mockResolvedValueOnce([detail("A"), detail("B")])
+      .mockRejectedValue(new Error("refresh unavailable"));
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession,
+      listSessions,
+      terminateSession: async () => terminated("A"),
+    } as never);
+    const store = useSessionsStore();
+    await store.fetchSession("A");
+    await store.fetchList();
+    const load = store.fetchSession("A");
+    await store.terminate("A");
+    await flushPromises();
+    old.resolve({ ...detail("A"), status: "running" });
+    await load;
+    expect(store.current).toEqual(terminated("A"));
+    expect(store.list).toEqual([terminated("A"), detail("B")]);
+    expect(getSession).toHaveBeenCalledTimes(3);
+    expect(listSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("navigation to C supersedes a held A refresh", async () => {
+    const refresh = deferred<SessionDetail>();
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(detail("A"))
+        .mockReturnValueOnce(refresh.promise)
+        .mockResolvedValueOnce(detail("C")),
+      terminateSession: async () => terminated("A"),
+    } as never);
+    const store = useSessionsStore();
+    await store.fetchSession("A");
+    await store.terminate("A");
+    await store.fetchSession("C");
+    refresh.resolve(terminated("A"));
+    await flushPromises();
+    expect(store.current).toEqual(detail("C"));
+  });
+
+  it("an A refresh does not supersede a pending create", async () => {
+    const created = deferred<SessionDetail>();
+    const refresh = deferred<SessionDetail>();
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession: vi
+        .fn()
+        .mockResolvedValueOnce(detail("A"))
+        .mockReturnValueOnce(refresh.promise),
+      createSession: () => created.promise,
+      terminateSession: async () => terminated("A"),
+    } as never);
+    const store = useSessionsStore();
+    await store.fetchSession("A");
+    const creating = store.create({} as CreateSessionInput);
+    await store.terminate("A");
+    created.resolve(detail("new"));
+    await creating;
+    refresh.resolve(terminated("A"));
+    await flushPromises();
+    expect(store.current).toEqual(detail("new"));
+  });
+
+  it("refreshes the latest list params when an older request is pending after the latest fails", async () => {
+    const old = deferred<SessionSummary[]>();
+    const listSessions = vi
+      .fn()
+      .mockReturnValueOnce(old.promise)
+      .mockRejectedValueOnce(new Error("latest failed"))
+      .mockResolvedValueOnce([detail("B")]);
+    vi.spyOn(auth, "api").mockReturnValue({
+      listSessions,
+      getSession: async () => terminated("A"),
+      terminateSession: async () => terminated("A"),
+    } as never);
+    const store = useSessionsStore();
+    const first = store.fetchList({ node_id: "old" });
+    await expect(
+      store.fetchList({ node_id: "latest", status: "running" }),
+    ).rejects.toThrow("latest failed");
+    await store.terminate("A");
+    old.resolve([detail("A")]);
+    await first;
+    await flushPromises();
+    expect(store.list).toEqual([detail("B")]);
+    expect(listSessions.mock.calls[2]).toEqual([
+      { node_id: "latest", status: "running" },
+    ]);
+  });
+
+  it("a newer list after termination wins over the held refresh and preserves its own filters", async () => {
+    const refresh = deferred<SessionSummary[]>();
+    const listSessions = vi
+      .fn()
+      .mockResolvedValueOnce([detail("A")])
+      .mockReturnValueOnce(refresh.promise)
+      .mockResolvedValueOnce([detail("C")]);
+    vi.spyOn(auth, "api").mockReturnValue({
+      listSessions,
+      getSession: async () => terminated("A"),
+      terminateSession: async () => terminated("A"),
+    } as never);
+    const store = useSessionsStore();
+    await store.fetchList({ node_id: "old" });
+    await store.terminate("A");
+    await store.fetchList({ node_id: "new", status: "running" });
+    refresh.resolve([terminated("A")]);
+    await flushPromises();
+    expect(store.list).toEqual([detail("C")]);
+    expect(listSessions.mock.calls).toEqual([
+      [{ node_id: "old" }],
+      [{ node_id: "old" }],
+      [{ node_id: "new", status: "running" }],
+    ]);
+  });
+
+  it("reset removes old list eligibility and stale termination issues no reads", async () => {
+    const end = deferred<SessionDetail>();
+    const getSession = vi.fn().mockResolvedValue(terminated("A"));
+    const listSessions = vi.fn().mockResolvedValue([detail("A")]);
+    const terminateSession = vi
+      .fn()
+      .mockReturnValueOnce(end.promise)
+      .mockResolvedValue(terminated("A"));
+    vi.spyOn(auth, "api").mockReturnValue({
+      getSession,
+      listSessions,
+      terminateSession,
+    } as never);
+    const store = useSessionsStore();
+    await store.fetchList();
+    const ending = store.terminate("A");
+    store.reset();
+    end.resolve(terminated("A"));
+    await ending;
+    expect(getSession).not.toHaveBeenCalled();
+    await store.terminate("A");
+    await flushPromises();
+    expect(getSession).toHaveBeenCalledExactlyOnceWith("A");
+    expect(listSessions).toHaveBeenCalledTimes(1);
+    expect(store.current).toBeNull();
+    expect(store.list).toEqual([]);
   });
 });
