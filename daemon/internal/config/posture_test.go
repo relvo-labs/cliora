@@ -138,3 +138,41 @@ heartbeat:
 		t.Error("privileged_terminal did not round trip")
 	}
 }
+
+func TestRuntimePermissionKeysRejectNull(t *testing.T) {
+	for _, id := range []string{"codex", "claude", "shell"} {
+		for _, key := range []string{"permission_mode", "sandbox_bypass"} {
+			for _, value := range []string{"null", "~", ""} {
+				t.Run(id+"/"+key+"/"+value, func(t *testing.T) {
+					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n    "+key+": "+value+"\n"))
+					if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "null") {
+						t.Fatalf("Load error = %v, want %s null rejection", err, key)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRuntimePermissionKeyConflictsIncludeNull(t *testing.T) {
+	for _, id := range []string{"codex", "claude", "shell"} {
+		for _, mode := range []string{"auto", "cli_default", "full_access", "null", "~", "", "unknown", "[auto]"} {
+			for _, bypass := range []string{"true", "false", "null", "~", "", "[true]"} {
+				t.Run(id+"/"+mode+"/"+bypass, func(t *testing.T) {
+					keys := "    permission_mode: " + mode + "\n    sandbox_bypass: " + bypass + "\n"
+					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n"+keys))
+					if err == nil || !strings.Contains(err.Error(), "keep only permission_mode") {
+						t.Fatalf("Load error = %v, want both-keys rejection", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRuntimeConfigStillRejectsUnknownFields(t *testing.T) {
+	_, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n    permission_mode: auto\n    args: [--evil]\n"))
+	if err == nil || !strings.Contains(err.Error(), "args") {
+		t.Fatalf("Load error = %v, want unknown field rejection", err)
+	}
+}

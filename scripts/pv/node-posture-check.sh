@@ -47,7 +47,7 @@ if command -v codex >/dev/null 2>&1; then
   value "codex version" "$(codex --version 2>&1 | head -n1)"
   help="$(codex --help 2>&1)"
   for flag in "$AUTO_FLAG" "$FULL_ACCESS_FLAG"; do
-    if printf '%s' "$help" | grep -q -- "$flag"; then
+    if printf '%s' "$help" | grep -Eq -- "(^|[[:space:],])${flag}([[:space:],=<\[]|$)"; then
       value "$flag" "supported"
     else
       value "$flag" "NOT supported — if selected, agentd launches without a flag"

@@ -245,3 +245,55 @@ func TestPermissionLaunchAndDetection(t *testing.T) {
 		}
 	}
 }
+
+func TestFlagHelpTokenBoundaries(t *testing.T) {
+	for _, flag := range []string{AutoPermissionFlag, SandboxBypassFlag} {
+		for _, tc := range []struct {
+			name, help string
+			want       bool
+		}{
+			{"exact line", "      " + flag + "\n", true},
+			{"line start", flag, true},
+			{"legacy suffix", "      " + flag + "-legacy\n", false},
+			{"letter suffix", "      " + flag + "x\n", false},
+			{"equals", flag + "=x\n", true},
+			{"short alias", "  -x, " + flag + "\n", true},
+			{"comma", "  -x," + flag + ", --other\n", true},
+			{"placeholder", "  " + flag + " <VALUE>\n", true},
+			{"attached placeholder", "  " + flag + "<VALUE>\n", true},
+			{"optional value", "  " + flag + "[=VALUE]\n", true},
+			{"description", "  " + flag + "  Enable this mode\n", true},
+			{"prose suffix", "use " + flag + "anwhile\n", false},
+			{"embedded prefix", "prefix" + flag + "\n", false},
+			{"parenthesized", "(" + flag + ")\n", false},
+		} {
+			t.Run(flag+"/"+tc.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "codex")
+				script := "#!/bin/sh\ncat <<'HELP'\n" + tc.help + "\nHELP\n"
+				if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if got := flagAccepted(path, flag, time.Second); got != tc.want {
+					t.Errorf("flagAccepted help %q = %t, want %t", tc.help, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestAutoLaunchRejectsLookalikeFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "codex")
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex 9.9.9';;\n--help) echo '      " + AutoPermissionFlag + "-legacy';;\nesac\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: path}})
+	rt, _ := reg.Get("codex")
+	if args := rt.LaunchArgs(); args != nil {
+		t.Fatalf("lookalike flag produced launch args %v, want nil", args)
+	}
+	result := rt.Detect(context.Background(), time.Now())
+	if !result.Available || result.FlagApplied || result.SandboxBypass || result.SandboxNote != ReasonSandboxFlagUnsupported {
+		t.Fatalf("lookalike flag detection = %+v", result)
+	}
+}

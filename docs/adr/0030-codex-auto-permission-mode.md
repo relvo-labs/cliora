@@ -60,13 +60,16 @@ There is no Central API or console path to change the mode.
 Legacy mapping is deliberate: `sandbox_bypass: true`, and neither key present,
 become `auto`; `sandbox_bypass: false` becomes `cli_default`, preserving the
 operator's refusal of daemon flags. Setting both keys is an error explaining to
-keep only `permission_mode`. Only an explicit new-key `full_access` can select yolo.
+keep only `permission_mode`, including when either value is YAML null. An explicit
+null (`null`, `~` or a bare key) for either key is invalid rather than absent.
+Only an explicit new-key `full_access` can select yolo.
 Load records the source as `config`, `legacy-key` or `default` for startup reporting.
 The installer writes `permission_mode: auto` with the other choices explained nearby.
 
 ### 2. Probe the selected flag; unsupported means no flag
 
-Detection checks the installed CLI's help for the flag needed by the selected mode.
+Detection checks the installed CLI's help for the exact option token needed by the
+selected mode; longer lookalikes do not count as support.
 An unsupported flag leaves the runtime usable with no added flag (`cli_default`),
 with a SandboxNote, a doctor warning and a startup log explaining the result.
 **Auto never falls back to full access.** `cli_default` needs no permission-flag probe.

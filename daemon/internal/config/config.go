@@ -52,7 +52,8 @@ type RuntimeConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Binary  string `yaml:"binary"`
 	// PermissionMode selects a fixed flag set; only codex accepts this key.
-	// A pointer distinguishes an absent key from an explicitly empty, invalid value.
+	// UnmarshalYAML rejects explicit null; a pointer distinguishes an absent key
+	// from an explicitly empty, invalid string.
 	PermissionMode *PermissionMode `yaml:"permission_mode,omitempty"`
 	// SandboxBypass is a legacy input only: true upgrades to auto; false preserves
 	// the node's refusal as cli_default. It can never opt into full access.
@@ -60,6 +61,46 @@ type RuntimeConfig struct {
 	// PermissionModeSource records config, legacy-key or default for startup logs.
 	// It is never serialised and cannot be set by Central.
 	PermissionModeSource string `yaml:"-"`
+}
+
+// UnmarshalYAML checks key presence before decoding pointer values: YAML null
+// would otherwise look absent and Load's defaults could erase an invalid choice.
+// Conflicting keys win over value errors, even if either value is null.
+func (r *RuntimeConfig) UnmarshalYAML(node *yaml.Node) error {
+	var permissionPresent, bypassPresent bool
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		switch node.Content[i].Value {
+		case "permission_mode":
+			permissionPresent = true
+		case "sandbox_bypass":
+			bypassPresent = true
+		}
+	}
+	if permissionPresent && bypassPresent {
+		return errors.New("runtime sets both permission_mode and sandbox_bypass; keep only permission_mode")
+	}
+	// Node.Decode does not inherit the outer decoder's KnownFields setting.
+	// Keep the runtime mapping closed rather than accepting unknown launch inputs.
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		switch key := node.Content[i]; key.Value {
+		case "enabled", "binary", "permission_mode", "sandbox_bypass":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type config.RuntimeConfig", key.Line, key.Value)
+		}
+	}
+	type plainRuntimeConfig RuntimeConfig
+	var decoded plainRuntimeConfig
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	if permissionPresent && decoded.PermissionMode == nil {
+		return errors.New("runtime permission_mode must not be null; choose auto, cli_default or full_access")
+	}
+	if bypassPresent && decoded.SandboxBypass == nil {
+		return errors.New("runtime sandbox_bypass must not be null; use true or false, or migrate to permission_mode")
+	}
+	*r = RuntimeConfig(decoded)
+	return nil
 }
 
 // CodexPermissionMode also resolves hand-built configs used by installer detection

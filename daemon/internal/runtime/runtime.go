@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -127,7 +128,8 @@ func (r *cliRuntime) permissionAvailable() bool {
 	return supported
 }
 
-// flagAccepted reports whether a binary's help output mentions flag. Bounded the
+// flagAccepted reports whether a binary's help output declares the exact flag token.
+// Longer lookalikes and embedded names are not evidence of support. Bounded the
 // same way version detection is (tech §8.5): a hung --help must not be able to
 // stall a session launch, and WaitDelay closes the pipes so an orphaned
 // grandchild cannot hold CombinedOutput open past the timeout.
@@ -144,7 +146,8 @@ func flagAccepted(binary, flag string, timeout time.Duration) bool {
 	if err != nil && len(out) == 0 {
 		return false
 	}
-	return strings.Contains(string(out), flag)
+	option := regexp.MustCompile(`(?m)(^|[[:space:],])` + regexp.QuoteMeta(flag) + `([[:space:],=<\[]|$)`)
+	return option.Match(out)
 }
 
 func (r *cliRuntime) Detect(ctx context.Context, now time.Time) DetectResult {

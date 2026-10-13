@@ -54,7 +54,8 @@ runtime:
 `cli_default` adds no daemon flag and leaves the decision to Codex's configuration.
 `full_access` explicitly opts into yolo, disabling approvals and the sandbox.
 Legacy true upgrades to auto; legacy false maps to cli_default. Both keys together,
-unknown values and the new key on any non-Codex runtime are errors.
+unknown values, explicit YAML null values (`null`, `~` or a bare key), and either
+permission key on any non-Codex runtime are errors.
 
 Restart with `sudo systemctl restart agentd`. Confirm with `agentd doctor`: it reports
 requested and effective permission mode, source, whether the flag applied, and sandbox
