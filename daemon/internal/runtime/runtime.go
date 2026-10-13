@@ -129,7 +129,8 @@ func (r *cliRuntime) permissionAvailable() bool {
 }
 
 // flagAccepted reports whether a binary's help output declares the exact flag token.
-// Longer lookalikes and embedded names are not evidence of support. Bounded the
+// The line must start with the option, optionally after one short alias and a
+// comma; prose mentions and longer lookalikes are not evidence of support. Bounded the
 // same way version detection is (tech §8.5): a hung --help must not be able to
 // stall a session launch, and WaitDelay closes the pipes so an orphaned
 // grandchild cannot hold CombinedOutput open past the timeout.
@@ -146,7 +147,7 @@ func flagAccepted(binary, flag string, timeout time.Duration) bool {
 	if err != nil && len(out) == 0 {
 		return false
 	}
-	option := regexp.MustCompile(`(?m)(^|[[:space:],])` + regexp.QuoteMeta(flag) + `([[:space:],=<\[]|$)`)
+	option := regexp.MustCompile(`(?m)^[[:space:]]*(-[A-Za-z0-9],[[:space:]]+)?` + regexp.QuoteMeta(flag) + `([[:space:],=<\[]|$)`)
 	return option.Match(out)
 }
 

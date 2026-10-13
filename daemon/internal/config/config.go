@@ -63,32 +63,34 @@ type RuntimeConfig struct {
 	PermissionModeSource string `yaml:"-"`
 }
 
-// UnmarshalYAML checks key presence before decoding pointer values: YAML null
-// would otherwise look absent and Load's defaults could erase an invalid choice.
+// UnmarshalYAML checks the merged mapping before decoding pointer values: YAML
+// null would otherwise look absent and Load's defaults could erase an invalid
+// choice. Explicit keys override inherited ones using yaml.v3's normal precedence.
 // Conflicting keys win over value errors, even if either value is null.
 func (r *RuntimeConfig) UnmarshalYAML(node *yaml.Node) error {
-	var permissionPresent, bypassPresent bool
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		switch node.Content[i].Value {
-		case "permission_mode":
-			permissionPresent = true
-		case "sandbox_bypass":
-			bypassPresent = true
-		}
+	type plainRuntimeConfig RuntimeConfig
+	// Preserve the existing struct-decoding errors for non-mapping values.
+	if node.Kind != yaml.MappingNode {
+		return node.Decode((*plainRuntimeConfig)(r))
 	}
+	var merged map[string]yaml.Node
+	if err := node.Decode(&merged); err != nil {
+		return err
+	}
+	_, permissionPresent := merged["permission_mode"]
+	_, bypassPresent := merged["sandbox_bypass"]
 	if permissionPresent && bypassPresent {
 		return errors.New("runtime sets both permission_mode and sandbox_bypass; keep only permission_mode")
 	}
 	// Node.Decode does not inherit the outer decoder's KnownFields setting.
-	// Keep the runtime mapping closed rather than accepting unknown launch inputs.
-	for i := 0; i+1 < len(node.Content); i += 2 {
-		switch key := node.Content[i]; key.Value {
+	// Keep the runtime mapping closed, including keys inherited through merges.
+	for key, value := range merged {
+		switch key {
 		case "enabled", "binary", "permission_mode", "sandbox_bypass":
 		default:
-			return fmt.Errorf("line %d: field %s not found in type config.RuntimeConfig", key.Line, key.Value)
+			return fmt.Errorf("line %d: field %s not found in type config.RuntimeConfig", value.Line, key)
 		}
 	}
-	type plainRuntimeConfig RuntimeConfig
 	var decoded plainRuntimeConfig
 	if err := node.Decode(&decoded); err != nil {
 		return err

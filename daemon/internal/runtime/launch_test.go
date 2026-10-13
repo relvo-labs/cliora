@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -206,7 +207,7 @@ func TestBuildCommandCarriesTheSameArgsAsResolveLaunch(t *testing.T) {
 // In particular a yolo-only binary must never get yolo when auto was selected.
 func TestPermissionLaunchAndDetection(t *testing.T) {
 	for _, mode := range []config.PermissionMode{config.PermissionAuto, config.PermissionCLIDefault, config.PermissionFullAccess} {
-		for _, helpFlags := range []string{"", AutoPermissionFlag, SandboxBypassFlag, AutoPermissionFlag + " " + SandboxBypassFlag} {
+		for _, helpFlags := range []string{"", AutoPermissionFlag, SandboxBypassFlag, AutoPermissionFlag + "\n" + SandboxBypassFlag} {
 			t.Run(string(mode)+"/"+helpFlags, func(t *testing.T) {
 				dir := t.TempDir()
 				path := filepath.Join(dir, "codex")
@@ -246,27 +247,42 @@ func TestPermissionLaunchAndDetection(t *testing.T) {
 	}
 }
 
+type flagHelpCase struct {
+	name, help string
+	want       bool
+}
+
+// The same declaration matrix runs against Go and the node-check shell probe.
+func flagHelpCases(flag string) []flagHelpCase {
+	return []flagHelpCase{
+		{"exact line", "      " + flag + "\n", true},
+		{"line start", flag, true},
+		{"legacy suffix", "      " + flag + "-legacy\n", false},
+		{"letter suffix", "      " + flag + "x\n", false},
+		{"equals", flag + "=x\n", true},
+		{"short alias", "  -x, " + flag + "\n", true},
+		{"comma", "  -x, " + flag + ", --other\n", true},
+		{"alias without separator", "  -x," + flag + "\n", false},
+		{"placeholder", "  " + flag + " <VALUE>\n", true},
+		{"attached placeholder", "  " + flag + "<VALUE>\n", true},
+		{"optional value", "  " + flag + "[=VALUE]\n", true},
+		{"description", "  " + flag + "  Enable this mode\n", true},
+		{"long help", "Options:\n      " + flag + "\n          Enable this mode\n", true},
+		{"unsupported prose", "This version does not support " + flag + "\n", false},
+		{"recommendation prose", "use " + flag + " instead\n", false},
+		{"indented prose", "    This version does not support " + flag + "\n", false},
+		{"prose after another option", "  --other  Use " + flag + " instead\n", false},
+		{"prose after short option", "  -x, --other  Use " + flag + " instead\n", false},
+		{"prose suffix", "use " + flag + "anwhile\n", false},
+		{"embedded prefix", "prefix" + flag + "\n", false},
+		{"parenthesized", "(" + flag + ")\n", false},
+		{"alias only", "      --yolo\n", false},
+	}
+}
+
 func TestFlagHelpTokenBoundaries(t *testing.T) {
 	for _, flag := range []string{AutoPermissionFlag, SandboxBypassFlag} {
-		for _, tc := range []struct {
-			name, help string
-			want       bool
-		}{
-			{"exact line", "      " + flag + "\n", true},
-			{"line start", flag, true},
-			{"legacy suffix", "      " + flag + "-legacy\n", false},
-			{"letter suffix", "      " + flag + "x\n", false},
-			{"equals", flag + "=x\n", true},
-			{"short alias", "  -x, " + flag + "\n", true},
-			{"comma", "  -x," + flag + ", --other\n", true},
-			{"placeholder", "  " + flag + " <VALUE>\n", true},
-			{"attached placeholder", "  " + flag + "<VALUE>\n", true},
-			{"optional value", "  " + flag + "[=VALUE]\n", true},
-			{"description", "  " + flag + "  Enable this mode\n", true},
-			{"prose suffix", "use " + flag + "anwhile\n", false},
-			{"embedded prefix", "prefix" + flag + "\n", false},
-			{"parenthesized", "(" + flag + ")\n", false},
-		} {
+		for _, tc := range flagHelpCases(flag) {
 			t.Run(flag+"/"+tc.name, func(t *testing.T) {
 				path := filepath.Join(t.TempDir(), "codex")
 				script := "#!/bin/sh\ncat <<'HELP'\n" + tc.help + "\nHELP\n"
@@ -275,6 +291,40 @@ func TestFlagHelpTokenBoundaries(t *testing.T) {
 				}
 				if got := flagAccepted(path, flag, time.Second); got != tc.want {
 					t.Errorf("flagAccepted help %q = %t, want %t", tc.help, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestNodePostureFlagDeclarations(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "pv", "node-posture-check.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	condition := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "grep -Eq --") {
+			condition = strings.TrimSpace(line)
+			break
+		}
+	}
+	if condition == "" {
+		t.Fatal("node posture script has no flag probe")
+	}
+	// Run only the script's actual predicate, without its live-node commands.
+	script := "flag=$1\nhelp=$2\n" + condition + "\nexit 0\nelse\nexit 1\nfi\n"
+	for _, flag := range []string{AutoPermissionFlag, SandboxBypassFlag} {
+		for _, tc := range flagHelpCases(flag) {
+			t.Run(flag+"/"+tc.name, func(t *testing.T) {
+				err := exec.Command("bash", "-c", script, "probe", flag, tc.help).Run()
+				if err != nil {
+					if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+						t.Fatal(err)
+					}
+				}
+				if got := err == nil; got != tc.want {
+					t.Errorf("shell probe help %q = %t, want %t", tc.help, got, tc.want)
 				}
 			})
 		}
@@ -295,5 +345,27 @@ func TestAutoLaunchRejectsLookalikeFlag(t *testing.T) {
 	result := rt.Detect(context.Background(), time.Now())
 	if !result.Available || result.FlagApplied || result.SandboxBypass || result.SandboxNote != ReasonSandboxFlagUnsupported {
 		t.Fatalf("lookalike flag detection = %+v", result)
+	}
+}
+
+func TestPermissionLaunchRejectsProseOnlyHelp(t *testing.T) {
+	for _, mode := range []config.PermissionMode{config.PermissionAuto, config.PermissionFullAccess} {
+		t.Run(string(mode), func(t *testing.T) {
+			flag := PermissionArgs("codex", mode)[0]
+			path := filepath.Join(t.TempDir(), "codex")
+			script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex 9.9.9';;\n--help) echo 'This version does not support " + flag + "';;\nesac\n"
+			if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: path, PermissionMode: &mode}})
+			rt, _ := reg.Get("codex")
+			if args := rt.LaunchArgs(); args != nil {
+				t.Fatalf("prose produced launch args %v, want nil", args)
+			}
+			result := rt.Detect(context.Background(), time.Now())
+			if !result.Available || result.FlagApplied || result.SandboxBypass || result.SandboxNote != ReasonSandboxFlagUnsupported {
+				t.Fatalf("prose-only detection = %+v", result)
+			}
+		})
 	}
 }
