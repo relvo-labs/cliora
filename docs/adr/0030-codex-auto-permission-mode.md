@@ -9,6 +9,7 @@
   FR-RUNTIME-004.AC-02/AC-03/AC-04, SEC-007.AC-02/AC-03
 - Issue: relvo-labs/cliora #155
 - Contract: unchanged (v1.7.0 posture fields retain their meaning)
+- Ships in: `agentd` 0.8.0 ([release note](../release-note-daemon-0.8.0.md))
 
 ## Context
 
