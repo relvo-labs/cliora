@@ -649,8 +649,8 @@ Daemon 根據 Runtime ID 產生實際執行命令。
 
 <a id="fr-runtime-003-ac-02"></a>
 Runtime 的啟動參數由 Daemon 端固定決定；前端、Central 與協定訊息均不得指定參數、
-旗標、環境變數或 Entrypoint。Node 僅能以布林開關既定的參數集，不得指定其內容。
-（範圍變更 2026-08-01，ADR 0023。）
+旗標、環境變數或 Entrypoint。Node 僅能以封閉 enum 選取既定的參數集，不得指定其內容。
+（範圍變更 2026-08-01，ADR 0023；2026-10-13 由 ADR 0030 修訂預設。）
 
 <a id="fr-runtime-004"></a>
 ## FR-RUNTIME-004 Runtime 設定
@@ -667,19 +667,30 @@ runtime:
   codex:
     enabled: true
     binary: /usr/local/bin/codex
-    sandbox_bypass: true
+    permission_mode: auto
 ```
 
 <a id="fr-runtime-004-ac-02"></a>
-`codex` Runtime 於 Node 上預設在停用核准流程與沙箱的狀態下執行
-（`sandbox_bypass` 缺項即為啟用）。此為可丟棄之隔離 VM 的預期姿態（ADR 0023）。
+`codex` Runtime 於 Node 上預設使用自動模式（`permission_mode: auto`）：
+Daemon 加入固定的 `--approve-for-me`，採用 `approval_policy=on-request`、
+`approvals_reviewer=auto_review` 與 `workspace-write` 沙箱（ADR 0030 修訂 ADR 0023 §1）。
+新安裝寫入 `permission_mode: auto`；新舊鍵皆缺項或舊鍵 `sandbox_bypass: true`
+亦對應 `auto`，因此既有 installer 設定升級後不再繼續使用 yolo。
 
 <a id="fr-runtime-004-ac-03"></a>
-Node 得以 `sandbox_bypass: false` 關閉此預設；平台無任何路徑可覆寫該設定。
+Node 得以封閉 enum `permission_mode` 選擇 `auto`、`cli_default`（Daemon 不加旗標，
+由 Codex 自己的設定決定）或 `full_access`（明確選擇停用核准與沙箱的 yolo 旗標）。
+舊鍵 `sandbox_bypass: false` 對應 `cli_default`，保留 operator 的拒絕。
+新舊鍵同時設定、未知值或非 codex Runtime 使用 `permission_mode` 均須 Validate 報錯；
+衝突時須說明僅保留 `permission_mode`。只有 Node 本機的新鍵 `full_access` 可選擇 yolo；
+平台無任何路徑可變更或覆寫此設定。
 
 <a id="fr-runtime-004-ac-04"></a>
-Runtime 的實際沙箱狀態須回報平台並於介面顯示。若 Node 要求停用而已安裝的 CLI
-不接受該參數，回報與顯示均須為「沙箱啟用」，不得顯示未實際發生的狀態。
+Runtime 的實際沙箱狀態須沿用 `runtime-item.sandbox_bypass` 回報平台並於介面顯示：
+僅實際套用 `full_access` 旗標時為 true，`auto` 保留沙箱並回報 false。
+Daemon 須探測所選模式的旗標；若 CLI 不支援，須不加旗標啟動，於 doctor、啟動 log
+與 SandboxNote 說明，回報與顯示均須為「沙箱啟用」。不得從 auto 退回 full access，
+不得顯示未實際發生的狀態；wire 與 backend session audit 的 sandbox 值不變。
 
 ---
 
@@ -2318,8 +2329,10 @@ Group=neil
 
 <a id="sec-007-ac-02"></a>
 安裝步驟須明確提示：該 Node 的系統終端機可經 sudo 取得 root 權限，
-且 codex 將在停用沙箱與核准流程下執行。此姿態須可於安裝時關閉。
-（新增 2026-08-01，ADR 0023。AC-01「不應預設以 root 長期執行」不變且仍生效：
+且 codex 預設使用 workspace-write 沙箱與自動核准審核；停用沙箱與核准流程
+須於 Node 本機明確選擇 `permission_mode: full_access`。終端機提權姿態須可於安裝時關閉，
+Codex 模式須可於 Node 本機選擇 `cli_default`。
+（新增 2026-08-01，ADR 0023；2026-10-13 由 ADR 0030 修訂 Codex 預設。AC-01「不應預設以 root 長期執行」不變且仍生效：
 提權發生於終端機使用者執行 sudo 時，而非服務的執行身分。）
 
 <a id="sec-007-ac-03"></a>

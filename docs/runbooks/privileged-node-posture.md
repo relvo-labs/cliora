@@ -1,13 +1,13 @@
 # Runbook — privileged node posture (sudo, codex sandbox, terminal scrolling)
 
-Covers ADR 0023 / `plan/12`. Applies to `agentd` 0.5.0 and later.
+Covers ADR 0023 / `plan/12`, with the Codex default amended by [ADR 0030](../adr/0030-codex-auto-permission-mode.md) (2026-10-13). The sudo and tmux controls apply to `agentd` 0.5.0 and later; the permission-mode enum applies after the issue #155 upgrade.
 
 The posture of a node is two independent facts:
 
 | Fact | Granted by | Reported as |
 |---|---|---|
 | The system terminal can reach root through `sudo` | the systemd unit (no `NoNewPrivileges`) **plus** `/etc/sudoers.d/60-agentd` | `privileged_terminal` on the node |
-| codex runs with no approvals and no sandbox | `runtime.codex.sandbox_bypass` in `/etc/agentd/config.yaml` **plus** a codex build that accepts the flag | `sandbox_bypass` on the codex runtime |
+| codex uses a node-local permission mode | `runtime.codex.permission_mode` in `/etc/agentd/config.yaml` **plus** a CLI build that accepts the selected flag | `sandbox_bypass` true only for applied `full_access`; false for `auto`, `cli_default` or an unsupported flag |
 
 They are deliberately separate: one is this machine's privilege model, the other is a
 third-party CLI's behaviour. A node can be in any combination.
@@ -37,20 +37,34 @@ does nothing, so following this runbook twice does not kick users off the machin
 It never runs from Central. There is no API, message or console button that changes a
 node's posture — by design (ADR 0023 §4).
 
-## 3. Turn the codex sandbox back on
+## 3. Select the Codex permission mode
 
-```bash
-sudo sed -i 's/sandbox_bypass: true/sandbox_bypass: false/' /etc/agentd/config.yaml
-sudo systemctl restart agentd
+Edit the existing `runtime.codex` block in `/etc/agentd/config.yaml`, keeping only
+`permission_mode` and removing any legacy `sandbox_bypass` key:
+
+```yaml
+runtime:
+  codex:
+    enabled: true
+    binary: /usr/local/bin/codex
+    permission_mode: auto
 ```
 
-A restart is required: the posture is detected once per daemon start and reported on the
-`node.register` announce. Confirm with `agentd doctor` — the line reads
-`runtime:codex sandbox=enforced (…)` — and then in the console, which should stop showing
-"沙箱：已停用".
+`auto` is the default: workspace-write sandbox and auto-reviewed, on-request approvals.
+`cli_default` adds no daemon flag and leaves the decision to Codex's configuration.
+`full_access` explicitly opts into yolo, disabling approvals and the sandbox.
+Legacy true upgrades to auto; legacy false maps to cli_default. Both keys together,
+unknown values and the new key on any non-Codex runtime are errors.
+
+Restart with `sudo systemctl restart agentd`. Confirm with `agentd doctor`: it reports
+requested and effective permission mode, source, whether the flag applied, and sandbox
+posture. Startup logs use `runtime_codex_permission`. If the selected flag is unsupported,
+Codex starts without a flag, doctor warns, and the console reports sandbox enforced.
+Auto never falls back to full access. The console shows sandbox state, not the mode.
 
 **Existing sessions keep the posture they started with.** The flag is part of the process's
-argv; only new sessions pick up the change.
+argv; only new sessions pick up the change. Upgrading changes legacy true to auto for new
+launches without rewriting the node's config or its already-running processes.
 
 ## 4. sudo does not work, but the node says it should
 
@@ -140,11 +154,10 @@ Nothing clears them automatically: an automatic kill would destroy work to tidy 
 curl -fsSL https://platform.example.com/api/install-script | sudo bash -s -- \
   --server https://platform.example.com --token enroll_xxx --name shared-box \
   --user neil --no-privileged-terminal
-# then, for codex as well:
-sudo sed -i 's/sandbox_bypass: true/sandbox_bypass: false/' /etc/agentd/config.yaml
-sudo systemctl restart agentd
 ```
 
-The default posture assumes a disposable, isolated VM (ADR 0023 §Context). Any machine you
+Codex still defaults to auto with its workspace sandbox; choose `cli_default` in the
+node config if Codex should decide its own permissions. The terminal privilege default
+assumes a disposable, isolated VM (ADR 0023 §Context). Any machine you
 would repair rather than rebuild should be installed this way — and the console will show it
 as unprivileged, so the choice remains visible afterwards.
