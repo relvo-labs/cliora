@@ -14,6 +14,7 @@ import (
 
 // sandboxBypassFlag mirrors runtime.SandboxBypassFlag. Duplicated rather than
 // imported: fakecli is a standalone test binary and must not pull in daemon packages.
+const autoPermissionFlag = "--approve-for-me"
 const sandboxBypassFlag = "--dangerously-bypass-approvals-and-sandbox"
 
 func main() {
@@ -30,17 +31,13 @@ func main() {
 	// machine with no real codex installed.
 	if len(os.Args) > 1 && os.Args[1] == "--help" {
 		fmt.Println("usage: fakecli [--version] [--help]")
+		fmt.Println("  " + autoPermissionFlag + "  workspace sandbox with auto-reviewed approvals")
 		fmt.Println("  " + sandboxBypassFlag + "  run without approvals or a sandbox")
 		return
 	}
-	sandbox := "enforced"
-	for _, arg := range os.Args[1:] {
-		if arg == sandboxBypassFlag {
-			sandbox = "bypassed"
-		}
-	}
+	permission, sandbox := permissionPosture(os.Args[1:])
 	rows, cols := size()
-	fmt.Printf("FAKECLI_READY v1 rows=%d cols=%d sandbox=%s\r\n", rows, cols, sandbox)
+	fmt.Printf("FAKECLI_READY v1 rows=%d cols=%d sandbox=%s permission=%s\r\n", rows, cols, sandbox, permission)
 	signals := make(chan os.Signal, 2)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGWINCH)
 	go func() {
@@ -61,6 +58,22 @@ func main() {
 		run(line)
 	}
 }
+
+// permissionPosture retains sandbox= for existing e2e consumers while exposing
+// the selected permission mode for launch tests.
+func permissionPosture(args []string) (permission, sandbox string) {
+	permission, sandbox = "cli_default", "enforced"
+	for _, arg := range args {
+		switch arg {
+		case autoPermissionFlag:
+			permission, sandbox = "auto", "enforced"
+		case sandboxBypassFlag:
+			permission, sandbox = "full_access", "bypassed"
+		}
+	}
+	return
+}
+
 func size() (int, int) {
 	cols, rows, err := term.GetSize(int(os.Stdin.Fd()))
 	if err != nil {

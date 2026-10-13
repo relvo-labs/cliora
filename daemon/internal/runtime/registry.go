@@ -22,15 +22,19 @@ func NewRegistry(cfg map[string]config.RuntimeConfig) *Registry {
 	reg := &Registry{runtimes: map[string]Runtime{}}
 	for id := range config.AllowedRuntimeIDs {
 		rc, ok := cfg[id]
+		mode := config.PermissionMode("")
+		source := ""
+		if config.PermissionModeRuntimeIDs[id] {
+			mode, source = rc.CodexPermissionMode(), rc.CodexPermissionSource()
+		}
 		reg.runtimes[id] = &cliRuntime{
 			id:      id,
 			enabled: ok && rc.Enabled,
 			binary:  rc.Binary,
 			timeout: defaultDetectTimeout,
-			// Absent sandbox_bypass means enabled (ADR 0023 D2). config.Load fills the
-			// key in, but hand-built maps (installer detection, doctor) come through
-			// here too and must get the same default.
-			bypassRequested: ok && rc.BypassSandbox(),
+			// Hand-built maps get the same node-local default and legacy mapping as Load.
+			permissionMode:   mode,
+			permissionSource: source,
 		}
 	}
 	return reg
@@ -44,7 +48,7 @@ func (r *Registry) Get(id string) (Runtime, bool) {
 // LaunchSpec is the complete launch description for an allowlisted runtime: the
 // absolute binary plus the daemon's own arguments. Args never contains a string a
 // caller, protocol message or config file supplied (SEC-002, ADR 0023 §2.4) — the
-// node's only say is a boolean that turns an entry of the daemon's table off.
+// node selects an enum entry in the daemon's table.
 type LaunchSpec struct {
 	Path string
 	Args []string

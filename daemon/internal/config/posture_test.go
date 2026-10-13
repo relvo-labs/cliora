@@ -10,33 +10,49 @@ import (
 // Reuses writeConfig from tunnel_test.go: one minimal valid config in this package
 // is enough, and a second copy would drift.
 
-// Absent means enabled, and the source of that value is recorded: "the operator
-// chose this" and "an upgrade defaulted into this" are different facts about a
-// machine that now runs codex without a sandbox (ADR 0023 D2).
-func TestSandboxBypassDefaultsToEnabledAndRecordsThat(t *testing.T) {
-	cfg, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !cfg.Runtime["codex"].BypassSandbox() {
-		t.Error("an absent sandbox_bypass must mean enabled")
-	}
-	if !cfg.SandboxBypassFromDefault["codex"] {
-		t.Error("the default source was not recorded")
+// Both upgrades and explicit choices retain their source; legacy true must
+// never remain an opt-in to full access (ADR 0030).
+func TestCodexPermissionModes(t *testing.T) {
+	for _, tc := range []struct {
+		name, keys        string
+		mode              PermissionMode
+		source, errorText string
+	}{
+		{"absent", "", PermissionAuto, "default", ""},
+		{"legacy true", "    sandbox_bypass: true\n", PermissionAuto, "legacy-key", ""},
+		{"legacy false", "    sandbox_bypass: false\n", PermissionCLIDefault, "legacy-key", ""},
+		{"auto", "    permission_mode: auto\n", PermissionAuto, "config", ""},
+		{"cli default", "    permission_mode: cli_default\n", PermissionCLIDefault, "config", ""},
+		{"full access", "    permission_mode: full_access\n", PermissionFullAccess, "config", ""},
+		{"both", "    permission_mode: auto\n    sandbox_bypass: false\n", "", "", "keep only permission_mode"},
+		{"unknown", "    permission_mode: --evil\n", "", "", "unknown"},
+		{"empty", "    permission_mode: \"\"\n", "", "", "unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n"+tc.keys))
+			if tc.errorText != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errorText) {
+					t.Fatalf("Load error = %v, want %s", err, tc.errorText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			rc := cfg.Runtime["codex"]
+			if rc.CodexPermissionMode() != tc.mode || rc.CodexPermissionSource() != tc.source {
+				t.Fatalf("got %+v, want %s from %s", rc, tc.mode, tc.source)
+			}
+		})
 	}
 }
 
-func TestExplicitSandboxBypassIsNotTreatedAsADefault(t *testing.T) {
-	cfg, err := Load(writeConfig(t,
-		"runtime:\n  codex:\n    enabled: true\n    binary: codex\n    sandbox_bypass: false\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Runtime["codex"].BypassSandbox() {
-		t.Error("an explicit false must survive")
-	}
-	if cfg.SandboxBypassFromDefault["codex"] {
-		t.Error("an explicit value must not be recorded as a default")
+func TestPermissionModeIsRefusedOnOtherRuntimes(t *testing.T) {
+	for _, id := range []string{"claude", "shell"} {
+		_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n    permission_mode: auto\n"))
+		if err == nil || !strings.Contains(err.Error(), "does not support permission_mode") {
+			t.Fatalf("runtime %s: %v", id, err)
+		}
 	}
 }
 
@@ -72,7 +88,7 @@ func TestScrollbackLimitHonoursTheRequirementFloor(t *testing.T) {
 		body string
 		want int
 	}{
-		{"", MinScrollbackLimit},                                        // absent
+		{"", MinScrollbackLimit}, // absent
 		{"session:\n  scrollback_limit: 3000\n", MinScrollbackLimit},    // below the floor
 		{"session:\n  scrollback_limit: 5000\n", 5000},                  // exactly the floor
 		{"session:\n  scrollback_limit: 20000\n", 20000},                // honoured

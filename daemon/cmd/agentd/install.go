@@ -139,23 +139,19 @@ func newInstallCommand(configPath *string) *cobra.Command {
 	return cmd
 }
 
-// printPostureNotice states the posture in the installer output. SEC-007's
-// requirement that installation "clearly warns" about the daemon's privileges is
-// older than this change; what is new is that the warning now has to cover a
-// terminal that can become root and a CLI that runs without a sandbox.
+// printPostureNotice states both the terminal's ceiling and codex's separate
+// permission mode, so the operator can see each node-local choice at installation.
 func printPostureNotice(out io.Writer, privileged bool) {
-	if !privileged {
+	if privileged {
+		fmt.Fprintln(out, "warning: this node's system terminal can reach root through sudo.")
+		fmt.Fprintln(out, "         On a machine you would not rebuild, reinstall with --privileged-terminal=false.")
+	} else {
 		fmt.Fprintln(out, "Posture: the system terminal cannot escalate (NoNewPrivileges stays set).")
-		fmt.Fprintln(out, "         codex still runs without a sandbox unless you also set")
-		fmt.Fprintln(out, "         runtime.codex.sandbox_bypass: false in the config.")
-		return
 	}
-	fmt.Fprintln(out, "warning: this node's system terminal can reach root through sudo, and codex")
-	fmt.Fprintln(out, "         will run with approvals and its sandbox disabled. That is the")
-	fmt.Fprintln(out, "         intended posture for a disposable, isolated VM.")
-	fmt.Fprintln(out, "         If this machine is not disposable, reinstall with")
-	fmt.Fprintln(out, "         --privileged-terminal=false and set")
-	fmt.Fprintln(out, "         runtime.codex.sandbox_bypass: false in /etc/agentd/config.yaml.")
+	fmt.Fprintln(out, "         codex defaults to auto mode: workspace-write sandbox with auto-reviewed approvals.")
+	fmt.Fprintln(out, "         Set runtime.codex.permission_mode: cli_default to use codex's own configuration.")
+	fmt.Fprintln(out, "         Full access requires permission_mode: full_access on this node; it disables approvals and sandbox.")
+	fmt.Fprintln(out, "         These choices live in /etc/agentd/config.yaml (ADR 0030).")
 }
 
 // installFiles writes config + credentials at 0600 owned by the service user,

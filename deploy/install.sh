@@ -34,8 +34,10 @@ Usage: install.sh --server URL --token TOKEN --name NAME --user USER
   --no-privileged-terminal
       Keep NoNewPrivileges set and install no sudoers rule, so the system terminal
       cannot reach root on this machine (ADR 0023). Use this on any node you would
-      not simply rebuild. codex still runs without a sandbox unless you also set
-      runtime.codex.sandbox_bypass: false in /etc/agentd/config.yaml.
+      not simply rebuild. codex defaults to auto mode with a workspace-write sandbox
+      and auto-reviewed approvals (ADR 0030). Set runtime.codex.permission_mode to
+      cli_default to use codex configuration, or full_access to explicitly disable
+      its approvals and sandbox, in /etc/agentd/config.yaml.
 EOF
   exit 2
 }

@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cliora/cliora/daemon/internal/config"
 	"github.com/google/uuid"
 )
 
@@ -22,7 +23,7 @@ const (
 	ReasonNotFound      = "RUNTIME_NOT_FOUND"
 	ReasonNotExecutable = "RUNTIME_NOT_EXECUTABLE"
 	// ReasonSandboxFlagUnsupported is reported alongside an *available* runtime: the
-	// node asked for the sandbox to be off but the installed binary does not know
+	// node selected a permission flag but the installed binary does not know
 	// the flag (ADR 0023 D3). It is not a protocol error code.
 	ReasonSandboxFlagUnsupported = "RUNTIME_SANDBOX_FLAG_UNSUPPORTED"
 )
@@ -50,15 +51,17 @@ type DetectResult struct {
 	BinaryPath string
 	Reason     string
 	CheckedAt  time.Time
-	// SandboxBypassRequested is what this node's config asked for; SandboxBypass is
-	// what the binary will actually be launched with. They differ when the
-	// installed CLI does not accept the flag, which is a third-party interface
-	// change we report rather than assume away: reporting the requested value would
-	// make the console claim a posture the machine is not in (ADR 0023 D3).
-	SandboxBypassRequested bool
-	SandboxBypass          bool
-	// SandboxNote explains a requested-but-unavailable bypass. Separate from Reason
-	// because the runtime is still usable; only doctor and the startup log read it.
+	// PermissionMode is the requested node mode; EffectivePermissionMode becomes
+	// cli_default when its flag is unsupported. These are local diagnostics only.
+	PermissionMode          config.PermissionMode
+	EffectivePermissionMode config.PermissionMode
+	PermissionSource        string
+	FlagApplied             bool
+	// SandboxBypass is measured: true only for an applied full_access flag.
+	// Auto retains the sandbox, so its existing wire report is false.
+	SandboxBypass bool
+	// SandboxNote explains an unsupported flag on an otherwise usable runtime.
+	// Only doctor and the startup log read it; it is not a protocol error.
 	SandboxNote string
 }
 
@@ -81,13 +84,14 @@ type cliRuntime struct {
 	enabled bool
 	binary  string
 	timeout time.Duration
-	// bypassRequested mirrors config's sandbox_bypass for this runtime.
-	bypassRequested bool
-	// bypassProbe caches whether the installed binary accepts the flag. Probed
+	// permissionMode selects only an entry in the daemon-owned table.
+	permissionMode   config.PermissionMode
+	permissionSource string
+	// permissionProbe caches whether the installed binary accepts the flag. Probed
 	// once per process: the answer only changes when the CLI is upgraded, and an
 	// upgrade is followed by a daemon restart or reconnect (runbook).
-	probeMu     sync.Mutex
-	bypassProbe *bool
+	probeMu         sync.Mutex
+	permissionProbe *bool
 }
 
 func (r *cliRuntime) ID() string { return r.id }
@@ -99,30 +103,27 @@ func (r *cliRuntime) Binary() string {
 	return r.binary
 }
 
-// LaunchArgs returns the sandbox-bypass flags when this node asked for them and
-// the installed binary accepts them, and nil otherwise. A runtime with no entry in
-// the flag table always returns nil.
+// LaunchArgs returns the selected flags only when the installed CLI accepts them.
+// Unsupported auto never falls back to full access: the only fallback is no flag.
 func (r *cliRuntime) LaunchArgs() []string {
-	if !r.enabled || !r.bypassRequested || !SupportsSandboxBypass(r.id) {
+	args := PermissionArgs(r.id, r.permissionMode)
+	if !r.enabled || len(args) == 0 || !r.permissionAvailable() {
 		return nil
 	}
-	if !r.bypassAvailable() {
-		return nil
-	}
-	return SandboxBypassArgs(r.id)
+	return args
 }
 
-// bypassAvailable probes `<binary> --help` once and reports whether the flag
-// appears. There is no way to ask a CLI whether it knows a flag: --version does
-// not list flags, and launching with the flag would start an interactive session.
-func (r *cliRuntime) bypassAvailable() bool {
+// permissionAvailable probes `<binary> --help` once for the selected flag.
+// Launching with a flag to test it would start an interactive session instead.
+func (r *cliRuntime) permissionAvailable() bool {
 	r.probeMu.Lock()
 	defer r.probeMu.Unlock()
-	if r.bypassProbe != nil {
-		return *r.bypassProbe
+	if r.permissionProbe != nil {
+		return *r.permissionProbe
 	}
-	supported := flagAccepted(r.binary, SandboxBypassFlag, r.timeout)
-	r.bypassProbe = &supported
+	args := PermissionArgs(r.id, r.permissionMode)
+	supported := len(args) > 0 && flagAccepted(r.binary, args[0], r.timeout)
+	r.permissionProbe = &supported
 	return supported
 }
 
@@ -148,9 +149,11 @@ func flagAccepted(binary, flag string, timeout time.Duration) bool {
 
 func (r *cliRuntime) Detect(ctx context.Context, now time.Time) DetectResult {
 	result := DetectResult{
-		Runtime:                r.id,
-		CheckedAt:              now,
-		SandboxBypassRequested: r.bypassRequested && SupportsSandboxBypass(r.id),
+		Runtime:                 r.id,
+		CheckedAt:               now,
+		PermissionMode:          r.permissionMode,
+		EffectivePermissionMode: config.PermissionCLIDefault,
+		PermissionSource:        r.permissionSource,
 	}
 	if !r.enabled {
 		result.Reason = ReasonDisabled
@@ -180,11 +183,12 @@ func (r *cliRuntime) Detect(ctx context.Context, now time.Time) DetectResult {
 	result.Version = firstLine(out)
 	// Only probe the flag on a runtime that is otherwise usable: an unavailable
 	// runtime has nothing to report, and the probe costs another process.
-	result.SandboxBypass = len(r.LaunchArgs()) > 0
-	if result.SandboxBypassRequested && !result.SandboxBypass {
-		// Deliberately not Reason: Reason explains why a runtime is *unusable*, and
-		// this one launches fine. The console shows "sandbox: enforced" for it, which
-		// is the truth, and doctor prints this note to explain why (ADR 0023 D3).
+	result.FlagApplied = len(r.LaunchArgs()) > 0
+	if result.FlagApplied {
+		result.EffectivePermissionMode = r.permissionMode
+	}
+	result.SandboxBypass = result.FlagApplied && r.permissionMode == config.PermissionFullAccess
+	if len(PermissionArgs(r.id, r.permissionMode)) > 0 && !result.FlagApplied {
 		result.SandboxNote = ReasonSandboxFlagUnsupported
 	}
 	return result

@@ -383,7 +383,7 @@ func runtimeItems(detected []runtime.DetectResult) []map[string]any {
 		// measured outcome — a node that asked for the bypass but has a CLI that does
 		// not know the flag reports false, because that is what will happen when a
 		// session starts (contract 1.7.0, ADR 0023 D3).
-		if r.SandboxBypassRequested || r.SandboxBypass {
+		if runtime.SupportsPermissionMode(r.Runtime) {
 			item["sandbox_bypass"] = r.SandboxBypass
 		}
 		runtimes = append(runtimes, item)
@@ -586,7 +586,7 @@ func (m *Manager) handleStart(
 	// trail records, so it is derived from the resolved launch rather than from
 	// config: this is what the process will actually be started with.
 	sandbox := "enforced"
-	if len(launch.Args) > 0 {
+	if len(launch.Args) > 0 && launch.Args[0] == runtime.SandboxBypassFlag {
 		sandbox = "bypassed"
 	}
 	if startErr := m.sessions.StartSession(

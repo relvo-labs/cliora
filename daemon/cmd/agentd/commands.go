@@ -156,26 +156,25 @@ func newDoctorCommand(configPath *string) *cobra.Command {
 	return cmd
 }
 
-// reportSandboxPosture prints what a runtime will actually launch with. The
-// requested-but-unsupported case is the only one that warrants a warning: the node
-// asked for the sandbox to be off, the installed CLI does not know the flag, and the
-// console will show "enforced". Without this line the operator would have to diff
-// the process argv against their config to find that out (ADR 0023 D3).
+// reportSandboxPosture prints the requested mode and the flag actually applied.
+// An unsupported flag leaves the runtime usable with no flag; doctor explains
+// the difference so the node owner does not have to inspect process argv.
 func reportSandboxPosture(out io.Writer, r runtime.DetectResult) {
-	if !r.SandboxBypassRequested && !r.SandboxBypass {
+	if !runtime.SupportsPermissionMode(r.Runtime) {
 		return
 	}
-	switch {
-	case r.SandboxBypass:
-		fmt.Fprintf(out, "[info] runtime:%s sandbox=bypassed flag=%s\n",
-			r.Runtime, runtime.SandboxBypassFlag)
-	case r.SandboxNote == runtime.ReasonSandboxFlagUnsupported:
-		fmt.Fprintf(out, "[warn] runtime:%s sandbox=enforced: this build of %s does not accept "+
-			"%s (version %s). The console will show the sandbox as enforced.\n",
-			r.Runtime, r.Runtime, runtime.SandboxBypassFlag, r.Version)
-	default:
-		fmt.Fprintf(out, "[info] runtime:%s sandbox=enforced\n", r.Runtime)
+	sandbox := "enforced"
+	if r.SandboxBypass {
+		sandbox = "bypassed"
 	}
+	if r.SandboxNote == runtime.ReasonSandboxFlagUnsupported {
+		args := runtime.PermissionArgs(r.Runtime, r.PermissionMode)
+		fmt.Fprintf(out, "[warn] runtime:%s permission=%s effective_permission=%s source=%s sandbox=%s: this build does not accept %s (version %s); launching without a flag.\n",
+			r.Runtime, r.PermissionMode, r.EffectivePermissionMode, r.PermissionSource, sandbox, args[0], r.Version)
+		return
+	}
+	fmt.Fprintf(out, "[info] runtime:%s permission=%s effective_permission=%s source=%s flag_applied=%t sandbox=%s\n",
+		r.Runtime, r.PermissionMode, r.EffectivePermissionMode, r.PermissionSource, r.FlagApplied, sandbox)
 }
 
 // reportTmuxPosture prints the scrollback depth the terminal actually has. Read from

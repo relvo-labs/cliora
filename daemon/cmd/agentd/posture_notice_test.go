@@ -9,7 +9,7 @@ import (
 )
 
 // SEC-007.AC-02: installation must state that this node's terminal can reach root and
-// that codex runs without a sandbox. It is asserted here rather than left to a reviewer
+// that codex uses a workspace sandbox and auto-reviewed approvals. It is asserted here rather than left to a reviewer
 // because it is the one part of the posture an operator cannot discover afterwards by
 // reading the console — by then the machine is already installed.
 func TestInstallerStatesThePrivilegedPosture(t *testing.T) {
@@ -22,22 +22,21 @@ func TestInstallerStatesThePrivilegedPosture(t *testing.T) {
 		}
 	}
 	// It must also say what to do instead, or it is a warning with no exit.
-	if !strings.Contains(text, "sandbox_bypass: false") {
-		t.Errorf("the notice does not say how to keep the sandbox:\n%s", text)
+	if !strings.Contains(text, "permission_mode: cli_default") {
+		t.Errorf("the notice does not say how to select the CLI default:\n%s", text)
 	}
 }
 
 func TestInstallerStatesTheUnprivilegedPostureToo(t *testing.T) {
 	// Silence would be worse here than in the privileged case: an operator who passed
-	// --no-privileged-terminal needs to learn that it did not also turn off the codex
-	// bypass, which is a separate switch (ADR 0023 §4).
+	// --no-privileged-terminal needs to learn that codex uses its separate permission mode, which is a separate switch (ADR 0023 §4).
 	var out bytes.Buffer
 	printPostureNotice(&out, false)
 	text := out.String()
 	if !strings.Contains(text, "cannot escalate") {
 		t.Errorf("the unprivileged notice does not state the posture:\n%s", text)
 	}
-	if !strings.Contains(text, "sandbox_bypass: false") {
+	if !strings.Contains(text, "permission_mode: cli_default") {
 		t.Errorf("the unprivileged notice does not mention the separate codex switch:\n%s", text)
 	}
 }

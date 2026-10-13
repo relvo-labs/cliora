@@ -31,8 +31,8 @@ fail() {
 for schema in contracts/v1/schemas/messages/*.schema.json; do
   base="$(basename "$schema")"
   case "$base" in
-    runtime-item.schema.json | node-register.schema.json) forbidden='"(args|argv|command|flags|shell|env|entrypoint|sudo|tmux_options)"' ;;
-    *) forbidden='"(args|argv|command|flags|shell|env|entrypoint|sudo|tmux_options|sandbox|sandbox_bypass|privileged_terminal)"' ;;
+    runtime-item.schema.json | node-register.schema.json) forbidden='"(args|argv|command|flags|shell|env|entrypoint|sudo|tmux_options|permission_mode|approvals_reviewer|approval_policy)"' ;;
+    *) forbidden='"(args|argv|command|flags|shell|env|entrypoint|sudo|tmux_options|sandbox|sandbox_bypass|privileged_terminal|permission_mode|approvals_reviewer|approval_policy)"' ;;
   esac
   if hits="$(grep -nE "$forbidden[[:space:]]*:" "$schema")"; then
     fail "$base declares a launch-argument or posture-setting property:"
@@ -40,9 +40,9 @@ for schema in contracts/v1/schemas/messages/*.schema.json; do
   fi
 done
 
-# 2. The node's config may gate the daemon's flags with a boolean; it may not name them.
-if hits="$(grep -rnE 'yaml:"(args|argv|flags|command|entrypoint)"' daemon/internal/config/)"; then
-  fail "daemon config declares an argv field (a boolean is the only permitted control):"
+# 2. The node's config may gate the daemon's flags with a closed enum; it may not name them.
+if hits="$(grep -rnE 'yaml:"(args|argv|flags|command|entrypoint)(,|")' daemon/internal/config/)"; then
+  fail "daemon config declares an argv field (a closed enum is the only permitted control):"
   echo "$hits" >&2
 fi
 
@@ -54,19 +54,26 @@ if [ "$(printf '%s\n' "$tables" | grep -c .)" -ne 1 ]; then
   printf '%s\n' "$tables" >&2
 fi
 
+auto_tables="$(grep -rln 'AutoPermissionFlag[[:space:]]*=' daemon/internal/ | grep -v _test.go)"
+if [ "$auto_tables" != "daemon/internal/runtime/launch.go" ] || [ "$tables" != "$auto_tables" ]; then
+  fail "both permission flag constants must be owned by runtime/launch.go"
+fi
+
 # 4. Central builds session.start from the five contract fields only. A sixth key here
 #    would be a posture or an argument travelling from the platform to the node.
 start_payload="$(sed -n '/"session.start",/,/^            )/p' backend/app/services/sessions.py)"
-for key in args argv command flags sandbox sudo env entrypoint; do
+for key in args argv command flags sandbox sandbox_bypass permission_mode approvals_reviewer approval_policy sudo env entrypoint; do
   if printf '%s' "$start_payload" | grep -qE "\"$key\""; then
     fail "backend session.start payload carries \"$key\""
   fi
 done
 
 # 5. Both posture switches must still exist as a node-side veto. If either disappears,
-#    the posture stops being refusable and ADR 0023's opt-out is gone.
-grep -q 'SandboxBypass \*bool' daemon/internal/config/config.go ||
-  fail "runtime.sandbox_bypass is gone: the node can no longer refuse the bypass"
+#    the posture stops being refusable and ADR 0030's node-local choice is gone.
+grep -qE 'PermissionMode[[:space:]]+\*PermissionMode' daemon/internal/config/config.go ||
+  fail "runtime.permission_mode is gone: the node can no longer select cli_default"
+grep -qE 'PermissionCLIDefault[[:space:]]+PermissionMode = "cli_default"' daemon/internal/config/config.go ||
+  fail "cli_default is gone: the node can no longer refuse daemon permission flags"
 grep -q 'NoNewPrivileges=true' daemon/internal/install/systemd.go ||
   fail "the unprivileged unit no longer sets NoNewPrivileges"
 grep -q 'hardeningPrivileged' daemon/internal/install/systemd.go ||

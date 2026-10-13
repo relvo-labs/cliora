@@ -5,7 +5,7 @@
 #
 # Run this on an enrolled node (as the service user, or with sudo for the unit read).
 # Everything it prints is an observation, not an assertion about intent: the point is
-# that "codex has no sandbox", "the terminal scrolls" and "sudo works" are claims the
+# that "codex uses the selected permission mode", "the terminal scrolls" and "sudo works" are claims the
 # console makes to users, and they have to be checkable against the machine.
 #
 # It is release-triggered rather than part of `make check` because it needs a real node
@@ -14,13 +14,14 @@ set -uo pipefail
 
 OUT="${1:-/dev/stdout}"
 SOCKET="cliora"
-FLAG="--dangerously-bypass-approvals-and-sandbox"
+AUTO_FLAG="--approve-for-me"
+FULL_ACCESS_FLAG="--dangerously-bypass-approvals-and-sandbox"
 
 value() { printf '%-24s: %s\n' "$1" "$2" >>"$OUT"; }
 
 : >"$OUT"
 {
-  echo "# cliora node posture (plan/12, ADR 0023)"
+  echo "# cliora node posture (ADR 0023 amended by ADR 0030)"
   echo "generated_utc: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "host: $(uname -srm)"
 } >>"$OUT"
@@ -44,19 +45,19 @@ value "legacy default socket" "${legacy:-0} cliora-* session(s)"
 # --- sandbox (PV-03) --------------------------------------------------------
 if command -v codex >/dev/null 2>&1; then
   value "codex version" "$(codex --version 2>&1 | head -n1)"
-  if codex --help 2>&1 | grep -q -- "$FLAG"; then
-    value "codex flag" "supported"
-  else
-    # The console will show the sandbox as enforced for this node. That is correct,
-    # and it is the case a reader of this file needs to be able to tell apart from
-    # "somebody turned the bypass off".
-    value "codex flag" "NOT supported by this build — console will show sandbox=enforced"
-  fi
+  help="$(codex --help 2>&1)"
+  for flag in "$AUTO_FLAG" "$FULL_ACCESS_FLAG"; do
+    if printf '%s' "$help" | grep -q -- "$flag"; then
+      value "$flag" "supported"
+    else
+      value "$flag" "NOT supported — if selected, agentd launches without a flag"
+    fi
+  done
   value "codex argv (live)" "$(ps -o args= -C codex 2>/dev/null | head -n1 || echo 'no codex process running')"
 else
   value "codex" "not installed on this node"
 fi
-value "config sandbox_bypass" "$(grep -A3 '^  codex:' /etc/agentd/config.yaml 2>/dev/null | grep sandbox_bypass || echo 'unreadable (need sudo?)')"
+value "config permission mode" "$(grep -A8 -E '^ +codex:' /etc/agentd/config.yaml 2>/dev/null | grep -E 'permission_mode|sandbox_bypass' || echo 'absent/unreadable: absent defaults to auto; legacy true -> auto, false -> cli_default')"
 
 # --- privileged terminal (PV-05) --------------------------------------------
 value "NoNewPrivs (this shell)" "$(grep -m1 '^NoNewPrivs' /proc/self/status 2>/dev/null | awk '{print $2}')"
