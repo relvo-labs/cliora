@@ -14,7 +14,7 @@ import (
 // make release checks the GoReleaser tag against it, and
 // TestVersionMatchesTheVersionFile guards this fallback against drift. An unstamped
 // build says `-dev` so a developer binary cannot be mistaken for a release.
-var version = "0.8.0-dev"
+var version = "0.8.1-dev"
 
 func main() {
 	if err := newRootCommand().Execute(); err != nil {

@@ -61,8 +61,12 @@ There is no Central API or console path to change the mode.
 Legacy mapping is deliberate: `sandbox_bypass: true`, and neither key present,
 become `auto`; `sandbox_bypass: false` becomes `cli_default`, preserving the
 operator's refusal of daemon flags. Setting both keys is an error explaining to
-keep only `permission_mode`, including when either value is YAML null. An explicit
-null (`null`, `~` or a bare key) for either key is invalid rather than absent.
+keep only `permission_mode`. An explicit null (`null`, `~` or a bare key) for
+`permission_mode` is invalid rather than absent. A null legacy `sandbox_bypass` is
+treated as absent (amended 2026-10-13, #159): installers before 0.8.0 marshalled
+that field without `omitempty`, so every runtime block on an installed node carries
+`sandbox_bypass: null`, and 0.7.x read it as absent. Rejecting it stopped upgraded
+daemons from starting.
 Only an explicit new-key `full_access` can select yolo.
 Load records the source as `config`, `legacy-key` or `default` for startup reporting.
 The installer writes `permission_mode: auto` with the other choices explained nearby.
