@@ -5,38 +5,56 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Reuses writeConfig from tunnel_test.go: one minimal valid config in this package
 // is enough, and a second copy would drift.
 
-// Absent means enabled, and the source of that value is recorded: "the operator
-// chose this" and "an upgrade defaulted into this" are different facts about a
-// machine that now runs codex without a sandbox (ADR 0023 D2).
-func TestSandboxBypassDefaultsToEnabledAndRecordsThat(t *testing.T) {
-	cfg, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if !cfg.Runtime["codex"].BypassSandbox() {
-		t.Error("an absent sandbox_bypass must mean enabled")
-	}
-	if !cfg.SandboxBypassFromDefault["codex"] {
-		t.Error("the default source was not recorded")
+// Both upgrades and explicit choices retain their source; legacy true must
+// never remain an opt-in to full access (ADR 0030).
+func TestCodexPermissionModes(t *testing.T) {
+	for _, tc := range []struct {
+		name, keys        string
+		mode              PermissionMode
+		source, errorText string
+	}{
+		{"absent", "", PermissionAuto, "default", ""},
+		{"legacy true", "    sandbox_bypass: true\n", PermissionAuto, "legacy-key", ""},
+		{"legacy false", "    sandbox_bypass: false\n", PermissionCLIDefault, "legacy-key", ""},
+		{"auto", "    permission_mode: auto\n", PermissionAuto, "config", ""},
+		{"cli default", "    permission_mode: cli_default\n", PermissionCLIDefault, "config", ""},
+		{"full access", "    permission_mode: full_access\n", PermissionFullAccess, "config", ""},
+		{"both", "    permission_mode: auto\n    sandbox_bypass: false\n", "", "", "keep only permission_mode"},
+		{"unknown", "    permission_mode: --evil\n", "", "", "unknown"},
+		{"empty", "    permission_mode: \"\"\n", "", "", "unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n"+tc.keys))
+			if tc.errorText != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errorText) {
+					t.Fatalf("Load error = %v, want %s", err, tc.errorText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			rc := cfg.Runtime["codex"]
+			if rc.CodexPermissionMode() != tc.mode || rc.CodexPermissionSource() != tc.source {
+				t.Fatalf("got %+v, want %s from %s", rc, tc.mode, tc.source)
+			}
+		})
 	}
 }
 
-func TestExplicitSandboxBypassIsNotTreatedAsADefault(t *testing.T) {
-	cfg, err := Load(writeConfig(t,
-		"runtime:\n  codex:\n    enabled: true\n    binary: codex\n    sandbox_bypass: false\n"))
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if cfg.Runtime["codex"].BypassSandbox() {
-		t.Error("an explicit false must survive")
-	}
-	if cfg.SandboxBypassFromDefault["codex"] {
-		t.Error("an explicit value must not be recorded as a default")
+func TestPermissionModeIsRefusedOnOtherRuntimes(t *testing.T) {
+	for _, id := range []string{"claude", "shell"} {
+		_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n    permission_mode: auto\n"))
+		if err == nil || !strings.Contains(err.Error(), "does not support permission_mode") {
+			t.Fatalf("runtime %s: %v", id, err)
+		}
 	}
 }
 
@@ -72,7 +90,7 @@ func TestScrollbackLimitHonoursTheRequirementFloor(t *testing.T) {
 		body string
 		want int
 	}{
-		{"", MinScrollbackLimit},                                        // absent
+		{"", MinScrollbackLimit}, // absent
 		{"session:\n  scrollback_limit: 3000\n", MinScrollbackLimit},    // below the floor
 		{"session:\n  scrollback_limit: 5000\n", 5000},                  // exactly the floor
 		{"session:\n  scrollback_limit: 20000\n", 20000},                // honoured
@@ -120,5 +138,130 @@ heartbeat:
 	}
 	if !cfg.Node.PrivilegedTerminal {
 		t.Error("privileged_terminal did not round trip")
+	}
+}
+
+func TestRuntimePermissionKeysRejectNull(t *testing.T) {
+	for _, id := range []string{"codex", "claude", "shell"} {
+		for _, key := range []string{"permission_mode", "sandbox_bypass"} {
+			for _, value := range []string{"null", "~", ""} {
+				t.Run(id+"/"+key+"/"+value, func(t *testing.T) {
+					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n    "+key+": "+value+"\n"))
+					if err == nil || !strings.Contains(err.Error(), key) || !strings.Contains(err.Error(), "null") {
+						t.Fatalf("Load error = %v, want %s null rejection", err, key)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRuntimePermissionKeyConflictsIncludeNull(t *testing.T) {
+	for _, id := range []string{"codex", "claude", "shell"} {
+		for _, mode := range []string{"auto", "cli_default", "full_access", "null", "~", "", "unknown", "[auto]"} {
+			for _, bypass := range []string{"true", "false", "null", "~", "", "[true]"} {
+				t.Run(id+"/"+mode+"/"+bypass, func(t *testing.T) {
+					keys := "    permission_mode: " + mode + "\n    sandbox_bypass: " + bypass + "\n"
+					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n"+keys))
+					if err == nil || !strings.Contains(err.Error(), "keep only permission_mode") {
+						t.Fatalf("Load error = %v, want both-keys rejection", err)
+					}
+				})
+			}
+		}
+	}
+}
+
+func TestRuntimeConfigStillRejectsUnknownFields(t *testing.T) {
+	_, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n    permission_mode: auto\n    args: [--evil]\n"))
+	if err == nil || !strings.Contains(err.Error(), "args") {
+		t.Fatalf("Load error = %v, want unknown field rejection", err)
+	}
+}
+
+// Verify yaml.v3 applies merges and explicit-key precedence to the node map
+// before using that view for permission-key validation.
+func TestRuntimeMergedNodeView(t *testing.T) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(`base: &base
+  enabled: true
+  binary: codex
+  permission_mode: null
+runtime:
+  <<: *base
+  permission_mode: cli_default
+`), &document); err != nil {
+		t.Fatal(err)
+	}
+	var root map[string]yaml.Node
+	if err := document.Decode(&root); err != nil {
+		t.Fatal(err)
+	}
+	node := root["runtime"]
+	var merged map[string]yaml.Node
+	if err := node.Decode(&merged); err != nil {
+		t.Fatal(err)
+	}
+	if len(merged) != 3 || merged["enabled"].Value != "true" || merged["binary"].Value != "codex" || merged["permission_mode"].Value != "cli_default" {
+		t.Fatalf("merged node view = %+v", merged)
+	}
+}
+
+func TestRuntimePermissionMergeDecoding(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		mode       PermissionMode
+		errorText  string
+	}{
+		{"legacy refusal", "runtime:\n  codex: {<<: {enabled: true, binary: codex}, sandbox_bypass: false}\n", PermissionCLIDefault, ""},
+		{"merged mode", "runtime:\n  codex: {<<: {enabled: true, binary: codex, permission_mode: full_access}}\n", PermissionFullAccess, ""},
+		{"merged conflict", "runtime:\n  codex: {<<: {sandbox_bypass: false}, permission_mode: auto}\n", "", "keep only permission_mode"},
+		{"merge sequence conflict", "runtime:\n  codex: {<<: [{permission_mode: auto}, {sandbox_bypass: false}]}\n", "", "keep only permission_mode"},
+		{"merged null conflict", "runtime:\n  codex: {<<: {sandbox_bypass: null}, permission_mode: full_access}\n", "", "keep only permission_mode"},
+		{"merged unknown", "runtime:\n  codex: {<<: {args: [--evil]}}\n", "", "field args not found in type config.RuntimeConfig"},
+		{"merged null mode", "runtime:\n  codex: {<<: {permission_mode: null}}\n", "", "permission_mode must not be null"},
+		{"merged null bypass", "runtime:\n  codex: {<<: {sandbox_bypass: null}}\n", "", "sandbox_bypass must not be null"},
+		{"explicit overrides null", "runtime:\n  codex: {<<: {permission_mode: null}, permission_mode: cli_default}\n", PermissionCLIDefault, ""},
+		{"explicit null overrides mode", "runtime:\n  codex: {<<: {permission_mode: auto}, permission_mode: null}\n", "", "permission_mode must not be null"},
+		{"explicit refusal overrides legacy true", "runtime:\n  codex: {<<: {sandbox_bypass: true}, sandbox_bypass: false}\n", PermissionCLIDefault, ""},
+		{"merge sequence first wins", "runtime:\n  codex: {<<: [{permission_mode: cli_default}, {permission_mode: full_access}]}\n", PermissionCLIDefault, ""},
+		{"nested merge", "runtime:\n  codex: {<<: {<<: {permission_mode: full_access}}}\n", PermissionFullAccess, ""},
+		{"whole mapping alias", "runtime:\n  shell: &base {enabled: true, binary: codex}\n  codex: *base\n", PermissionAuto, ""},
+		{"non mapping scalar", "runtime:\n  codex: invalid\n", "", "cannot unmarshal !!str"},
+		{"non mapping sequence", "runtime:\n  codex: [auto]\n", "", "cannot unmarshal !!seq"},
+		{"merged mode on claude", "runtime:\n  claude: {<<: {permission_mode: auto}}\n", "", "does not support permission_mode"},
+		{"merged bypass on claude", "runtime:\n  claude: {<<: {sandbox_bypass: false}}\n", "", "does not support sandbox_bypass"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, tc.body))
+			if tc.errorText != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.errorText) {
+					t.Fatalf("Load error = %v, want %s", err, tc.errorText)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := cfg.Runtime["codex"].CodexPermissionMode(); got != tc.mode {
+				t.Fatalf("mode = %s, want %s", got, tc.mode)
+			}
+		})
+	}
+}
+
+func TestRuntimeMergedPermissionKeysRejectNull(t *testing.T) {
+	for _, id := range []string{"codex", "claude", "shell"} {
+		for _, key := range []string{"permission_mode", "sandbox_bypass"} {
+			for _, value := range []string{"null", "~", ""} {
+				t.Run(id+"/"+key+"/"+value, func(t *testing.T) {
+					body := "runtime:\n  " + id + ": {<<: {" + key + ": " + value + "}}\n"
+					_, err := Load(writeConfig(t, body))
+					if err == nil || !strings.Contains(err.Error(), key+" must not be null") {
+						t.Fatalf("Load error = %v, want merged null rejection", err)
+					}
+				})
+			}
+		}
 	}
 }

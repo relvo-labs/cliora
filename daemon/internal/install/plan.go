@@ -91,9 +91,9 @@ func BuildConfig(p Params, detected []runtime.DetectResult) (*config.Config, err
 		// Written explicitly rather than left to load-time defaulting, for the same
 		// reason the shell and tunnel blocks are: the node owner's only way to refuse
 		// this posture is a key they can see (ADR 0023 D2).
-		if config.SandboxBypassRuntimeIDs[r.Runtime] {
-			bypass := true
-			rc.SandboxBypass = &bypass
+		if config.PermissionModeRuntimeIDs[r.Runtime] {
+			mode := config.PermissionAuto
+			rc.PermissionMode = &mode
 		}
 		runtimes[r.Runtime] = rc
 	}
@@ -163,17 +163,18 @@ so the ceiling is root (ADR 0023). See the node block above.`
 // sandboxRuntimeComment is written above the runtime.codex block of a generated
 // config.yaml. Same reasoning as shellRuntimeComment: the node owner holds the only
 // veto, and a veto whose location nobody knows is not a control.
-const sandboxRuntimeComment = `codex runs with its approval prompts and OS sandbox disabled on this node
-(ADR 0023). agentd adds one fixed flag when starting it:
-"--dangerously-bypass-approvals-and-sandbox".
-This is the intended posture for a disposable, isolated VM: codex edits files,
-installs packages and runs commands here without asking. On a machine you would
-not rebuild, set "sandbox_bypass: false" below and restart agentd.
-The flag itself is not configurable — agentd owns it, and neither the console nor
-Central can name a command, argument or environment variable for a session
-(SEC-002). This switch only decides whether agentd's own flag is applied.
-If the installed codex does not recognise the flag, agentd launches without it and
-the console shows the sandbox as enforced rather than claiming otherwise.`
+const sandboxRuntimeComment = `codex defaults to auto mode (ADR 0030): workspace-write sandbox, on-request
+approvals and an automatic approval reviewer. Workspace reads and writes continue;
+actions beyond the sandbox go through approval review.
+The node-local permission_mode choices are closed: auto (default), cli_default
+(agentd adds no flag; codex's own config decides), and full_access (explicit opt-in
+that disables approvals and the sandbox). Restart agentd after changing the mode.
+Legacy sandbox_bypass: true upgrades to auto; false maps to cli_default. Keep only
+permission_mode when editing this block; setting both keys is an error.
+The flags themselves are not configurable — agentd owns them, and neither the
+console nor Central can name a command, argument or environment variable (SEC-002).
+If the selected flag is unsupported, agentd launches without a flag and reports
+that in doctor and the startup log. Auto never falls back to full access.`
 
 // privilegedTerminalComment is written above the node block when the posture is on.
 // It says what the key is *not*, because a boolean named privileged_terminal reads

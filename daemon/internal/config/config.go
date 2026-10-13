@@ -38,29 +38,96 @@ type NodeConfig struct {
 	PrivilegedTerminal bool `yaml:"privileged_terminal"`
 }
 
+// PermissionMode is a closed node-local choice of daemon-owned flags (ADR 0030).
+// It never contains an argument: the complete flag table lives in runtime/launch.go.
+type PermissionMode string
+
+const (
+	PermissionAuto       PermissionMode = "auto"
+	PermissionCLIDefault PermissionMode = "cli_default"
+	PermissionFullAccess PermissionMode = "full_access"
+)
+
 type RuntimeConfig struct {
 	Enabled bool   `yaml:"enabled"`
 	Binary  string `yaml:"binary"`
-	// SandboxBypass turns off the runtime's own approval prompts and OS sandbox by
-	// adding the daemon's fixed flag set for that runtime (runtime/launch.go).
-	// Absent → enabled, the same way runtime.shell defaults (ADR 0021/0023): an
-	// upgraded node takes the posture without an operator editing a file, which is
-	// a capability change, which is why Load records where the value came from.
-	//
-	// Only the runtimes in SandboxBypassRuntimeIDs accept this key; Validate
-	// refuses it elsewhere rather than ignoring it, because a silently ignored
-	// setting reads exactly like a setting that worked.
-	//
-	// There is deliberately no args/flags field here. The node decides whether the
-	// daemon's fixed flags apply, never what they are (SEC-002, ADR 0023 §2.4).
-	SandboxBypass *bool `yaml:"sandbox_bypass"`
+	// PermissionMode selects a fixed flag set; only codex accepts this key.
+	// UnmarshalYAML rejects explicit null; a pointer distinguishes an absent key
+	// from an explicitly empty, invalid string.
+	PermissionMode *PermissionMode `yaml:"permission_mode,omitempty"`
+	// SandboxBypass is a legacy input only: true upgrades to auto; false preserves
+	// the node's refusal as cli_default. It can never opt into full access.
+	SandboxBypass *bool `yaml:"sandbox_bypass,omitempty"`
+	// PermissionModeSource records config, legacy-key or default for startup logs.
+	// It is never serialised and cannot be set by Central.
+	PermissionModeSource string `yaml:"-"`
 }
 
-// BypassSandbox reports the effective sandbox_bypass value: absent means enabled
-// (ADR 0023 D2). Callers that hand-build a RuntimeConfig (installer detection,
-// doctor) get the same default as a config file that omits the key.
-func (r RuntimeConfig) BypassSandbox() bool {
-	return r.SandboxBypass == nil || *r.SandboxBypass
+// UnmarshalYAML checks the merged mapping before decoding pointer values: YAML
+// null would otherwise look absent and Load's defaults could erase an invalid
+// choice. Explicit keys override inherited ones using yaml.v3's normal precedence.
+// Conflicting keys win over value errors, even if either value is null.
+func (r *RuntimeConfig) UnmarshalYAML(node *yaml.Node) error {
+	type plainRuntimeConfig RuntimeConfig
+	// Preserve the existing struct-decoding errors for non-mapping values.
+	if node.Kind != yaml.MappingNode {
+		return node.Decode((*plainRuntimeConfig)(r))
+	}
+	var merged map[string]yaml.Node
+	if err := node.Decode(&merged); err != nil {
+		return err
+	}
+	_, permissionPresent := merged["permission_mode"]
+	_, bypassPresent := merged["sandbox_bypass"]
+	if permissionPresent && bypassPresent {
+		return errors.New("runtime sets both permission_mode and sandbox_bypass; keep only permission_mode")
+	}
+	// Node.Decode does not inherit the outer decoder's KnownFields setting.
+	// Keep the runtime mapping closed, including keys inherited through merges.
+	for key, value := range merged {
+		switch key {
+		case "enabled", "binary", "permission_mode", "sandbox_bypass":
+		default:
+			return fmt.Errorf("line %d: field %s not found in type config.RuntimeConfig", value.Line, key)
+		}
+	}
+	var decoded plainRuntimeConfig
+	if err := node.Decode(&decoded); err != nil {
+		return err
+	}
+	if permissionPresent && decoded.PermissionMode == nil {
+		return errors.New("runtime permission_mode must not be null; choose auto, cli_default or full_access")
+	}
+	if bypassPresent && decoded.SandboxBypass == nil {
+		return errors.New("runtime sandbox_bypass must not be null; use true or false, or migrate to permission_mode")
+	}
+	*r = RuntimeConfig(decoded)
+	return nil
+}
+
+// CodexPermissionMode also resolves hand-built configs used by installer detection
+// and doctor, so they get the same migration and default as Load.
+func (r RuntimeConfig) CodexPermissionMode() PermissionMode {
+	if r.PermissionMode != nil {
+		return *r.PermissionMode
+	}
+	if r.SandboxBypass != nil && !*r.SandboxBypass {
+		return PermissionCLIDefault
+	}
+	return PermissionAuto
+}
+
+func (r RuntimeConfig) CodexPermissionSource() string {
+	if r.PermissionModeSource != "" {
+		return r.PermissionModeSource
+	}
+	if r.PermissionMode != nil {
+		return "config"
+	}
+	if r.SandboxBypass != nil {
+		return "legacy-key"
+	}
+	return "default"
 }
 
 type WorkspaceConfig struct {
@@ -383,13 +450,6 @@ type Config struct {
 	// be able to say so in its startup log. Never serialised.
 	BinaryPreviewFromDefault bool `yaml:"-"`
 
-	// SandboxBypassFromDefault records, per runtime id, that sandbox_bypass was
-	// absent and defaulted to enabled rather than being chosen. Surfaced in the
-	// startup log because "the operator asked for this" and "an upgrade did this"
-	// are different facts about a machine that now runs a CLI without a sandbox.
-	// Never serialised.
-	SandboxBypassFromDefault map[string]bool `yaml:"-"`
-
 	// LegacyTunnelToken records that the config carried a `tunnel.token` key, which the
 	// platform now holds instead. Surfaced at startup so the node owner learns the key is
 	// dead rather than assuming it is in use. Never serialised.
@@ -411,13 +471,10 @@ const ShellRuntimeID = "shell"
 // would be the beginning of letting a caller name a command (SEC-002).
 const DefaultShellBinary = "bash"
 
-// SandboxBypassRuntimeIDs are the runtimes for which sandbox_bypass means
-// something. It is deliberately not "every CLI runtime": claude's approval model
-// is different and was not part of the ADR 0023 decision, and the shell is the
-// operator's own shell, which has no sandbox to speak of. A runtime with no entry
-// in the daemon's flag table (runtime/launch.go) must not accept the key either —
-// runtime's tests assert the two stay in step.
-var SandboxBypassRuntimeIDs = map[string]bool{"codex": true}
+// PermissionModeRuntimeIDs are the runtimes with daemon-owned permission flags.
+// Claude's approval model and the operator's shell are separate decisions, so a
+// setting on either is refused rather than silently ignored.
+var PermissionModeRuntimeIDs = map[string]bool{"codex": true}
 
 // Scrollback bounds for the tmux history the browser can scroll through
 // (FR-TERM-004.AC-04 requires at least 5000 lines). The floor is applied rather
@@ -461,23 +518,20 @@ func (c *Config) applyRuntimeDefaults() {
 		c.Runtime[ShellRuntimeID] = RuntimeConfig{Enabled: true, Binary: DefaultShellBinary}
 		c.ShellFromDefault = true
 	}
-	// Same rule for sandbox_bypass, and for the same reason: an absent key means
-	// enabled (ADR 0023 D2), and an explicit `false` is an operator decision that
-	// no future default change may overwrite. Only a runtime that is actually
-	// present gets the key filled in — writing it onto a runtime the node does not
-	// have would put a setting in memory for a binary that will never launch.
-	for id := range SandboxBypassRuntimeIDs {
+	// Normalize legacy values without retaining two keys in generated configs.
+	// Both keys explicitly supplied are left intact so Validate can reject them.
+	for id := range PermissionModeRuntimeIDs {
 		rc, ok := c.Runtime[id]
-		if !ok || rc.SandboxBypass != nil {
+		if !ok {
 			continue
 		}
-		enabled := true
-		rc.SandboxBypass = &enabled
-		c.Runtime[id] = rc
-		if c.SandboxBypassFromDefault == nil {
-			c.SandboxBypassFromDefault = map[string]bool{}
+		rc.PermissionModeSource = rc.CodexPermissionSource()
+		if rc.PermissionMode == nil {
+			mode := rc.CodexPermissionMode()
+			rc.PermissionMode = &mode
+			rc.SandboxBypass = nil
 		}
-		c.SandboxBypassFromDefault[id] = true
+		c.Runtime[id] = rc
 	}
 }
 
@@ -545,7 +599,7 @@ func (c *Config) applyFilesystemDefaults() {
 		// Record that nobody chose this. "The operator asked for it" and "an
 		// upgrade did it" are different facts about a machine whose workspace
 		// can now be written to, and the startup log must be able to tell them
-		// apart (same treatment as SandboxBypassFromDefault).
+		// apart (same treatment as PermissionModeSource).
 		c.UploadFromDefault = true
 	}
 	if u.MaxBytes <= 0 {
@@ -702,10 +756,21 @@ func (c *Config) Validate() error {
 		if rc.Enabled && rc.Binary == "" {
 			return fmt.Errorf("runtime %q is enabled but has no binary", id)
 		}
-		if rc.SandboxBypass != nil && !SandboxBypassRuntimeIDs[id] {
-			return fmt.Errorf(
-				"runtime %q does not support sandbox_bypass (only codex); remove the key "+
-					"rather than expecting it to be ignored", id)
+		if rc.SandboxBypass != nil && !PermissionModeRuntimeIDs[id] {
+			return fmt.Errorf("runtime %q does not support sandbox_bypass (only codex); remove the key rather than expecting it to be ignored", id)
+		}
+		if rc.PermissionMode != nil && !PermissionModeRuntimeIDs[id] {
+			return fmt.Errorf("runtime %q does not support permission_mode (only codex); remove the key rather than expecting it to be ignored", id)
+		}
+		if rc.PermissionMode != nil && rc.SandboxBypass != nil {
+			return fmt.Errorf("runtime %q sets both permission_mode and sandbox_bypass; keep only permission_mode", id)
+		}
+		if rc.PermissionMode != nil {
+			switch *rc.PermissionMode {
+			case PermissionAuto, PermissionCLIDefault, PermissionFullAccess:
+			default:
+				return fmt.Errorf("runtime %q permission_mode %q is unknown (only auto, cli_default, full_access)", id, *rc.PermissionMode)
+			}
 		}
 	}
 	for _, spec := range c.Tunnel.AllowedPorts {

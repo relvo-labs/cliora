@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -22,7 +23,7 @@ func newRunCommand(configPath *string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "run",
 		Short: "Connect to Central and serve (systemd entrypoint)",
-		RunE: func(_ *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := config.EnsureNonRoot(); err != nil {
 				return err
 			}
@@ -46,22 +47,24 @@ func newRunCommand(configPath *string) *cobra.Command {
 			slog.Info("runtime_shell",
 				"enabled", cfg.Runtime[config.ShellRuntimeID].Enabled,
 				"source", shellSource)
-			// The same reasoning applies to the two posture switches this node now
-			// carries (ADR 0023): "the operator chose this" and "an upgrade defaulted
-			// into this" are different facts about a machine that runs a CLI without a
-			// sandbox and hands out root through sudo, and neither is guessable from
-			// outside. Both go in the startup log, once, on the way up.
-			for id := range config.SandboxBypassRuntimeIDs {
-				rc, present := cfg.Runtime[id]
-				if !present {
+			// Record both intent and the applied flag: an upgrade and an operator's
+			// choice are different facts, and an unsupported flag applies no posture.
+			for _, detected := range registry.DetectAll(cmd.Context(), time.Now()) {
+				if detected.Runtime != "codex" {
 					continue
 				}
-				source := "config"
-				if cfg.SandboxBypassFromDefault[id] {
-					source = "default"
+				if _, present := cfg.Runtime["codex"]; !present {
+					continue
 				}
-				slog.Info("runtime_sandbox",
-					"runtime", id, "bypass", rc.BypassSandbox(), "source", source)
+				slog.Info("runtime_codex_permission",
+					"mode", detected.PermissionMode, "source", detected.PermissionSource,
+					"effective_mode", detected.EffectivePermissionMode, "flag_applied", detected.FlagApplied)
+				if detected.SandboxNote != "" {
+					slog.Warn("runtime_codex_permission", "mode", detected.PermissionMode,
+						"note", detected.SandboxNote, "flag_applied", false,
+						"flag", runtime.PermissionArgs(detected.Runtime, detected.PermissionMode)[0],
+						"message", "selected permission flag unsupported; launching without a flag")
+				}
 			}
 			slog.Info("privileged_terminal", "enabled", cfg.Node.PrivilegedTerminal)
 			// Read-only image/PDF preview (ADR 0029, OD-5) is on unless switched off,

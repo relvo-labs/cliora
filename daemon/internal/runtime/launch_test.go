@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -16,7 +17,7 @@ import (
 // has to be answerable by a test rather than by reading a diff (ADR 0023 §2.4).
 func TestOnlyCodexHasLaunchFlags(t *testing.T) {
 	for id := range config.AllowedRuntimeIDs {
-		args := SandboxBypassArgs(id)
+		args := PermissionArgs(id, config.PermissionFullAccess)
 		if id == "codex" {
 			if len(args) != 1 || args[0] != SandboxBypassFlag {
 				t.Errorf("codex flags = %v, want exactly [%s]", args, SandboxBypassFlag)
@@ -33,22 +34,22 @@ func TestOnlyCodexHasLaunchFlags(t *testing.T) {
 // If the two lists drift, a node could set a key that silently does nothing (or be
 // refused a key that would have worked).
 func TestSandboxBypassRuntimeListsAgree(t *testing.T) {
-	for id := range config.SandboxBypassRuntimeIDs {
-		if !SupportsSandboxBypass(id) {
+	for id := range config.PermissionModeRuntimeIDs {
+		if !SupportsPermissionMode(id) {
 			t.Errorf("config accepts sandbox_bypass for %q but there are no flags for it", id)
 		}
 	}
 	for id := range config.AllowedRuntimeIDs {
-		if SupportsSandboxBypass(id) && !config.SandboxBypassRuntimeIDs[id] {
+		if SupportsPermissionMode(id) && !config.PermissionModeRuntimeIDs[id] {
 			t.Errorf("runtime %q has bypass flags but config would reject the key", id)
 		}
 	}
 }
 
 func TestSandboxBypassArgsCannotBeMutatedThroughTheReturnedSlice(t *testing.T) {
-	got := SandboxBypassArgs("codex")
+	got := PermissionArgs("codex", config.PermissionFullAccess)
 	got[0] = "--something-else"
-	if SandboxBypassArgs("codex")[0] != SandboxBypassFlag {
+	if PermissionArgs("codex", config.PermissionFullAccess)[0] != SandboxBypassFlag {
 		t.Fatal("the flag table was mutated through a returned slice")
 	}
 }
@@ -62,7 +63,7 @@ func fakeCLI(t *testing.T, name string, listsFlag bool) (dir, path string) {
 	path = filepath.Join(dir, name)
 	help := "usage: " + name + "\n  --help\n"
 	if listsFlag {
-		help = "usage: " + name + "\n  " + SandboxBypassFlag + "  skip everything\n"
+		help = "usage: " + name + "\n  " + AutoPermissionFlag + "  auto review\n  " + SandboxBypassFlag + "  skip everything\n"
 	}
 	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo '" + name + " 9.9.9';;\n--help) cat <<'EOF'\n" +
 		help + "EOF\n;;\nesac\n"
@@ -81,14 +82,14 @@ func withPath(t *testing.T, dir string) {
 func TestResolveLaunchAddsTheFlagByDefault(t *testing.T) {
 	dir, _ := fakeCLI(t, "codex", true)
 	withPath(t, dir)
-	// No sandbox_bypass key at all: absent means enabled (ADR 0023 D2).
+	// No permission keys: auto is the default (ADR 0030).
 	reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: "codex"}})
 	spec, err := reg.ResolveLaunch("codex")
 	if err != nil {
 		t.Fatalf("ResolveLaunch: %v", err)
 	}
-	if len(spec.Args) != 1 || spec.Args[0] != SandboxBypassFlag {
-		t.Errorf("args = %v, want [%s]", spec.Args, SandboxBypassFlag)
+	if len(spec.Args) != 1 || spec.Args[0] != AutoPermissionFlag {
+		t.Errorf("args = %v, want [%s]", spec.Args, AutoPermissionFlag)
 	}
 	if !strings.HasSuffix(spec.Path, "codex") {
 		t.Errorf("path = %q", spec.Path)
@@ -134,8 +135,8 @@ func TestUnsupportedFlagIsReportedNotAssumed(t *testing.T) {
 	if !codex.Available {
 		t.Error("an unsupported flag must not make the runtime unavailable")
 	}
-	if !codex.SandboxBypassRequested {
-		t.Error("SandboxBypassRequested should record what the config asked for")
+	if codex.PermissionMode != config.PermissionAuto {
+		t.Error("PermissionMode should record what the config asked for")
 	}
 	if codex.SandboxBypass {
 		t.Error("SandboxBypass must report the measured outcome, not the request")
@@ -155,13 +156,13 @@ func TestDetectReportsBypassForAWorkingBuild(t *testing.T) {
 	reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: "codex"}})
 	for _, r := range reg.DetectAll(context.Background(), time.Now()) {
 		if r.Runtime != "codex" {
-			if r.SandboxBypass || r.SandboxBypassRequested {
+			if r.SandboxBypass || r.FlagApplied {
 				t.Errorf("%s reports a sandbox posture it cannot have", r.Runtime)
 			}
 			continue
 		}
-		if !r.SandboxBypass || r.SandboxNote != "" {
-			t.Errorf("codex = %+v, want bypassed with no note", r)
+		if r.SandboxBypass || !r.FlagApplied || r.EffectivePermissionMode != config.PermissionAuto || r.SandboxNote != "" {
+			t.Errorf("codex = %+v, want auto with sandbox and no note", r)
 		}
 	}
 }
@@ -197,7 +198,174 @@ func TestBuildCommandCarriesTheSameArgsAsResolveLaunch(t *testing.T) {
 	reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: "codex"}})
 	rt, _ := reg.Get("codex")
 	cmd := rt.BuildCommand(StartOptions{Workspace: dir})
-	if len(cmd.Args) != 2 || cmd.Args[1] != SandboxBypassFlag {
+	if len(cmd.Args) != 2 || cmd.Args[1] != AutoPermissionFlag {
 		t.Errorf("BuildCommand argv = %v; it must agree with the launch path", cmd.Args)
+	}
+}
+
+// Probe the selected flag, including binaries that accept only the other mode.
+// In particular a yolo-only binary must never get yolo when auto was selected.
+func TestPermissionLaunchAndDetection(t *testing.T) {
+	for _, mode := range []config.PermissionMode{config.PermissionAuto, config.PermissionCLIDefault, config.PermissionFullAccess} {
+		for _, helpFlags := range []string{"", AutoPermissionFlag, SandboxBypassFlag, AutoPermissionFlag + "\n" + SandboxBypassFlag} {
+			t.Run(string(mode)+"/"+helpFlags, func(t *testing.T) {
+				dir := t.TempDir()
+				path := filepath.Join(dir, "codex")
+				script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex 9.9.9';;\n--help) echo '" + helpFlags + "';;\nesac\n"
+				if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: path, PermissionMode: &mode}})
+				rt, _ := reg.Get("codex")
+				wantArgs := PermissionArgs("codex", mode)
+				applied := len(wantArgs) > 0 && strings.Contains(helpFlags, wantArgs[0])
+				args := rt.LaunchArgs()
+				if !applied {
+					if args != nil {
+						t.Fatalf("unsupported/default mode got %v, want nil", args)
+					}
+				} else if len(args) != 1 || args[0] != wantArgs[0] {
+					t.Fatalf("got %v, want %v", args, wantArgs)
+				}
+				result := rt.Detect(context.Background(), time.Now())
+				if !result.Available || result.FlagApplied != applied || result.SandboxBypass != (mode == config.PermissionFullAccess && applied) {
+					t.Fatalf("measured result = %+v", result)
+				}
+				wantEffective := config.PermissionCLIDefault
+				if applied {
+					wantEffective = mode
+				}
+				if result.PermissionMode != mode || result.EffectivePermissionMode != wantEffective {
+					t.Fatalf("mode diagnostics = %+v", result)
+				}
+				unsupported := len(wantArgs) > 0 && !applied
+				if (result.SandboxNote != "") != unsupported {
+					t.Fatalf("unsupported flag note = %q", result.SandboxNote)
+				}
+			})
+		}
+	}
+}
+
+type flagHelpCase struct {
+	name, help string
+	want       bool
+}
+
+// The same declaration matrix runs against Go and the node-check shell probe.
+func flagHelpCases(flag string) []flagHelpCase {
+	return []flagHelpCase{
+		{"exact line", "      " + flag + "\n", true},
+		{"line start", flag, true},
+		{"legacy suffix", "      " + flag + "-legacy\n", false},
+		{"letter suffix", "      " + flag + "x\n", false},
+		{"equals", flag + "=x\n", true},
+		{"short alias", "  -x, " + flag + "\n", true},
+		{"comma", "  -x, " + flag + ", --other\n", true},
+		{"alias without separator", "  -x," + flag + "\n", false},
+		{"placeholder", "  " + flag + " <VALUE>\n", true},
+		{"attached placeholder", "  " + flag + "<VALUE>\n", true},
+		{"optional value", "  " + flag + "[=VALUE]\n", true},
+		{"description", "  " + flag + "  Enable this mode\n", true},
+		{"long help", "Options:\n      " + flag + "\n          Enable this mode\n", true},
+		{"unsupported prose", "This version does not support " + flag + "\n", false},
+		{"recommendation prose", "use " + flag + " instead\n", false},
+		{"indented prose", "    This version does not support " + flag + "\n", false},
+		{"prose after another option", "  --other  Use " + flag + " instead\n", false},
+		{"prose after short option", "  -x, --other  Use " + flag + " instead\n", false},
+		{"prose suffix", "use " + flag + "anwhile\n", false},
+		{"embedded prefix", "prefix" + flag + "\n", false},
+		{"parenthesized", "(" + flag + ")\n", false},
+		{"alias only", "      --yolo\n", false},
+	}
+}
+
+func TestFlagHelpTokenBoundaries(t *testing.T) {
+	for _, flag := range []string{AutoPermissionFlag, SandboxBypassFlag} {
+		for _, tc := range flagHelpCases(flag) {
+			t.Run(flag+"/"+tc.name, func(t *testing.T) {
+				path := filepath.Join(t.TempDir(), "codex")
+				script := "#!/bin/sh\ncat <<'HELP'\n" + tc.help + "\nHELP\n"
+				if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if got := flagAccepted(path, flag, time.Second); got != tc.want {
+					t.Errorf("flagAccepted help %q = %t, want %t", tc.help, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestNodePostureFlagDeclarations(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "scripts", "pv", "node-posture-check.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	condition := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.Contains(line, "grep -Eq --") {
+			condition = strings.TrimSpace(line)
+			break
+		}
+	}
+	if condition == "" {
+		t.Fatal("node posture script has no flag probe")
+	}
+	// Run only the script's actual predicate, without its live-node commands.
+	script := "flag=$1\nhelp=$2\n" + condition + "\nexit 0\nelse\nexit 1\nfi\n"
+	for _, flag := range []string{AutoPermissionFlag, SandboxBypassFlag} {
+		for _, tc := range flagHelpCases(flag) {
+			t.Run(flag+"/"+tc.name, func(t *testing.T) {
+				err := exec.Command("bash", "-c", script, "probe", flag, tc.help).Run()
+				if err != nil {
+					if exitErr, ok := err.(*exec.ExitError); !ok || exitErr.ExitCode() != 1 {
+						t.Fatal(err)
+					}
+				}
+				if got := err == nil; got != tc.want {
+					t.Errorf("shell probe help %q = %t, want %t", tc.help, got, tc.want)
+				}
+			})
+		}
+	}
+}
+
+func TestAutoLaunchRejectsLookalikeFlag(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "codex")
+	script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex 9.9.9';;\n--help) echo '      " + AutoPermissionFlag + "-legacy';;\nesac\n"
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: path}})
+	rt, _ := reg.Get("codex")
+	if args := rt.LaunchArgs(); args != nil {
+		t.Fatalf("lookalike flag produced launch args %v, want nil", args)
+	}
+	result := rt.Detect(context.Background(), time.Now())
+	if !result.Available || result.FlagApplied || result.SandboxBypass || result.SandboxNote != ReasonSandboxFlagUnsupported {
+		t.Fatalf("lookalike flag detection = %+v", result)
+	}
+}
+
+func TestPermissionLaunchRejectsProseOnlyHelp(t *testing.T) {
+	for _, mode := range []config.PermissionMode{config.PermissionAuto, config.PermissionFullAccess} {
+		t.Run(string(mode), func(t *testing.T) {
+			flag := PermissionArgs("codex", mode)[0]
+			path := filepath.Join(t.TempDir(), "codex")
+			script := "#!/bin/sh\ncase \"$1\" in\n--version) echo 'codex 9.9.9';;\n--help) echo 'This version does not support " + flag + "';;\nesac\n"
+			if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			reg := NewRegistry(map[string]config.RuntimeConfig{"codex": {Enabled: true, Binary: path, PermissionMode: &mode}})
+			rt, _ := reg.Get("codex")
+			if args := rt.LaunchArgs(); args != nil {
+				t.Fatalf("prose produced launch args %v, want nil", args)
+			}
+			result := rt.Detect(context.Background(), time.Now())
+			if !result.Available || result.FlagApplied || result.SandboxBypass || result.SandboxNote != ReasonSandboxFlagUnsupported {
+				t.Fatalf("prose-only detection = %+v", result)
+			}
+		})
 	}
 }

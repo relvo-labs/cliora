@@ -133,9 +133,11 @@ func TestStartRejectsAnythingThatIsNotAFlag(t *testing.T) {
 	}
 }
 
-func TestValidArgsAcceptsTheSandboxFlag(t *testing.T) {
-	if !validArgs([]string{"--dangerously-bypass-approvals-and-sandbox"}) {
-		t.Error("the one argument this feature exists to pass was rejected")
+func TestValidArgsAcceptsThePermissionFlags(t *testing.T) {
+	for _, flag := range []string{"--approve-for-me", "--dangerously-bypass-approvals-and-sandbox"} {
+		if !validArgs([]string{flag}) {
+			t.Errorf("daemon permission flag %s was rejected", flag)
+		}
 	}
 }
 

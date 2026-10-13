@@ -425,3 +425,40 @@ func TestGeneratedConfigExplainsThePortForwardingVeto(t *testing.T) {
 		t.Errorf("the pinned key path should be written out, got %q", reloaded.Tunnel.KnownHostsPath)
 	}
 }
+
+func TestGeneratedCodexConfigRoundTripsToAuto(t *testing.T) {
+	cfg, err := BuildConfig(Params{Server: "https://platform.example.com", NodeName: "dev-vm-01"}, []runtime.DetectResult{
+		{Runtime: "codex", Available: true, BinaryPath: "/usr/bin/codex"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := MarshalConfig(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(out)
+	for _, want := range []string{"permission_mode: auto", "auto mode", "workspace-write", "full_access", "cli_default", "Auto never falls back to full access"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("config does not mention %q:\n%s", want, text)
+		}
+	}
+	// Comments explain the migration, but the generated YAML must not write the old key.
+	for _, line := range strings.Split(text, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "sandbox_bypass:") {
+			t.Errorf("generated legacy key: %s", line)
+		}
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, out, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rc := loaded.Runtime["codex"]
+	if rc.CodexPermissionMode() != config.PermissionAuto || rc.CodexPermissionSource() != "config" || rc.SandboxBypass != nil {
+		t.Fatalf("round trip = %+v", rc)
+	}
+}

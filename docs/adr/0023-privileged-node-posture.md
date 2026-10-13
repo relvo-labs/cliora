@@ -1,6 +1,8 @@
 # ADR 0023 — Privileged node posture: no sandbox, sudo, and a terminal that scrolls
 
 - Status: accepted
+- Amended by ADR 0030: §1 only, Codex auto permission mode by default (2026-10-13).
+  The original decision below is retained as history; see [ADR 0030](0030-codex-auto-permission-mode.md) for the current Codex default.
 - Date: 2026-08-01
 - Amends: ADR 0021 §4.2 item 2 (the "non-root daemon" compensating control). ADR 0021 is
   not superseded — its ownership, lifetime and audit controls stand unchanged.

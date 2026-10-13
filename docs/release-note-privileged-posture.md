@@ -1,5 +1,11 @@
 # Release note — privileged node posture (agentd 0.5.0)
 
+> Historical release note for agentd 0.5.0. [ADR 0030](adr/0030-codex-auto-permission-mode.md)
+> amends the Codex default on 2026-10-13: new installs, absent keys and legacy
+> `sandbox_bypass: true` now select auto mode. Legacy false selects `cli_default`;
+> yolo requires explicit node-local `permission_mode: full_access`. See the updated
+> [runbook](runbooks/privileged-node-posture.md) for current settings.
+
 **Send this before upgrading any existing node.** Audience: whoever owns a node running
 `agentd`. Not an internal document — this is the notice the upgrade is blocked on
 (`plan/12/06-verification-and-exit.md` §4.3).
