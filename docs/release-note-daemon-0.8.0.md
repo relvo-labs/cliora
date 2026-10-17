@@ -28,7 +28,7 @@ The node setting is now `runtime.codex.permission_mode`:
 **The legacy `true` row is deliberate:** installer-written `sandbox_bypass: true`
 does *not* keep yolo. A node that genuinely needs yolo must say so with
 `permission_mode: full_access` and drop `sandbox_bypass`. Setting both keys, an
-unknown or `null` value, or either key on a runtime other than codex makes agentd
+unknown value, a `null` `permission_mode`, or either key on a runtime other than codex makes agentd
 refuse to start with an explanation, rather than guess.
 
 Visible differences:
@@ -68,7 +68,7 @@ reopen a codex session to get auto mode. The same applies after editing
   sudo agentd update --version 0.8.0 --dry-run
   sudo agentd update --version 0.8.0
   agentd version --json
-  sudo agentd doctor
+  agentd doctor            # as the service user; under sudo the non-root check fails
   ```
 
   Confirm version `0.8.0`, service health, Central re-registration, the startup log

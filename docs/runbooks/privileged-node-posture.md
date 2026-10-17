@@ -53,9 +53,11 @@ runtime:
 `auto` is the default: workspace-write sandbox and auto-reviewed, on-request approvals.
 `cli_default` adds no daemon flag and leaves the decision to Codex's configuration.
 `full_access` explicitly opts into yolo, disabling approvals and the sandbox.
-Legacy true upgrades to auto; legacy false maps to cli_default. Both keys together,
-unknown values, explicit YAML null values (`null`, `~` or a bare key), and either
-permission key on any non-Codex runtime are errors.
+Legacy true upgrades to auto; legacy false maps to cli_default. A legacy
+`sandbox_bypass: null` (written into every runtime block by installers before 0.8.0)
+counts as absent. Both keys set to values, unknown values, a null `permission_mode`
+(`null`, `~` or a bare key), and either permission key with a value on any non-Codex
+runtime are errors.
 
 Restart with `sudo systemctl restart agentd`. Confirm with `agentd doctor`: it reports
 requested and effective permission mode, source, whether the flag applied, and sandbox

@@ -143,7 +143,7 @@ heartbeat:
 
 func TestRuntimePermissionKeysRejectNull(t *testing.T) {
 	for _, id := range []string{"codex", "claude", "shell"} {
-		for _, key := range []string{"permission_mode", "sandbox_bypass"} {
+		for _, key := range []string{"permission_mode"} {
 			for _, value := range []string{"null", "~", ""} {
 				t.Run(id+"/"+key+"/"+value, func(t *testing.T) {
 					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n    "+key+": "+value+"\n"))
@@ -159,7 +159,7 @@ func TestRuntimePermissionKeysRejectNull(t *testing.T) {
 func TestRuntimePermissionKeyConflictsIncludeNull(t *testing.T) {
 	for _, id := range []string{"codex", "claude", "shell"} {
 		for _, mode := range []string{"auto", "cli_default", "full_access", "null", "~", "", "unknown", "[auto]"} {
-			for _, bypass := range []string{"true", "false", "null", "~", "", "[true]"} {
+			for _, bypass := range []string{"true", "false", "[true]"} {
 				t.Run(id+"/"+mode+"/"+bypass, func(t *testing.T) {
 					keys := "    permission_mode: " + mode + "\n    sandbox_bypass: " + bypass + "\n"
 					_, err := Load(writeConfig(t, "runtime:\n  "+id+":\n    enabled: true\n    binary: x\n"+keys))
@@ -217,10 +217,10 @@ func TestRuntimePermissionMergeDecoding(t *testing.T) {
 		{"merged mode", "runtime:\n  codex: {<<: {enabled: true, binary: codex, permission_mode: full_access}}\n", PermissionFullAccess, ""},
 		{"merged conflict", "runtime:\n  codex: {<<: {sandbox_bypass: false}, permission_mode: auto}\n", "", "keep only permission_mode"},
 		{"merge sequence conflict", "runtime:\n  codex: {<<: [{permission_mode: auto}, {sandbox_bypass: false}]}\n", "", "keep only permission_mode"},
-		{"merged null conflict", "runtime:\n  codex: {<<: {sandbox_bypass: null}, permission_mode: full_access}\n", "", "keep only permission_mode"},
+		{"merged legacy null beside mode", "runtime:\n  codex: {<<: {sandbox_bypass: null}, permission_mode: full_access}\n", PermissionFullAccess, ""},
 		{"merged unknown", "runtime:\n  codex: {<<: {args: [--evil]}}\n", "", "field args not found in type config.RuntimeConfig"},
 		{"merged null mode", "runtime:\n  codex: {<<: {permission_mode: null}}\n", "", "permission_mode must not be null"},
-		{"merged null bypass", "runtime:\n  codex: {<<: {sandbox_bypass: null}}\n", "", "sandbox_bypass must not be null"},
+		{"merged legacy null bypass", "runtime:\n  codex: {<<: {sandbox_bypass: null}}\n", PermissionAuto, ""},
 		{"explicit overrides null", "runtime:\n  codex: {<<: {permission_mode: null}, permission_mode: cli_default}\n", PermissionCLIDefault, ""},
 		{"explicit null overrides mode", "runtime:\n  codex: {<<: {permission_mode: auto}, permission_mode: null}\n", "", "permission_mode must not be null"},
 		{"explicit refusal overrides legacy true", "runtime:\n  codex: {<<: {sandbox_bypass: true}, sandbox_bypass: false}\n", PermissionCLIDefault, ""},
@@ -252,7 +252,7 @@ func TestRuntimePermissionMergeDecoding(t *testing.T) {
 
 func TestRuntimeMergedPermissionKeysRejectNull(t *testing.T) {
 	for _, id := range []string{"codex", "claude", "shell"} {
-		for _, key := range []string{"permission_mode", "sandbox_bypass"} {
+		for _, key := range []string{"permission_mode"} {
 			for _, value := range []string{"null", "~", ""} {
 				t.Run(id+"/"+key+"/"+value, func(t *testing.T) {
 					body := "runtime:\n  " + id + ": {<<: {" + key + ": " + value + "}}\n"
@@ -263,5 +263,47 @@ func TestRuntimeMergedPermissionKeysRejectNull(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+// Installers before 0.8.0 wrote `sandbox_bypass: null` into every runtime block
+// (the field had no omitempty). Upgraded nodes must keep starting (#159): a null
+// legacy key is treated as absent, including beside permission_mode.
+func TestLegacyNullSandboxBypassIsAbsent(t *testing.T) {
+	for _, value := range []string{"null", "~", ""} {
+		t.Run("installer-0.7/"+value, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, "runtime:\n"+
+				"  shell:\n    enabled: true\n    binary: /usr/bin/bash\n    sandbox_bypass: "+value+"\n"+
+				"  claude:\n    enabled: true\n    binary: claude\n    sandbox_bypass: "+value+"\n"+
+				"  codex:\n    enabled: true\n    binary: codex\n    sandbox_bypass: "+value+"\n"))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := cfg.Runtime["codex"].CodexPermissionMode(); got != PermissionAuto {
+				t.Fatalf("codex mode = %q, want auto", got)
+			}
+			if cfg.Runtime["shell"].SandboxBypass != nil || cfg.Runtime["claude"].SandboxBypass != nil {
+				t.Fatal("null legacy key must not survive as a value on non-codex runtimes")
+			}
+		})
+		t.Run("beside-permission_mode/"+value, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, "runtime:\n  codex:\n    enabled: true\n    binary: codex\n"+
+				"    sandbox_bypass: "+value+"\n    permission_mode: full_access\n"))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := cfg.Runtime["codex"].CodexPermissionMode(); got != PermissionFullAccess {
+				t.Fatalf("codex mode = %q, want full_access", got)
+			}
+		})
+		t.Run("merged/"+value, func(t *testing.T) {
+			cfg, err := Load(writeConfig(t, "runtime:\n  codex: {<<: {sandbox_bypass: "+value+"}, enabled: true, binary: codex}\n"))
+			if err != nil {
+				t.Fatalf("Load: %v", err)
+			}
+			if got := cfg.Runtime["codex"].CodexPermissionMode(); got != PermissionAuto {
+				t.Fatalf("codex mode = %q, want auto", got)
+			}
+		})
 	}
 }

@@ -78,7 +78,16 @@ func (r *RuntimeConfig) UnmarshalYAML(node *yaml.Node) error {
 		return err
 	}
 	_, permissionPresent := merged["permission_mode"]
-	_, bypassPresent := merged["sandbox_bypass"]
+	bypassNode, bypassPresent := merged["sandbox_bypass"]
+	// Installers before 0.8.0 marshalled the legacy key without omitempty, so every
+	// runtime block on an upgraded node carries `sandbox_bypass: null`. 0.7.x read
+	// that as absent; reading it any other way stops upgraded daemons from starting
+	// (#159). A null legacy key states no choice, so it is treated as absent here and
+	// in the conflict check. The new permission_mode key has no such history and
+	// still rejects null.
+	if bypassPresent && isYAMLNull(&bypassNode) {
+		bypassPresent = false
+	}
 	if permissionPresent && bypassPresent {
 		return errors.New("runtime sets both permission_mode and sandbox_bypass; keep only permission_mode")
 	}
@@ -98,11 +107,17 @@ func (r *RuntimeConfig) UnmarshalYAML(node *yaml.Node) error {
 	if permissionPresent && decoded.PermissionMode == nil {
 		return errors.New("runtime permission_mode must not be null; choose auto, cli_default or full_access")
 	}
-	if bypassPresent && decoded.SandboxBypass == nil {
-		return errors.New("runtime sandbox_bypass must not be null; use true or false, or migrate to permission_mode")
-	}
 	*r = RuntimeConfig(decoded)
 	return nil
+}
+
+// isYAMLNull reports whether a scalar (or an alias of one) is YAML null: `null`,
+// `~` or an empty value.
+func isYAMLNull(n *yaml.Node) bool {
+	for n.Kind == yaml.AliasNode && n.Alias != nil {
+		n = n.Alias
+	}
+	return n.Kind == yaml.ScalarNode && n.ShortTag() == "!!null"
 }
 
 // CodexPermissionMode also resolves hand-built configs used by installer detection
