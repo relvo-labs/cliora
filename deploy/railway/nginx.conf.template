@@ -90,7 +90,10 @@ http {
     limit_conn_zone $cliora_node_client zone=cliora_nodes:10m;
     limit_conn_status 429;
 
-    # Startup refuses an empty allowlist. Only verified Railway ingress peers may supply this.
+    # Startup refuses an empty value. CLIORA_TRUSTED_PROXY_CIDRS=railway-edge renders trust
+    # for every socket peer, because Railway's HTTP edge overwrites X-Real-IP and publishes no
+    # stable source range (#184); this holds only with no TCP proxy on console and no other
+    # service in the environment. Numeric lists render bounded entries instead.
     real_ip_header X-Real-IP;
     real_ip_recursive off;
     include /etc/nginx/trusted-proxies/*.conf;
