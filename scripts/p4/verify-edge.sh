@@ -34,7 +34,7 @@ if [ "${1:-}" = "--online" ]; then
   mkdir -p "$OUT"
   export EDGE_BASE
   if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
-    "$ROOT/scripts/railway/verify-client-ip.sh" "$EDGE_BASE" "$CLIORA_VERIFY_EXPECTED_IP" \
+    "$ROOT/scripts/railway/verify-client-ip.sh" "$EDGE_BASE" "$CLIORA_VERIFY_EXPECTED_IP" "$OUT" \
       > "$OUT/client-ip-verification.log" 2>&1 || exit 1
   fi
   uv run --project "$ROOT/backend" python "$ROOT/scripts/railway/edge_limit_probe.py" \
@@ -410,9 +410,9 @@ EDGE_BASE="$BASE" EDGE_SETUP_BASE="http://127.0.0.1:$CENTRAL_PORT" \
   && ok "HTTP burst and node connection caps (see edge-limits.log)" \
   || fail "edge limit assertions failed (see edge-limits.log)"
 if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
-  CLIORA_VERIFY_INSECURE=1 scripts/railway/verify-client-ip.sh "$BASE" "$CLIORA_VERIFY_EXPECTED_IP" \
-    && ok "resolved client address resists spoofed headers" \
-    || fail "resolved client-IP check failed"
+  CLIORA_VERIFY_INSECURE=1 scripts/railway/verify-client-ip.sh "$BASE" "$CLIORA_VERIFY_EXPECTED_IP" "$OUT" \
+    && ok "nginx and Central HTTP/WS client identity verified" \
+    || fail "client-IP check failed or Central log verification pending"
 else
   note "- _skipped_ — resolved client-IP assertion needs CLIORA_VERIFY_EXPECTED_IP (Docker may NAT the probe)"
 fi

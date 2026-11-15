@@ -134,7 +134,7 @@ def test_parity_accepts_shipped_policy() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("cidrs", ["", "10.23.0.4/32,fd00:59::2/128"])
+@pytest.mark.parametrize("cidrs", ["10.23.0.4/32,fd00:59::2/128"])
 def test_trusted_proxy_renderer(tmp_path: Path, cidrs: str) -> None:
     import os
 
@@ -193,3 +193,16 @@ async def test_uvicorn_honors_only_the_configured_nginx_hop(scope_type: str) -> 
         }
         await middleware(scope, None, None)
     assert observed == ["198.51.100.42", "172.30.59.4"]
+
+
+
+def test_compose_direct_renderer_allows_empty_trust(tmp_path: Path) -> None:
+    import os
+
+    result = subprocess.run(
+        ["sh", str(ROOT / "deploy/railway/19-trusted-proxies.sh"), "--allow-direct"],
+        env={**os.environ, "CLIORA_TRUSTED_PROXY_DIR": str(tmp_path), "CLIORA_TRUSTED_PROXY_CIDRS": ""},
+        check=False,
+    )
+    assert result.returncode == 0
+    assert (tmp_path / "realip.conf").read_text() == ""

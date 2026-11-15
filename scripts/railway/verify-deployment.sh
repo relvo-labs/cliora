@@ -70,12 +70,12 @@ fi
 
 # Issue 59: expected source must be obtained independently, never from the endpoint itself.
 if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
-  "$ROOT/scripts/railway/verify-client-ip.sh" "$BASE" "$CLIORA_VERIFY_EXPECTED_IP" \
+  "$ROOT/scripts/railway/verify-client-ip.sh" "$BASE" "$CLIORA_VERIFY_EXPECTED_IP" "$OUT" \
     > "$OUT/client-ip-verification.log" 2>&1 \
-    && ok "resolved client IP resists forged headers (client-ip-verification.log)" \
-    || fail "client-IP contract failed (client-ip-verification.log)"
+    && ok "nginx and Central HTTP/WS client identity verified (client-ip-verification.log)" \
+    || fail "client-IP contract failed or Central log verification pending (client-ip-verification.log)"
 else
-  skip "real client IP: set CLIORA_VERIFY_EXPECTED_IP; also verify the ingress peer CIDR in console logs"
+  skip "real client IP: set CLIORA_VERIFY_EXPECTED_IP; require Central HTTP/WS log verification and ingress peer CIDR checks before admission"
 fi
 
 # --------------------------------------------------------------------------- #

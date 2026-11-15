@@ -48,7 +48,7 @@ CENTRAL_REQUIRED = (
     "PORT",
     "FORWARDED_ALLOW_IPS",
 )
-CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT")
+CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT", "CLIORA_TRUSTED_PROXY_CIDRS")
 
 
 def normalise(raw: Any) -> dict[str, str]:
@@ -211,22 +211,24 @@ def check(
             report.fail(f"console is missing {name}")
 
     # These are two separate hops: platform ingress -> nginx -> Central.
-    for name, value, allow_empty in (
-        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", ""), False),
+    for name, value in (
+        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", "")),
         (
             "CLIORA_TRUSTED_PROXY_CIDRS",
             console.get("CLIORA_TRUSTED_PROXY_CIDRS", ""),
-            True,
         ),
     ):
         entries = re.split(r"[,\s]+", value.strip()) if value.strip() else []
-        if not entries and allow_empty:
-            report.ok(f"{name} is empty: no platform peer trusted; per-client acceptance pending")
+        if not any(entries):
+            report.fail(
+                f"{name} requires verified proxy IPs/CIDRs before deployment; see "
+                "docs/deployment-railway.md#trust-upgrade-runbook-59"
+            )
         for entry in entries:
             try:
-                network = ipaddress.ip_network(entry, strict=False)
+                network = ipaddress.ip_network(entry, strict=True)
             except ValueError:
-                report.fail(f"{name} must contain numeric proxy IPs/CIDRs only")
+                report.fail(f"{name} must contain numeric IPs or canonical CIDRs (no host bits) only")
                 continue
             if network.prefixlen == 0:
                 report.fail(f"{name} must not trust every sender")

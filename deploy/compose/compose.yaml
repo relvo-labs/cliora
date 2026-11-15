@@ -110,6 +110,9 @@ services:
       args:
         VITE_PRODUCT_NAME: ${VITE_PRODUCT_NAME:-Cliora}
     restart: unless-stopped
+    environment:
+      # Empty: nginx faces clients directly. Set only for a verified host reverse proxy.
+      CLIORA_TRUSTED_PROXY_CIDRS: ${CLIORA_TRUSTED_PROXY_CIDRS:-}
     ports:
       - "80:80"
       - "443:443"

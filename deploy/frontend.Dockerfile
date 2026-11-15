@@ -24,5 +24,7 @@ RUN npm run build
 FROM nginx:1.27-alpine AS runtime
 COPY --from=build /build/dist /usr/share/nginx/html
 COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY --chmod=755 deploy/railway/19-trusted-proxies.sh /usr/local/bin/cliora-trusted-proxies
+COPY --chmod=755 deploy/nginx/19-trusted-proxies.sh /docker-entrypoint.d/19-trusted-proxies.sh
 EXPOSE 80 443
 STOPSIGNAL SIGQUIT

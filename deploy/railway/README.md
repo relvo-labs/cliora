@@ -59,7 +59,13 @@ environment, `scripts/railway/check-env.sh`. After deploying:
 `scripts/railway/verify-deployment.sh https://<domain>`.
 
 Client-IP acceptance is a separate deployment gate: configure console's verified Railway
-`CLIORA_TRUSTED_PROXY_CIDRS` (empty by default) and Central's console-only
+`CLIORA_TRUSTED_PROXY_CIDRS` (required; empty refuses startup) and Central's console-only
 `FORWARDED_ALLOW_IPS` (required). Follow the spoof and source-range checks in
 [the operator guide](../../docs/deployment-railway.md#trusted-client-ip-required-post-deploy-verification-59).
-`verify-deployment.sh` checks the resolved address when `CLIORA_VERIFY_EXPECTED_IP` is set.
+Follow the [ordered upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
+hold promotion/admission, obtain both hop allowlists, set variables before upgrading, and
+verify actual Central HTTP + WS scope from two egresses before admission. Recheck after a
+console source-IP change; roll back code before removing required variables. The verifier
+uses correlated operator-only uvicorn logs, adding no public Central diagnostic endpoint.
+`CLIORA_VERIFY_EXPECTED_IP` and `CLIORA_VERIFY_CENTRAL_LOG` enable the integrated scope check;
+a pending log check cannot satisfy deployment acceptance.

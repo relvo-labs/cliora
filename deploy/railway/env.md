@@ -24,7 +24,7 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_JWT_SECRET` | ✅ | `openssl rand -base64 48` | Left at the default → startup fails (deliberate). Rotating invalidates every live login; routine |
 | `CLIORA_TOKEN_PEPPER` | ✅ | `openssl rand -base64 48` | **One-way door.** Rotating invalidates every enrollment token *and every node credential*: the whole fleet must re-enroll |
 | `CLIORA_PUBLIC_BASE_URL` | ✅ | `https://<custom domain>` | **One-way door.** It is written into the installer and into every node's `/etc/agentd/config.yaml`; a platform-generated `*.up.railway.app` value means re-registering every node when the real domain arrives |
-| `FORWARDED_ALLOW_IPS` | ✅ | comma-separated console nginx private IPs/CIDRs only | Required by startCommand; never `*`; recheck after console redeploy; see client-IP procedure in `docs/deployment-railway.md` |
+| `FORWARDED_ALLOW_IPS` | ✅ | comma-separated console nginx private IPs/canonical CIDRs only (no host bits) | Required by startCommand; never `*`; recheck after console redeploy; see client-IP procedure in `docs/deployment-railway.md` |
 | `PORT` | ✅ | `8080` | Must equal the console's `CLIORA_BACKEND_PORT`, or every `/api` and `/ws` request answers 502 |
 | `CLIORA_SHUTDOWN_DRAIN_SECONDS` | — | `15` (default) | Must stay **below** `drainingSeconds` in `central.railway.json` (25), or SIGKILL lands mid-drain and every deploy disconnects browsers without explanation |
 | `CLIORA_ARTIFACTS_DIR` | ❌ **leave unset** | — | The image sets it to `/srv/artifacts`, which is where the image puts the release. Override it only to point at a different directory, and only if something is mounted there — a wrong path means `/api/downloads` and `/api/install-script` answer 404 and the manifest goes empty (not 404) |
@@ -53,7 +53,7 @@ Public. This is the only service with a domain.
 | `PORT` | ✅ | `8080` | The port nginx listens on, interpolated into the config at start |
 | `CLIORA_BACKEND_HOST` | ✅ | `central.railway.internal` | A typo makes every `/api` and `/ws` request 502; a public hostname would route control-plane traffic back out through the internet |
 | `CLIORA_BACKEND_PORT` | ✅ | `8080` | See `central.PORT` |
-| `CLIORA_TRUSTED_PROXY_CIDRS` | — | comma/whitespace-separated verified Railway ingress IPs/CIDRs; default empty | Empty trusts no headers, so clients share the socket peer budget. Obtain supported ranges from Railway and verify `peer=…` in console logs; no global CIDRs |
+| `CLIORA_TRUSTED_PROXY_CIDRS` | ✅ | nonempty comma/whitespace-separated verified Railway ingress IPs/canonical CIDRs | Empty/unset refuses startup and preflight. Obtain supported ranges from Railway; verify `peer=…` and Central HTTP/WS scopes. No global CIDRs or host bits. See `docs/deployment-railway.md#trust-upgrade-runbook-59` |
 | `VITE_PRODUCT_NAME` | — | `Cliora` | Baked in by Vite at build time; changing it requires a rebuild |
 | `VITE_API_BASE_URL` | ❌ **leave unset** | — | The one that half-works: API calls go to the other origin while the terminal socket stays on this one (it is built from `location.host`), so login, node list and file tree all work and only terminals fail |
 
@@ -91,3 +91,9 @@ pool-exhaustion alert (ADR 0018).
 - Any timeout, queue bound or session limit. Those defaults are the measured values recorded
   in ADR 0013/0015/0017/0018; changing them here is changing a product limit without changing
   the ADR that justifies it.
+
+Before changing code or either allowlist, follow the ordered [trust upgrade/redeploy/rollback
+runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59): hold promotion/admission,
+obtain both hop ranges, stage variables before upgrading, verify Central HTTP and WS from
+two egresses, then admit. Source-IP changes repeat this gate. Roll back code before removing
+variables still required by running images; retain verified trust throughout cleanup.

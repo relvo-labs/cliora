@@ -127,9 +127,9 @@ uvicorn's proxy middleware. The dedicated `proxy` network reserves `172.30.59.0/
 nginx has `172.30.59.2`, and backend `FORWARDED_ALLOW_IPS` trusts only that address.
 Backend has no published port; database/scraper traffic stays on `internal`. If the subnet
 conflicts with the host, change IPAM, nginx's address and `FORWARDED_ALLOW_IPS` together.
-The standalone backend image trusts no forwarded sender by default. Putting another
-proxy in front of Compose requires an explicit real-IP allowlist; this topology assumes
-nginx faces clients directly.
+The standalone backend image trusts no forwarded sender by default. Compose nginx's
+startup hook permits an empty proxy allowlist only for this direct-facing topology.
+Railway's hook requires a nonempty ingress allowlist; it cannot start shared proxy budgets.
 
 | Path | Per resolved client IP | Rejection |
 |---|---|---|
@@ -160,13 +160,60 @@ edge. It then sends wrong-method bursts (avoiding application login lockouts) to
 source with no other node sockets. Authentication, failed setup and cleanup are failures,
 not passes. `CLIORA_VERIFY_INSECURE=1` is only for local self-signed certificates.
 
-The client-IP leg sends forged `X-Forwarded-For` and `X-Real-IP`; all three responses must
-match an independently known client address. Docker may NAT host requests, so obtain the
+The client-IP leg sends forged `X-Forwarded-For` and `X-Real-IP`; all three nginx responses
+must match an independently known client address. It also sends six unique HTTP/WS probes
+and requires Central's operator-only uvicorn client-scope logs via
+`CLIORA_VERIFY_CENTRAL_LOG`. A receipt without those logs is pending, not a pass. Use the
+[two-phase private log procedure](deployment-railway.md#central-scope-verification-without-a-public-diagnostic-endpoint)
+from two independent egresses; it works with `docker compose logs backend` instead of
+Railway log export. Docker may NAT host requests, so obtain the
 expected address from the actual topology, not from `/edge-client-ip` itself. Unit tests
 also pin the overwrite at every proxy location and test uvicorn's HTTP/WS middleware
 against trusted and untrusted peers.
 
+### Compose behind a host reverse proxy (explicit opt-in)
+
+Direct-facing nginx is the default. If a host reverse proxy fronts it, set
+`CLIORA_TRUSTED_PROXY_CIDRS` in Compose's `.env` to that proxy's **observed socket source**
+(e.g. `10.23.0.4/32`, or a verified IPv6 `/128`). The nginx startup renderer emits bounded
+`set_real_ip_from` entries; nginx consumes that peer's `X-Real-IP` with recursion off.
+Use canonical network CIDRs without host bits if a verified range is necessary, never
+`0.0.0.0/0`, `::/0` or all private space. Parity accepts this opt-in and rejects global trust.
+This setting identifies host proxy -> nginx; backend `FORWARDED_ALLOW_IPS` still identifies
+only nginx -> Central (`172.30.59.2`), not the host proxy.
+
+The host proxy must overwrite both X-Real-IP and X-Forwarded-For with the client address
+it established, stripping client-supplied chains. Restrict nginx's published origin ports
+to the host proxy (for a same-host proxy, bind to loopback on dedicated origin ports,
+e.g. `127.0.0.1:8443:443` and `127.0.0.1:8080:80`, and route TLS accordingly); block direct
+origin access. Account for Docker NAT when identifying the actual proxy socket source.
+Trusting a shared gateway while allowing direct clients to reach that gateway could let
+those clients impersonate the proxy. Obtain the address from socket inspection and test
+both paths; do not infer proxy trust from a forwarded header.
+
+Before adding/removing/changing the host proxy: hold automatic promotion and traffic,
+record the previous topology and image pair, configure the proxy's header overwrite and
+origin access restrictions, set the verified canonical trust list **before** deploying the
+new console image, and confirm nginx startup. Then perform the nginx echo and actual
+Central HTTP/WS checks from two independent egresses before admission, followed by the
+staging limit/latency checks. If the host proxy's source changes, stage only verified old
+and new addresses while traffic is held, update nginx, verify both protocols, remove the
+obsolete source, and recheck before reopening. An accidentally empty allowlist is not a
+valid behind-proxy deployment; the operator must keep this explicit opt-in with its topology.
+
+For rollback, hold traffic and restore the last known hardened console/backend code and
+port bindings **before** removing variables consumed by a running image. Retain the
+allowlist if traffic still comes through the host proxy. Clear the optional Compose trust
+only after deliberately restoring direct-facing nginx and verifying HTTP/WS identity in
+that topology; never clear Railway's required trust. Recheck after trust cleanup. This
+repair needs no DB rollback. Rehearse upgrade, proxy-source change and rollback on staging.
+
 ## Upgrading
+
+Hold automatic promotion and external admission, record the old images/variables, and
+validate the direct or explicit host-proxy topology above before these commands. Stage
+trust settings before upgrading; keep admission held until Central HTTP/WS identity from
+two egresses, nginx limits and normal latency have been verified. Health alone is insufficient.
 
 ```bash
 cd deploy/compose

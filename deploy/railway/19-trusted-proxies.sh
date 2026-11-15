@@ -1,6 +1,15 @@
 #!/bin/sh
-# Run before envsubst. Empty means trust no platform peer until verified after deploy.
+# Run before envsubst. Railway requires ingress trust; Compose explicitly permits direct clients.
 set -efu
+case "${1:-}" in
+  '')
+    if [ -z "$(printf '%s' "${CLIORA_TRUSTED_PROXY_CIDRS:-}" | tr -d '[:space:],')" ]; then
+      echo 'CLIORA_TRUSTED_PROXY_CIDRS is required: configure verified Railway ingress ranges; see docs/deployment-railway.md#trust-upgrade-runbook-59' >&2
+      exit 1
+    fi ;;
+  --allow-direct) ;; # Only the Compose image's entrypoint supplies this literal argument.
+  *) echo 'invalid trusted-proxy renderer argument' >&2; exit 1 ;;
+esac
 out=${CLIORA_TRUSTED_PROXY_DIR:-/etc/nginx/trusted-proxies}
 mkdir -p "$out"
 tmp=$(mktemp "$out/.realip.XXXXXX")

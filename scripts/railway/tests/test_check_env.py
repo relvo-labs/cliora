@@ -47,6 +47,7 @@ def console(**overrides: str) -> dict[str, str]:
         "PORT": "8080",
         "CLIORA_BACKEND_HOST": "central.railway.internal",
         "CLIORA_BACKEND_PORT": "8080",
+        "CLIORA_TRUSTED_PROXY_CIDRS": "10.23.0.4/32",
     }
     base.update(overrides)
     return {k: v for k, v in base.items() if v != "__unset__"}
