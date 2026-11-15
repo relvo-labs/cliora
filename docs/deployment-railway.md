@@ -52,6 +52,8 @@ to first deployment too. Two steps below are one-way doors.
    topology before deploying:
    ```bash
    scripts/railway/check-env.sh --domain cliora.example.com
+   # the console service is named `console` here; production's is `cliora`:
+   # export CLIORA_RAILWAY_CONSOLE_SERVICE=cliora for both commands
    scripts/railway/check-trust-topology.sh --environment production --console-service console
    ```
 5. **Deploy.** Watch that the migration runs before the app starts:
@@ -142,15 +144,27 @@ in the two-egress verification, or use DNS-only.
 <a id="pre-deploy-trust-topology-check"></a>
 ### Pre-deploy trust topology check
 
+> **Name the console service.** The defaults are `Postgres`, `central` and `console`.
+> The production console service is named **`cliora`**, so production runs need
+> `CLIORA_RAILWAY_CONSOLE_SERVICE=cliora` (or `--console-service cliora`). With the wrong
+> name, the check reports `cliora` as an unexpected service and fails; it never passes.
+> `check-env.sh` reads the same variable.
+
 ```bash
-scripts/railway/check-trust-topology.sh --environment production --console-service <console service name>
+export CLIORA_RAILWAY_CONSOLE_SERVICE=cliora   # production's console service name
+scripts/railway/check-trust-topology.sh --environment production
 # staged, not yet deployed variables: add --central-vars central.json --console-vars console.json
 # keep the topology responses (never variables) as evidence: add --record "$OUT/topology.json"
 ```
 
 The check is read-only. It uses the logged-in `railway` CLI to find the linked project, or
-`--project-id`. It then reads Railway's public GraphQL API with that CLI session's account
-token, or with `RAILWAY_API_TOKEN`. It **fails** unless all of these hold:
+`--project-id`. It then reads Railway's public GraphQL API with `RAILWAY_API_TOKEN` if set,
+or else the CLI login's credentials from `~/.railway/config.json`: a legacy `user.token`,
+or the OAuth `user.accessToken` that CLI 5.x writes after `railway login`. An OAuth access
+token expires (`tokenExpiresAt`), and only a `railway` command refreshes it. If it has
+expired, or expires within a minute, the check stops and asks you to run any `railway`
+command (e.g. `railway whoami`) and retry. No token is ever printed. It **fails** unless
+all of these hold:
 
 - the environment holds exactly `Postgres`, Central and console. Service names default to
   `Postgres`/`central`/`console`; override them with `--*-service` or
@@ -162,11 +176,12 @@ token, or with `RAILWAY_API_TOKEN`. It **fails** unless all of these hold:
   staged files you pass.
 
 Exit 1 means a condition does not hold. Exit 2 means the facts could not be established:
-the CLI is not logged in, the API returned an error, or the response shape was not
-recognised. Exit 2 is a failure, never a pass. Variable values are never printed.
-The queries follow Railway's documented public API and have been tested only against
-fixtures. If a live response is not recognised, the check blocks the promotion: fix the
-parser using a recorded response, and do not bypass the check.
+the CLI is not logged in or its token has expired, the CLI config is unreadable, the API
+returned an error, or the response shape was not recognised. Exit 2 is a failure, never a
+pass. Variable values are never printed. The query shape was confirmed in a read-only run
+against the production project (2026-11-15). If Railway changes it and a live response is
+no longer recognised, the check blocks the promotion: fix the parser using a recorded
+response, and do not bypass the check.
 
 <a id="trust-upgrade-runbook-59"></a>
 ## Trust upgrade runbook (#59, #184)
@@ -187,10 +202,16 @@ upgrade.
    `FORWARDED_ALLOW_IPS=railway-private-environment`. Neither depends on an address, so
    nothing needs to be discovered first, and they survive redeploys. Changing variables
    must not automatically admit a partially upgraded pair.
-3. **Check before deploying.** Run `scripts/railway/check-env.sh --domain <domain>`,
-   [`scripts/railway/check-trust-topology.sh`](#pre-deploy-trust-topology-check) (with
-   `--central-vars`/`--console-vars` while the values are only staged), and
-   `make railway-check` against the candidate revision. Any failure stops the upgrade.
+3. **Check before deploying.** Name the console service first; in production it is
+   `cliora`, not the default `console`:
+   ```bash
+   export CLIORA_RAILWAY_CONSOLE_SERVICE=cliora
+   scripts/railway/check-env.sh --domain <domain>
+   scripts/railway/check-trust-topology.sh --environment production   # + --central-vars/--console-vars while staged
+   make railway-check                                                  # on the candidate revision
+   ```
+   See [the topology check](#pre-deploy-trust-topology-check). Any failure stops the
+   upgrade.
 4. **Deploy Central, then console, with traffic still held.** Central installs the
    keyword trust first; console then installs real-IP resolution and the limits.
    Central-first does not widen trust beyond today's: the pre-#59 Central (`ad5ff52`)

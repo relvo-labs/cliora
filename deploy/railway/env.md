@@ -98,7 +98,8 @@ pool-exhaustion alert (ADR 0018).
 Before changing code or either trust variable, follow the ordered [trust
 upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
 hold promotion and admission, set both keywords, run `scripts/railway/check-env.sh` and
-`scripts/railway/check-trust-topology.sh`, deploy Central and then console, verify Central
+`scripts/railway/check-trust-topology.sh` (production's console service is named `cliora`:
+set `CLIORA_RAILWAY_CONSOLE_SERVICE=cliora`), deploy Central and then console, verify Central
 HTTP and WS from two egresses, then admit. **Adding a service to this environment, or a TCP
 proxy to console or Central, invalidates the trust**: rerun the topology check after any
 change. Roll back code before removing variables still required by running images.

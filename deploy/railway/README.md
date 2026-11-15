@@ -65,7 +65,8 @@ Client-IP acceptance is a separate deployment gate. Set console's
 startup. They rely on Railway's edge overwriting `X-Real-IP`, on environment isolation, on
 no TCP proxy on either service, and on no other service in the environment, as described in
 [the operator guide](../../docs/deployment-railway.md#trusted-client-ip-railway-edge-contract-184).
-`scripts/railway/check-trust-topology.sh` verifies the topology before each promotion.
+`scripts/railway/check-trust-topology.sh` verifies the topology before each promotion
+(production's console service is `cliora`: set `CLIORA_RAILWAY_CONSOLE_SERVICE=cliora`).
 Follow the [ordered upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
 hold promotion/admission, set the keywords, run the topology check, and verify actual
 Central HTTP + WS scope from two egresses before admission. Adding a service or a TCP proxy
