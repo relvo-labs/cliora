@@ -241,6 +241,12 @@ def check(
             report.fail(f"{name} must be exactly {keyword} with nothing else, or a numeric list")
             continue
         for entry in entries:
+            # Same textual rule as the console renderer and Central's startCommand (`*/0*`):
+            # a prefix starting with 0 (`/0`, `/00`, `/000`, netmask `/0.0.0.0`) is refused
+            # before parsing, so no spelling of global trust passes preflight.
+            if "/0" in entry:
+                report.fail(f"{name} must not trust every sender (no /0... prefix in any spelling)")
+                continue
             try:
                 network = ipaddress.ip_network(entry, strict=True)
             except ValueError:

@@ -124,8 +124,10 @@ environment. A temporary Postgres TCP proxy (first-deployment step 6) reaches on
 Postgres, which sends no HTTP; still turn it off afterwards.
 
 The keywords are the **only** way to express global trust. An empty or unset value still
-refuses startup and preflight. Hand-typed `0.0.0.0/0`, `::/0` and (on Central) `*` are
-rejected, so global trust is always a recorded decision, never a typo or a default.
+refuses startup and preflight. Hand-typed global trust is rejected on both hops in any
+spelling: every entry with a `/0…` prefix (`0.0.0.0/0`, `::/00`, `::0/000`, netmask
+`/0.0.0.0`), and on Central any `*`. Global trust is therefore always a recorded
+decision, never a typo or a default.
 Numeric lists of canonical networks, with no host bits, are still accepted on both hops
 for a topology where the peer addresses really are known. On Railway they are not.
 

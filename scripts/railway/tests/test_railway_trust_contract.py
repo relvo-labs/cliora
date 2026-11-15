@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -157,6 +158,58 @@ def test_central_rejects_hand_typed_global_trust(tmp_path: Path, value: str) -> 
     assert "railway-private-environment" in result.stderr
 
 
+# Zero-length prefixes in spellings a `*/0 | */0[!0-9]*` pattern missed (review of #186):
+# uvicorn 0.35.0 parses the first three as global networks.
+PADDED_GLOBAL = ["0.0.0.0/00", "::/00", "::0/000", "0/00"]
+PADDED_VALUES = (
+    PADDED_GLOBAL
+    + [f"10.59.0.2/32,{v}" for v in PADDED_GLOBAL]
+    + [f"{v},fd00:59::2/128" for v in PADDED_GLOBAL]
+    + ["0.0.0.0/00,::/00", "0.0.0.0/0.0.0.0", "::/0000", " ::/00", "10.59.0.2/32,::0/000 "]
+)
+
+
+@pytest.mark.parametrize("value", PADDED_VALUES)
+def test_central_refuses_zero_prefix_in_any_spelling(tmp_path: Path, value: str) -> None:
+    result = start(tmp_path, value)
+    assert result.returncode == 64, result.stdout + result.stderr
+    assert result.stdout == ""  # uvicorn was never executed
+    assert "railway-private-environment" in result.stderr
+
+
+GLOBAL_CORPUS = [
+    *PADDED_VALUES,
+    "*",
+    "0.0.0.0/0",
+    "::/0",
+    "0::0/0",
+    "10.0.0.1,*",
+    "fd00:59::2/128,10.59.0.2/32",
+    "10.0.0.0/8",
+    "fd00::/8",
+    "127.0.0.1",
+]
+
+
+@pytest.mark.parametrize("value", GLOBAL_CORPUS)
+def test_central_never_starts_uvicorn_with_global_trust_unless_keyword(
+    tmp_path: Path, value: str
+) -> None:
+    """Cross-check against the pinned uvicorn's own parser: whatever the startCommand lets
+    through must not make uvicorn trust an arbitrary IPv4 or IPv6 peer."""
+    from uvicorn.middleware.proxy_headers import _TrustedHosts
+
+    result = start(tmp_path, value)
+    if result.returncode != 0:
+        return
+    trust = next(
+        a.split("=", 1)[1] for a in result.stdout.splitlines() if a.startswith("--forwarded")
+    )
+    hosts = _TrustedHosts(trust)
+    assert not hosts.always_trust
+    assert "203.0.113.9" not in hosts and "2001:db8::9" not in hosts
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scope_type", ["http", "websocket"])
 async def test_uvicorn_035_semantics_of_the_mapped_and_unmapped_values(scope_type: str) -> None:
@@ -214,3 +267,45 @@ def test_check_env_rejects_misplaced_or_mixed_keywords(name: str, value: str) ->
     central, console = cases.central(), cases.console()
     (central if name == "FORWARDED_ALLOW_IPS" else console)[name] = value
     assert any(name in item for item in cases.failures(central, console))
+
+
+@pytest.mark.parametrize("value", PADDED_VALUES)
+@pytest.mark.parametrize("name", ["FORWARDED_ALLOW_IPS", "CLIORA_TRUSTED_PROXY_CIDRS"])
+def test_check_env_refuses_zero_prefix_in_any_spelling(name: str, value: str) -> None:
+    central, console = cases.central(), cases.console()
+    (central if name == "FORWARDED_ALLOW_IPS" else console)[name] = value
+    assert any(name in item for item in cases.failures(central, console))
+
+
+@pytest.mark.parametrize("value", PADDED_VALUES)
+def test_console_renderer_refuses_zero_prefix_in_any_spelling(tmp_path: Path, value: str) -> None:
+    result = render(tmp_path, value)
+    assert result.returncode != 0
+    assert not (tmp_path / "realip.conf").exists()
+
+
+@pytest.mark.parametrize("value", PADDED_VALUES)
+def test_topology_check_refuses_zero_prefix_in_any_spelling(value: str) -> None:
+    spec = importlib.util.spec_from_file_location(
+        "topology_for_contract", ROOT / "scripts/railway/check_trust_topology.py"
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["topology_for_contract"] = module
+    spec.loader.exec_module(module)
+    report = module.Report()
+    module.check_keywords(
+        report, {"FORWARDED_ALLOW_IPS": value}, {"CLIORA_TRUSTED_PROXY_CIDRS": value}
+    )
+    assert len(report.failures) == 2
+
+
+@pytest.mark.parametrize("value", ["10.0.0.0/08", "fd00::/08"])
+def test_preflight_and_startup_agree_on_leading_zero_prefixes(tmp_path: Path, value: str) -> None:
+    """Python parses `/08` as /8; the startCommand refuses every `/0...` prefix, so the
+    preflight must refuse it too rather than pass a value Central will not start with."""
+    assert start(tmp_path, value).returncode == 64
+    assert any(
+        "FORWARDED_ALLOW_IPS" in item
+        for item in cases.failures(cases.central(FORWARDED_ALLOW_IPS=value), cases.console())
+    )
