@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     # Login protection (#59); one Central process. Restart to apply limits.
     password_max_concurrency: int = Field(default=4, ge=1, le=4)
-    password_queue_timeout_seconds: float = Field(default=5, gt=0, le=5)
+    password_queue_wait_seconds: float = Field(default=5, gt=0, le=5)
     login_lockout_thresholds: tuple[int, int, int] = (5, 10, 20)
     login_lockout_seconds: tuple[int, int, int] = (60, 15 * 60, 60 * 60)
     login_ip_failure_limit: int = Field(default=20, ge=1)

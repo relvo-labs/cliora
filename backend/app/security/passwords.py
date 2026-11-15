@@ -46,7 +46,7 @@ def _verify(password_hash: str, password: str, settings: Settings | None = None)
 
 def _sync_work[T](work: Callable[[], T]) -> T:
     slots = _slots
-    if not slots.acquire(timeout=get_settings().password_queue_timeout_seconds):
+    if not slots.acquire(timeout=get_settings().password_queue_wait_seconds):
         raise _busy()
     try:
         return work()
@@ -56,7 +56,7 @@ def _sync_work[T](work: Callable[[], T]) -> T:
 
 async def _async_work[T](work: Callable[[], T]) -> T:
     slots = _slots
-    deadline = time.monotonic() + get_settings().password_queue_timeout_seconds
+    deadline = time.monotonic() + get_settings().password_queue_wait_seconds
     while True:
         remaining = deadline - time.monotonic()
         if remaining <= 0:

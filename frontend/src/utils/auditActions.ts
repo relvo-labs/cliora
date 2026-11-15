@@ -10,6 +10,7 @@ const LABELS: Record<string, string> = {
   "user.login": "登入成功",
   "user.login_failed": "登入失敗",
   "user.logout": "登出",
+  "user.unlocked": "解鎖登入",
   "enrollment.create": "建立安裝 Token",
   "enrollment.revoke": "撤銷安裝 Token",
   "enrollment.use": "使用安裝 Token",
@@ -59,7 +60,7 @@ export function actionLabel(action: string): string {
 export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
   {
     title: "帳號 / Account",
-    actions: ["user.login", "user.login_failed", "user.logout"],
+    actions: ["user.login", "user.login_failed", "user.logout", "user.unlocked"],
   },
   {
     title: "安裝 / Enrollment",
