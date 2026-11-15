@@ -32,7 +32,7 @@ ENV VITE_PRODUCT_NAME=$VITE_PRODUCT_NAME \
 RUN npm run build
 
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 COPY --from=build /build/dist /usr/share/nginx/html
 # Rendered into /etc/nginx/nginx.conf at start by the image's own
 # 20-envsubst-on-templates.sh. NGINX_ENVSUBST_OUTPUT_DIR redirects its output there;

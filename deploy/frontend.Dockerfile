@@ -21,7 +21,7 @@ ENV VITE_PRODUCT_NAME=$VITE_PRODUCT_NAME \
 RUN npm run build
 
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 COPY --from=build /build/dist /usr/share/nginx/html
 COPY deploy/nginx/nginx.conf /etc/nginx/nginx.conf
 EXPOSE 80 443
