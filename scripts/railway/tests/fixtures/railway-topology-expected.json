@@ -13,6 +13,9 @@
             "id": "prj-0001",
             "name": "cliora",
             "environments": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "edges": [
                 {
                   "node": {
@@ -29,12 +32,18 @@
               ]
             },
             "services": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
               "edges": [
                 {
                   "node": {
                     "id": "svc-pg-0001",
                     "name": "Postgres",
                     "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
                       "edges": [
                         {
                           "node": {
@@ -55,6 +64,9 @@
                     "id": "svc-central-0001",
                     "name": "central",
                     "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
                       "edges": [
                         {
                           "node": {
@@ -75,6 +87,9 @@
                     "id": "svc-console-0001",
                     "name": "cliora",
                     "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
                       "edges": [
                         {
                           "node": {
@@ -95,6 +110,9 @@
                     "id": "svc-scratch-0001",
                     "name": "scratch",
                     "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
                       "edges": [
                         {
                           "node": {

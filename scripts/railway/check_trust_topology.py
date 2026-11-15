@@ -54,13 +54,14 @@ query ClioraTrustProject($projectId: String!) {
   project(id: $projectId) {
     id
     name
-    environments { edges { node { id name } } }
+    environments { pageInfo { hasNextPage } edges { node { id name } } }
     services {
+      pageInfo { hasNextPage }
       edges {
         node {
           id
           name
-          serviceInstances { edges { node { environmentId } } }
+          serviceInstances { pageInfo { hasNextPage } edges { node { environmentId } } }
         }
       }
     }
@@ -106,8 +107,14 @@ def _need(value: Any, kind: type, where: str) -> Any:
 
 
 def _nodes(container: Any, key: str, where: str) -> list[dict[str, Any]]:
-    """Strictly unwrap a GraphQL connection `{key: {edges: [{node: {...}}]}}`."""
+    """Strictly unwrap a complete GraphQL connection `{key: {edges: [{node: {...}}]}}`.
+
+    A truncated page could hide a service, so a missing or true `hasNextPage` fails closed.
+    """
     connection = _need(_need(container, dict, where).get(key), dict, f"{where}.{key}")
+    page = _need(connection.get("pageInfo"), dict, f"{where}.{key}.pageInfo")
+    if page.get("hasNextPage") is not False:
+        raise TopologyError(f"{where}.{key} is incomplete (paginated or no pageInfo)")
     edges = _need(connection.get("edges"), list, f"{where}.{key}.edges")
     return [
         _need(_need(edge, dict, f"{where}.{key}.edges[]").get("node"), dict, f"{where}.{key}.node")

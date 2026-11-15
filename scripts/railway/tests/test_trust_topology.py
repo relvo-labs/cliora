@@ -110,7 +110,10 @@ def test_an_extra_service_fails() -> None:
             "node": {
                 "id": "svc-x",
                 "name": "redis",
-                "serviceInstances": {"edges": [{"node": {"environmentId": "env-prod-0001"}}]},
+                "serviceInstances": {
+                    "pageInfo": {"hasNextPage": False},
+                    "edges": [{"node": {"environmentId": "env-prod-0001"}}],
+                },
             }
         }
     )
@@ -206,6 +209,12 @@ def test_unauthenticated_or_unrecognised_responses_fail_closed(body: Any) -> Non
         lambda p: p["data"]["project"]["environments"]["edges"].append(
             {"node": {"id": "env-dup", "name": "production"}}
         ),
+        lambda p: p["data"]["project"]["services"]["pageInfo"].update(hasNextPage=True),
+        lambda p: p["data"]["project"]["services"].pop("pageInfo"),
+        lambda p: p["data"]["project"]["environments"]["pageInfo"].update(hasNextPage=None),
+        lambda p: p["data"]["project"]["services"]["edges"][0]["node"]["serviceInstances"][
+            "pageInfo"
+        ].update(hasNextPage=True),
     ],
     ids=[
         "no-services",
@@ -214,6 +223,10 @@ def test_unauthenticated_or_unrecognised_responses_fail_closed(body: Any) -> Non
         "no-environment",
         "other-project",
         "dup-env",
+        "services-next-page",
+        "services-no-pageinfo",
+        "environments-pageinfo-null",
+        "instances-next-page",
     ],
 )
 def test_an_unrecognised_project_shape_fails_closed(mutate: Any) -> None:
