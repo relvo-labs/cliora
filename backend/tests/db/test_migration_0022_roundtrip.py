@@ -19,6 +19,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -84,6 +85,7 @@ async def test_migration_0022_roundtrip(db_url: str, monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CLIORA_DATABASE_URL", db_url)
     get_settings.cache_clear()
     cfg = _alembic_config()
+    head = ScriptDirectory.from_config(cfg).get_current_head()
     engine = create_async_engine(db_url)
 
     async def state() -> dict[str, object]:
@@ -97,7 +99,7 @@ async def test_migration_0022_roundtrip(db_url: str, monkeypatch: pytest.MonkeyP
             "binary_preview": True,
             "last_registration_at": True,
             "ix_nodes_binary_preview": True,
-            "version": THIS,
+            "version": head,
         }
 
         await asyncio.to_thread(command.downgrade, cfg, PREVIOUS)

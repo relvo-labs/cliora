@@ -61,6 +61,30 @@ class Settings(BaseSettings):
     argon2_memory_cost_kib: int = 64 * 1024
     argon2_parallelism: int = 4
 
+    # Login protection (#59); one Central process. Restart to apply limits.
+    password_max_concurrency: int = Field(default=4, ge=1, le=4)
+    password_queue_wait_seconds: float = Field(default=5, gt=0, le=5)
+    login_lockout_thresholds: tuple[int, int, int] = (5, 10, 20)
+    login_lockout_seconds: tuple[int, int, int] = (60, 15 * 60, 60 * 60)
+    login_ip_failure_limit: int = Field(default=20, ge=1)
+    login_ip_window_seconds: int = Field(default=10 * 60, ge=1)
+    login_ip_lock_seconds: int = Field(default=10 * 60, ge=1)
+    login_ip_max_entries: int = Field(default=10_000, ge=1)
+    # Owner-approved idle reset window (Delta 2); known/unknown keys are identical.
+    login_lockout_idle_retention_seconds: int = Field(default=7 * 24 * 60 * 60, ge=7 * 24 * 60 * 60)
+    # Cleanup cadence and batch size remain engineering proposals (Delta 1).
+    login_lockout_cleanup_interval_seconds: int = Field(default=60, ge=1)
+    login_lockout_cleanup_batch_size: int = Field(default=1000, ge=1, le=10_000)
+
+    @model_validator(mode="after")
+    def validate_login_lockout(self) -> "Settings":
+        a, b, c = self.login_lockout_thresholds
+        if not 0 < a < b < c or any(s <= 0 for s in self.login_lockout_seconds):
+            raise ValueError(
+                "login lockout thresholds must increase and durations must be positive"
+            )
+        return self
+
     # Keyed hash pepper for enrollment tokens and node secrets (ADR 0008).
     token_pepper: str = "dev-only-change-me"
 

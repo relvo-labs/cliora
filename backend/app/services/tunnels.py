@@ -42,7 +42,7 @@ from app.repositories.audit import AuditRepository
 from app.repositories.integrations import IntegrationRepository
 from app.repositories.nodes import NodeRepository
 from app.repositories.tunnels import TunnelRepository, TunnelRow
-from app.security.passwords import hash_password
+from app.security.passwords import async_hash_password
 from app.services import audit
 from app.services.audit import AuditService
 from app.services.authz import may_close_tunnel
@@ -515,7 +515,9 @@ class TunnelService:
             provider=integration.provider,
             protection=chosen,
             basic_auth_user=BASIC_AUTH_USER if password else None,
-            basic_auth_hash=hash_password(password, self._settings) if password else None,
+            basic_auth_hash=await async_hash_password(password, self._settings)
+            if password
+            else None,
             allowed_ips=cleaned_ips,
             label=label,
             rewrite_host=rewrite_host,

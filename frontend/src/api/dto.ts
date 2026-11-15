@@ -547,6 +547,7 @@ export const AUDIT_ACTIONS = [
   "user.login",
   "user.login_failed",
   "user.logout",
+  "user.unlocked",
   // 埠轉發整合（ADR 0022）。整合層與隧道層是不同的問題：「誰決定本組織使用這個服務、
   // 用誰的帳號」與「誰把哪台機器的哪個 port 對外」；隧道層的動作與 TunnelService 一起落地。
   "integration.enable",
@@ -729,6 +730,7 @@ export interface UpdateNodeTunnelSettingsInput {
 }
 
 // Stable RBAC action keys (backend/app/services/rbac.py). Used to gate UI.
+export const ACTION_USER_UNLOCK = "user.unlock";
 export const ACTION_NODE_VIEW = "node.view";
 export const ACTION_NODE_MANAGE = "node.manage";
 export const ACTION_ENROLLMENT_MANAGE = "enrollment.manage";

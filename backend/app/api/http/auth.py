@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.errors import ApiError
-from app.api.http.deps import get_auth_service, get_current_user
+from app.api.http.deps import get_auth_service, get_current_user, require_action
 from app.api.http.schemas import (
     LoginRequest,
     LoginResponse,
     RefreshRequest,
     TokenResponse,
+    UnlockUserRequest,
     UserResponse,
     WsTicketRequest,
     WsTicketResponse,
@@ -20,6 +21,7 @@ from app.api.http.sessions import attach_resource, issue_attach_ticket
 from app.db.engine import get_session
 from app.db.models import User
 from app.services.auth import AuthService
+from app.services.rbac import USER_UNLOCK
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -27,11 +29,14 @@ router = APIRouter(prefix="/api", tags=["auth"])
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(
     body: LoginRequest,
+    request: Request,
     auth: AuthService = Depends(get_auth_service),
     session: AsyncSession = Depends(get_session),
 ) -> LoginResponse:
     try:
-        result = await auth.login(body.username, body.password)
+        result = await auth.login(
+            body.username, body.password, request.client.host if request.client else None
+        )
     except ApiError:
         # A failed sign-in is an auditable security event, and the service has
         # already staged that row — so it must be committed even though the request
@@ -47,6 +52,18 @@ async def login(
         ),
         user=UserResponse.from_user(result.user),
     )
+
+
+@router.post("/auth/unlock", status_code=status.HTTP_204_NO_CONTENT)
+async def unlock_user(
+    body: UnlockUserRequest,
+    auth: AuthService = Depends(get_auth_service),
+    session: AsyncSession = Depends(get_session),
+    actor: User = Depends(require_action(USER_UNLOCK)),
+) -> Response:
+    await auth.unlock_user(body.username, actor_id=actor.id)
+    await session.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/auth/refresh", response_model=TokenResponse)

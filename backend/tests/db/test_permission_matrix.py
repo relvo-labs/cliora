@@ -176,6 +176,7 @@ async def test_seeded_roles_are_exactly_the_three_documented_roles(session) -> N
 # --------------------------------------------------------------------------- #
 
 _SUB = {
+    "/api/auth/unlock": {"username": "target"},
     "/api/sessions": {
         "node_id": None,  # filled per test
         "runtime": "claude",

@@ -23,6 +23,7 @@ from __future__ import annotations
 from app.db.models import User
 
 # Stable action keys (must match the role seed migrations 0002 + 0006 + 0007 + 0008 + 0012 + 0016).
+USER_UNLOCK = "user.unlock"
 NODE_VIEW = "node.view"
 SESSION_CREATE = "session.create"
 SESSION_VIEW = "session.view"
@@ -79,6 +80,7 @@ _DEVELOPER_ACTIONS = _VIEWER_ACTIONS | {
 # may leave for a third party at all. A Developer may open tunnels; they may not decide
 # whose service and whose account (ADR 0022).
 _ADMIN_ACTIONS = _DEVELOPER_ACTIONS | {
+    USER_UNLOCK,
     ENROLLMENT_MANAGE,
     NODE_MANAGE,
     AUDIT_VIEW,

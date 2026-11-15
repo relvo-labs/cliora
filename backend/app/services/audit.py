@@ -35,6 +35,7 @@ USER_LOGIN = "user.login"
 # filters by action, and finding failed sign-ins is the entire point of recording
 # them (brute force, credential stuffing). A metadata flag would not be findable.
 USER_LOGIN_FAILED = "user.login_failed"
+USER_UNLOCKED = "user.unlocked"
 USER_LOGOUT = "user.logout"
 ENROLLMENT_CREATE = "enrollment.create"
 ENROLLMENT_REVOKE = "enrollment.revoke"
@@ -138,6 +139,7 @@ ALL_ACTIONS: frozenset[str] = frozenset(
         USER_LOGIN,
         USER_LOGIN_FAILED,
         USER_LOGOUT,
+        USER_UNLOCKED,
         ENROLLMENT_CREATE,
         ENROLLMENT_REVOKE,
         ENROLLMENT_USE,

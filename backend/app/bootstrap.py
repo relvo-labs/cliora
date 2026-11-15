@@ -24,7 +24,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.engine import get_database, reset_database
 from app.db.models import Role, User
-from app.security.passwords import hash_password
+from app.security.passwords import async_hash_password
+from app.services.auth import AuthService
 
 
 class BootstrapError(Exception):
@@ -51,14 +52,14 @@ async def create_admin(
     if existing is not None:
         if not update_password:
             return existing, "unchanged"
-        existing.password_hash = hash_password(password)
+        existing.password_hash = await async_hash_password(password)
         existing.token_version += 1
         await session.flush()
         return existing, "updated"
 
     user = User(
         username=username,
-        password_hash=hash_password(password),
+        password_hash=await async_hash_password(password),
         display_name=display_name,
         role=role,
     )
@@ -69,6 +70,16 @@ async def create_admin(
 
 async def _run(args: argparse.Namespace) -> int:
     username: str = args.username
+    if args.command == "unlock-user":
+        database = get_database()
+        try:
+            async with database.session() as session:
+                await AuthService(session).unlock_user(username)
+                await session.commit()
+        finally:
+            await reset_database()
+        print(f"user '{username}': unlocked")
+        return 0
     display_name: str = args.display_name
     update_password: bool = args.update_password
     password: str = args.password or os.environ.get("CLIORA_ADMIN_PASSWORD", "")
@@ -97,6 +108,8 @@ def main(argv: list[str] | None = None) -> int:
     create.add_argument("--password", default=None)
     create.add_argument("--display-name", default="Administrator")
     create.add_argument("--update-password", action="store_true")
+    unlock = sub.add_parser("unlock-user", help="reset account login lockout (audited)")
+    unlock.add_argument("--username", required=True)
     args = parser.parse_args(argv)
     return asyncio.run(_run(args))
 

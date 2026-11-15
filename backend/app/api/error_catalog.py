@@ -86,6 +86,15 @@ CATALOG: dict[str, ErrorEntry] = dict(
     [
         # --- Authentication and authorization ---
         _entry(
+            "LOGIN_THROTTLED",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many login attempts. Try again later",
+            "The login failure budget was exceeded for this account or client IP.",
+            "Wait for Retry-After, or ask an Admin to unlock the account.",
+            retryable=True,
+            audited=True,
+        ),
+        _entry(
             "UNAUTHENTICATED",
             status.HTTP_401_UNAUTHORIZED,
             "Missing bearer token",

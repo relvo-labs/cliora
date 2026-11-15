@@ -25,12 +25,14 @@ class ApiError(Exception):
         message: str,
         status_code: int = status.HTTP_400_BAD_REQUEST,
         details: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
         self.message = message
         self.status_code = status_code
         self.details = details
+        self.headers = headers
 
 
 def _body(code: str, message: str, details: dict[str, Any] | None) -> dict[str, Any]:
@@ -49,6 +51,7 @@ def install_error_handlers(app: FastAPI) -> None:
         return JSONResponse(
             status_code=exc.status_code,
             content=_body(exc.code, exc.message, exc.details),
+            headers=exc.headers,
         )
 
     @app.exception_handler(SQLAlchemyTimeoutError)

@@ -60,6 +60,20 @@ class User(Base):
     role: Mapped[Role] = relationship(lazy="joined")
 
 
+class LoginLockout(Base):
+    """Username-keyed state, including unknown accounts; no FK to users."""
+
+    __tablename__ = "login_lockouts"
+
+    username_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
+
 class Node(Base):
     __tablename__ = "nodes"
 
