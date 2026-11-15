@@ -35,6 +35,7 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 | `ACCOUNT_DISABLED` | 401 | Account is disabled | An Admin disabled this account, so it can no longer sign in. | Ask an Admin to re-enable it. | no | yes | central |
 | `TOKEN_EXPIRED` | 401 | Token has expired | The access token's short lifetime elapsed. | The browser refreshes automatically; sign in again if it cannot. | yes | no | central |
 | `TOKEN_INVALID` | 401 | Token is not valid | The token was malformed, or was revoked by a sign-out or a role change. | Sign in again. | no | yes | central |
+| `WS_TICKET_BUSY` | 429 | Too many pending terminal connection tickets | Your account already has the maximum number of unused connection tickets. | Wait for a ticket to expire or connect, then retry. | yes | no | central |
 | `FORBIDDEN` | 403 | You do not have permission for this action | Your role does not allow this action, or the resource belongs to someone else. | Ask an Admin if you need the permission. | no | yes | central |
 
 ## Request shape

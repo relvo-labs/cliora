@@ -61,6 +61,7 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
             "ACCOUNT_DISABLED",
             "TOKEN_EXPIRED",
             "TOKEN_INVALID",
+            "WS_TICKET_BUSY",
             "FORBIDDEN",
         ),
     ),
