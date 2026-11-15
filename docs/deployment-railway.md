@@ -149,8 +149,12 @@ probes through that gate. Do not disable the approved limits to perform the upgr
    unexpected third address or a skipped check blocks admission. Also check that a request
    from a different private service cannot assert the forwarded client identity.
 6. **Finish acceptance, then admit traffic.** On disposable staging run the online limit
-   probe from the Compose guide, including 50 authenticated nodes / 51st 429, HTTP bursts,
+   probe from the Compose guide, including 51 distinct enrollments, 50 authenticated and
+   registered/heartbeating nodes / distinct 51st 429, HTTP bursts,
    generic API and terminal exclusions. Measure normal login and WS handshake latency.
+   Keep the default 10+10 database pool: the probe waits for `node.registered` after each
+   authentication, avoiding the pre-registration idle-transaction issue [#183](https://github.com/relvo-labs/cliora/issues/183). Confirm all
+   probe sockets/tasks are closed and nodes/credentials/enrollment are removed/revoked.
    Save the two-egress HTTP/WS receipts/log verdicts, peer-range evidence and deployed
    revisions. Remove temporary probe access, then open admission and restore automatic
    promotion only if it preserves this coordinated gate for future source changes.

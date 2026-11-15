@@ -143,7 +143,7 @@ Exact API locations retain the generic API proxy behavior. Node limits use an em
 map for other WS paths, preserving the existing WS timeouts, buffering and headers.
 `/edge-client-ip` returns only the caller's resolved address for deployment verification.
 
-Against a **disposable** running Compose stack (creates/removes 50 probe nodes):
+Against a **disposable** running Compose stack (enrolls/removes 51 probe nodes):
 
 ```bash
 CLIORA_VERIFY_ADMIN=admin CLIORA_VERIFY_PASSWORD=… CLIORA_VERIFY_INSECURE=1 \
@@ -151,12 +151,21 @@ CLIORA_VERIFY_ADMIN=admin CLIORA_VERIFY_PASSWORD=… CLIORA_VERIFY_INSECURE=1 \
   scripts/p4/verify-edge.sh --online https://localhost <evidence-directory>
 ```
 
-The probe authenticates every node before opening the next, proves that 50 survive and
-the 51st handshake gets 429, and checks that terminal WS still reaches Central. Public
-registration takes about five minutes at 10/minute. `EDGE_SETUP_BASE` may point to an
+The probe enrolls 51 distinct nodes, then authenticates each of the first 50 and sends a
+v1 `node.register`, awaiting the correlated `node.registered` before opening the next
+socket. Five-second heartbeats keep registered nodes live during measurement. It proves
+that 50 survive, the distinct 51st node's handshake gets 429, and terminal WS still reaches
+Central. This sequence works with the default pool (`db_pool_size=10`, `db_max_overflow=10`);
+do not enlarge the pool to make the probe pass. An authenticated socket left idle before
+registration retains a DB connection in the pre-existing backend issue [#183](https://github.com/relvo-labs/cliora/issues/183). This probe
+follows the normal daemon protocol rather than changing that backend behavior.
+Public registration takes about five minutes at 10/minute. `EDGE_SETUP_BASE` may point to an
 operator's private Central tunnel to speed setup; WS and HTTP assertions always use the
 edge. It then sends wrong-method bursts (avoiding application login lockouts) to check
-429s on login/refresh/register and 20 unrestricted generic API requests. Run from a quiet
+429s on login/refresh/register and 20 unrestricted generic API requests. Registration uses
+`OPTIONS` (GET can match the authenticated `/api/nodes/{node_id}` route). On success or
+failure it cancels/awaits its heartbeat task, closes all sockets, removes all probe nodes
+through the normal API (soft delete and credential revocation), and revokes enrollment. Run from a quiet
 source with no other node sockets. Authentication, failed setup and cleanup are failures,
 not passes. `CLIORA_VERIFY_INSECURE=1` is only for local self-signed certificates.
 
