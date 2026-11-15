@@ -25,7 +25,9 @@ Values arrive as JSON so the check is independent of how they were obtained — 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,6 +46,7 @@ CENTRAL_REQUIRED = (
     "CLIORA_TOKEN_PEPPER",
     "CLIORA_PUBLIC_BASE_URL",
     "PORT",
+    "FORWARDED_ALLOW_IPS",
 )
 CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT")
 
@@ -206,6 +209,29 @@ def check(
     for name in CONSOLE_REQUIRED:
         if not console.get(name, "").strip():
             report.fail(f"console is missing {name}")
+
+    # These are two separate hops: platform ingress -> nginx -> Central.
+    for name, value, allow_empty in (
+        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", ""), False),
+        (
+            "CLIORA_TRUSTED_PROXY_CIDRS",
+            console.get("CLIORA_TRUSTED_PROXY_CIDRS", ""),
+            True,
+        ),
+    ):
+        entries = re.split(r"[,\s]+", value.strip()) if value.strip() else []
+        if not entries and allow_empty:
+            report.ok(f"{name} is empty: no platform peer trusted; per-client acceptance pending")
+        for entry in entries:
+            try:
+                network = ipaddress.ip_network(entry, strict=False)
+            except ValueError:
+                report.fail(f"{name} must contain numeric proxy IPs/CIDRs only")
+                continue
+            if network.prefixlen == 0:
+                report.fail(f"{name} must not trust every sender")
+        if name == "FORWARDED_ALLOW_IPS" and any(ch.isspace() for ch in value):
+            report.fail("FORWARDED_ALLOW_IPS must use commas without whitespace (uvicorn syntax)")
 
     environment = central.get("CLIORA_ENVIRONMENT", "")
     if environment != "production":

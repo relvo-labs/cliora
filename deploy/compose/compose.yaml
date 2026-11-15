@@ -57,6 +57,8 @@ services:
     restart: unless-stopped
     environment:
       CLIORA_ENVIRONMENT: production
+      # Only nginx on the dedicated proxy network may assert a client address.
+      FORWARDED_ALLOW_IPS: "172.30.59.2"
       # Every secret arrives from the environment; none is baked into the image
       # (tech §23 #4). `:?` fails the deploy loudly rather than falling back to the dev
       # defaults — which `Settings.reject_dev_secrets_in_production` would refuse anyway,
@@ -99,7 +101,7 @@ services:
     # would arrive mid-drain and browsers would get the unexplained disconnect the drain
     # exists to prevent.
     stop_grace_period: 30s
-    networks: [internal]
+    networks: [internal, proxy]
 
   nginx:
     build:
@@ -117,7 +119,9 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    networks: [internal]
+    networks:
+      proxy:
+        ipv4_address: 172.30.59.2
 
   # --- profile: observability ---
   # Off unless explicitly requested. Prometheus reaches Central on the internal network
@@ -148,6 +152,13 @@ services:
     networks: [internal]
 
 networks:
+  # Reserve this small subnet for the nginx-to-Central hop; change the address and
+  # FORWARDED_ALLOW_IPS together if it conflicts with an existing host network.
+  proxy:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.59.0/29
   internal:
     driver: bridge
 

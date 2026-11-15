@@ -5,7 +5,7 @@ Reference topology: **one host**, nginx terminating TLS, one Central, one Postgr
 > There is a second supported target: **[deployment-railway.md](./deployment-railway.md)**
 > (ADR 0020). It is not a replacement — both are maintained, both use the same images, and the
 > two edge configurations are held together by `scripts/railway/check-edge-parity.sh`. If you
-> change the CSP, the security header set, the body limit or the `/ws/` read timeout here, that
+> change the CSP, the security header set, the body limit, admission limits, client-IP forwarding or the `/ws/` read timeout here, that
 > check will tell you the other file needs the same edit.
 >
 > One thing on this page changed because of it: `/readyz` now answers **503** when degraded
@@ -117,6 +117,54 @@ enabled it should be reachable only by the scraper on the internal network (the
 
 That exact-match block has to exist. `location /api/` is a prefix match, so for a while this
 was a comment claiming the endpoint was not exposed while the config proxied it through.
+
+## Client IP and edge admission limits (#59)
+
+nginx is the client-facing hop in Compose. It ignores client-supplied forwarding headers
+and overwrites both `X-Forwarded-For` and `X-Real-IP` with the TCP client address. Central
+reads only Starlette's `request.client.host` / `websocket.client.host`, populated by
+uvicorn's proxy middleware. The dedicated `proxy` network reserves `172.30.59.0/29`;
+nginx has `172.30.59.2`, and backend `FORWARDED_ALLOW_IPS` trusts only that address.
+Backend has no published port; database/scraper traffic stays on `internal`. If the subnet
+conflicts with the host, change IPAM, nginx's address and `FORWARDED_ALLOW_IPS` together.
+The standalone backend image trusts no forwarded sender by default. Putting another
+proxy in front of Compose requires an explicit real-IP allowlist; this topology assumes
+nginx faces clients directly.
+
+| Path | Per resolved client IP | Rejection |
+|---|---|---|
+| `/api/auth/login` | 10 requests/minute, burst 10, nodelay | 429 |
+| `/api/auth/refresh` | independent 10 requests/minute, burst 10, nodelay | 429 |
+| `/api/nodes/register` | independent 10 requests/minute, no burst | 429 |
+| `/ws/nodes/…` | 50 concurrent connections, including authenticated nodes | 429 before upgrade |
+| Other `/api/` and terminal WebSockets | no edge admission limit | — |
+
+Exact API locations retain the generic API proxy behavior. Node limits use an empty-key
+map for other WS paths, preserving the existing WS timeouts, buffering and headers.
+`/edge-client-ip` returns only the caller's resolved address for deployment verification.
+
+Against a **disposable** running Compose stack (creates/removes 50 probe nodes):
+
+```bash
+CLIORA_VERIFY_ADMIN=admin CLIORA_VERIFY_PASSWORD=… CLIORA_VERIFY_INSECURE=1 \
+  CLIORA_VERIFY_EXPECTED_IP=<independently-known-client-IP> \
+  scripts/p4/verify-edge.sh --online https://localhost <evidence-directory>
+```
+
+The probe authenticates every node before opening the next, proves that 50 survive and
+the 51st handshake gets 429, and checks that terminal WS still reaches Central. Public
+registration takes about five minutes at 10/minute. `EDGE_SETUP_BASE` may point to an
+operator's private Central tunnel to speed setup; WS and HTTP assertions always use the
+edge. It then sends wrong-method bursts (avoiding application login lockouts) to check
+429s on login/refresh/register and 20 unrestricted generic API requests. Run from a quiet
+source with no other node sockets. Authentication, failed setup and cleanup are failures,
+not passes. `CLIORA_VERIFY_INSECURE=1` is only for local self-signed certificates.
+
+The client-IP leg sends forged `X-Forwarded-For` and `X-Real-IP`; all three responses must
+match an independently known client address. Docker may NAT host requests, so obtain the
+expected address from the actual topology, not from `/edge-client-ip` itself. Unit tests
+also pin the overwrite at every proxy location and test uvicorn's HTTP/WS middleware
+against trusted and untrusted peers.
 
 ## Upgrading
 

@@ -21,8 +21,8 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-HOST_CONF="$ROOT/deploy/nginx/nginx.conf"
-RAILWAY_CONF="$ROOT/deploy/railway/nginx.conf.template"
+HOST_CONF="${1:-$ROOT/deploy/nginx/nginx.conf}"
+RAILWAY_CONF="${2:-$ROOT/deploy/railway/nginx.conf.template}"
 FAILURES=0
 
 ok()   { printf 'ok: %s\n' "$*"; }
@@ -146,6 +146,47 @@ for file in "$HOST_CONF" "$RAILWAY_CONF"; do
     && ok "$name caches hashed assets immutably" \
     || fail "$name does not cache /assets/ immutably"
 done
+
+# --- 6. Issue 59 admission policy and forwarding contract (values AND scope) ---
+# Compare only risk-bearing directives, keeping deliberate topology differences.
+security_policy_of() {
+  directives_of "$1" | awk '
+    /location / { location=$0 }
+    /^[[:space:]]*(limit_req|limit_conn|map \$uri |default ""|~\^\/ws\/nodes\/)/ ||
+    /proxy_set_header X-(Forwarded-For|Real-IP)/ {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "");
+      print location " | " $0
+    }'
+}
+if diff -u <(security_policy_of "$HOST_CONF") <(security_policy_of "$RAILWAY_CONF"); then
+  ok "rate/connection limits and client-IP forwarding have identical scope and values"
+else
+  fail "rate/connection limits or client-IP forwarding differ"
+fi
+for file in "$HOST_CONF" "$RAILWAY_CONF"; do
+  for directive in \
+    'limit_req_status 429;' 'limit_conn_status 429;' \
+    'limit_req_zone $binary_remote_addr zone=cliora_login:10m rate=10r/m;' \
+    'limit_req_zone $binary_remote_addr zone=cliora_refresh:10m rate=10r/m;' \
+    'limit_req_zone $binary_remote_addr zone=cliora_register:10m rate=10r/m;' \
+    'limit_req zone=cliora_login burst=10 nodelay;' \
+    'limit_req zone=cliora_refresh burst=10 nodelay;' \
+    'limit_req zone=cliora_register;' 'limit_conn cliora_nodes 50;'; do
+    directives_of "$file" | grep -Fq "$directive" || fail "$file missing $directive"
+  done
+  if directives_of "$file" | grep -q 'proxy_add_x_forwarded_for'; then
+    fail "$file appends an untrusted forwarding chain"
+  fi
+done
+
+for directive in 'real_ip_header X-Real-IP;' 'real_ip_recursive off;' \
+  'include /etc/nginx/trusted-proxies/*.conf;'; do
+  directives_of "$RAILWAY_CONF" | grep -Fq "$directive" \
+    || fail "Railway config missing $directive"
+done
+if directives_of "$HOST_CONF" | grep -q 'set_real_ip_from'; then
+  fail "Compose nginx must use the socket client; it is the public-facing hop"
+fi
 
 printf '\n%s\n' "mismatches: $FAILURES"
 exit "$FAILURES"

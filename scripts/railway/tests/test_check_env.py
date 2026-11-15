@@ -36,6 +36,7 @@ def central(**overrides: str) -> dict[str, str]:
         "CLIORA_PUBLIC_BASE_URL": "https://cliora.example.com",
         "CLIORA_SHUTDOWN_DRAIN_SECONDS": "15",
         "PORT": "8080",
+        "FORWARDED_ALLOW_IPS": "fd00:59::2/128",
     }
     base.update(overrides)
     return {k: v for k, v in base.items() if v != "__unset__"}
@@ -234,4 +235,33 @@ def test_main_reports_and_exits_non_zero_on_a_problem(tmp_path: Path) -> None:
             ["--central-vars", str(central_file), "--console-vars", str(console_file)]
         )
         == 1
+    )
+
+
+@pytest.mark.parametrize(
+    "value", ["*", "0.0.0.0/0", "::/0", "console.railway.internal", "fd00::1, fd00::2"]
+)
+def test_uvicorn_trust_rejects_global_or_non_numeric_senders(value: str) -> None:
+    assert failures(central(FORWARDED_ALLOW_IPS=value), console())
+
+
+def test_uvicorn_proxy_trust_is_required() -> None:
+    assert any(
+        "FORWARDED_ALLOW_IPS" in item
+        for item in failures(central(FORWARDED_ALLOW_IPS="__unset__"), console())
+    )
+
+
+@pytest.mark.parametrize("value", ["*", "0.0.0.0/0", "::/0", "10.0.0.1; include /tmp/x"])
+def test_platform_proxy_trust_rejects_global_ranges_and_injection(value: str) -> None:
+    assert failures(central(), console(CLIORA_TRUSTED_PROXY_CIDRS=value))
+
+
+def test_numeric_allowlists_for_both_proxy_hops_pass() -> None:
+    assert (
+        failures(
+            central(FORWARDED_ALLOW_IPS="fd00:59::2/128,10.59.0.2/32"),
+            console(CLIORA_TRUSTED_PROXY_CIDRS="10.23.0.4/32 fd00:23::4/128"),
+        )
+        == []
     )

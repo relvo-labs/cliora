@@ -69,6 +69,60 @@ Order matters, and two steps are one-way doors.
 8. **Set up external monitoring** (see below). The platform health check does not run after the
    deploy completes.
 
+## Trusted client IP: required post-deploy verification (#59)
+
+The console uses nginx `real_ip_header X-Real-IP` with recursion off. Railway's
+[public networking specifications](https://docs.railway.com/networking/public-networking/specs-and-limits)
+identify `X-Real-IP` as the client's remote address. This is a deployment assumption that
+must be verified over the live ingress, including custom and platform domains if both
+are enabled. No live Railway request was observed while implementing this contract.
+
+`CLIORA_TRUSTED_PROXY_CIDRS` on console is a comma/whitespace-separated numeric allowlist
+of **Railway ingress peers**, rendered into `set_real_ip_from` by
+`19-trusted-proxies.sh`. Default: empty, trusting nobody. Until configured, requests use
+the socket peer (safe against spoofing, but clients share the proxy's buckets). Do not
+use `0.0.0.0/0`, `::/0`, or an entire private address space as a substitute for discovering
+the actual ingress range. Obtain the supported source ranges from Railway and confirm
+observed peers in console access logs (`peer=…`, the original socket address); a single
+observed address alone does not establish a stable platform range.
+
+Central's `FORWARDED_ALLOW_IPS` is a **different** comma-separated allowlist: only the
+console nginx's private source IP(s), normally `/128` IPv6 and `/32` IPv4. It is required
+by the start command. Determine it from console's private address and Central's observed
+peer, verify it after either service redeploys, and update it before taking traffic if the
+address changes. Uvicorn does not resolve service hostnames in this setting. Never use
+`*`. Central must have no public domain or TCP proxy, and private peers other than the
+allowlisted console must not be able to assert client addresses. The private-only topology
+prevents bypassing nginx admission limits; the explicit uvicorn allowlist prevents another
+private service from forging client identity. Platform health probes need no trust.
+
+After nginx resolves the address it **overwrites**, rather than appends, both forwarding
+headers with the single `$remote_addr`. Application handlers consume only Starlette's
+client host. All admission limits match the [Compose table](deployment.md#client-ip-and-edge-admission-limits-59).
+
+Post-deploy acceptance (keep evidence outside the repository):
+
+1. Verify Railway replaces caller-supplied `X-Real-IP` with the public client's address.
+   Verify the actual ingress socket peer belongs to the configured, platform-confirmed
+   `CLIORA_TRUSTED_PROXY_CIDRS`. Console logs show resolved address first and `peer=…`.
+2. From a client with an independently known public egress IP run:
+   ```bash
+   CLIORA_VERIFY_EXPECTED_IP=<public-client-IP> \
+     scripts/railway/verify-deployment.sh https://cliora.example.com <evidence-directory>
+   ```
+   The check compares `/edge-client-ip` with that address for three requests including
+   forged forwarding headers. Missing `CLIORA_VERIFY_EXPECTED_IP` is explicitly a skip.
+   Repeat from a second egress to prove clients are separated, and after every ingress or
+   console network change. Do not infer the expected address from the echo endpoint.
+3. Verify Central sees that same single client IP for HTTP and node WS, with an operator's
+   temporary private diagnostic upstream/ASGI scope capture; remove the diagnostic after
+   the check. A direct request from a different private peer with forged forwarding
+   headers must keep that peer's address. Static/config and uvicorn middleware tests
+   cover this locally; they cannot prove Railway's actual peer routing.
+4. On a disposable staging environment, run the online admission probe documented for
+   Compose; validate 429 bursts and the 50-connection cap. Never run its 50-node setup
+   against a busy production origin. Keep normal request/handshake latency evidence too.
+
 ## Publishing a daemon release
 
 Artifacts live in the Central image, so publishing a release is a Central redeploy — and by
