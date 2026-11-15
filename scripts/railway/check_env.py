@@ -25,7 +25,9 @@ Values arrive as JSON so the check is independent of how they were obtained — 
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -44,8 +46,9 @@ CENTRAL_REQUIRED = (
     "CLIORA_TOKEN_PEPPER",
     "CLIORA_PUBLIC_BASE_URL",
     "PORT",
+    "FORWARDED_ALLOW_IPS",
 )
-CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT")
+CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT", "CLIORA_TRUSTED_PROXY_CIDRS")
 
 
 def normalise(raw: Any) -> dict[str, str]:
@@ -206,6 +209,31 @@ def check(
     for name in CONSOLE_REQUIRED:
         if not console.get(name, "").strip():
             report.fail(f"console is missing {name}")
+
+    # These are two separate hops: platform ingress -> nginx -> Central.
+    for name, value in (
+        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", "")),
+        (
+            "CLIORA_TRUSTED_PROXY_CIDRS",
+            console.get("CLIORA_TRUSTED_PROXY_CIDRS", ""),
+        ),
+    ):
+        entries = re.split(r"[,\s]+", value.strip()) if value.strip() else []
+        if not any(entries):
+            report.fail(
+                f"{name} requires verified proxy IPs/CIDRs before deployment; see "
+                "docs/deployment-railway.md#trust-upgrade-runbook-59"
+            )
+        for entry in entries:
+            try:
+                network = ipaddress.ip_network(entry, strict=True)
+            except ValueError:
+                report.fail(f"{name} must contain numeric IPs or canonical CIDRs (no host bits) only")
+                continue
+            if network.prefixlen == 0:
+                report.fail(f"{name} must not trust every sender")
+        if name == "FORWARDED_ALLOW_IPS" and any(ch.isspace() for ch in value):
+            report.fail("FORWARDED_ALLOW_IPS must use commas without whitespace (uvicorn syntax)")
 
     environment = central.get("CLIORA_ENVIRONMENT", "")
     if environment != "production":

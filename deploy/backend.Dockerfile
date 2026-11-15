@@ -135,6 +135,8 @@ RUN if [ -n "$AGENTD_RELEASE_BASE_URL" ]; then \
 # the image is what knows it; a deployment only overrides this to point somewhere else
 # (deploy/compose/compose.yaml mounts a host directory over it).
 ENV CLIORA_ARTIFACTS_DIR=/srv/artifacts
+# Trust nobody unless the deployment identifies its nginx hop.
+ENV FORWARDED_ALLOW_IPS=""
 
 USER cliora
 EXPOSE 8000
@@ -148,4 +150,4 @@ EXPOSE 8000
 # IPV6_V6ONLY on an AF_INET6 socket, so it refuses IPv4 regardless of the bindv6only
 # sysctl. The override binds an empty host, which asyncio reads as "every family"
 # (deploy/railway/central.railway.json does exactly that).
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
