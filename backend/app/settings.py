@@ -3,7 +3,7 @@ import binascii
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 15 * 60
     refresh_token_ttl_seconds: int = 14 * 24 * 60 * 60
     ws_ticket_ttl_seconds: int = 60
+    # ENGINEERING PROPOSALS (#58): process-wide pending cap and maximum expired
+    # removals per issue(). FIFO overflow evicts the oldest ticket, including a
+    # live one; the caller can request a fresh ticket. These are storage/work
+    # bounds, not request-rate limits. Override with CLIORA_WS_TICKET_* env vars.
+    ws_ticket_max_pending: int = Field(default=4096, ge=1)
+    ws_ticket_sweep_batch_size: int = Field(default=128, ge=1)
 
     # Argon2id parameters for password hashing (ADR 0007).
     argon2_time_cost: int = 3
