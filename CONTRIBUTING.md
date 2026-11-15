@@ -7,7 +7,7 @@ P0–P4 報告是歷史證據；本文件的命令已對照 `master@aa732f0` 靜
 ## Bootstrap
 
 在 repository 根目錄操作，使用 Linux 一般使用者、Bash、Make、curl、tmux 3.4 以上與 Docker。
-工具版本：Python 3.12.3、Go 1.26.5、Node 22.14.0、npm 10；uv 在 CI 固定為 0.11.31。
+工具版本：Python 3.12.3、Go 1.26.5、Node 22.14.0、npm 10；uv 在 CI 固定為 0.13.8。
 Python／Go／Node 的版本檔是 `.python-version`／`.go-version`／`.nvmrc`；P4 部分 jobs 改讀 `daemon/go.mod` 或只指定 Node 22，並非每個 job 都讀相同檔案。
 
 ```bash
