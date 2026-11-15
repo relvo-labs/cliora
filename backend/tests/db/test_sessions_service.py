@@ -288,13 +288,13 @@ async def test_apply_status_changed_running_to_exited(session) -> None:
         rows=24,
         columns=80,
     )
-    updated = await svc.apply_status_changed(created.id, "exited", exit_code=0)
+    updated = await svc.apply_status_changed(created.id, "exited", node_id=node_id, exit_code=0)
     assert updated is not None
     assert updated.status == "exited"
     assert updated.exit_code == 0
     assert updated.ended_at is not None
     # Illegal transition (already terminal) is ignored, not raised.
-    assert await svc.apply_status_changed(created.id, "running") is None
+    assert await svc.apply_status_changed(created.id, "running", node_id=node_id) is None
 
 
 async def test_terminate_already_ended_rejected(session) -> None:
@@ -440,3 +440,61 @@ async def _latest_audit(session, action: str):
     row = result.scalars().first()
     assert row is not None, f"no {action} audit row"
     return row
+
+
+async def test_status_service_requires_authenticated_owner_even_with_warm_cache(
+    session, monkeypatch
+) -> None:
+    from app.services.terminal_relay import TerminalRelay
+
+    relay = TerminalRelay()
+    monkeypatch.setattr("app.services.terminal_relay._relay", relay)
+    user_id, node_id = await _seed(session)
+    registry = FakeRegistry()
+    service = SessionService(session, registry=registry)
+    row = await _running_session(session, user_id, node_id, "owned")
+    assert await service.authorize_node_frame(node_id, row.id)
+    registry.sent.clear()
+    assert (
+        await service.apply_status_changed(row.id, "exited", node_id=uuid.uuid4(), exit_code=99)
+        is None
+    )
+    assert row.status == RUNNING and row.exit_code is None and row.ended_at is None
+    assert registry.sent == []
+    assert (
+        await service.apply_status_changed(uuid.uuid4(), "exited", node_id=node_id, exit_code=99)
+        is None
+    )
+    assert await service.apply_status_changed(row.id, "exited", node_id=node_id, exit_code=0) is row
+
+
+@pytest.mark.parametrize("end_path", ["terminate", "child", "fail", "status"])
+async def test_session_end_paths_invalidate_cached_ownership(
+    session, monkeypatch, end_path
+) -> None:
+    from app.services.terminal_relay import TerminalRelay
+
+    relay = TerminalRelay()
+    monkeypatch.setattr("app.services.terminal_relay._relay", relay)
+    user_id, node_id = await _seed(session)
+    service = SessionService(session, registry=FakeRegistry())
+    row = await _running_session(session, user_id, node_id, "ending")
+    assert await service.authorize_node_frame(node_id, row.id)
+    assert row.id in relay._owners
+    if end_path == "terminate":
+        await service.terminate(actor_id=user_id, session_id=row.id)
+    elif end_path == "child":
+        await service._terminate_child(row, actor_id=user_id, reason="abandoned")
+    elif end_path == "fail":
+        await service._fail(row, "SESSION_START_FAILED", actor_id=user_id)
+    else:
+        await service.apply_status_changed(row.id, "exited", node_id=node_id, exit_code=0)
+    assert row.id not in relay._owners
+    # The row still exists, so its final terminal event remains authorized. Ended
+    # rows never repopulate the cache and deleting one immediately fails closed.
+    assert await service.authorize_node_frame(node_id, row.id)
+    assert row.id not in relay._owners
+    sid = row.id
+    await service.delete(session_id=sid)
+    await session.flush()
+    assert not await service.authorize_node_frame(node_id, sid)
