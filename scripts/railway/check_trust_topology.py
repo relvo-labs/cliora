@@ -25,13 +25,16 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -288,7 +291,35 @@ def project_id_from_status(raw: Any) -> str:
     return raw["id"]
 
 
-def cli_token(environ: dict[str, str], home: Path) -> str:
+# The CLI refreshes its OAuth access token when any `railway` command runs; this check only
+# reads it, so an access token this close to expiry is treated as already expired.
+EXPIRY_MARGIN_SECONDS = 60
+REFRESH_HINT = "run any railway command (e.g. `railway whoami`) to refresh it, then retry"
+
+
+def _expires_at(value: Any) -> float:
+    """`tokenExpiresAt` as epoch seconds. CLI 5.x writes integer seconds; milliseconds and
+    ISO-8601 strings are accepted defensively. Anything else is malformed (fail closed)."""
+    if isinstance(value, str) and value.strip().isdigit():
+        value = int(value.strip())
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        seconds = float(value)
+        if not math.isfinite(seconds):
+            raise TopologyError("Railway CLI config has an unreadable tokenExpiresAt")
+        return seconds / 1000 if seconds > 1e12 else seconds  # > 1e12 cannot be seconds
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.strip())
+        except ValueError:
+            parsed = None
+        if parsed is not None and parsed.tzinfo is not None:
+            return parsed.timestamp()
+    raise TopologyError("Railway CLI config has an unreadable tokenExpiresAt")
+
+
+def cli_token(environ: dict[str, str], home: Path, now: float | None = None) -> str:
+    """The API token: RAILWAY_API_TOKEN, else the CLI login's legacy `user.token`, else its
+    OAuth `user.accessToken` (CLI 5.x) while unexpired. No token value is ever printed."""
     token = environ.get("RAILWAY_API_TOKEN", "").strip()
     if token:
         return token
@@ -297,11 +328,26 @@ def cli_token(environ: dict[str, str], home: Path) -> str:
         config = json.loads(path.read_text())
     except (OSError, ValueError) as exc:
         raise TopologyError(f"no Railway CLI session ({path}: {type(exc).__name__})") from exc
-    user = config.get("user") if isinstance(config, dict) else None
-    token = user.get("token") if isinstance(user, dict) else None
-    if not isinstance(token, str) or not token:
+    if not isinstance(config, dict):
+        raise TopologyError(f"unrecognised Railway CLI config ({path})")
+    user = config.get("user")
+    if user is None:
         raise TopologyError("the Railway CLI is not logged in (run `railway login`)")
-    return token
+    if not isinstance(user, dict):
+        raise TopologyError(f"unrecognised Railway CLI config ({path}: user)")
+    for key in ("token", "accessToken"):
+        if user.get(key) is not None and not isinstance(user.get(key), str):
+            raise TopologyError(f"unrecognised Railway CLI config ({path}: user.{key})")
+    legacy, access = user.get("token") or "", user.get("accessToken") or ""
+    if legacy:
+        return legacy
+    if not access:
+        raise TopologyError("the Railway CLI is not logged in (run `railway login`)")
+    if user.get("tokenExpiresAt") is not None:
+        current = time.time() if now is None else now
+        if _expires_at(user["tokenExpiresAt"]) <= current + EXPIRY_MARGIN_SECONDS:
+            raise TopologyError(f"the Railway CLI access token has expired; {REFRESH_HINT}")
+    return access
 
 
 def http_transport(token: str) -> Transport:

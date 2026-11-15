@@ -10,10 +10,13 @@
 #   scripts/railway/check-trust-topology.sh ... --central-vars c.json --console-vars k.json  # staged
 #   scripts/railway/check-trust-topology.sh ... --record evidence/topology.json
 #
+# Production's console service is named `cliora`: set CLIORA_RAILWAY_CONSOLE_SERVICE=cliora
+# or pass --console-service cliora (default: console).
 # Needs a logged-in `railway` CLI linked to the project (or --project-id plus
-# RAILWAY_API_TOKEN). Exit 1: a precondition does not hold. Exit 2: the facts could not be
-# established (not logged in, API error, unrecognised response) — fail closed, never a pass.
-# Variable values are never printed.
+# RAILWAY_API_TOKEN). An expired OAuth login is refreshed by any railway command
+# (e.g. `railway whoami`). Exit 1: a precondition does not hold. Exit 2: the facts could
+# not be established (not logged in, expired token, API error, unrecognised response) —
+# fail closed, never a pass. Neither tokens nor variable values are ever printed.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -27,7 +30,7 @@ have_project=0
 live=1
 for arg in "$@"; do
   case "$arg" in
-    -h|--help) sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     --project-id|--status-json) have_project=1 ;;
     --replay) live=0 ;;
   esac

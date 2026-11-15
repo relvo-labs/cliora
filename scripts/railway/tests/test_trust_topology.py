@@ -286,6 +286,132 @@ def test_cli_session_token_is_required(tmp_path: Path) -> None:
     assert topology.cli_token({"RAILWAY_API_TOKEN": "env"}, tmp_path) == "env"
 
 
+# --- CLI 5.x OAuth login (user.accessToken + tokenExpiresAt in epoch seconds) -------------
+
+NOW = 1_800_000_000.0  # fixed clock, epoch seconds
+SECRET = "tok-canary-do-not-print"
+
+
+def config_file(tmp_path: Path, user: Any) -> Path:
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps({"projects": {}, "user": user}))
+    return path
+
+
+def token_for(tmp_path: Path, user: Any, environ: dict[str, str] | None = None) -> str:
+    path = config_file(tmp_path, user)
+    return topology.cli_token({"RAILWAY_CONFIG_FILE": str(path), **(environ or {})}, tmp_path, NOW)
+
+
+def test_legacy_token_is_used(tmp_path: Path) -> None:
+    assert token_for(tmp_path, {"token": "legacy"}) == "legacy"
+
+
+@pytest.mark.parametrize(
+    "expires",
+    [
+        NOW + 3600,
+        int(NOW + 3600),
+        (NOW + 3600) * 1000,
+        str(int(NOW + 3600)),
+        "2027-02-01T00:00:00Z",
+    ],
+    ids=["seconds", "seconds-int", "milliseconds", "digit-string", "iso-8601"],
+)
+def test_oauth_access_token_is_used_when_legacy_is_absent(tmp_path: Path, expires: Any) -> None:
+    user = {"token": None, "accessToken": "oauth", "refreshToken": "r", "tokenExpiresAt": expires}
+    assert token_for(tmp_path, user) == "oauth"
+
+
+def test_oauth_access_token_without_expiry_is_used(tmp_path: Path) -> None:
+    assert token_for(tmp_path, {"token": "", "accessToken": "oauth"}) == "oauth"
+
+
+def test_both_present_keeps_legacy_then_env_precedence(tmp_path: Path) -> None:
+    user = {"token": "legacy", "accessToken": "oauth", "tokenExpiresAt": NOW + 3600}
+    assert token_for(tmp_path, user) == "legacy"
+    assert token_for(tmp_path, user, {"RAILWAY_API_TOKEN": "env"}) == "env"
+
+
+@pytest.mark.parametrize(
+    "expires",
+    [NOW - 1, NOW + 30, (NOW - 1) * 1000, 0, str(int(NOW - 1)), "2020-01-01T00:00:00+00:00"],
+    ids=["past", "within-margin", "past-ms", "zero", "past-digit-string", "past-iso"],
+)
+def test_expired_access_token_fails_closed_with_refresh_hint(tmp_path: Path, expires: Any) -> None:
+    user = {"accessToken": SECRET, "refreshToken": SECRET, "tokenExpiresAt": expires}
+    with pytest.raises(topology.TopologyError, match="railway whoami") as caught:
+        token_for(tmp_path, user)
+    assert SECRET not in str(caught.value)
+
+
+def test_expired_access_token_is_irrelevant_when_env_token_is_set(tmp_path: Path) -> None:
+    user = {"accessToken": SECRET, "tokenExpiresAt": NOW - 1}
+    assert token_for(tmp_path, user, {"RAILWAY_API_TOKEN": "env"}) == "env"
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        {"accessToken": SECRET, "tokenExpiresAt": "soon"},
+        {"accessToken": SECRET, "tokenExpiresAt": "2027-02-01T00:00:00"},  # no timezone
+        {"accessToken": SECRET, "tokenExpiresAt": True},
+        {"accessToken": SECRET, "tokenExpiresAt": float("nan")},
+        {"accessToken": SECRET, "tokenExpiresAt": [NOW + 3600]},
+        {"accessToken": 12345},
+        {"token": {"value": SECRET}},
+        [SECRET],
+        SECRET,
+        {},
+        {"refreshToken": SECRET},
+    ],
+    ids=[
+        "expiry-word",
+        "expiry-naive-iso",
+        "expiry-bool",
+        "expiry-nan",
+        "expiry-list",
+        "access-not-string",
+        "legacy-not-string",
+        "user-list",
+        "user-string",
+        "user-empty",
+        "refresh-only",
+    ],
+)
+def test_malformed_or_incomplete_cli_config_fails_closed(tmp_path: Path, user: Any) -> None:
+    with pytest.raises(topology.TopologyError) as caught:
+        token_for(tmp_path, user)
+    assert SECRET not in str(caught.value)
+
+
+@pytest.mark.parametrize("text", ["{not json", "[]", '"x"', ""])
+def test_unparseable_cli_config_fails_closed(tmp_path: Path, text: str) -> None:
+    path = tmp_path / "config.json"
+    path.write_text(text)
+    with pytest.raises(topology.TopologyError):
+        topology.cli_token({"RAILWAY_CONFIG_FILE": str(path)}, tmp_path, NOW)
+
+
+def test_expired_login_exits_2_without_printing_tokens(tmp_path: Path) -> None:
+    path = config_file(tmp_path, {"accessToken": SECRET, "tokenExpiresAt": 1})
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/railway/check_trust_topology.py"),
+            "--project-id",
+            PROJECT,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path), "RAILWAY_CONFIG_FILE": str(path)},
+    )
+    assert result.returncode == 2
+    assert "FAIL (closed)" in result.stdout and "railway whoami" in result.stdout
+    assert SECRET not in result.stdout + result.stderr
+
+
 def _cli(tmp_path: Path, *extra: str) -> subprocess.CompletedProcess[str]:
     central = tmp_path / "central.json"
     console = tmp_path / "console.json"
