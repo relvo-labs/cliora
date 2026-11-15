@@ -58,7 +58,7 @@ _UPLOAD_ERROR_STATUS: dict[str, tuple[str, int]] = {
     "NODE_BUSY": ("The node is busy; retry shortly", status.HTTP_503_SERVICE_UNAVAILABLE),
     "FILE_UPLOAD_TOO_LARGE": (
         "The image is larger than 4 MiB",
-        status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        status.HTTP_413_CONTENT_TOO_LARGE,
     ),
     "FILE_UPLOAD_UNSUPPORTED_TYPE": (
         "Only PNG, JPEG, GIF and WebP images can be dropped",
@@ -1096,7 +1096,7 @@ class FileRelayService:
             return ApiError(
                 "FILE_TOO_LARGE",
                 "The file is larger than the 4 MiB download limit",
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status.HTTP_413_CONTENT_TOO_LARGE,
             )
         if code == "FILE_NOT_FOUND":
             return ApiError("FILE_NOT_FOUND", "Cannot access path", status.HTTP_404_NOT_FOUND)

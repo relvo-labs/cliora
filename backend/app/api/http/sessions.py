@@ -45,6 +45,19 @@ def attach_resource(session_id: uuid.UUID) -> str:
     return f"session:{session_id}"
 
 
+async def issue_attach_ticket(user: User, session_id: uuid.UUID, session: AsyncSession) -> str:
+    """Shared issuance guard for both HTTP entry points, matching the WS predicate.
+
+    Check session.view before lookup (#93): callers without it get the same 403
+    for every id. Permitted callers retain attach's SESSION_NOT_FOUND behaviour.
+    Shells use session: tickets too, with may_view_session's narrower owner rule.
+    """
+    authz.authorize_session_lookup(user)
+    existing = await SessionService(session).get(session_id)
+    authz.authorize_session_view(user, existing)
+    return get_ws_ticket_service().issue(user.id, attach_resource(session_id))
+
+
 @router.post("", response_model=SessionDetail, status_code=status.HTTP_201_CREATED)
 async def create_session(
     body: CreateSessionRequest,
@@ -184,8 +197,5 @@ async def attach_session(
 ) -> AttachTicketResponse:
     """Mint a single-use ws-ticket bound to (user, session) for the terminal WS
     (P2-09). Verifies the session exists first (404 otherwise)."""
-    authz.authorize_session_lookup(user)
-    existing = await SessionService(session).get(session_id)
-    authz.authorize_session_view(user, existing)
-    ticket = get_ws_ticket_service().issue(user.id, attach_resource(session_id))
+    ticket = await issue_attach_ticket(user, session_id, session)
     return AttachTicketResponse(session_id=session_id, ticket=ticket)

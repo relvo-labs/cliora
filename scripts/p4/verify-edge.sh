@@ -26,6 +26,21 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Online mode targets an already running compose/staging stack and owns no containers.
+# Credentials must belong to a disposable stack: the probe creates/removes 50 nodes.
+if [ "${1:-}" = "--online" ]; then
+  EDGE_BASE=${2:?usage: verify-edge.sh --online BASE OUT}
+  OUT=${3:?evidence output directory required}
+  mkdir -p "$OUT"
+  export EDGE_BASE
+  if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
+    "$ROOT/scripts/railway/verify-client-ip.sh" "$EDGE_BASE" "$CLIORA_VERIFY_EXPECTED_IP" "$OUT" \
+      > "$OUT/client-ip-verification.log" 2>&1 || exit 1
+  fi
+  uv run --project "$ROOT/backend" python "$ROOT/scripts/railway/edge_limit_probe.py" \
+    > "$OUT/edge-limits.log" 2>&1
+  exit $?
+fi
 cd "$ROOT"
 
 OUT="${1:-$ROOT/artifacts/p4/local}"
@@ -66,7 +81,7 @@ note "# Edge verification (nginx executed, not reviewed)"
 note ""
 note "- generated (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 note "- config under test: \`deploy/nginx/nginx.conf\` (the file the deployment ships)"
-note "- nginx: $(docker run --rm nginx:1.27-alpine nginx -v 2>&1 | tr -d '\n')"
+note "- nginx: $(docker run --rm nginx:1.30-alpine nginx -v 2>&1 | tr -d '\n')"
 note ""
 
 # --- a throwaway Central on the port nginx expects ---
@@ -126,7 +141,7 @@ docker run -d --name "$NGINX_NAME" \
   -v "$ROOT/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
   -v "$TLS_DIR:/etc/nginx/tls:ro" \
   -v "$ROOT/frontend/dist:/usr/share/nginx/html:ro" \
-  nginx:1.27-alpine >/dev/null 2>&1
+  nginx:1.30-alpine >/dev/null 2>&1
 
 for _ in $(seq 1 40); do
   curl -sS -o /dev/null "http://127.0.0.1:$HTTP_PORT/" 2>/dev/null && break
@@ -386,6 +401,20 @@ if [ $? -eq 0 ]; then
   ok "an authenticated idle WebSocket survives ${IDLE}s through the proxy — $ws_result"
 else
   fail "the idle WebSocket did not survive ${IDLE}s: $ws_result"
+fi
+
+# Issue 59: same online assertions used against an existing compose stack.
+EDGE_BASE="$BASE" EDGE_SETUP_BASE="http://127.0.0.1:$CENTRAL_PORT" \
+  CLIORA_VERIFY_INSECURE=1 CLIORA_VERIFY_ADMIN=edgeadmin CLIORA_VERIFY_PASSWORD="$EDGE_ADMIN_PW" \
+  uv run --project backend python scripts/railway/edge_limit_probe.py >"$OUT/edge-limits.log" 2>&1 \
+  && ok "HTTP burst and node connection caps (see edge-limits.log)" \
+  || fail "edge limit assertions failed (see edge-limits.log)"
+if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
+  CLIORA_VERIFY_INSECURE=1 scripts/railway/verify-client-ip.sh "$BASE" "$CLIORA_VERIFY_EXPECTED_IP" "$OUT" \
+    && ok "nginx and Central HTTP/WS client identity verified" \
+    || fail "client-IP check failed or Central log verification pending"
+else
+  note "- _skipped_ — resolved client-IP assertion needs CLIORA_VERIFY_EXPECTED_IP (Docker may NAT the probe)"
 fi
 
 # --- 7. Body limit is at or above the filesystem contract ---

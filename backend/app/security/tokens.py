@@ -59,6 +59,10 @@ def _encode(payload: dict[str, Any], ttl_seconds: int, settings: Settings) -> st
 
 
 def _decode(token: str, expected_type: TokenType, settings: Settings) -> dict[str, Any]:
+    # PyJWT permits padded signatures for external issuers. Central issues only
+    # unpadded base64url; reject alternate spellings of the same signed token.
+    if "=" in token.rsplit(".", 1)[-1]:
+        raise TokenError("invalid token")
     try:
         claims: dict[str, Any] = jwt.decode(
             token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]

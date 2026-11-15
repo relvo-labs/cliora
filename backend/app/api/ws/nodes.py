@@ -182,6 +182,7 @@ async def node_gateway(
 
     # --- 3. Control loop (text control + binary terminal output) ---
     relay = get_terminal_relay()
+    sessions = SessionService(session)
     try:
         while True:
             event = await websocket.receive()
@@ -194,7 +195,7 @@ async def node_gateway(
                     kind, session_id, payload = decode_binary(raw_bytes)
                 except ProtocolError:
                     continue
-                if kind == 2:
+                if kind == 2 and await sessions.authorize_node_frame(node_id, session_id):
                     await relay.route_output(session_id, payload)
                 continue
             text = event.get("text")
@@ -247,12 +248,14 @@ async def node_gateway(
                 new_status = message.payload.get("status")
                 exit_code = message.payload.get("exit_code")
                 if isinstance(sid, str) and isinstance(new_status, str):
-                    await SessionService(session).apply_status_changed(
+                    updated = await sessions.apply_status_changed(
                         uuid.UUID(sid),
                         new_status,
+                        node_id=node_id,
                         exit_code=exit_code if isinstance(exit_code, int) else None,
                     )
-                    await session.commit()
+                    if updated is not None:
+                        await session.commit()
             elif message.type == "daemon.update_result":
                 # An update restarts the daemon, which drops the socket the
                 # correlated reply was going to travel on. The fresh connection
@@ -276,7 +279,9 @@ async def node_gateway(
                 sid = message.payload.get("session_id")
                 if isinstance(sid, str):
                     try:
-                        await relay.route_control(uuid.UUID(sid), text)
+                        session_id = uuid.UUID(sid)
+                        if await sessions.authorize_node_frame(node_id, session_id):
+                            await relay.route_control(session_id, text)
                     except ValueError:
                         pass
             elif not registry.resolve_response(node_id, message):

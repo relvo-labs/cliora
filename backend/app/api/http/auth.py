@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,11 +17,11 @@ from app.api.http.schemas import (
     WsTicketRequest,
     WsTicketResponse,
 )
+from app.api.http.sessions import attach_resource, issue_attach_ticket
 from app.db.engine import get_session
 from app.db.models import User
 from app.services.auth import AuthService
 from app.services.rbac import USER_UNLOCK
-from app.services.ws_ticket import get_ws_ticket_service
 
 router = APIRouter(prefix="/api", tags=["auth"])
 
@@ -95,6 +97,16 @@ async def me(user: User = Depends(get_current_user)) -> UserResponse:
 async def ws_ticket(
     body: WsTicketRequest,
     user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
 ) -> WsTicketResponse:
-    ticket = get_ws_ticket_service().issue(user.id, body.resource)
+    # The terminal gateway is the only consumer, including shell sessions.
+    # Reject other kinds and noncanonical ids rather than mint unusable tickets.
+    kind, _, identifier = body.resource.partition(":")
+    try:
+        session_id = uuid.UUID(identifier)
+    except ValueError as exc:
+        raise ApiError("INVALID_ARGUMENT", "Invalid ticket resource") from exc
+    if kind != "session" or body.resource != attach_resource(session_id):
+        raise ApiError("INVALID_ARGUMENT", "Invalid ticket resource")
+    ticket = await issue_attach_ticket(user, session_id, session)
     return WsTicketResponse(ticket=ticket)

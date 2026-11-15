@@ -61,6 +61,11 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "如需此權限請聯繫 Admin。",
     retryable: false,
   },
+  WS_TICKET_BUSY: {
+    cause: "此帳號尚未使用的終端機連線票已達上限。",
+    nextStep: "請等待連線完成或票過期後重試。",
+    retryable: true,
+  },
 
   // --- Request shape ---
   INVALID_ARGUMENT: {
