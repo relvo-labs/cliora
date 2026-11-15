@@ -43,7 +43,7 @@ vi.mock("@xterm/xterm", () => {
   return { Terminal: MockTerminal };
 });
 vi.mock("@xterm/addon-fit", () => ({
-  FitAddon: vi.fn(() => {
+  FitAddon: vi.fn(function () {
     const fit = vi.fn();
     const proposal = nextProposal.value ?? { rows: 43, cols: 110 };
     const proposeDimensions = vi.fn(() => proposal);
@@ -52,8 +52,16 @@ vi.mock("@xterm/addon-fit", () => ({
     return { fit, proposeDimensions };
   }),
 }));
-vi.mock("@xterm/addon-search", () => ({ SearchAddon: vi.fn(() => ({})) }));
-vi.mock("@xterm/addon-web-links", () => ({ WebLinksAddon: vi.fn(() => ({})) }));
+vi.mock("@xterm/addon-search", () => ({
+  SearchAddon: vi.fn(function () {
+    return {};
+  }),
+}));
+vi.mock("@xterm/addon-web-links", () => ({
+  WebLinksAddon: vi.fn(function () {
+    return {};
+  }),
+}));
 
 // --- WebSocket mock: capture instances, drive lifecycle by hand ---
 const sockets: MockSocket[] = [];

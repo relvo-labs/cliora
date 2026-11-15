@@ -24,25 +24,28 @@
     "@xterm/addon-web-links": "0.11.0",
     "@xterm/xterm": "5.5.0",
     "lucide-vue-next": "0.468.0",
-    "monaco-editor": "^0.56.0",
+    "monaco-editor": "^0.57.0",
     "pdfjs-dist": "6.3.289",
     "pinia": "^2.3.1",
-    "vite": "7.3.6",
-    "vue": "3.5.18",
+    "vite": "7.3.8",
+    "vue": "3.5.45",
     "vue-router": "4.5.1"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "@types/node": "22.20.1",
-    "@typescript-eslint/parser": "8.65.0",
+    "@typescript-eslint/parser": "8.72.2",
     "@vue/test-utils": "2.4.6",
     "eslint": "9.32.0",
-    "eslint-plugin-vue": "10.3.0",
+    "eslint-plugin-vue": "10.12.1",
     "globals": "16.4.0",
     "jsdom": "26.1.0",
     "prettier": "3.6.2",
     "typescript": "5.9.2",
-    "vitest": "3.2.7",
+    "vitest": "4.1.12",
     "vue-tsc": "3.0.5"
+  },
+  "overrides": {
+    "dompurify": "3.4.18"
   }
 }
