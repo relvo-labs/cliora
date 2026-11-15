@@ -25,6 +25,7 @@ from app.db.engine import get_session
 from app.logging import get_logger
 from app.protocol import ProtocolError, decode_binary, decode_control
 from app.security.node_keys import new_challenge_id
+from app.services.node_pending import get_node_pending_limiter
 from app.services.node_update import NodeUpdateService, outcome_from_payload
 from app.services.nodes import (
     NodeRegistrationService,
@@ -124,49 +125,61 @@ async def node_gateway(
     node_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),
 ) -> None:
-    await websocket.accept()
     settings = get_settings()
+    host = websocket.client.host if websocket.client is not None else None
+    # Reserve before accept, and release on every pre-auth exit, including task
+    # cancellation during server shutdown. Authenticated sockets leave this scope.
+    with get_node_pending_limiter().slot(
+        host,
+        total_max=settings.node_ws_pending_max,
+        per_ip_max=settings.node_ws_pending_per_ip_max,
+    ) as admitted:
+        await websocket.accept()
+        if not admitted:
+            # Accept first so the peer receives a WebSocket 1013, not an HTTP 403.
+            await websocket.close(code=1013)
+            return
 
-    # --- 1. Authentication: issue a single-use random challenge. ---
-    challenge_id = new_challenge_id()
-    nonce = base64.b64encode(secrets.token_bytes(32)).decode()
-    await websocket.send_text(_frame("node.challenge", node_id, challenge_id, {"nonce": nonce}))
-    try:
-        first = decode_control(
-            await asyncio.wait_for(
-                websocket.receive_text(), timeout=settings.hmac_challenge_ttl_seconds
+        # --- 1. Authentication: issue a single-use random challenge. ---
+        challenge_id = new_challenge_id()
+        nonce = base64.b64encode(secrets.token_bytes(32)).decode()
+        await websocket.send_text(_frame("node.challenge", node_id, challenge_id, {"nonce": nonce}))
+        try:
+            first = decode_control(
+                await asyncio.wait_for(
+                    websocket.receive_text(), timeout=settings.hmac_challenge_ttl_seconds
+                )
             )
-        )
-    except (WebSocketDisconnect, ProtocolError, TimeoutError):
-        await websocket.close(code=1002)
-        return
-    if first.type != "node.auth" or first.node_id != node_id:
-        await websocket.close(code=1008)
-        return
-    signature = first.payload.get("signature", "")
-    response_challenge = first.payload.get("challenge_id", "")
-    service = NodeRegistrationService(session)
-    try:
-        if response_challenge != challenge_id:
-            raise ApiError("NODE_AUTH_FAILED", "auth failed")
-        await service.authenticate_signature(
-            node_id, challenge_id, nonce, signature if isinstance(signature, str) else ""
-        )
-    except ApiError:
-        _logger.info(
-            "node_auth_failed", extra={"event": "node_auth_failed", "node_id": str(node_id)}
-        )
-        await websocket.send_text(
-            json.dumps(
-                {
-                    "type": "error",
-                    "success": False,
-                    "error": {"code": "NODE_AUTH_FAILED", "message": "auth failed"},
-                }
+        except (WebSocketDisconnect, ProtocolError, TimeoutError):
+            await websocket.close(code=1002)
+            return
+        if first.type != "node.auth" or first.node_id != node_id:
+            await websocket.close(code=1008)
+            return
+        signature = first.payload.get("signature", "")
+        response_challenge = first.payload.get("challenge_id", "")
+        service = NodeRegistrationService(session)
+        try:
+            if response_challenge != challenge_id:
+                raise ApiError("NODE_AUTH_FAILED", "auth failed")
+            await service.authenticate_signature(
+                node_id, challenge_id, nonce, signature if isinstance(signature, str) else ""
             )
-        )
-        await websocket.close(code=1008)
-        return
+        except ApiError:
+            _logger.info(
+                "node_auth_failed", extra={"event": "node_auth_failed", "node_id": str(node_id)}
+            )
+            await websocket.send_text(
+                json.dumps(
+                    {
+                        "type": "error",
+                        "success": False,
+                        "error": {"code": "NODE_AUTH_FAILED", "message": "auth failed"},
+                    }
+                )
+            )
+            await websocket.close(code=1008)
+            return
     await websocket.send_text(
         _frame("node.authenticated", node_id, first.request_id, {"node_id": str(node_id)})
     )

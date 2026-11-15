@@ -3,7 +3,7 @@ import binascii
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -59,7 +59,10 @@ class Settings(BaseSettings):
     # --- P1 enrollment defaults (ADR 0008) ---
     enrollment_default_ttl_seconds: int = 60 * 60
     enrollment_default_max_uses: int = 1
-    hmac_challenge_ttl_seconds: int = 30
+    hmac_challenge_ttl_seconds: int = 10
+    # Accepted node sockets awaiting authentication, per process / client IP (#59).
+    node_ws_pending_max: int = Field(default=64, gt=0)
+    node_ws_pending_per_ip_max: int = Field(default=10, gt=0)
 
     # --- P1 node status timing (ADR 0010); seconds since last heartbeat ---
     heartbeat_interval_seconds: int = 10

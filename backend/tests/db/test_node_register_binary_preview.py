@@ -20,6 +20,7 @@ import pytest
 import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+from starlette.datastructures import Address
 
 from app.api.http.sessions import get_registry as sessions_registry
 from app.api.ws.nodes import node_gateway
@@ -103,6 +104,7 @@ class LiveDaemon:
         self, node_id: uuid.UUID, private: Ed25519PrivateKey, files: dict[str, bytes] | None = None
     ):
         self.node_id, self.private = node_id, private
+        self.client = Address("192.0.2.1", 12345)
         self.incoming: asyncio.Queue[dict] = asyncio.Queue()
         self.sent: list[dict] = []
         self.files = files or {}

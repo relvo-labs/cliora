@@ -48,6 +48,9 @@ AUDIT_ERROR_TOTAL = "audit_error_total"
 # only; ADR 0018 alerts on any failure, including whether the rollback worked.
 NODE_UPDATE_TOTAL = "node_update_total"
 
+# Pending node admission (#59). Only reason=global|per_ip, never an IP or node id.
+NODE_WS_PENDING_REJECTED_TOTAL = "node_ws_pending_rejected_total"
+
 # Node metric history (P4-06). A failed sample write is deliberately swallowed so
 # it cannot slow or break heartbeat processing — which means this counter is the
 # *only* signal that the resource history has gaps.
