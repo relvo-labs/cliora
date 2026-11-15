@@ -66,7 +66,7 @@ note "# Edge verification (nginx executed, not reviewed)"
 note ""
 note "- generated (UTC): $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 note "- config under test: \`deploy/nginx/nginx.conf\` (the file the deployment ships)"
-note "- nginx: $(docker run --rm nginx:1.27-alpine nginx -v 2>&1 | tr -d '\n')"
+note "- nginx: $(docker run --rm nginx:1.30-alpine nginx -v 2>&1 | tr -d '\n')"
 note ""
 
 # --- a throwaway Central on the port nginx expects ---
@@ -126,7 +126,7 @@ docker run -d --name "$NGINX_NAME" \
   -v "$ROOT/deploy/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
   -v "$TLS_DIR:/etc/nginx/tls:ro" \
   -v "$ROOT/frontend/dist:/usr/share/nginx/html:ro" \
-  nginx:1.27-alpine >/dev/null 2>&1
+  nginx:1.30-alpine >/dev/null 2>&1
 
 for _ in $(seq 1 40); do
   curl -sS -o /dev/null "http://127.0.0.1:$HTTP_PORT/" 2>/dev/null && break
