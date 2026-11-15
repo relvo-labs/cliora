@@ -28,6 +28,20 @@ class SessionRepository:
     async def get(self, session_id: uuid.UUID) -> TerminalSession | None:
         return await self._session.get(TerminalSession, session_id)
 
+    async def owner(self, session_id: uuid.UUID) -> tuple[uuid.UUID, bool] | None:
+        """Authoritative ownership, without retaining an ORM row on a long-lived WS.
+
+        The boolean says whether the ownership may be cached. Ended sessions can
+        still send their final terminal event, but must not repopulate the cache.
+        """
+        result = await self._session.execute(
+            select(TerminalSession.node_id, TerminalSession.status).where(
+                TerminalSession.id == session_id
+            )
+        )
+        row = result.one_or_none()
+        return (row.node_id, row.status in ACTIVE_STATES) if row is not None else None
+
     async def list(
         self,
         *,

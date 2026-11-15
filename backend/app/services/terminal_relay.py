@@ -13,11 +13,16 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+from collections import OrderedDict
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from app import metrics
-from app.clock import now_utc
+from app.clock import monotonic_seconds, now_utc
+from app.logging import get_logger
 from app.services.terminal_queue import BrowserChannel, QueueOverflow
+
+_logger = get_logger("cliora.terminal_relay")
 
 
 @dataclass
@@ -28,10 +33,85 @@ class Subscriber:
 
 
 class TerminalRelay:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        ownership_cache_max: int = 4096,
+        ownership_ttl_seconds: float = 60,
+        clock: Callable[[], float] = monotonic_seconds,
+    ) -> None:
         self._sessions: dict[uuid.UUID, dict[str, Subscriber]] = {}
         self._writer: dict[uuid.UUID, str] = {}
         self._lock = asyncio.Lock()
+        self._owners: OrderedDict[uuid.UUID, tuple[uuid.UUID, float]] = OrderedDict()
+        self._ownership_cache_max = ownership_cache_max
+        self._ownership_ttl_seconds = ownership_ttl_seconds
+        self._clock = clock
+        self._ownership_generation = 0
+        self._denial_log_at: float | None = None
+
+    async def authorize_node_session(
+        self,
+        node_id: uuid.UUID,
+        session_id: uuid.UUID,
+        lookup: Callable[[uuid.UUID], Awaitable[tuple[uuid.UUID, bool] | None]],
+    ) -> bool:
+        """Single ownership gate for daemon output, status and terminal events.
+
+        Only a repository lookup can teach us an owner; neither subscribers nor
+        daemon claims are authority. Session node_id is immutable. Cache live rows
+        in a bounded LRU so terminal bursts do not query PostgreSQL per frame.
+        End/delete invalidates; TTL forces periodic revalidation. Node
+        reconnect preserves ownership, while a Central restart safely starts cold.
+        """
+        now = self._clock()
+        cached = self._owners.get(session_id)
+        owner = None
+        if cached is not None:
+            if now < cached[1]:
+                owner = cached[0]
+                self._owners.move_to_end(session_id)
+            else:
+                self._owners.pop(session_id, None)
+        if owner is None:
+            generation = self._ownership_generation
+            found = await lookup(session_id)
+            if found is not None:
+                owner, active = found
+                # An end/delete while the lookup was suspended must win over the
+                # stale result. No lock or DB access is needed on cache hits.
+                if active and generation == self._ownership_generation:
+                    self._owners[session_id] = (owner, now + self._ownership_ttl_seconds)
+                    self._owners.move_to_end(session_id)
+                    while len(self._owners) > self._ownership_cache_max:
+                        self._owners.popitem(last=False)
+        if owner == node_id:
+            return True
+        # Follow denial telemetry's fixed action/role/reason vocabulary. No ids
+        # become metric labels; no terminal bytes or daemon text enter any sink.
+        metrics.increment(
+            metrics.AUTHZ_DENIED_TOTAL, action="node.session", role="daemon", reason="scope"
+        )
+        # One fixed-size structured signal per 30 seconds per process, even when
+        # forged UUIDs vary. Every dropped frame is still counted above.
+        if self._denial_log_at is None or now - self._denial_log_at >= 30:
+            self._denial_log_at = now
+            _logger.warning(
+                "node_session_denied",
+                extra={
+                    "event": "node_session_denied",
+                    "node_id": str(node_id),
+                    "session_id": str(session_id),
+                    "denied_action": "node.session",
+                    "reason": "scope",
+                },
+            )
+        return False
+
+    def forget_session(self, session_id: uuid.UUID) -> None:
+        """Invalidate ownership on every lifecycle path that ends/deletes a row."""
+        self._ownership_generation += 1
+        self._owners.pop(session_id, None)
 
     async def subscribe(
         self,
