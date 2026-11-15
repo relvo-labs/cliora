@@ -11,9 +11,9 @@
 
 FROM python:3.12-slim-bookworm AS build
 
-# uv is pinned by digest-bearing tag: an unpinned installer is a supply-chain hole in
+# uv is pinned by version tag: an unpinned installer is a supply-chain hole in
 # the build of the thing that enforces checksums elsewhere (SEC-002).
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /usr/local/bin/uv
 
 # The image mirrors the repository layout: /app is the repo root and the backend lives at
 # /app/backend, with contracts/ beside it. Two things depend on that, and both fail at

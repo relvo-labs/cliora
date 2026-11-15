@@ -1,7 +1,9 @@
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+import jwt
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -119,6 +121,67 @@ def test_tampered_token_is_rejected() -> None:
     token = issue_access_token(uuid.uuid4(), "Admin")
     with pytest.raises(TokenError):
         decode_access_token(token + "tamper")
+
+
+@pytest.fixture(params=["access", "refresh"])
+def jwt_case(request: pytest.FixtureRequest) -> tuple[Settings, str, Callable[..., object]]:
+    settings = Settings(
+        jwt_secret="jwt-regression-test-secret-at-least-64-bytes-for-all-hmac-algorithms"
+    )
+    if request.param == "access":
+        token = issue_access_token(uuid.uuid4(), "Admin", settings=settings)
+        return settings, token, decode_access_token
+    token = issue_refresh_token(uuid.uuid4(), 7, settings=settings)
+    return settings, token, decode_refresh_token
+
+
+def test_token_rejects_unknown_critical_header(
+    jwt_case: tuple[Settings, str, Callable[..., object]],
+) -> None:
+    settings, token, decode = jwt_case
+    payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    signed = jwt.encode(
+        payload,
+        settings.jwt_secret,
+        algorithm="HS256",
+        headers={"crit": ["urn:cliora:unknown"], "urn:cliora:unknown": True},
+    )
+    with pytest.raises(TokenError):
+        decode(signed, settings=settings)
+
+
+@pytest.mark.parametrize("algorithm", ["HS384", "HS512", "none"])
+def test_token_rejects_other_algorithms(
+    jwt_case: tuple[Settings, str, Callable[..., object]], algorithm: str
+) -> None:
+    settings, token, decode = jwt_case
+    payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
+    signed = jwt.encode(
+        payload, "" if algorithm == "none" else settings.jwt_secret, algorithm=algorithm
+    )
+    with pytest.raises(TokenError):
+        decode(signed, settings=settings)
+
+
+@pytest.mark.parametrize("mutation", ["altered", "pad-bits", "padding"])
+def test_token_rejects_altered_or_noncanonical_signature(
+    jwt_case: tuple[Settings, str, Callable[..., object]], mutation: str
+) -> None:
+    settings, token, decode = jwt_case
+    header, payload, signature = token.split(".")
+    if mutation == "altered":
+        changed = ("A" if signature[0] != "A" else "B") + signature[1:]
+    elif mutation == "pad-bits":
+        # HS256 has two unused trailing bits. Changing only those bits preserves
+        # the decoded MAC, but must still be rejected as noncanonical base64url.
+        alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+        changed = signature[:-1] + alphabet[alphabet.index(signature[-1]) + 1]
+        assert jwt.utils.base64url_decode(changed) == jwt.utils.base64url_decode(signature)
+    else:
+        changed = signature + "="
+        assert jwt.utils.base64url_decode(changed) == jwt.utils.base64url_decode(signature)
+    with pytest.raises(TokenError):
+        decode(f"{header}.{payload}.{changed}", settings=settings)
 
 
 def _user_with_actions(*actions: str) -> User:

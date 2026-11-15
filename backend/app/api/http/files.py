@@ -114,7 +114,7 @@ async def _read_bounded_body(request: Request, limit: int) -> bytes:
         raise ApiError(
             "FILE_UPLOAD_TOO_LARGE",
             f"The file is larger than {limit // (1024 * 1024)} MiB",
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
         )
     chunks: list[bytes] = []
     total = 0
@@ -126,7 +126,7 @@ async def _read_bounded_body(request: Request, limit: int) -> bytes:
             raise ApiError(
                 "FILE_UPLOAD_TOO_LARGE",
                 f"The file is larger than {limit // (1024 * 1024)} MiB",
-                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                status.HTTP_413_CONTENT_TOO_LARGE,
             )
         chunks.append(chunk)
     return b"".join(chunks)

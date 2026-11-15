@@ -70,7 +70,7 @@ class AuditPage:
 def _invalid(message: str) -> ApiError:
     """422, not 400: these are semantic rejections of a syntactically valid query,
     and the UI turns them into "narrow your filter" guidance."""
-    return ApiError("INVALID_QUERY", message, status.HTTP_422_UNPROCESSABLE_ENTITY)
+    return ApiError("INVALID_QUERY", message, status.HTTP_422_UNPROCESSABLE_CONTENT)
 
 
 def encode_cursor(created_at: datetime, entry_id: uuid.UUID) -> str:
