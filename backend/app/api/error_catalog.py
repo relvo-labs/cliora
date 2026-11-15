@@ -149,7 +149,7 @@ CATALOG: dict[str, ErrorEntry] = dict(
         ),
         _entry(
             "INVALID_QUERY",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
             "The query is outside the permitted bounds",
             "A filter was unknown, a time range too wide, or a page size too large.",
             "Narrow the range or reduce the page size; the message names the limit.",
@@ -285,7 +285,7 @@ CATALOG: dict[str, ErrorEntry] = dict(
         ),
         _entry(
             "FRAME_TOO_LARGE",
-            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status.HTTP_413_CONTENT_TOO_LARGE,
             "The frame exceeds the size limit",
             "A control frame was larger than its bound (64 KiB, or 8 MiB for a "
             "filesystem response).",

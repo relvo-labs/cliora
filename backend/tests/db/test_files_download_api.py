@@ -189,7 +189,7 @@ async def test_a_viewer_can_download(api: tuple) -> None:
     ("code", "expected_status"),
     [
         ("FILE_DENIED", status.HTTP_403_FORBIDDEN),
-        ("FILE_TOO_LARGE", status.HTTP_413_REQUEST_ENTITY_TOO_LARGE),
+        ("FILE_TOO_LARGE", status.HTTP_413_CONTENT_TOO_LARGE),
         ("FILE_NOT_FOUND", status.HTTP_404_NOT_FOUND),
         ("FILE_DOWNLOAD_DISABLED", status.HTTP_403_FORBIDDEN),
         ("WORKSPACE_PERMISSION_DENIED", status.HTTP_403_FORBIDDEN),

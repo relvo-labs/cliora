@@ -59,17 +59,17 @@ def validate_path(path: str) -> str:
         raise ApiError(
             "WORKSPACE_INVALID",
             "Workspace must be an absolute path",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
     if len(path) > 4096:
         raise ApiError(
-            "WORKSPACE_INVALID", "Workspace path is too long", status.HTTP_422_UNPROCESSABLE_ENTITY
+            "WORKSPACE_INVALID", "Workspace path is too long", status.HTTP_422_UNPROCESSABLE_CONTENT
         )
     if "\x00" in path or any(ord(character) < 0x20 for character in path):
         raise ApiError(
             "WORKSPACE_INVALID",
             "Workspace path contains control characters",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
     # Checked as path *segments*, so a directory legitimately named "..foo" is allowed
     # while a traversal segment is not.
@@ -77,7 +77,7 @@ def validate_path(path: str) -> str:
         raise ApiError(
             "WORKSPACE_INVALID",
             "Workspace path must not contain '..'",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
     return path
 
@@ -177,7 +177,7 @@ class FavoriteService:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 f"At most {MAX_FAVORITES} favourites are kept per user",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         favorite = WorkspaceFavorite(
             user_id=actor.id, node_id=node_id, path=path, display_name=display_name
