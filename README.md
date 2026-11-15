@@ -61,7 +61,7 @@ Cliora 不收編任意既有 tmux／CLI process。重連使用 `tmux attach-sess
 ### 先決條件
 
 - Linux、Bash、GNU Make、curl、Python 3；以一般使用者啟動 daemon。
-- tmux 3.4 以上、Python 3.12.3 與 uv、Go 1.26.5、Node 22.14.0 與 npm 10。
+- tmux 3.4 以上、Python 3.12.3 與 uv、Go 1.26.11、Node 22.14.0 與 npm 10。
 - Docker 可啟動 PostgreSQL 16；本機 `55432`、`8000`、`5173`、`5199` 埠可用。
 
 若 `55432` 已佔用，將 `docker run` 的映射改為 `-p 127.0.0.1:55442:5432`，並同步使用 `make dev-stack DB_URL=postgresql+asyncpg://cliora:cliora@127.0.0.1:55442/cliora_demo`。這只調整 DB 埠，本流程的 `8000`／`5173`／`5199` 不會隨之改變。
