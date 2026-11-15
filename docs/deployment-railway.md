@@ -35,17 +35,24 @@ Hold automatic promotion and external traffic while provisioning. Complete the
 to first deployment too. Two steps below are one-way doors.
 
 1. **Create the project and the three services** in the same region (`asia-southeast1`):
-   `Postgres`, `central` (Dockerfile), `console` (Dockerfile). Set each service's
+   `Postgres`, `central` (Dockerfile), `console` (Dockerfile), and **nothing else in this
+   environment** — the client-IP trust depends on it (see
+   [below](#trusted-client-ip-railway-edge-contract-184)). Set each service's
    *Config as code path*:
    - `central` → `deploy/railway/central.railway.json`
    - `console` → `deploy/railway/console.railway.json`
 2. **Bind the custom domain to `console`** and wait for the certificate.
    *Do this before step 4.* `CLIORA_PUBLIC_BASE_URL` is written into every node's config file.
-3. **Give `central` no public domain.** It is reached only over the private network.
-4. **Set the variables** per [`deploy/railway/env.md`](../deploy/railway/env.md), then check
-   them before deploying:
+3. **Give `central` no public domain, and neither `central` nor `console` a TCP proxy.**
+   Central is reached only over the private network; a TCP proxy bypasses Railway's HTTP
+   edge and the header overwrite the trust relies on.
+4. **Set the variables** per [`deploy/railway/env.md`](../deploy/railway/env.md), including
+   `CLIORA_TRUSTED_PROXY_CIDRS=railway-edge` on console and
+   `FORWARDED_ALLOW_IPS=railway-private-environment` on Central, then check them and the
+   topology before deploying:
    ```bash
    scripts/railway/check-env.sh --domain cliora.example.com
+   scripts/railway/check-trust-topology.sh --environment production --console-service console
    ```
 5. **Deploy.** Watch that the migration runs before the app starts:
    ```bash
@@ -71,93 +78,142 @@ to first deployment too. Two steps below are one-way doors.
 8. **Set up external monitoring** (see below). The platform health check does not run after the
    deploy completes.
 
-## Trusted client IP: required post-deploy verification (#59)
+<a id="trusted-client-ip-railway-edge-contract-184"></a>
+<a id="trusted-client-ip-required-post-deploy-verification-59"></a>
+## Trusted client IP: the Railway edge contract (#59, #184)
 
-The console uses nginx `real_ip_header X-Real-IP` with recursion off. Railway's
-[public networking specifications](https://docs.railway.com/networking/public-networking/specs-and-limits)
-identify `X-Real-IP` as the client's remote address. This is a deployment assumption that
-must be verified over the live ingress, including custom and platform domains if both
-are enabled. No live Railway request was observed while implementing this contract.
+The client address crosses two hops: Railway's HTTP edge → console nginx → Central. Railway
+does not publish stable or exclusive source ranges for its edge. The `100.64.0.0/10` peers
+seen in console logs (`peer=…`) are not a contract and may change, even across redeploys.
+There is no signed or authenticated ingress header and no mTLS identity. An allowlist of
+edge addresses therefore cannot be obtained. An allowlist of console's private address
+may go stale on every console redeploy. So **neither hop is configured by address.** Each
+opts into a named platform contract instead:
 
-`CLIORA_TRUSTED_PROXY_CIDRS` on console is a comma/whitespace-separated numeric allowlist
-of **Railway ingress peers**, rendered into `set_real_ip_from` by
-`19-trusted-proxies.sh`. **Empty/unset is a startup and preflight error**: deploying
-shared per-ingress-peer limits is forbidden. The error links to the runbook below. Do not
-use `0.0.0.0/0`, `::/0`, or an entire private address space as a substitute for discovering
-the actual ingress range. Obtain the supported source ranges from Railway and confirm
-observed peers in console access logs (`peer=…`, the original socket address); a single
-observed address alone does not establish a stable platform range.
+| Service | Variable | Value | Effect |
+|---|---|---|---|
+| console | `CLIORA_TRUSTED_PROXY_CIDRS` | `railway-edge` | The startup renderer (`19-trusted-proxies.sh`) emits `set_real_ip_from 0.0.0.0/0;` and `set_real_ip_from ::/0;`. With `real_ip_header X-Real-IP` and `real_ip_recursive off`, nginx takes the client from `X-Real-IP`, whichever peer delivered the request |
+| central | `FORWARDED_ALLOW_IPS` | `railway-private-environment` | The startCommand maps it to uvicorn's `--forwarded-allow-ips=*`, so Central accepts console's forwarded headers without knowing console's private address |
 
-Central's `FORWARDED_ALLOW_IPS` is a **different** comma-separated allowlist: only the
-console nginx's private source IP(s), normally `/128` IPv6 and `/32` IPv4. It is required
-by the start command. Determine it from console's private address and Central's observed
-peer, verify it after either service redeploys, and update it before taking traffic if the
-address changes. Uvicorn does not resolve service hostnames in this setting. Never use
-`*`. CIDRs must be canonical networks with no host bits (e.g. `fd00:59::/64`,
-not `fd00:59::1/64`); prefer the exact console `/128` or `/32`. Central must have no public domain or TCP proxy, and private peers other than the
-allowlisted console must not be able to assert client addresses. The private-only topology
-prevents bypassing nginx admission limits; the explicit uvicorn allowlist prevents another
-private service from forging client identity. Platform health probes need no trust.
+**What this trust rests on.** All of it, and nothing else:
 
-After nginx resolves the address it **overwrites**, rather than appends, both forwarding
-headers with the single `$remote_addr`. Application handlers consume only Starlette's
-client host. All admission limits match the [Compose table](deployment.md#client-ip-and-edge-admission-limits-59).
+1. **Railway's documented overwrite.** The HTTP edge replaces `X-Real-IP`,
+   `X-Forwarded-For`, `X-Forwarded-Proto` and `X-Forwarded-Host` on every request, for
+   custom domains and `*.up.railway.app` alike. Copies sent by the caller do not survive.
+   Railway documents `X-Real-IP` as the client address
+   ([public networking specifications](https://docs.railway.com/networking/public-networking/specs-and-limits)).
+2. **Environment isolation.** The project/environment private network is the boundary;
+   other environments and projects cannot reach it. Traffic over `*.railway.internal` does
+   **not** pass the edge and is not sanitized, so any service in the environment can
+   claim any client address to console or Central.
+3. **No TCP proxy on console or Central.** A TCP proxy bypasses the HTTP edge. A client
+   could then send its own `X-Real-IP`.
+4. **No other services in the environment:** only `Postgres`, Central and console.
+5. **Central has no public domain** (service or custom), so only console reaches it.
+6. **Railway's own caveat: these specifications may change.** The platform does not
+   enforce 2–5 for us, and nothing signs the header. Re-check after any Railway networking
+   announcement.
+
+**Any of these changes breaks the trust:** adding a service to the environment (including
+a debugging shell, worker or metrics scraper), adding a TCP proxy to console or Central,
+or giving Central a domain. Run the [topology check](#pre-deploy-trust-topology-check)
+again after any such change and before every promotion. Put other workloads in a separate
+environment. A temporary Postgres TCP proxy (first-deployment step 6) reaches only
+Postgres, which sends no HTTP; still turn it off afterwards.
+
+The keywords are the **only** way to express global trust. An empty or unset value still
+refuses startup and preflight. Hand-typed `0.0.0.0/0`, `::/0` and (on Central) `*` are
+rejected, so global trust is always a recorded decision, never a typo or a default.
+Numeric lists of canonical networks, with no host bits, are still accepted on both hops
+for a topology where the peer addresses really are known. On Railway they are not.
+
+After nginx resolves the client, it **overwrites** (does not append) both forwarding
+headers sent to Central with the single `$remote_addr`. Application handlers use only
+Starlette's client host. All admission limits match the
+[Compose table](deployment.md#client-ip-and-edge-admission-limits-59).
+
+**Cloudflare caveat (proxied custom domain).** For requests from Cloudflare's published
+**IPv4** ranges, Railway derives `X-Real-IP` from `CF-Connecting-IP`. That handling is not
+documented for Cloudflare's IPv6 ranges. If Cloudflare reaches Railway over IPv6,
+`X-Real-IP` may hold a Cloudflare address. Clients behind it would then share one rate-limit
+budget and one audit identity. With an orange-cloud domain, include an IPv6-capable egress
+in the two-egress verification, or use DNS-only.
+
+<a id="pre-deploy-trust-topology-check"></a>
+### Pre-deploy trust topology check
+
+```bash
+scripts/railway/check-trust-topology.sh --environment production --console-service <console service name>
+# staged, not yet deployed variables: add --central-vars central.json --console-vars console.json
+# keep the topology responses (never variables) as evidence: add --record "$OUT/topology.json"
+```
+
+The check is read-only. It uses the logged-in `railway` CLI to find the linked project, or
+`--project-id`. It then reads Railway's public GraphQL API with that CLI session's account
+token, or with `RAILWAY_API_TOKEN`. It **fails** unless all of these hold:
+
+- the environment holds exactly `Postgres`, Central and console. Service names default to
+  `Postgres`/`central`/`console`; override them with `--*-service` or
+  `CLIORA_RAILWAY_*_SERVICE`;
+- neither console nor Central has a TCP proxy;
+- Central has no service or custom domain;
+- Central's `FORWARDED_ALLOW_IPS` is exactly `railway-private-environment`, and console's
+  `CLIORA_TRUSTED_PROXY_CIDRS` is exactly `railway-edge`. These are the live values, or the
+  staged files you pass.
+
+Exit 1 means a condition does not hold. Exit 2 means the facts could not be established:
+the CLI is not logged in, the API returned an error, or the response shape was not
+recognised. Exit 2 is a failure, never a pass. Variable values are never printed.
+The queries follow Railway's documented public API and have been tested only against
+fixtures. If a live response is not recognised, the check blocks the promotion: fix the
+parser using a recorded response, and do not bypass the check.
 
 <a id="trust-upgrade-runbook-59"></a>
-## Trust upgrade runbook (#59)
+## Trust upgrade runbook (#59, #184)
 
-This change requires coordinated configuration before code promotion. A healthy
-`/readyz`, `/edge-health` or `/edge-client-ip` does **not** establish Central's client
-identity. Keep a maintenance/ingress admission gate closed to ordinary clients until
-both protocols pass from **two independent public egresses**. Allow only the operator's
-probes through that gate. Do not disable the approved limits to perform the upgrade.
+This applies to first deployment, to the upgrade from the pre-#59 pair, and to every
+promotion. A healthy `/readyz`, `/edge-health` or `/edge-client-ip` does **not** establish
+Central's client identity. Keep a maintenance/ingress admission gate closed to ordinary
+clients until both protocols pass from **two independent public egresses**. Let only the
+operator's probes through that gate. Do not disable the approved limits to perform the
+upgrade.
 
 1. **Hold automatic promotion for both services.** Stop push-triggered platform deploys
-   and variable-triggered automatic restarts/promotion while preparing the change. Record
-   the previous immutable image/config revisions and both current allowlists privately.
-   Drain existing connections or hold reconnects behind the maintenance gate. Keep
-   Central private, with no public domain or TCP proxy, throughout the operation.
-2. **Obtain both allowlists before upgrading.** Get the supported ingress source ranges
-   from Railway, and verify observed console socket peers (`peer=…` in console logs, or
-   private socket inspection on the old image). Obtain console's allocated private
-   IPv4/IPv6 source addresses and confirm the peer Central actually receives. Record
-   which address belongs to which hop; one observed ingress IP is not proof of a stable
-   platform range. If either set cannot be established, keep the old deployment held and
-   stop the upgrade. Never substitute all private space or global trust.
-3. **Set variables before deploying the candidate.** On console set nonempty
-   `CLIORA_TRUSTED_PROXY_CIDRS` to the verified Railway ingress ranges. On Central set
-   `FORWARDED_ALLOW_IPS` to only the verified console source IPs (normally `/32` and
-   `/128`, comma separated without whitespace). Reject host-bit CIDRs. Run
-   `scripts/railway/check-env.sh --domain <domain>` against the staged variable set and
-   `make railway-check` against the candidate revision. Changing variables must not
-   automatically admit a partially upgraded pair of services.
-4. **Deploy Central, then console, with traffic still held.** Central first installs
-   the explicit console-only trust policy; console then installs real-IP resolution and
-   the limits. The console entrypoint must reject absent/empty ingress trust. Wait for
-   migration/readiness and edge health, but keep the admission gate closed. Confirm the
-   newly deployed console's actual private source addresses: if allocation changed,
-   perform the source-change procedure below before continuing. For initial provisioning
-   where the future console IP is not allocated yet, first allocate/stage that service
-   privately; if an exact future address is still unavailable, keep traffic held, observe
-   its source after staging, and redeploy Central with that exact address before probes.
-5. **Verify nginx and Central HTTP + WebSocket scopes from two egresses.** Use the
-   bounded, operator-only log procedure below. Independently establish each probe
-   client's public source address; never learn it from our echo. Confirm Railway replaces
-   caller-supplied `X-Real-IP`, and that console's original `peer=…` belongs to its verified
-   ingress range. Every HTTP and WS probe must appear at Central with that egress address,
-   including forged-header probes. A missing record, a console/ingress peer address, an
-   unexpected third address or a skipped check blocks admission. Also check that a request
-   from a different private service cannot assert the forwarded client identity.
-6. **Finish acceptance, then admit traffic.** On disposable staging run the online limit
-   probe from the Compose guide, including 51 distinct enrollments, 50 authenticated and
-   registered/heartbeating nodes / distinct 51st 429, HTTP bursts,
-   generic API and terminal exclusions. Measure normal login and WS handshake latency.
+   and variable-triggered automatic restarts or promotion. Privately record the previous
+   immutable image and config revisions and variable values. Keep Central private, with
+   no public domain or TCP proxy, throughout.
+2. **Set both keyword variables.** On console:
+   `CLIORA_TRUSTED_PROXY_CIDRS=railway-edge`. On Central:
+   `FORWARDED_ALLOW_IPS=railway-private-environment`. Neither depends on an address, so
+   nothing needs to be discovered first, and they survive redeploys. Changing variables
+   must not automatically admit a partially upgraded pair.
+3. **Check before deploying.** Run `scripts/railway/check-env.sh --domain <domain>`,
+   [`scripts/railway/check-trust-topology.sh`](#pre-deploy-trust-topology-check) (with
+   `--central-vars`/`--console-vars` while the values are only staged), and
+   `make railway-check` against the candidate revision. Any failure stops the upgrade.
+4. **Deploy Central, then console, with traffic still held.** Central installs the
+   keyword trust first; console then installs real-IP resolution and the limits.
+   Central-first does not widen trust beyond today's: the pre-#59 Central (`ad5ff52`)
+   already runs `--forwarded-allow-ips="*"`, and the old console's appended chain begins
+   with the edge-overwritten client. Wait for migration, readiness and edge health, but
+   keep the admission gate closed.
+5. **Verify nginx and Central HTTP + WebSocket scopes from two egresses** with the
+   bounded, operator-only log procedure below. Establish each probe client's public
+   source address independently; never learn it from our echo. Every HTTP and WS probe,
+   including those with forged headers, must reach Central with that egress address. Any
+   of these blocks admission: a missing record, console's private address, an edge-range
+   address (`100.64.…`), an unexpected third address, or a skipped check.
+6. **Finish acceptance, then admit traffic.** On disposable staging, run the online limit
+   probe from the Compose guide. It covers 51 distinct enrollments; 50 authenticated,
+   registered and heartbeating nodes with a distinct 51st getting 429; HTTP bursts; and
+   the generic API and terminal exclusions. Measure normal login and WS handshake latency.
    Keep the default 10+10 database pool: the probe waits for `node.registered` after each
    authentication, avoiding the pre-registration idle-transaction issue [#183](https://github.com/relvo-labs/cliora/issues/183). Confirm all
    probe sockets/tasks are closed and nodes/credentials/enrollment are removed/revoked.
-   Save the two-egress HTTP/WS receipts/log verdicts, peer-range evidence and deployed
-   revisions. Remove temporary probe access, then open admission and restore automatic
-   promotion only if it preserves this coordinated gate for future source changes.
+   Save the two-egress HTTP/WS receipts and log verdicts, the topology-check output
+   (`--record`) and the deployed revisions. Remove temporary probe access. Then open
+   admission, and restore automatic promotion only if the topology check still runs
+   before each promotion.
 
 ### Central scope verification without a public diagnostic endpoint
 
@@ -198,12 +254,11 @@ uv run --project backend python scripts/railway/central_client_probe.py verify \
   "$OUT/egress-b/central-client-receipt.json" "$OUT/central.log"
 ```
 
-Both must exit 0 (six correlated scopes each). To check the untrusted private-peer boundary,
-run `central_client_probe.py send http://<central-private-host>:8080 <actual-private-peer-IP>
-<receipt-path>` from a different private service outside `FORWARDED_ALLOW_IPS`, then verify
-its receipt against the same Central logs. Despite the forged headers, all six logged
-scopes must retain that private peer's real address. This uses only private networking.
-Where the client's machine already has a
+Both must exit 0 (six correlated scopes each). There is no private-peer probe any more.
+Under `railway-private-environment`, Central trusts every private peer **by design**. The
+defence is that no other peer exists, and `check-trust-topology.sh` establishes that. Do
+not add a probe service to the environment to test it: the probe itself would break the
+trust it is testing. Where the client's machine already has a
 live, operator-owned Central log collector file, setting `CLIORA_VERIFY_CENTRAL_LOG` lets
 `verify-client-ip.sh`, `verify-deployment.sh` and `verify-edge.sh --online` perform the
 send-and-verify sequence directly. `verify-deployment.sh` also needs
@@ -220,19 +275,21 @@ these six paths, then manually compare both protocols for both egresses. Remove 
 instrumentation before admission. Do not replace Central with an echo upstream: that
 would test another process's trust settings. No app code/instrumentation is shipped here.
 
-### Console source-IP changes and routine redeploys
+### Routine redeploys and topology changes
 
-Treat every console redeploy as a potential source-address change; health and the nginx
-echo may stay green while Central sees console's address. Hold automatic promotion and
-admission first. Obtain the new exact private address(es); stage them alongside the old
-ones in Central's `FORWARDED_ALLOW_IPS` **before** switching if the platform allocates them
-in advance. Otherwise stage console with admission held, inspect its actual source, then
-update/redeploy Central. Never widen to a whole unrelated private subnet to bridge the gap.
-Repeat the two-egress HTTP/WS checks after either service changes. Once no old console
-connections remain, remove obsolete addresses, redeploy Central, and repeat the scope
-checks before opening admission. Apply the same ordering to an ingress-range change:
-stage verified replacement ranges, verify new peers and two-egress scopes, then remove
-retired ranges. Missing trust stays a failed deployment.
+The keywords name no address, so a redeploy that changes console's private address or the
+edge's peer range needs no variable change. Before each promotion, run
+`check-trust-topology.sh`; after either service deploys, repeat the two-egress HTTP/WS
+checks. Both are cheap compared with a silently shared rate-limit budget.
+
+A **topology change** is different. Adding a service to the environment, adding a TCP proxy
+to console or Central, or giving Central a domain each removes one of the facts the trust
+rests on. Before making such a change, hold admission and decide whether the change
+belongs in a separate environment; it almost always does. If it has already happened,
+undo it, rerun the topology check, and repeat the two-egress verification before
+reopening. A change in Railway's published networking behaviour (the header overwrite or
+environment isolation) needs the same review. Missing or failing trust stays a failed
+deployment.
 
 ## Publishing a daemon release
 
@@ -282,8 +339,10 @@ command while it holds**; enroll nodes by installing `agentd` manually and runni
 ## Upgrading
 
 Use the ordered [trust upgrade runbook](#trust-upgrade-runbook-59), including for routine
-redeploys. `watchPatterns` can restart services independently, so a push or a green health
-check must not automatically promote an unverified console/Central pair.
+redeploys: the [topology check](#pre-deploy-trust-topology-check) before promotion, the
+two-egress verification after it. `watchPatterns` can restart services independently, so
+a push or a green health check must not automatically promote an unverified console/Central
+pair.
 
 During the drain, Central:
 
@@ -307,22 +366,24 @@ If there is no `shutdown_drained` line, `drainingSeconds` is not set — the pla
 ## Rollback
 
 For this edge change, hold automatic promotion and public admission first. Restore the
-last known hardened **code/start configuration first**, retaining the verified nonempty
-ingress trust and console-source variables while any running image still consumes them.
-Removing variables first can prevent candidate images from starting or silently revert an
-older edge to shared budgets. Roll back Central and console as a coordinated pair, inspect
-console's actual source again, update Central's exact allowlist if it changed, and repeat
-both egresses' HTTP/WS scope checks before admitting traffic. A revision predating these
-limits or using wildcard uvicorn trust is not an acceptable promoted rollback target;
-keep maintenance held and choose a hardened compatible target or repair forward.
+last known hardened **code/start configuration first**, and keep the keyword variables
+while any running image still consumes them. Removing variables first can stop images
+from starting, or silently revert an older edge to shared budgets. Roll back Central and
+console as a coordinated pair. Then rerun the topology check and repeat both egresses'
+HTTP/WS scope checks before admitting traffic.
 
-Only after the selected pair is running and verified may obsolete console addresses or
-retired ingress ranges be removed, one hop at a time. Redeploy their consumer and recheck
-both protocols after each cleanup. Never clear Railway's ingress trust while the edge
-still enforces per-client limits, and never remove `FORWARDED_ALLOW_IPS` while the selected
-start command requires it. This repair introduces no schema change; no migration downgrade
-is needed for its rollback. Rehearse upgrade, console-source change and rollback in staging
-with the same receipts before the production operation.
+Choose the target with care. Revisions from #181 up to this change **cannot run under the
+keywords**. Their console refuses `railway-edge`. Their Central passes
+`railway-private-environment` to uvicorn as an unmatched literal and trusts nobody, so
+every client would appear as console's private address. Do not roll back into that range.
+A revision predating the #59 limits is not an acceptable promoted rollback target either.
+Keep maintenance held and choose a revision that contains this change, or repair forward.
+
+Never clear console's `CLIORA_TRUSTED_PROXY_CIDRS` while the edge still enforces
+per-client limits, and never remove `FORWARDED_ALLOW_IPS` while the selected start command
+requires it. This repair introduces no schema change, so its rollback needs no migration
+downgrade. Rehearse upgrade and rollback in staging with the same receipts before the
+production operation.
 
 Application rollback is cheap; schema rollback is not. The general database procedure below
 is separate from this trust-only repair.

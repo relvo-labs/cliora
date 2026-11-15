@@ -16,6 +16,8 @@ Two rules apply to everything below:
 
 Private only — **do not give this service a public domain.** A public domain would expose
 `/readyz` and `/api/metrics` directly, bypassing the console's 404, admission limits and no-log rules. Do not enable a public TCP proxy either.
+Both are also preconditions of `FORWARDED_ALLOW_IPS=railway-private-environment`, which
+`scripts/railway/check-trust-topology.sh` verifies.
 
 | Variable | Required | Value | Getting it wrong |
 |---|:--:|---|---|
@@ -24,7 +26,7 @@ Private only — **do not give this service a public domain.** A public domain w
 | `CLIORA_JWT_SECRET` | ✅ | `openssl rand -base64 48` | Left at the default → startup fails (deliberate). Rotating invalidates every live login; routine |
 | `CLIORA_TOKEN_PEPPER` | ✅ | `openssl rand -base64 48` | **One-way door.** Rotating invalidates every enrollment token *and every node credential*: the whole fleet must re-enroll |
 | `CLIORA_PUBLIC_BASE_URL` | ✅ | `https://<custom domain>` | **One-way door.** It is written into the installer and into every node's `/etc/agentd/config.yaml`; a platform-generated `*.up.railway.app` value means re-registering every node when the real domain arrives |
-| `FORWARDED_ALLOW_IPS` | ✅ | comma-separated console nginx private IPs/canonical CIDRs only (no host bits) | Required by startCommand; never `*`; recheck after console redeploy; see client-IP procedure in `docs/deployment-railway.md` |
+| `FORWARDED_ALLOW_IPS` | ✅ | `railway-private-environment` | Required: unset or empty refuses to start. The startCommand maps the keyword to uvicorn's `--forwarded-allow-ips=*`, so it trusts every peer on the environment's private network. That is sound only while Central has no public domain or TCP proxy and the environment holds nothing but Postgres, Central and console. A hand-typed `*`, `0.0.0.0/0` or `::/0` refuses to start. A numeric list of canonical networks (no host bits, commas, no spaces) is still accepted, but on Railway nobody can keep it current. See `docs/deployment-railway.md#trusted-client-ip-railway-edge-contract-184` |
 | `PORT` | ✅ | `8080` | Must equal the console's `CLIORA_BACKEND_PORT`, or every `/api` and `/ws` request answers 502 |
 | `CLIORA_SHUTDOWN_DRAIN_SECONDS` | — | `15` (default) | Must stay **below** `drainingSeconds` in `central.railway.json` (25), or SIGKILL lands mid-drain and every deploy disconnects browsers without explanation |
 | `CLIORA_ARTIFACTS_DIR` | ❌ **leave unset** | — | The image sets it to `/srv/artifacts`, which is where the image puts the release. Override it only to point at a different directory, and only if something is mounted there — a wrong path means `/api/downloads` and `/api/install-script` answer 404 and the manifest goes empty (not 404) |
@@ -46,14 +48,15 @@ cannot drift silently.
 
 ## Service: `console`
 
-Public. This is the only service with a domain.
+Public. This is the only service with a domain. Give it no TCP proxy: a TCP proxy bypasses
+the HTTP edge, so `X-Real-IP` would reach nginx unsanitized.
 
 | Variable | Required | Value | Getting it wrong |
 |---|:--:|---|---|
 | `PORT` | ✅ | `8080` | The port nginx listens on, interpolated into the config at start |
 | `CLIORA_BACKEND_HOST` | ✅ | `central.railway.internal` | A typo makes every `/api` and `/ws` request 502; a public hostname would route control-plane traffic back out through the internet |
 | `CLIORA_BACKEND_PORT` | ✅ | `8080` | See `central.PORT` |
-| `CLIORA_TRUSTED_PROXY_CIDRS` | ✅ | nonempty comma/whitespace-separated verified Railway ingress IPs/canonical CIDRs | Empty/unset refuses startup and preflight. Obtain supported ranges from Railway; verify `peer=…` and Central HTTP/WS scopes. No global CIDRs or host bits. See `docs/deployment-railway.md#trust-upgrade-runbook-59` |
+| `CLIORA_TRUSTED_PROXY_CIDRS` | ✅ | `railway-edge` | Required: empty or unset refuses startup and preflight. The keyword trusts `X-Real-IP` from any socket peer (`set_real_ip_from 0.0.0.0/0` and `::/0`), relying on Railway's edge overwriting it on every request. That is sound only while console has no TCP proxy and nothing else shares the environment. It must be the only entry. A hand-typed `0.0.0.0/0` or `::/0` is rejected; numeric non-global lists still work. See `docs/deployment-railway.md#trusted-client-ip-railway-edge-contract-184` |
 | `VITE_PRODUCT_NAME` | — | `Cliora` | Baked in by Vite at build time; changing it requires a rebuild |
 | `VITE_API_BASE_URL` | ❌ **leave unset** | — | The one that half-works: API calls go to the other origin while the terminal socket stays on this one (it is built from `location.host`), so login, node list and file tree all work and only terminals fail |
 
@@ -92,8 +95,10 @@ pool-exhaustion alert (ADR 0018).
   in ADR 0013/0015/0017/0018; changing them here is changing a product limit without changing
   the ADR that justifies it.
 
-Before changing code or either allowlist, follow the ordered [trust upgrade/redeploy/rollback
-runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59): hold promotion/admission,
-obtain both hop ranges, stage variables before upgrading, verify Central HTTP and WS from
-two egresses, then admit. Source-IP changes repeat this gate. Roll back code before removing
-variables still required by running images; retain verified trust throughout cleanup.
+Before changing code or either trust variable, follow the ordered [trust
+upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
+hold promotion and admission, set both keywords, run `scripts/railway/check-env.sh` and
+`scripts/railway/check-trust-topology.sh`, deploy Central and then console, verify Central
+HTTP and WS from two egresses, then admit. **Adding a service to this environment, or a TCP
+proxy to console or Central, invalidates the trust**: rerun the topology check after any
+change. Roll back code before removing variables still required by running images.

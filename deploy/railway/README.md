@@ -14,7 +14,7 @@ console.Dockerfile            node build → nginx runtime (no node in the runti
 nginx.conf.template           edge config, envsubst-ed at container start (the
                               resolver addresses come from the nginx image's own
                               15-local-resolvers.envsh)
-19-trusted-proxies.sh          validated ingress CIDRs → nginx real-IP include
+19-trusted-proxies.sh         railway-edge keyword or validated CIDRs → nginx real-IP include
 env.md                        the variable contract (there is no committable .env here)
 ```
 
@@ -55,17 +55,22 @@ Config-as-code is per service — set each service's *Config as code path* to it
 (Railway does not pick these up by name). Everything else is in `env.md`.
 
 Before deploying: `make railway-check` (parity + baker tests) and, against the target
-environment, `scripts/railway/check-env.sh`. After deploying:
+environment, `scripts/railway/check-env.sh` and `scripts/railway/check-trust-topology.sh`.
+`scripts/railway/edge-trust-smoke.sh` runs the edge's client-IP contract in Docker. After deploying:
 `scripts/railway/verify-deployment.sh https://<domain>`.
 
-Client-IP acceptance is a separate deployment gate: configure console's verified Railway
-`CLIORA_TRUSTED_PROXY_CIDRS` (required; empty refuses startup) and Central's console-only
-`FORWARDED_ALLOW_IPS` (required). Follow the spoof and source-range checks in
-[the operator guide](../../docs/deployment-railway.md#trusted-client-ip-required-post-deploy-verification-59).
+Client-IP acceptance is a separate deployment gate. Set console's
+`CLIORA_TRUSTED_PROXY_CIDRS=railway-edge` and Central's
+`FORWARDED_ALLOW_IPS=railway-private-environment`; both are required, and empty refuses
+startup. They rely on Railway's edge overwriting `X-Real-IP`, on environment isolation, on
+no TCP proxy on either service, and on no other service in the environment, as described in
+[the operator guide](../../docs/deployment-railway.md#trusted-client-ip-railway-edge-contract-184).
+`scripts/railway/check-trust-topology.sh` verifies the topology before each promotion.
 Follow the [ordered upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
-hold promotion/admission, obtain both hop allowlists, set variables before upgrading, and
-verify actual Central HTTP + WS scope from two egresses before admission. Recheck after a
-console source-IP change; roll back code before removing required variables. The verifier
-uses correlated operator-only uvicorn logs, adding no public Central diagnostic endpoint.
+hold promotion/admission, set the keywords, run the topology check, and verify actual
+Central HTTP + WS scope from two egresses before admission. Adding a service or a TCP proxy
+invalidates the trust; rerun the check. Roll back code before removing required variables.
+The verifier uses correlated operator-only uvicorn logs, adding no public Central diagnostic
+endpoint.
 `CLIORA_VERIFY_EXPECTED_IP` and `CLIORA_VERIFY_CENTRAL_LOG` enable the integrated scope check;
 a pending log check cannot satisfy deployment acceptance.
