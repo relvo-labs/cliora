@@ -241,7 +241,7 @@ async def test_oversize_is_refused_before_relay(api: tuple) -> None:
     fake = _store_registry()
     with use_registry(fake):
         resp = await _put(client, sid, headers, b"x" * (4 * 1024 * 1024 + 1))
-    assert resp.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, resp.text
+    assert resp.status_code == status.HTTP_413_CONTENT_TOO_LARGE, resp.text
     assert fake.calls == []
 
 
@@ -264,7 +264,7 @@ async def test_a_lying_content_length_does_not_get_past_the_cap(api: tuple) -> N
             content=chunks(),
             headers={**headers, "content-type": "application/octet-stream"},
         )
-    assert resp.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, resp.text
+    assert resp.status_code == status.HTTP_413_CONTENT_TOO_LARGE, resp.text
     assert fake.calls == []
 
 
@@ -275,7 +275,7 @@ async def test_a_lying_content_length_does_not_get_past_the_cap(api: tuple) -> N
         ("FILE_UPLOAD_NO_SPACE", status.HTTP_507_INSUFFICIENT_STORAGE),
         ("FILE_UPLOAD_QUOTA_EXCEEDED", status.HTTP_429_TOO_MANY_REQUESTS),
         ("FILE_UPLOAD_DISABLED", status.HTTP_403_FORBIDDEN),
-        ("FILE_UPLOAD_TOO_LARGE", status.HTTP_413_REQUEST_ENTITY_TOO_LARGE),
+        ("FILE_UPLOAD_TOO_LARGE", status.HTTP_413_CONTENT_TOO_LARGE),
     ],
 )
 async def test_daemon_refusals_keep_their_own_code(api: tuple, code: str, expected: int) -> None:

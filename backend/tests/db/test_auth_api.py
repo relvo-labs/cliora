@@ -146,8 +146,9 @@ async def test_ws_ticket_requires_auth(api: tuple) -> None:
         json={"resource": "nodes/x"},
         headers={"Authorization": f"Bearer {tokens['access_token']}"},
     )
-    assert ticket.status_code == 200
-    assert ticket.json()["ticket"]
+    # Authentication succeeds, but this resource has no ticket consumer.
+    assert ticket.status_code == 400
+    assert ticket.json()["error"]["code"] == "INVALID_ARGUMENT"
 
 
 async def test_login_writes_audit_without_secrets(api: tuple) -> None:

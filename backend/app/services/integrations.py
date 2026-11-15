@@ -152,11 +152,11 @@ class IntegrationService:
                 "INVALID_ARGUMENT",
                 "A provider token is 8-128 letters and digits. Copy it from the provider's "
                 "dashboard without any surrounding text.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         if plan_tier is not None and plan_tier not in (PLAN_FREE, PLAN_PRO):
             raise ApiError(
-                "INVALID_ARGUMENT", "Unknown plan tier", status.HTTP_422_UNPROCESSABLE_ENTITY
+                "INVALID_ARGUMENT", "Unknown plan tier", status.HTTP_422_UNPROCESSABLE_CONTENT
             )
 
         row = await self._repo.get_or_create_integration(actor_id=actor.id)
@@ -219,14 +219,14 @@ class IntegrationService:
         if plan_tier is not None:
             if plan_tier not in (PLAN_FREE, PLAN_PRO):
                 raise ApiError(
-                    "INVALID_ARGUMENT", "Unknown plan tier", status.HTTP_422_UNPROCESSABLE_ENTITY
+                    "INVALID_ARGUMENT", "Unknown plan tier", status.HTTP_422_UNPROCESSABLE_CONTENT
                 )
             if plan_tier == PLAN_PRO and row.token_ciphertext is None:
                 raise ApiError(
                     "INVALID_ARGUMENT",
                     "Set the provider credential before selecting the paid tier: without one "
                     "the provider issues an anonymous, time-limited tunnel instead.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                 )
             row.plan_tier = plan_tier
 
@@ -235,7 +235,7 @@ class IntegrationService:
                 raise ApiError(
                     "INVALID_ARGUMENT",
                     f"The concurrent budget must be between {BUDGET_MIN} and {BUDGET_MAX}.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                 )
             row.concurrent_budget = concurrent_budget
 
@@ -244,7 +244,7 @@ class IntegrationService:
                 raise ApiError(
                     "INVALID_ARGUMENT",
                     "Protection must be one of: basic, ipallow, public.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                 )
             row.default_protection = default_protection
 
@@ -254,7 +254,7 @@ class IntegrationService:
                 raise ApiError(
                     "INVALID_ARGUMENT",
                     f"The default lifetime must be between {TTL_MIN} and {ceiling} seconds.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                 )
             row.default_ttl_seconds = default_ttl_seconds
 
@@ -279,13 +279,13 @@ class IntegrationService:
                         "INVALID_ARGUMENT",
                         "Confirm that forwarded traffic passes through the provider before "
                         "enabling port forwarding.",
-                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
                     )
                 if row.plan_tier == PLAN_PRO and row.token_ciphertext is None:
                     raise ApiError(
                         "INVALID_ARGUMENT",
                         "Set the provider credential before enabling the paid tier.",
-                        status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        status.HTTP_422_UNPROCESSABLE_CONTENT,
                     )
             row.enabled = enabled
             await self._audit.record(
@@ -323,7 +323,7 @@ class IntegrationService:
                 raise ApiError(
                     "INVALID_ARGUMENT",
                     f"A node's cap must be between {BUDGET_MIN} and {BUDGET_MAX}.",
-                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
                 )
             row.max_tunnels = max_tunnels
         row.updated_at = now_utc()
@@ -398,7 +398,7 @@ def _validated_ports(specs: list[str]) -> list[str]:
         raise ApiError(
             "INVALID_ARGUMENT",
             "Too many port ranges (64 max).",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
     cleaned: list[str] = []
     for spec in specs:
@@ -411,7 +411,7 @@ def _validated_ports(specs: list[str]) -> list[str]:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 f"'{spec}' is not a port or a range like 3000-3999.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             ) from exc
         if start < 1024:
             raise ApiError(
@@ -423,7 +423,7 @@ def _validated_ports(specs: list[str]) -> list[str]:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 f"'{spec}' is not a valid port range.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         cleaned.append(text)
     return cleaned

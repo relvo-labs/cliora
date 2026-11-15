@@ -3,7 +3,7 @@ import binascii
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 15 * 60
     refresh_token_ttl_seconds: int = 14 * 24 * 60 * 60
     ws_ticket_ttl_seconds: int = 60
+    # Owner decision (2026-11-15, #59 / PR #172): reject issuance at 32 pending
+    # tickets per user (429), or at the process-wide cap (503); never evict live
+    # tickets. These are pending-storage limits, not request-rate limits.
+    # ENGINEERING PROPOSAL (#58): at most 128 expired removals per issue().
+    # Override with CLIORA_WS_TICKET_* env vars.
+    ws_ticket_max_pending: int = Field(default=4096, ge=1)
+    ws_ticket_max_pending_per_user: int = Field(default=32, ge=1)
+    ws_ticket_sweep_batch_size: int = Field(default=128, ge=1)
 
     # Argon2id parameters for password hashing (ADR 0007).
     argon2_time_cost: int = 3

@@ -380,6 +380,7 @@ describe("NewSessionDialog terminal size (#115)", () => {
       .find('input[placeholder="例如 refactor-api"]')
       .setValue("phone");
     await wrapper.find("button.primary").trigger("click");
+    await vi.dynamicImportSettled();
     await flush();
     return wrapper;
   }

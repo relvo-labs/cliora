@@ -5,19 +5,25 @@ from __future__ import annotations
 import base64
 import json
 import uuid
+from unittest.mock import AsyncMock
 
+import pytest
 import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import WebSocketDisconnect
 
 from app.api.ws.nodes import node_gateway
-from app.db.models import Role, User
+from app.db.models import Node, Role, TerminalSession, User
+from app.protocol import encode_binary
 from app.repositories.nodes import NodeRepository
 from app.security.node_keys import signing_message
 from app.security.passwords import hash_password
 from app.services.enrollment import EnrollmentService
 from app.services.nodes import NodeRegistrationService, RegisterNodeInput, RuntimeInput
+from app.services.registry import get_node_registry
+from app.services.terminal_queue import BrowserChannel
+from app.services.terminal_relay import TerminalRelay
 
 RID = "01K0ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -401,3 +407,253 @@ async def test_runtime_status_refresh_updates_the_sandbox_posture(api: tuple) ->
         # The terminal posture is not touched by a runtime refresh: it changes only
         # when the machine's unit and sudoers change, which requires a restart.
         assert node.privileged_terminal is True
+
+
+class SessionFrameWebSocket(FakeWebSocket):
+    async def receive(self) -> dict:
+        if self._incoming and isinstance(self._incoming[0], bytes):
+            return {"type": "websocket.receive", "bytes": self._incoming.pop(0)}
+        return await super().receive()
+
+
+async def _seed_session_target(maker, owner_id, *, initial="running", child=False):
+    async with maker() as session:
+        user = (await session.execute(sa.select(User))).scalars().one()
+        parent = TerminalSession(
+            node_id=owner_id,
+            user_id=user.id,
+            name="target",
+            runtime="claude",
+            workspace="/home/neil",
+            status=initial,
+            rows=24,
+            columns=80,
+        )
+        session.add(parent)
+        await session.flush()
+        child_id = None
+        if child:
+            shell = TerminalSession(
+                node_id=owner_id,
+                user_id=user.id,
+                name="child",
+                runtime="shell",
+                workspace="/home/neil",
+                status="running",
+                rows=24,
+                columns=80,
+                parent_session_id=parent.id,
+            )
+            session.add(shell)
+            await session.flush()
+            child_id = shell.id
+        await session.commit()
+        return parent.id, child_id
+
+
+async def _other_node(maker):
+    async with maker() as session:
+        node = Node(name="other", hostname="other", status="online", is_enabled=True)
+        session.add(node)
+        await session.commit()
+        return node.id
+
+
+@pytest.mark.parametrize(
+    ("initial", "target"),
+    [
+        ("starting", "running"),
+        ("starting", "failed"),
+        ("starting", "exited"),
+        ("running", "disconnected"),
+        ("running", "exited"),
+        ("running", "terminating"),
+        ("running", "failed"),
+        ("disconnected", "running"),
+        ("disconnected", "exited"),
+        ("disconnected", "terminating"),
+        ("disconnected", "failed"),
+        ("terminating", "terminated"),
+        ("terminating", "failed"),
+        ("terminating", "exited"),
+    ],
+)
+async def test_ws_cross_node_status_cannot_mutate_or_stop_children(
+    api, monkeypatch, initial, target
+):
+    _, maker = api
+    node_a, private = await _seed_node(maker)
+    node_b = await _other_node(maker)
+    sid, child_id = await _seed_session_target(maker, node_b, initial=initial, child=True)
+    cleanup = AsyncMock()
+    monkeypatch.setattr(get_node_registry(), "request", cleanup)
+    ws = SessionFrameWebSocket(
+        node_a,
+        private,
+        [
+            _frame(
+                "session.status_changed",
+                node_a,
+                {"session_id": str(sid), "status": target, "exit_code": 73},
+            ),
+        ],
+    )
+    async with maker() as session:
+        commit = AsyncMock(wraps=session.commit)
+        monkeypatch.setattr(session, "commit", commit)
+        await node_gateway(ws, node_a, session)
+        commit.assert_not_awaited()
+    async with maker() as session:
+        row = await session.get(TerminalSession, sid)
+        shell = await session.get(TerminalSession, child_id)
+        assert row.status == initial and row.exit_code is None and row.ended_at is None
+        assert shell.status == "running" and shell.ended_at is None
+    cleanup.assert_not_awaited()
+    assert ws.closed is None
+
+
+@pytest.mark.parametrize("kind", ["binary", "terminal.gap", "terminal.exited", "terminal.error"])
+async def test_ws_terminal_frames_require_owner_and_keep_connection_alive(api, monkeypatch, kind):
+    _, maker = api
+    node_a, private = await _seed_node(maker)
+    node_b = await _other_node(maker)
+    foreign, _ = await _seed_session_target(maker, node_b)
+    own, _ = await _seed_session_target(maker, node_a)
+    unknown = uuid.uuid4()
+    relay = TerminalRelay()
+    monkeypatch.setattr("app.services.terminal_relay._relay", relay)
+    channels = {}
+    for sid in (foreign, own, unknown):
+        channel = BrowserChannel(max_bytes=4096, max_frames=16)
+        channels[sid] = channel
+        await relay.subscribe(sid, "viewer", uuid.uuid4(), channel, can_write=False)
+
+    def frame(sid):
+        if kind == "binary":
+            return encode_binary(2, sid, b"private-terminal-content")
+        payload = {"session_id": str(sid)}
+        if kind == "terminal.gap":
+            payload.update(dropped_bytes=12, reason="slow_consumer")
+        elif kind == "terminal.exited":
+            payload["exit_code"] = 0
+        else:
+            payload.update(code="SESSION_NOT_FOUND", message="private-terminal-content")
+        # Spoofing the envelope identity cannot override the authenticated socket.
+        return _frame(kind, node_b, payload)
+
+    ws = SessionFrameWebSocket(node_a, private, [frame(foreign), frame(unknown), frame(own)])
+    async with maker() as session:
+        await node_gateway(ws, node_a, session)
+    assert channels[foreign].stats.frames == channels[foreign].stats.control == 0
+    assert channels[unknown].stats.frames == channels[unknown].stats.control == 0
+    assert channels[own].stats.frames + channels[own].stats.control == 1
+    expected = (
+        ("output", b"private-terminal-content") if kind == "binary" else ("control", frame(own))
+    )
+    assert await channels[own].get() == expected
+    assert ws.closed is None
+
+
+async def test_ws_same_node_status_and_unknown_status(api, monkeypatch):
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    sid, child_id = await _seed_session_target(maker, node_id, child=True)
+    cleanup = AsyncMock()
+    monkeypatch.setattr(get_node_registry(), "request", cleanup)
+    ws = SessionFrameWebSocket(
+        node_id,
+        private,
+        [
+            _frame(
+                "session.status_changed",
+                node_id,
+                {"session_id": str(uuid.uuid4()), "status": "exited", "exit_code": 99},
+            ),
+            _frame(
+                "session.status_changed",
+                node_id,
+                {"session_id": str(sid), "status": "exited", "exit_code": 7},
+            ),
+        ],
+    )
+    async with maker() as session:
+        await node_gateway(ws, node_id, session)
+    async with maker() as session:
+        row = await session.get(TerminalSession, sid)
+        shell = await session.get(TerminalSession, child_id)
+        assert row.status == "exited" and row.exit_code == 7 and row.ended_at is not None
+        assert shell.status == "terminated" and shell.ended_at is not None
+    cleanup.assert_awaited_once()
+
+
+async def test_ws_reconnect_reuses_ownership_and_end_delete_invalidate_it(api, monkeypatch):
+    from app.repositories.sessions import SessionRepository
+    from app.services.sessions import SessionService
+
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    sid, _ = await _seed_session_target(maker, node_id)
+    relay = TerminalRelay()
+    monkeypatch.setattr("app.services.terminal_relay._relay", relay)
+    channel = BrowserChannel(max_bytes=4096, max_frames=16)
+    await relay.subscribe(sid, "viewer", uuid.uuid4(), channel, can_write=False)
+    lookups = []
+    original = SessionRepository.owner
+
+    async def owner(repo, session_id):
+        lookups.append(session_id)
+        return await original(repo, session_id)
+
+    monkeypatch.setattr(SessionRepository, "owner", owner)
+
+    async def connect(frames):
+        ws = SessionFrameWebSocket(node_id, private, frames)
+        async with maker() as session:
+            await node_gateway(ws, node_id, session)
+        assert ws.closed is None and "node.authenticated" in ws.sent_types()
+
+    output = encode_binary(2, sid, b"own")
+    await connect([output, output])
+    await connect([output])
+    assert lookups == [sid] and channel.stats.frames == 3
+
+    await connect(
+        [
+            _frame(
+                "session.status_changed",
+                node_id,
+                {"session_id": str(sid), "status": "exited", "exit_code": 0},
+            )
+        ]
+    )
+    assert sid not in relay._owners
+    await connect([_frame("terminal.exited", node_id, {"session_id": str(sid), "exit_code": 0})])
+    assert lookups == [sid, sid] and channel.stats.control == 1
+    assert sid not in relay._owners
+    async with maker() as session:
+        await SessionService(session).delete(session_id=sid)
+        await session.commit()
+    await connect([output])
+    assert lookups == [sid, sid, sid] and channel.stats.frames == 3
+
+
+async def test_ws_unknown_status_drops_without_commit(api, monkeypatch):
+    _, maker = api
+    node_id, private = await _seed_node(maker)
+    ws = SessionFrameWebSocket(
+        node_id,
+        private,
+        [
+            _frame(
+                "session.status_changed",
+                node_id,
+                {"session_id": str(uuid.uuid4()), "status": "exited", "exit_code": 42},
+            ),
+        ],
+    )
+    async with maker() as session:
+        commit = AsyncMock(wraps=session.commit)
+        monkeypatch.setattr(session, "commit", commit)
+        await node_gateway(ws, node_id, session)
+        commit.assert_not_awaited()
+    assert ws.closed is None

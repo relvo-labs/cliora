@@ -194,7 +194,7 @@ async def test_oversize_is_refused_before_relay(api: tuple) -> None:
     with use_registry(fake):
         resp = await _post(client, sid, headers, big)
 
-    assert resp.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, resp.text
+    assert resp.status_code == status.HTTP_413_CONTENT_TOO_LARGE, resp.text
     assert fake.calls == []
 
 
@@ -216,7 +216,7 @@ async def test_a_lying_content_length_does_not_get_past_the_cap(api: tuple) -> N
             headers={**headers, "content-type": "image/png"},
         )
 
-    assert resp.status_code == status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, resp.text
+    assert resp.status_code == status.HTTP_413_CONTENT_TOO_LARGE, resp.text
     assert fake.calls == []
 
 

@@ -32,11 +32,12 @@ ENV VITE_PRODUCT_NAME=$VITE_PRODUCT_NAME \
 RUN npm run build
 
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 COPY --from=build /build/dist /usr/share/nginx/html
 # Rendered into /etc/nginx/nginx.conf at start by the image's own
 # 20-envsubst-on-templates.sh. NGINX_ENVSUBST_OUTPUT_DIR redirects its output there;
 # without it the rendered file lands in conf.d, where a full `http {}` config is invalid.
+COPY --chmod=755 deploy/railway/19-trusted-proxies.sh /docker-entrypoint.d/19-trusted-proxies.sh
 COPY deploy/railway/nginx.conf.template /etc/nginx/templates/nginx.conf.template
 # NGINX_ENTRYPOINT_LOCAL_RESOLVERS turns on the image's own 15-local-resolvers.envsh, which
 # reads /etc/resolv.conf and exports NGINX_LOCAL_RESOLVERS (IPv6 addresses bracketed) for

@@ -14,6 +14,7 @@ console.Dockerfile            node build → nginx runtime (no node in the runti
 nginx.conf.template           edge config, envsubst-ed at container start (the
                               resolver addresses come from the nginx image's own
                               15-local-resolvers.envsh)
+19-trusted-proxies.sh          validated ingress CIDRs → nginx real-IP include
 env.md                        the variable contract (there is no committable .env here)
 ```
 
@@ -56,3 +57,15 @@ Config-as-code is per service — set each service's *Config as code path* to it
 Before deploying: `make railway-check` (parity + baker tests) and, against the target
 environment, `scripts/railway/check-env.sh`. After deploying:
 `scripts/railway/verify-deployment.sh https://<domain>`.
+
+Client-IP acceptance is a separate deployment gate: configure console's verified Railway
+`CLIORA_TRUSTED_PROXY_CIDRS` (required; empty refuses startup) and Central's console-only
+`FORWARDED_ALLOW_IPS` (required). Follow the spoof and source-range checks in
+[the operator guide](../../docs/deployment-railway.md#trusted-client-ip-required-post-deploy-verification-59).
+Follow the [ordered upgrade/redeploy/rollback runbook](../../docs/deployment-railway.md#trust-upgrade-runbook-59):
+hold promotion/admission, obtain both hop allowlists, set variables before upgrading, and
+verify actual Central HTTP + WS scope from two egresses before admission. Recheck after a
+console source-IP change; roll back code before removing required variables. The verifier
+uses correlated operator-only uvicorn logs, adding no public Central diagnostic endpoint.
+`CLIORA_VERIFY_EXPECTED_IP` and `CLIORA_VERIFY_CENTRAL_LOG` enable the integrated scope check;
+a pending log check cannot satisfy deployment acceptance.

@@ -459,21 +459,21 @@ class TunnelService:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 "Protection must be one of: basic, ipallow, public.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         cleaned_ips = _validated_ips(allowed_ips) if chosen == "ipallow" else None
         if chosen == "ipallow" and not cleaned_ips:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 "An IP allowlist needs at least one address or CIDR range.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         if chosen == "public" and not acknowledge_public:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 "An unprotected tunnel is reachable by anyone who has the URL. Confirm "
                 "that before creating it.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 details={"requires_acknowledgement": "public"},
             )
 
@@ -488,7 +488,7 @@ class TunnelService:
                 "INVALID_ARGUMENT",
                 "Traffic to this port will pass through the third-party tunnel provider. "
                 "Confirm that before creating the first tunnel on this node.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 details={"requires_acknowledgement": "third_party"},
             )
 
@@ -688,7 +688,7 @@ class TunnelService:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 "Only a password-protected tunnel has a password to rotate.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         remaining = int((tunnel.expires_at - now_utc()).total_seconds())
         port, node_id, label = tunnel.port, tunnel.node_id, tunnel.label
@@ -907,7 +907,7 @@ class TunnelService:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 f"A tunnel's lifetime must be between 60 and {ceiling} seconds.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             )
         return requested
 
@@ -925,7 +925,7 @@ def _validated_ips(values: Sequence[str] | None) -> list[str]:
         raise ApiError(
             "INVALID_ARGUMENT",
             f"An IP allowlist holds at most {_MAX_ALLOWED_IPS} entries.",
-            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
     cleaned: list[str] = []
     for value in values:
@@ -939,7 +939,7 @@ def _validated_ips(values: Sequence[str] | None) -> list[str]:
             raise ApiError(
                 "INVALID_ARGUMENT",
                 f"'{text}' is not an IP address or CIDR range.",
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
             ) from exc
     return cleaned
 

@@ -25,6 +25,7 @@ from app.repositories.sessions import SessionRepository
 from app.services import audit
 from app.services.nodes import ensure_node_enabled
 from app.services.registry import NodeConnectionRegistry, get_node_registry
+from app.services.terminal_relay import get_terminal_relay
 from app.settings import Settings, get_settings
 
 # --- State machine (FR-SESSION-002, ADR 0013). Values match the daemon's
@@ -150,6 +151,11 @@ class SessionService:
         if session is None:
             raise ApiError("SESSION_NOT_FOUND", "Session not found", status.HTTP_404_NOT_FOUND)
         return session
+
+    async def authorize_node_frame(self, node_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+        return await get_terminal_relay().authorize_node_session(
+            node_id, session_id, self._repo.owner
+        )
 
     async def list(
         self,
@@ -342,11 +348,6 @@ class SessionService:
         reaper acts on — not a heuristic about elapsed time, which would guess at
         exactly the thing the relay knows.
         """
-        # Imported here, not at module scope: the relay is transport, this is the
-        # domain service, and keeping the edge local marks the direction as
-        # deliberate (`shell_reaper` does the same for the same reason).
-        from app.services.terminal_relay import get_terminal_relay
-
         if get_terminal_relay().subscriber_count(existing.id) > 0:
             raise ApiError(
                 "SHELL_ALREADY_OPEN",
@@ -420,6 +421,7 @@ class SessionService:
         except ApiError:
             pass
         child.status = TERMINATED
+        get_terminal_relay().forget_session(child.id)
         child.ended_at = now_utc()
         await self._audit.record(
             audit.SESSION_TERMINATE,
@@ -438,17 +440,26 @@ class SessionService:
                 status.HTTP_409_CONFLICT,
             )
         await self._session.delete(session)
+        get_terminal_relay().forget_session(session.id)
 
     async def apply_status_changed(
-        self, session_id: uuid.UUID, new_status: str, *, exit_code: int | None = None
+        self,
+        session_id: uuid.UUID,
+        new_status: str,
+        *,
+        node_id: uuid.UUID,
+        exit_code: int | None = None,
     ) -> TerminalSession | None:
         """Apply a daemon-pushed status_changed event (P2-08). Ignores unknown
-        sessions and illegal transitions (logged by the caller)."""
+        sessions, foreign owners and illegal transitions."""
+        if not await self.authorize_node_frame(node_id, session_id):
+            return None
         session = await self._repo.get(session_id)
         if session is None or not can_transition(session.status, new_status):
             return None
         session.status = new_status
         if new_status in TERMINAL_STATES:
+            get_terminal_relay().forget_session(session.id)
             session.ended_at = now_utc()
             if exit_code is not None:
                 session.exit_code = exit_code
@@ -469,12 +480,15 @@ class SessionService:
                 status.HTTP_409_CONFLICT,
             )
         session.status = to
+        if to in TERMINAL_STATES:
+            get_terminal_relay().forget_session(session.id)
 
     async def _fail(self, session: TerminalSession, code: str, *, actor_id: uuid.UUID) -> None:
         if can_transition(session.status, FAILED):
             session.status = FAILED
         session.error_message = code
         session.ended_at = now_utc()
+        get_terminal_relay().forget_session(session.id)
         await self._audit.record(
             audit.SESSION_FAILED,
             user_id=actor_id,

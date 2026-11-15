@@ -63,10 +63,10 @@ http {
 
     log_format cliora '$remote_addr - $status "$request" '
                       'rt=$request_time up=$upstream_response_time '
-                      'nginx_req_id=$request_id';
+                      'nginx_req_id=$request_id peer=$realip_remote_addr';
     log_format cliora_noquery '$remote_addr - $status "$request_method $uri" '
                               'rt=$request_time up=$upstream_response_time '
-                              'nginx_req_id=$request_id';
+                              'nginx_req_id=$request_id peer=$realip_remote_addr';
     access_log /var/log/nginx/access.log cliora;
 
     sendfile on;
@@ -77,6 +77,23 @@ http {
     keepalive_timeout 65;
     client_max_body_size 16m;   # >= the 8 MiB filesystem contract, matching uvicorn
     large_client_header_buffers 4 16k;
+
+    # Issue 59: independent per-IP budgets; other API and terminal paths stay unlimited.
+    limit_req_zone $binary_remote_addr zone=cliora_login:10m rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=cliora_refresh:10m rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=cliora_register:10m rate=10r/m;
+    limit_req_status 429;
+    map $uri $cliora_node_client {
+        default "";
+        ~^/ws/nodes/ $binary_remote_addr;
+    }
+    limit_conn_zone $cliora_node_client zone=cliora_nodes:10m;
+    limit_conn_status 429;
+
+    # Startup refuses an empty allowlist. Only verified Railway ingress peers may supply this.
+    real_ip_header X-Real-IP;
+    real_ip_recursive off;
+    include /etc/nginx/trusted-proxies/*.conf;
 
     gzip on;
     gzip_types text/css application/javascript application/json image/svg+xml;
@@ -125,6 +142,7 @@ http {
 
         # --- WebSocket: terminals and daemons ---
         location /ws/ {
+            limit_conn cliora_nodes 50;
             set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
             proxy_pass http://$cliora_upstream$request_uri;
             proxy_http_version 1.1;
@@ -132,7 +150,7 @@ http {
             proxy_set_header Connection "upgrade";
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             # The client reached the platform edge over TLS; that is what Central should
             # see, not this hop's plain HTTP.
             proxy_set_header X-Forwarded-Proto https;
@@ -147,14 +165,65 @@ http {
             proxy_cache off;
         }
 
+        # Returns only the caller's resolved address, for post-deploy spoof checks.
+        location = /edge-client-ip {
+            default_type text/plain;
+            return 200 "$remote_addr\n";
+        }
+
         # --- API ---
+        location = /api/auth/login {
+            limit_req zone=cliora_login burst=10 nodelay;
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            # Longer than the daemon-update relay budget (180 s, ADR 0017), which is the
+            # slowest legitimate request Central makes.
+            proxy_read_timeout 240s;
+            proxy_buffering on;
+        }
+
+        location = /api/auth/refresh {
+            limit_req zone=cliora_refresh burst=10 nodelay;
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            # Longer than the daemon-update relay budget (180 s, ADR 0017), which is the
+            # slowest legitimate request Central makes.
+            proxy_read_timeout 240s;
+            proxy_buffering on;
+        }
+
+        location = /api/nodes/register {
+            limit_req zone=cliora_register;
+            set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
+            proxy_pass http://$cliora_upstream$request_uri;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+            # Longer than the daemon-update relay budget (180 s, ADR 0017), which is the
+            # slowest legitimate request Central makes.
+            proxy_read_timeout 240s;
+            proxy_buffering on;
+        }
+
         location /api/ {
             set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
             proxy_pass http://$cliora_upstream$request_uri;
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto https;
             # Longer than the daemon-update relay budget (180 s, ADR 0017), which is the
             # slowest legitimate request Central makes.
@@ -168,7 +237,7 @@ http {
             proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-For $remote_addr;
             proxy_set_header X-Forwarded-Proto https;
             access_log /var/log/nginx/access.log cliora_noquery;
             client_max_body_size 24k;
@@ -185,12 +254,16 @@ http {
             set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
             proxy_pass http://$cliora_upstream$request_uri;
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
             access_log off;
         }
         location = /readyz {
             set $cliora_upstream "${CLIORA_BACKEND_HOST}:${CLIORA_BACKEND_PORT}";
             proxy_pass http://$cliora_upstream$request_uri;
             proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $remote_addr;
             access_log off;
         }
 

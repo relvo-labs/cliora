@@ -11,9 +11,9 @@
 
 FROM python:3.12-slim-bookworm AS build
 
-# uv is pinned by digest-bearing tag: an unpinned installer is a supply-chain hole in
+# uv is pinned by version tag: an unpinned installer is a supply-chain hole in
 # the build of the thing that enforces checksums elsewhere (SEC-002).
-COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /usr/local/bin/uv
 
 # The image mirrors the repository layout: /app is the repo root and the backend lives at
 # /app/backend, with contracts/ beside it. Two things depend on that, and both fail at
@@ -51,7 +51,11 @@ RUN uv sync --locked --no-dev
 # skip is *inside* the stage rather than a skipped stage, because the runtime stage's
 # `COPY --from` cannot be conditional: /out is then empty and neither `go mod download`
 # nor any compile runs.
-FROM golang:1.26-bookworm AS agentd
+# The builder is pinned to the exact patch release `daemon/go.mod` requires. The
+# official image sets GOTOOLCHAIN=local, so a cached older `golang:1.26-bookworm` would
+# otherwise compile a release with an unpatched standard library (#162); with the
+# `go 1.26.11` minimum in go.mod an older toolchain now fails the build instead.
+FROM golang:1.26.11-bookworm AS agentd
 ARG AGENTD_RELEASE_BASE_URL=""
 WORKDIR /src
 COPY daemon/go.mod daemon/go.sum ./
@@ -131,6 +135,8 @@ RUN if [ -n "$AGENTD_RELEASE_BASE_URL" ]; then \
 # the image is what knows it; a deployment only overrides this to point somewhere else
 # (deploy/compose/compose.yaml mounts a host directory over it).
 ENV CLIORA_ARTIFACTS_DIR=/srv/artifacts
+# Trust nobody unless the deployment identifies its nginx hop.
+ENV FORWARDED_ALLOW_IPS=""
 
 USER cliora
 EXPOSE 8000
@@ -144,4 +150,4 @@ EXPOSE 8000
 # IPV6_V6ONLY on an AF_INET6 socket, so it refuses IPv4 regardless of the bindv6only
 # sysctl. The override binds an empty host, which asyncio reads as "every family"
 # (deploy/railway/central.railway.json does exactly that).
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
