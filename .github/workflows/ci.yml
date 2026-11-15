@@ -127,19 +127,29 @@ jobs:
       # real image is the cheapest possible version of "execute it, do not read it" — the
       # over-the-wire assertions need a deployment and live in
       # scripts/railway/verify-deployment.sh.
+      # Both trust forms the startup renderer accepts (#184): the railway-edge keyword and a
+      # numeric list. The renderer runs as in the image, so its include is what nginx loads.
       - name: nginx accepts the rendered Railway template
         run: |
           mkdir -p /tmp/edge-html
           echo '<!doctype html><title>x</title>' > /tmp/edge-html/index.html
-          docker run --rm \
-            -v "$PWD/deploy/railway/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro" \
-            -v /tmp/edge-html:/usr/share/nginx/html:ro \
-            -e NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx \
-            -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
-            -e PORT=8080 \
-            -e CLIORA_BACKEND_HOST=central.railway.internal \
-            -e CLIORA_BACKEND_PORT=8080 \
-            nginx:1.30-alpine sh -c '/docker-entrypoint.sh nginx -t'
+          for trust in railway-edge "10.23.0.4/32,fd00:59::2/128"; do
+            docker run --rm \
+              -v "$PWD/deploy/railway/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro" \
+              -v "$PWD/deploy/railway/19-trusted-proxies.sh:/docker-entrypoint.d/19-trusted-proxies.sh:ro" \
+              -v /tmp/edge-html:/usr/share/nginx/html:ro \
+              -e NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx \
+              -e NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
+              -e PORT=8080 \
+              -e CLIORA_BACKEND_HOST=central.railway.internal \
+              -e CLIORA_BACKEND_PORT=8080 \
+              -e CLIORA_TRUSTED_PROXY_CIDRS="$trust" \
+              nginx:1.30-alpine sh -c '/docker-entrypoint.sh nginx -t && cat /etc/nginx/trusted-proxies/realip.conf'
+          done
+      # Executes the client-IP contract: forged X-Real-IP under railway-edge, the overwrite
+      # toward Central, numeric-list behaviour, and refusal of empty/global values.
+      - name: the Railway edge trust contract holds at runtime
+        run: scripts/railway/edge-trust-smoke.sh nginx:1.30-alpine
       - name: nginx accepts the compose edge config
         run: |
           mkdir -p "$RUNNER_TEMP/cliora-nginx-test/tls"

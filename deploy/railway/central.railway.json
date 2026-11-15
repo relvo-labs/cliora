@@ -14,7 +14,7 @@
     ]
   },
   "deploy": {
-    "startCommand": "sh -c 'exec uvicorn app.main:app --host \"\" --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=\"${FORWARDED_ALLOW_IPS:?set only console nginx source IPs or CIDRs}\"'",
+    "startCommand": "sh -c 'case \"${FORWARDED_ALLOW_IPS:?is required: set railway-private-environment; see docs/deployment-railway.md#trust-upgrade-runbook-59}\" in railway-private-environment) trust=\"*\" ;; *\"*\"*|*/0*) echo \"FORWARDED_ALLOW_IPS: no * and no /0... prefix in any spelling; global trust must be spelled railway-private-environment\" >&2; exit 64 ;; *) trust=\"$FORWARDED_ALLOW_IPS\" ;; esac; exec uvicorn app.main:app --host \"\" --port ${PORT:-8080} --proxy-headers --forwarded-allow-ips=\"$trust\"'",
     "preDeployCommand": "alembic upgrade head",
     "healthcheckPath": "/readyz",
     "healthcheckTimeout": 120,

@@ -210,5 +210,41 @@ else
   fail "proxy trust contract invalid"
 fi
 
+# --- 7. Issue 184: the generated include, keyword path included ---
+# The static configs above may never contain global trust. Only the renderer may produce it,
+# and only for the exact Railway keyword; hand-typed global ranges stay errors.
+RENDERER="$ROOT/deploy/railway/19-trusted-proxies.sh"
+render_to() { # <dir> <value> [renderer args...]
+  local dir="$1" value="$2"; shift 2
+  CLIORA_TRUSTED_PROXY_DIR="$dir" CLIORA_TRUSTED_PROXY_CIDRS="$value" sh "$RENDERER" "$@" 2>/dev/null
+}
+render_dir="$(mktemp -d)"
+trap 'rm -rf "$render_dir"' EXIT
+if render_to "$render_dir/edge" railway-edge &&
+  [ "$(grep -v '^#' "$render_dir/edge/realip.conf")" = "$(printf 'set_real_ip_from 0.0.0.0/0;\nset_real_ip_from ::/0;')" ]; then
+  ok "railway-edge renders X-Real-IP trust for every IPv4 and IPv6 peer, and nothing else"
+else
+  fail "railway-edge does not render exactly set_real_ip_from 0.0.0.0/0 and ::/0"
+fi
+if render_to "$render_dir/numeric" "10.23.0.4/32,fd00:59::2/128" &&
+  [ "$(cat "$render_dir/numeric/realip.conf")" = "$(printf 'set_real_ip_from 10.23.0.4/32;\nset_real_ip_from fd00:59::2/128;')" ]; then
+  ok "numeric proxy lists still render bounded entries"
+else
+  fail "numeric proxy list did not render as bounded entries"
+fi
+for value in "" "0.0.0.0/0" "::/0" "railway-edge,10.23.0.4/32" "Railway-Edge"; do
+  if render_to "$render_dir/reject" "$value"; then
+    fail "Railway renderer accepted '${value}'; only railway-edge or numeric non-global ranges may start"
+  fi
+done
+if render_to "$render_dir/compose" railway-edge --allow-direct; then
+  fail "the Compose renderer accepted railway-edge; Compose has no Railway edge"
+fi
+if render_to "$render_dir/direct" "" --allow-direct && [ ! -s "$render_dir/direct/realip.conf" ]; then
+  ok "renderer rejects empty/global/mixed Railway values and keeps Compose's direct default"
+else
+  fail "the Compose direct-facing default no longer renders an empty include"
+fi
+
 printf '\n%s\n' "mismatches: $FAILURES"
 exit "$FAILURES"

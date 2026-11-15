@@ -50,6 +50,13 @@ CENTRAL_REQUIRED = (
 )
 CONSOLE_REQUIRED = ("PORT", "CLIORA_BACKEND_HOST", "CLIORA_BACKEND_PORT", "CLIORA_TRUSTED_PROXY_CIDRS")
 
+# Named opt-ins to the Railway platform contract (#184). Each is the only spelling that
+# means "trust every sender" on its hop; a hand-typed `*`, `0.0.0.0/0` or `::/0` stays an
+# error. The console renderer and Central's startCommand map them; see
+# docs/deployment-railway.md#trusted-client-ip-railway-edge-contract-184.
+CONSOLE_TRUST_KEYWORD = "railway-edge"
+CENTRAL_TRUST_KEYWORD = "railway-private-environment"
+
 
 def normalise(raw: Any) -> dict[str, str]:
     """Accept either a flat mapping or a list of {name, value} records.
@@ -211,20 +218,35 @@ def check(
             report.fail(f"console is missing {name}")
 
     # These are two separate hops: platform ingress -> nginx -> Central.
-    for name, value in (
-        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", "")),
+    for name, value, keyword in (
+        ("FORWARDED_ALLOW_IPS", central.get("FORWARDED_ALLOW_IPS", ""), CENTRAL_TRUST_KEYWORD),
         (
             "CLIORA_TRUSTED_PROXY_CIDRS",
             console.get("CLIORA_TRUSTED_PROXY_CIDRS", ""),
+            CONSOLE_TRUST_KEYWORD,
         ),
     ):
-        entries = re.split(r"[,\s]+", value.strip()) if value.strip() else []
-        if not any(entries):
+        entries = [entry for entry in re.split(r"[,\s]+", value) if entry]
+        if not entries:
             report.fail(
-                f"{name} requires verified proxy IPs/CIDRs before deployment; see "
-                "docs/deployment-railway.md#trust-upgrade-runbook-59"
+                f"{name} requires {keyword} or numeric proxy IPs/CIDRs before deployment; "
+                "see docs/deployment-railway.md#trust-upgrade-runbook-59"
             )
+        # Central's startCommand compares the raw value; the console renderer splits it.
+        exact = value == keyword if name == "FORWARDED_ALLOW_IPS" else entries == [keyword]
+        if exact:
+            report.ok(f"{name} opts into the Railway trust contract ({keyword})")
+            continue
+        if keyword in entries:
+            report.fail(f"{name} must be exactly {keyword} with nothing else, or a numeric list")
+            continue
         for entry in entries:
+            # Same textual rule as the console renderer and Central's startCommand (`*/0*`):
+            # a prefix starting with 0 (`/0`, `/00`, `/000`, netmask `/0.0.0.0`) is refused
+            # before parsing, so no spelling of global trust passes preflight.
+            if "/0" in entry:
+                report.fail(f"{name} must not trust every sender (no /0... prefix in any spelling)")
+                continue
             try:
                 network = ipaddress.ip_network(entry, strict=True)
             except ValueError:

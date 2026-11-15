@@ -129,7 +129,10 @@ Backend has no published port; database/scraper traffic stays on `internal`. If 
 conflicts with the host, change IPAM, nginx's address and `FORWARDED_ALLOW_IPS` together.
 The standalone backend image trusts no forwarded sender by default. Compose nginx's
 startup hook permits an empty proxy allowlist only for this direct-facing topology.
-Railway's hook requires a nonempty ingress allowlist; it cannot start shared proxy budgets.
+Railway's hook requires an explicit choice, the `railway-edge` platform keyword or a
+numeric list, so it cannot start shared proxy budgets
+([Railway edge contract](deployment-railway.md#trusted-client-ip-railway-edge-contract-184)).
+Compose's hook rejects that keyword; nothing about Compose trust changes.
 
 | Path | Per resolved client IP | Rejection |
 |---|---|---|

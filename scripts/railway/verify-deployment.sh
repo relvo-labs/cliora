@@ -75,7 +75,7 @@ if [ -n "${CLIORA_VERIFY_EXPECTED_IP:-}" ]; then
     && ok "nginx and Central HTTP/WS client identity verified (client-ip-verification.log)" \
     || fail "client-IP contract failed or Central log verification pending (client-ip-verification.log)"
 else
-  skip "real client IP: set CLIORA_VERIFY_EXPECTED_IP; require Central HTTP/WS log verification and ingress peer CIDR checks before admission"
+  skip "real client IP: set CLIORA_VERIFY_EXPECTED_IP; require Central HTTP/WS log verification from two egresses and a passing check-trust-topology.sh before admission"
 fi
 
 # --------------------------------------------------------------------------- #

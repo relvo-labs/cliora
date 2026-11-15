@@ -1,0 +1,175 @@
+{
+  "format": "cliora-railway-topology-replay/1",
+  "_comment": "Synthesised from Railway's documented public GraphQL shapes for issue 184; not a live recording. A scratch service exists only in staging and must not count.",
+  "exchanges": [
+    {
+      "operation": "ClioraTrustProject",
+      "variables": {
+        "projectId": "prj-0001"
+      },
+      "response": {
+        "data": {
+          "project": {
+            "id": "prj-0001",
+            "name": "cliora",
+            "environments": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "edges": [
+                {
+                  "node": {
+                    "id": "env-prod-0001",
+                    "name": "production"
+                  }
+                },
+                {
+                  "node": {
+                    "id": "env-staging-0001",
+                    "name": "staging"
+                  }
+                }
+              ]
+            },
+            "services": {
+              "pageInfo": {
+                "hasNextPage": false
+              },
+              "edges": [
+                {
+                  "node": {
+                    "id": "svc-pg-0001",
+                    "name": "Postgres",
+                    "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "edges": [
+                        {
+                          "node": {
+                            "environmentId": "env-prod-0001"
+                          }
+                        },
+                        {
+                          "node": {
+                            "environmentId": "env-staging-0001"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "svc-central-0001",
+                    "name": "central",
+                    "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "edges": [
+                        {
+                          "node": {
+                            "environmentId": "env-prod-0001"
+                          }
+                        },
+                        {
+                          "node": {
+                            "environmentId": "env-staging-0001"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "svc-console-0001",
+                    "name": "cliora",
+                    "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "edges": [
+                        {
+                          "node": {
+                            "environmentId": "env-prod-0001"
+                          }
+                        },
+                        {
+                          "node": {
+                            "environmentId": "env-staging-0001"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "node": {
+                    "id": "svc-scratch-0001",
+                    "name": "scratch",
+                    "serviceInstances": {
+                      "pageInfo": {
+                        "hasNextPage": false
+                      },
+                      "edges": [
+                        {
+                          "node": {
+                            "environmentId": "env-staging-0001"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "operation": "ClioraTrustExposure",
+      "variables": {
+        "projectId": "prj-0001",
+        "environmentId": "env-prod-0001",
+        "serviceId": "svc-central-0001"
+      },
+      "response": {
+        "data": {
+          "domains": {
+            "serviceDomains": [],
+            "customDomains": []
+          },
+          "tcpProxies": []
+        }
+      }
+    },
+    {
+      "operation": "ClioraTrustExposure",
+      "variables": {
+        "projectId": "prj-0001",
+        "environmentId": "env-prod-0001",
+        "serviceId": "svc-console-0001"
+      },
+      "response": {
+        "data": {
+          "domains": {
+            "serviceDomains": [
+              {
+                "domain": "cliora-production.up.railway.app"
+              }
+            ],
+            "customDomains": [
+              {
+                "domain": "cliora.example.com"
+              }
+            ]
+          },
+          "tcpProxies": []
+        }
+      }
+    }
+  ]
+}
