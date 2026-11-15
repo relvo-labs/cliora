@@ -19,7 +19,7 @@ from app.repositories.users import username_key
 from app.security.tokens import issue_access_token
 from app.services import auth as auth_module
 from app.services.auth import AuthService
-from app.services.login_protection import LoginIPLimiter
+from app.services.login_protection import LoginIPLimiter, LoginLockoutCleanup
 from app.settings import Settings
 from tests.db.test_auth_api import _make_user
 
@@ -45,13 +45,16 @@ async def protection(api, monkeypatch):
     now = [datetime(2026, 11, 15, tzinfo=UTC)]
     settings = Settings()
     limiter = LoginIPLimiter(settings, clock=lambda: now[0].timestamp())
+    cleanup = LoginLockoutCleanup(60, clock=lambda: now[0].timestamp())
     verify = AsyncMock(side_effect=lambda digest, password: password == "correct")
     dummy = AsyncMock()
     monkeypatch.setattr(auth_module, "verify_password", verify)
     monkeypatch.setattr(auth_module, "dummy_verify", dummy)
 
     async def service(session=Depends(get_session)):
-        return AuthService(session, settings=settings, clock=lambda: now[0], ip_limiter=limiter)
+        return AuthService(
+            session, settings=settings, clock=lambda: now[0], ip_limiter=limiter, cleanup=cleanup
+        )
 
     app.dependency_overrides[get_auth_service] = service
     try:
@@ -117,8 +120,9 @@ async def test_unknown_username_response_and_timing_path_parity(api, protection)
         assert known.json()["error"] == unknown.json()["error"]
         assert known.headers.get("Retry-After") == unknown.headers.get("Retry-After")
     assert verify.await_count == dummy.await_count == 5
-    # Unicode/case variants of an unknown key share the lockout.
-    assert (await _attempt(username="ＧＨＯＳＴ")).status_code == 429
+    # Exact-name variants are independent, just as in the login lookup.
+    assert (await _attempt(username="ＧＨＯＳＴ")).status_code == 401
+    assert dummy.await_count == 6
 
 
 async def test_distributed_ips_cannot_bypass_account_lock(api, protection):
@@ -219,7 +223,7 @@ async def test_bootstrap_unlock_command_unknown_key_is_audited(api, protection):
         "app.bootstrap",
         "unlock-user",
         "--username",
-        "GHOST",
+        "ghost",
         cwd=Path(__file__).parents[2],
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

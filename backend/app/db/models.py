@@ -69,6 +69,10 @@ class LoginLockout(Base):
     failures: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
+    last_activity_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+
 
 class Node(Base):
     __tablename__ = "nodes"

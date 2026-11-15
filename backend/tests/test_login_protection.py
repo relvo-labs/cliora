@@ -8,21 +8,23 @@ import pytest
 
 from app.api.errors import ApiError
 from app.security import passwords
-from app.services.login_protection import LoginIPLimiter
+from app.services.login_protection import LoginIPLimiter, LoginLockoutCleanup
 from app.settings import Settings
 
 
-def test_ip_storage_cap_and_window_expiry_fail_closed():
+def test_ip_storage_cap_reclaims_oldest_probation_and_expires_windows():
     now = [0.0]
     limiter = LoginIPLimiter(Settings(login_ip_max_entries=2), clock=lambda: now[0])
     limiter.failed("a")
+    now[0] = 1
     limiter.failed("b")
-    with pytest.raises(ApiError) as full:
-        limiter.check("c")
-    assert full.value.status_code == 429
-    assert limiter.failed("c") == 600
+    now[0] = 2
+    limiter.failed("a")  # refresh a; b is now the oldest probation entry
+    limiter.check("c")
+    assert limiter.failed("c") == 0
+    assert set(limiter._buckets) == {"a", "c"}
     assert len(limiter._buckets) == 2
-    now[0] = 600
+    now[0] = 602
     limiter.check("c")
     assert len(limiter._buckets) == 0
 
@@ -136,9 +138,11 @@ def test_full_ip_storage_preserves_existing_ban_until_expiry():
     )
     assert limiter.failed("banned") == 600
     now[0] = 599
-    for key in ["banned", "new"]:
-        with pytest.raises(ApiError):
-            limiter.check(key)
+    with pytest.raises(ApiError):
+        limiter.check("banned")
+    limiter.check("new")
+    assert limiter.failed("new") == 0  # all slots banned: proceed untracked
+    assert "new" not in limiter._buckets
     assert list(limiter._buckets) == ["banned"]
     now[0] = 600
     limiter.check("new")
@@ -164,3 +168,31 @@ async def test_password_waiter_runs_when_capacity_returns(monkeypatch):
     assert await asyncio.wait_for(task, timeout=1) == "done"
     assert slots.acquire(blocking=False)
     slots.release()
+
+
+def test_retention_cleanup_gate_admits_at_most_one_batch_per_interval():
+    now = [0.0]
+    gate = LoginLockoutCleanup(60, clock=lambda: now[0])
+    assert gate.claim()
+    assert not gate.claim()
+    now[0] = 59.999
+    assert not gate.claim()
+    now[0] = 60
+    assert gate.claim()
+    assert not gate.claim()
+
+
+def test_retention_settings_defaults_and_bounds():
+    settings = Settings()
+    assert settings.login_lockout_idle_retention_seconds == 86400
+    assert settings.login_lockout_cleanup_interval_seconds == 60
+    assert settings.login_lockout_cleanup_batch_size == 1000
+    for field in [
+        "login_lockout_idle_retention_seconds",
+        "login_lockout_cleanup_interval_seconds",
+        "login_lockout_cleanup_batch_size",
+    ]:
+        with pytest.raises(ValueError):
+            Settings(**{field: 0})
+    with pytest.raises(ValueError):
+        Settings(login_lockout_cleanup_batch_size=10_001)

@@ -95,9 +95,10 @@ async def api(db_url: str):
     # closed one and every such write would fail. Disposing it around each test
     # forces a rebind instead of leaving a cross-loop engine behind.
     await reset_database()
-    from app.services.login_protection import get_login_ip_limiter
+    from app.services.login_protection import get_login_ip_limiter, get_login_lockout_cleanup
 
     get_login_ip_limiter.cache_clear()
+    get_login_lockout_cleanup.cache_clear()
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
     try:

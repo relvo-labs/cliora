@@ -46,6 +46,20 @@ async def test_migration_0023_up_down_up_preserves_users_and_contracts_grants(ap
             user = await session.get(User, uid)
             assert user.password_hash == digest
             assert (await session.execute(sa.select(LoginLockout))).scalars().all() == []
+            await session.execute(
+                sa.text("""
+                INSERT INTO login_lockouts (username_key) VALUES ('timestamp-default')
+            """)
+            )
+            activity = await session.scalar(sa.select(LoginLockout.last_activity_at))
+            assert activity.tzinfo is not None
+            indexes = await session.scalar(
+                sa.text("""
+                SELECT count(*) FROM pg_indexes WHERE tablename = 'login_lockouts'
+                AND indexname = 'ix_login_lockouts_last_activity_at'
+            """)
+            )
+            assert indexes == 1
             roles = dict((await session.execute(sa.select(Role.name, Role.permissions))).all())
             assert {n for n, p in roles.items() if "user.unlock" in p["actions"]} == {"Admin"}
             assert "custom.action" in roles["Viewer"]["actions"]

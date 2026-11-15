@@ -28,7 +28,13 @@ from app.security.tokens import (
     issue_refresh_token,
 )
 from app.services import audit
-from app.services.login_protection import LoginIPLimiter, get_login_ip_limiter, throttled
+from app.services.login_protection import (
+    LoginIPLimiter,
+    LoginLockoutCleanup,
+    get_login_ip_limiter,
+    get_login_lockout_cleanup,
+    throttled,
+)
 from app.settings import Settings, get_settings
 
 
@@ -56,10 +62,12 @@ class AuthService:
         settings: Settings | None = None,
         clock: Callable[[], datetime] | None = None,
         ip_limiter: LoginIPLimiter | None = None,
+        cleanup: LoginLockoutCleanup | None = None,
     ) -> None:
         self._settings = settings or get_settings()
         self._clock = clock or (lambda: datetime.now(UTC))
         self._ip_limiter = ip_limiter or get_login_ip_limiter()
+        self._cleanup = cleanup or get_login_lockout_cleanup()
         self._lockouts = LoginLockoutRepository(session)
         self._session = session
         self._users = UserRepository(session)
@@ -79,7 +87,13 @@ class AuthService:
         except ApiError:
             await self._record_failure(username, None, "ip_locked")
             raise
-        state = await self._lockouts.for_update(username)
+        if self._cleanup.claim():
+            await self._lockouts.cleanup_idle(
+                now=self._clock(),
+                idle_seconds=self._settings.login_lockout_idle_retention_seconds,
+                batch_size=self._settings.login_lockout_cleanup_batch_size,
+            )
+        state = await self._lockouts.for_update(username, now=self._clock())
         # Read time AFTER acquiring the row lock; another login may have queued us.
         now = self._clock()
         user = await self._users.get_by_username(username)
@@ -128,7 +142,7 @@ class AuthService:
         raise _unauthorized("INVALID_CREDENTIALS", "Invalid username or password")
 
     async def unlock_user(self, username: str, *, actor_id: uuid.UUID | None = None) -> None:
-        state = await self._lockouts.for_update(username)
+        state = await self._lockouts.for_update(username, now=self._clock())
         state.failures = 0
         state.locked_until = None
         await self._audit.record(

@@ -24,7 +24,14 @@ def upgrade() -> None:
         sa.Column("username_key", sa.String(64), primary_key=True),
         sa.Column("failures", sa.Integer(), nullable=False, server_default="0"),
         sa.Column("locked_until", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "last_activity_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.func.now(),
+        ),
     )
+    op.create_index("ix_login_lockouts_last_activity_at", "login_lockouts", ["last_activity_at"])
     op.execute("""
         UPDATE roles SET permissions = jsonb_set(permissions, '{actions}',
             (permissions->'actions') || '"user.unlock"'::jsonb)
@@ -38,4 +45,5 @@ def downgrade() -> None:
             (permissions->'actions') - 'user.unlock')
         WHERE (permissions->'actions') ? 'user.unlock'
     """)
+    # DROP TABLE also removes its activity index.
     op.drop_table("login_lockouts")
