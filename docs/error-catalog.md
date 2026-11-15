@@ -32,6 +32,7 @@ closed enum in `contracts/v1/schemas/control-envelope.schema.json`.
 |---|---:|---|---|---|:--:|:--:|:--:|
 | `UNAUTHENTICATED` | 401 | Missing bearer token | The request carried no valid access token, or the session expired. | Sign in again. | yes | no | central |
 | `INVALID_CREDENTIALS` | 401 | Invalid username or password | The username or the password did not match. | Check both and try again; repeated failures are recorded. | yes | yes | central |
+| `LOGIN_THROTTLED` | 429 | Too many login attempts. Try again later | The login failure budget was exceeded for this account or client IP. | Wait for Retry-After, or ask an Admin to unlock the account. | yes | yes | central |
 | `ACCOUNT_DISABLED` | 401 | Account is disabled | An Admin disabled this account, so it can no longer sign in. | Ask an Admin to re-enable it. | no | yes | central |
 | `TOKEN_EXPIRED` | 401 | Token has expired | The access token's short lifetime elapsed. | The browser refreshes automatically; sign in again if it cannot. | yes | no | central |
 | `TOKEN_INVALID` | 401 | Token is not valid | The token was malformed, or was revoked by a sign-out or a role change. | Sign in again. | no | yes | central |

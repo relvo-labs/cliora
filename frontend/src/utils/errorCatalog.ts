@@ -33,6 +33,11 @@ const GUIDANCE: Record<string, ErrorGuidance> = {
     nextStep: "請確認後重試；連續失敗會被記錄。",
     retryable: true,
   },
+  LOGIN_THROTTLED: {
+    cause: "登入嘗試次數已達上限，暫時無法登入。",
+    nextStep: "請稍後再試，或聯繫 Admin 解鎖帳號。",
+    retryable: true,
+  },
   ACCOUNT_DISABLED: {
     cause: "此帳號已被 Admin 停用。",
     nextStep: "請聯繫 Admin 重新啟用。",

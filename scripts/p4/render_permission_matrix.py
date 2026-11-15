@@ -35,8 +35,12 @@ PRD_ROWS: list[tuple[str, str]] = [
     ("操作 Terminal / Operate terminal (writer)", rbac.TERMINAL_OPERATE),
     ("接管 Terminal / Take over the writer role", rbac.TERMINAL_TAKEOVER),
     ("終止 Session / Terminate session", rbac.SESSION_TERMINATE),
-    ("瀏覽檔案 / Browse & preview files (text; images & PDF, view-only)", rbac.FILE_BROWSE),
+    (
+        "瀏覽檔案 / Browse & preview files (text; images & PDF, view-only)",
+        rbac.FILE_BROWSE,
+    ),
     ("查看 Audit Log / View audit log", rbac.AUDIT_VIEW),
+    ("解鎖登入 / Unlock login", rbac.USER_UNLOCK),
 ]
 
 ROLES = (rbac.ADMIN, rbac.DEVELOPER, rbac.VIEWER)

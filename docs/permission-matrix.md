@@ -25,6 +25,7 @@ Developer terminate any colleague's session.
 | 終止 Session / Terminate session | `session.terminate` | ✓ | ✓ | — |
 | 瀏覽檔案 / Browse & preview files (text; images & PDF, view-only) | `file.browse` | ✓ | ✓ | ✓ |
 | 查看 Audit Log / View audit log | `audit.view` | ✓ | — | — |
+| 解鎖登入 / Unlock login | `user.unlock` | ✓ | — | — |
 
 Roles are strictly nested: Viewer ⊂ Developer ⊂ Admin. Viewer holds no mutation
 action, so a forged Viewer mutation fails before any resource is loaded.

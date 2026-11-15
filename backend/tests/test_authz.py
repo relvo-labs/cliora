@@ -222,6 +222,7 @@ def test_every_action_is_enforced_somewhere() -> None:
 # and by the HTTP matrix in tests/db/test_permission_matrix.py.
 ROUTE_ACTIONS: dict[tuple[str, str], str | None] = {
     ("POST", "/api/auth/login"): None,
+    ("POST", "/api/auth/unlock"): rbac.USER_UNLOCK,
     ("POST", "/api/auth/refresh"): None,
     ("POST", "/api/auth/logout"): None,
     ("GET", "/api/auth/me"): None,

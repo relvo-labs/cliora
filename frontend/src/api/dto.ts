@@ -729,6 +729,7 @@ export interface UpdateNodeTunnelSettingsInput {
 }
 
 // Stable RBAC action keys (backend/app/services/rbac.py). Used to gate UI.
+export const ACTION_USER_UNLOCK = "user.unlock";
 export const ACTION_NODE_VIEW = "node.view";
 export const ACTION_NODE_MANAGE = "node.manage";
 export const ACTION_ENROLLMENT_MANAGE = "enrollment.manage";

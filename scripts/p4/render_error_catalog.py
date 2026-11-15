@@ -58,6 +58,7 @@ SECTIONS: list[tuple[str, tuple[str, ...]]] = [
         (
             "UNAUTHENTICATED",
             "INVALID_CREDENTIALS",
+            "LOGIN_THROTTLED",
             "ACCOUNT_DISABLED",
             "TOKEN_EXPIRED",
             "TOKEN_INVALID",

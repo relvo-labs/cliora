@@ -27,6 +27,7 @@ TEST_DB_URL = os.environ.get("CLIORA_TEST_DATABASE_URL")
 # Order respects FK dependencies: children before parents.
 _CLEANUP_TABLES = (
     "audit_logs",
+    "login_lockouts",
     "workspace_favorites",
     # Port forwarding (P11). All three hold FKs to `users`, so a leftover row here makes the
     # `users` delete below fail with a foreign-key violation — which then surfaces as an
@@ -94,6 +95,9 @@ async def api(db_url: str):
     # closed one and every such write would fail. Disposing it around each test
     # forces a rebind instead of leaving a cross-loop engine behind.
     await reset_database()
+    from app.services.login_protection import get_login_ip_limiter
+
+    get_login_ip_limiter.cache_clear()
     app.dependency_overrides[get_session] = _override_get_session
     transport = ASGITransport(app=app)
     try:

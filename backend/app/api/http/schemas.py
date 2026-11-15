@@ -23,6 +23,10 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
 
+class UnlockUserRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
