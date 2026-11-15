@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from fastapi import WebSocketDisconnect
+from starlette.datastructures import Address
 
 from app.api.ws.nodes import node_gateway
 from app.db.models import Node, Role, TerminalSession, User
@@ -46,6 +47,7 @@ class FakeWebSocket:
         self, node_id: uuid.UUID, private: Ed25519PrivateKey | None, incoming: list[str]
     ) -> None:
         self.node_id, self.private, self._incoming = node_id, private, list(incoming)
+        self.client = Address("192.0.2.1", 12345)
         self.sent: list[str] = []
         self.accepted = False
         self.closed: int | None = None
