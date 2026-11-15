@@ -129,6 +129,14 @@ CATALOG: dict[str, ErrorEntry] = dict(
             audited=True,
         ),
         _entry(
+            "WS_TICKET_BUSY",
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            "Too many pending terminal connection tickets",
+            "Your account already has the maximum number of unused connection tickets.",
+            "Wait for a ticket to expire or connect, then retry.",
+            retryable=True,
+        ),
+        _entry(
             "FORBIDDEN",
             status.HTTP_403_FORBIDDEN,
             "You do not have permission for this action",

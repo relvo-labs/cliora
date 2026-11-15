@@ -86,6 +86,19 @@ describe("ErrorNotice", () => {
     expect(guidance.cause).not.toMatch(/擁有者是|owned by/);
   });
 
+  it("explains pending ticket capacity and offers retry", () => {
+    const notice = render(
+      new ApiError(
+        "WS_TICKET_BUSY",
+        "Too many pending terminal connection tickets",
+        429,
+      ),
+    );
+    expect(notice.text()).toContain("連線票已達上限");
+    expect(notice.text()).toContain("票過期後重試");
+    expect(notice.find("button").exists()).toBe(true);
+  });
+
   it("gives every known code both a cause and a next step", () => {
     for (const code of knownErrorCodes()) {
       const guidance = errorGuidance(code);

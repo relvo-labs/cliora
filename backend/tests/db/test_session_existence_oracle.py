@@ -534,3 +534,88 @@ async def test_ws_rechecks_permission_changed_after_ticket_issuance(api: tuple) 
     async with maker() as session:
         await terminal_gateway(cast(WebSocket, ws), shell, session)
     assert (ws.closed_with, ws.sent) == (1008, [])
+
+
+@pytest.mark.parametrize("endpoint", ["generic", "attach"])
+async def test_two_user_http_flood_preserves_victim_ticket_and_attach(
+    api: tuple, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    import app.api.ws.terminal as terminal
+
+    client, maker = api
+    monkeypatch.setattr(ws_ticket, "monotonic_seconds", lambda: 100.0)
+    service = WsTicketService(60, max_pending=64)
+    monkeypatch.setattr(ws_ticket, "_service", service)
+    victim, victim_id = await _user(client, maker, None, role_name="Developer")
+    attacker, _ = await _user(client, maker, None, role_name="Viewer")
+    sid = await _session_row(maker, victim_id)
+    path = "/api/ws-ticket" if endpoint == "generic" else f"/api/sessions/{sid}/attach"
+    kwargs = {"json": {"resource": attach_resource(sid)}} if endpoint == "generic" else {}
+    protected = (await client.post(path, headers=victim, **kwargs)).json()["ticket"]
+    for_attach = (await client.post(path, headers=victim, **kwargs)).json()["ticket"]
+    answers = [await client.post(path, headers=attacker, **kwargs) for _ in range(72)]
+    assert service.consume(protected, attach_resource(sid)) == victim_id
+    registry = _AttachRegistry()
+    monkeypatch.setattr(terminal, "get_node_registry", lambda: registry)
+    ws = _AttachedWebSocket(for_attach)
+    async with maker() as session:
+        await terminal_gateway(cast(WebSocket, ws), sid, session)
+    assert registry.attached == [str(sid)]
+    assert ws.closed_with is None
+    assert [resp.status_code for resp in answers] == [200] * 32 + [429] * 40
+    assert all("ticket" not in resp.json() for resp in answers[32:])
+    assert len(service._tickets) == 32
+
+
+@pytest.mark.parametrize("endpoint", ["generic", "attach"])
+async def test_http_33rd_ticket_is_429_then_recovers(
+    api: tuple, isolated_tickets: WsTicketService, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    client, maker = api
+    now = [100.0]
+    monkeypatch.setattr(ws_ticket, "monotonic_seconds", lambda: now[0])
+    headers, uid = await _user(client, maker, None, role_name="Developer")
+    sid = await _session_row(maker, uid)
+    path = "/api/ws-ticket" if endpoint == "generic" else f"/api/sessions/{sid}/attach"
+    kwargs = {"json": {"resource": attach_resource(sid)}} if endpoint == "generic" else {}
+    replies = [await client.post(path, headers=headers, **kwargs) for _ in range(32)]
+    assert all(resp.status_code == 200 for resp in replies)
+    snapshot = isolated_tickets._tickets.copy()
+    rejected = await client.post(path, headers=headers, **kwargs)
+    assert rejected.status_code == 429
+    assert rejected.json()["error"]["code"] == "WS_TICKET_BUSY"
+    assert "ticket" not in rejected.json()
+    assert isolated_tickets._tickets == snapshot
+    assert isolated_tickets.consume(replies[0].json()["ticket"], attach_resource(sid)) == uid
+    assert (await client.post(path, headers=headers, **kwargs)).status_code == 200
+    assert len(isolated_tickets._tickets) == 32
+    now[0] = 160.0
+    assert (await client.post(path, headers=headers, **kwargs)).status_code == 200
+    assert len(isolated_tickets._tickets) == 1
+
+
+@pytest.mark.parametrize("endpoint", ["generic", "attach"])
+async def test_http_global_full_returns_controlled_error_without_eviction(
+    api: tuple, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    client, maker = api
+    service = WsTicketService(60, max_pending=2)
+    monkeypatch.setattr(ws_ticket, "_service", service)
+    victim, victim_id = await _user(client, maker, None, role_name="Developer")
+    attacker, attacker_id = await _user(client, maker, None, role_name="Viewer")
+    sid = await _session_row(maker, victim_id)
+    path = "/api/ws-ticket" if endpoint == "generic" else f"/api/sessions/{sid}/attach"
+    kwargs = {"json": {"resource": attach_resource(sid)}} if endpoint == "generic" else {}
+    protected = (await client.post(path, headers=victim, **kwargs)).json()["ticket"]
+    other = (await client.post(path, headers=attacker, **kwargs)).json()["ticket"]
+    snapshot = service._tickets.copy()
+    rejected = await client.post(path, headers=attacker, **kwargs)
+    assert rejected.status_code == 503
+    assert rejected.json()["error"] == {
+        "code": "INTERNAL_ERROR",
+        "message": "An internal error occurred",
+    }
+    assert "ticket" not in rejected.json()
+    assert service._tickets == snapshot
+    assert service.consume(protected, attach_resource(sid)) == victim_id
+    assert service.consume(other, attach_resource(sid)) == attacker_id

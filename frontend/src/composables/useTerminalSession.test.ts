@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { effectScope } from "vue";
 
+import { ApiError } from "../api/client";
+
 // --- xterm mocks: record instances so we can assert single init / dispose ---
 const { terminals } = vi.hoisted(() => ({
   terminals: [] as Array<
@@ -367,6 +369,39 @@ describe("useTerminalSession", () => {
     const first = JSON.parse(sockets[0].sent[0] as string);
     expect(first.type).toBe("terminal.resize");
   });
+
+  it.each([429, 503])(
+    "retries a %s ticket capacity refusal before opening a socket",
+    async (status) => {
+      const getTicket = vi
+        .fn()
+        .mockRejectedValueOnce(
+          new ApiError(
+            status === 429 ? "WS_TICKET_BUSY" : "INTERNAL_ERROR",
+            "Please retry later",
+            status,
+          ),
+        )
+        .mockResolvedValue("fresh-ticket");
+      let s!: ReturnType<typeof useTerminalSession>;
+      scope.run(() => {
+        s = useTerminalSession(getTicket);
+      });
+      s.mount(host());
+      await s.connect(SESSION);
+      expect(s.status.value).toBe("reconnecting");
+      expect(sockets).toHaveLength(0);
+      await vi.advanceTimersByTimeAsync(999);
+      expect(getTicket).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(getTicket).toHaveBeenCalledTimes(2);
+      expect(sockets).toHaveLength(1);
+      expect(sockets[0].url).toContain("ticket=fresh-ticket");
+      sockets[0].open();
+      expect(s.status.value).toBe("connected");
+      s.dispose();
+    },
+  );
 
   it("tracks writer/viewer role from terminal.role", async () => {
     const s = newSession();
