@@ -16,8 +16,11 @@
 `golang.org/x/sys` moves from v0.34.0 to v0.44.0 (GO-2026-5024 is Windows-only and was
 never reachable from the Linux builds).
 
-`daemon/go.mod` now carries `toolchain go1.26.11`, so CI jobs that select Go from
-`go.mod` build with the same patched toolchain as `.go-version`.
+`daemon/go.mod` now requires `go 1.26.11`, so CI jobs that select Go from `go.mod`
+build with the same patched toolchain as `.go-version`, and an older toolchain run with
+`GOTOOLCHAIN=local` (as the official Go images do) fails instead of silently producing
+an unpatched binary. Central's image builds agentd on `golang:1.26.11-bookworm` for
+the same reason.
 
 ## Upgrading
 

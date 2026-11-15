@@ -1,8 +1,6 @@
 module github.com/cliora/cliora/daemon
 
-go 1.26.0
-
-toolchain go1.26.11
+go 1.26.11
 
 require (
 	github.com/creack/pty v1.1.24
