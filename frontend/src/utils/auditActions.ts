@@ -60,7 +60,12 @@ export function actionLabel(action: string): string {
 export const ACTION_GROUPS: { title: string; actions: string[] }[] = [
   {
     title: "帳號 / Account",
-    actions: ["user.login", "user.login_failed", "user.logout", "user.unlocked"],
+    actions: [
+      "user.login",
+      "user.login_failed",
+      "user.logout",
+      "user.unlocked",
+    ],
   },
   {
     title: "安裝 / Enrollment",
