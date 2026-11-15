@@ -15,7 +15,9 @@
     "test:e2e": "playwright test",
     "lint": "eslint src --max-warnings=0",
     "format:check": "prettier --check 'src/**/*.{ts,vue,css}'",
-    "format": "prettier --write 'src/**/*.{ts,vue,css}'"
+    "format": "prettier --write 'src/**/*.{ts,vue,css}'",
+    "postinstall": "npm run patch:monaco-dompurify",
+    "patch:monaco-dompurify": "node --input-type=module -e \"import { copyFileSync } from 'node:fs'; copyFileSync('node_modules/dompurify/dist/purify.es.mjs', 'node_modules/monaco-editor/esm/vs/base/browser/dompurify/dompurify.js')\""
   },
   "dependencies": {
     "@vitejs/plugin-vue": "6.0.1",
