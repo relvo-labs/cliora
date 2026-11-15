@@ -51,7 +51,11 @@ RUN uv sync --locked --no-dev
 # skip is *inside* the stage rather than a skipped stage, because the runtime stage's
 # `COPY --from` cannot be conditional: /out is then empty and neither `go mod download`
 # nor any compile runs.
-FROM golang:1.26-bookworm AS agentd
+# The builder is pinned to the exact patch release `daemon/go.mod` requires. The
+# official image sets GOTOOLCHAIN=local, so a cached older `golang:1.26-bookworm` would
+# otherwise compile a release with an unpatched standard library (#162); with the
+# `go 1.26.11` minimum in go.mod an older toolchain now fails the build instead.
+FROM golang:1.26.11-bookworm AS agentd
 ARG AGENTD_RELEASE_BASE_URL=""
 WORKDIR /src
 COPY daemon/go.mod daemon/go.sum ./
