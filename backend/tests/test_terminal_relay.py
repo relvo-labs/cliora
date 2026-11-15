@@ -158,13 +158,18 @@ async def test_end_during_lookup_cannot_repopulate_ownership_cache() -> None:
     assert sid not in relay._owners
 
 
-async def test_denials_are_counted_with_bounded_redacted_structured_logs(caplog) -> None:
+async def test_denials_are_counted_with_bounded_redacted_structured_logs(
+    caplog, monkeypatch
+) -> None:
     import logging
     from unittest.mock import AsyncMock
 
     from app import metrics
     from app.logging import JsonFormatter
 
+    # Alembic's in-process migration tests disable existing named loggers via
+    # fileConfig. Isolate that global state while testing real LogRecords here.
+    monkeypatch.setattr(logging.getLogger("cliora.terminal_relay"), "disabled", False)
     now = [0.0]
     relay = TerminalRelay(clock=lambda: now[0])
     node_id = uuid.uuid4()
