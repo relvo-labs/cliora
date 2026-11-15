@@ -1,4 +1,4 @@
-"""Adversarial regressions for independent review of PR #182 (Delta 1)."""
+"""Adversarial regressions and owner-approved idle reset for PR #182."""
 
 import asyncio
 from datetime import UTC, datetime, timedelta
@@ -79,7 +79,7 @@ async def test_idle_unknown_username_is_retired_on_later_login(api, protection):
     _, maker = api
     now, _, _ = protection
     assert (await _attempt(username="stale-ghost")).status_code == 401
-    now[0] += timedelta(hours=24, seconds=1)
+    now[0] += timedelta(days=7, seconds=1)
     assert (await _attempt(username="fresh-ghost")).status_code == 401
     async with maker() as session:
         assert await session.get(LoginLockout, username_key("stale-ghost")) is None
@@ -88,7 +88,7 @@ async def test_idle_unknown_username_is_retired_on_later_login(api, protection):
 async def test_retention_batch_bound_expiry_boundary_and_active_lock_preservation(api):
     _, maker = api
     now = datetime(2026, 11, 15, tzinfo=UTC)
-    cutoff = now - timedelta(hours=24)
+    cutoff = now - timedelta(days=7)
     rows = [
         LoginLockout(
             username_key=f"stale-{i}",
@@ -120,15 +120,15 @@ async def test_retention_batch_bound_expiry_boundary_and_active_lock_preservatio
         await session.commit()
     async with maker() as session:
         repo = LoginLockoutRepository(session)
-        assert await repo.cleanup_idle(now=now, idle_seconds=86400, batch_size=2) == 2
+        assert await repo.cleanup_idle(now=now, idle_seconds=604800, batch_size=2) == 2
         await session.commit()
         remaining = set((await session.execute(sa.select(LoginLockout.username_key))).scalars())
         assert len(remaining) == 7
         assert "expired-lock" not in remaining and "stale-0" not in remaining
         assert {"active-lock", "exact-cutoff", "recent"} <= remaining
-        assert await repo.cleanup_idle(now=now, idle_seconds=86400, batch_size=2) == 2
-        assert await repo.cleanup_idle(now=now, idle_seconds=86400, batch_size=2) == 2
-        assert await repo.cleanup_idle(now=now, idle_seconds=86400, batch_size=2) == 0
+        assert await repo.cleanup_idle(now=now, idle_seconds=604800, batch_size=2) == 2
+        assert await repo.cleanup_idle(now=now, idle_seconds=604800, batch_size=2) == 2
+        assert await repo.cleanup_idle(now=now, idle_seconds=604800, batch_size=2) == 0
         await session.commit()
         remaining = set((await session.execute(sa.select(LoginLockout.username_key))).scalars())
         assert remaining == {"active-lock", "exact-cutoff", "recent"}
@@ -140,7 +140,7 @@ async def test_retention_skips_rows_locked_by_an_inflight_login(api):
     async with maker() as session:
         session.add_all(
             [
-                LoginLockout(username_key=key, failures=4, last_activity_at=now - timedelta(days=2))
+                LoginLockout(username_key=key, failures=4, last_activity_at=now - timedelta(days=8))
                 for key in ["busy", "idle"]
             ]
         )
@@ -151,7 +151,7 @@ async def test_retention_skips_rows_locked_by_an_inflight_login(api):
         )
         count = await asyncio.wait_for(
             LoginLockoutRepository(cleanup).cleanup_idle(
-                now=now, idle_seconds=86400, batch_size=10
+                now=now, idle_seconds=604800, batch_size=10
             ),
             timeout=2,
         )
@@ -194,7 +194,7 @@ async def test_retention_is_identical_for_known_and_unknown_names(api, protectio
     await _make_user(maker, username="known", password="correct")
     assert (await _attempt(username="known")).status_code == 401
     assert (await _attempt(username="unknown")).status_code == 401
-    now[0] += timedelta(days=2)
+    now[0] += timedelta(days=8)
     # The same idle policy applies before looking up whether either user exists.
     for username in ["known", "unknown"]:
         result = await _attempt(username=username)
@@ -247,14 +247,14 @@ async def test_login_upsert_survives_concurrent_retention_delete(api):
             LoginLockout(
                 username_key=username_key("ghost"),
                 failures=4,
-                last_activity_at=now - timedelta(days=2),
+                last_activity_at=now - timedelta(days=8),
             )
         )
         await seed.commit()
     async with maker() as cleanup, maker() as login:
         assert (
             await LoginLockoutRepository(cleanup).cleanup_idle(
-                now=now, idle_seconds=86400, batch_size=10
+                now=now, idle_seconds=604800, batch_size=10
             )
             == 1
         )
@@ -275,3 +275,61 @@ async def test_login_upsert_survives_concurrent_retention_delete(api):
     async with maker() as session:
         state = await session.get(LoginLockout, username_key("ghost"))
         assert state.failures == 1
+
+
+async def _reach_twenty_failures(username, now):
+    for count in range(1, 21):
+        result = await _attempt(username=username, host=f"192.0.2.{count}")
+        duration = {5: 60, 10: 900, 20: 3600}.get(count, 0)
+        assert result.status_code == (429 if duration else 401)
+        if duration:
+            assert result.headers["Retry-After"] == str(duration)
+            if count < 20:
+                now[0] += timedelta(seconds=duration)
+
+
+@pytest.mark.parametrize("known", [True, False], ids=["known", "unknown"])
+@pytest.mark.parametrize("idle_days", [6, 7])
+async def test_escalation_survives_idle_until_seven_day_boundary(api, protection, known, idle_days):
+    _, maker = api
+    now, _, _ = protection
+    username = "target" if known else "ghost"
+    if known:
+        await _make_user(maker, username=username, password="correct")
+    await _reach_twenty_failures(username, now)
+    # Each new failure refreshes the idle window, even beyond seven days since
+    # the row was first created. Exactly seven days is still retained.
+    for _ in range(2):
+        now[0] += timedelta(days=idle_days)
+        result = await _attempt(username=username, host="203.0.113.100")
+        assert result.status_code == 429
+        assert result.headers["Retry-After"] == "3600"
+        async with maker() as session:
+            state = await session.get(LoginLockout, username_key(username))
+            assert state.failures == 20
+            assert state.locked_until == now[0] + timedelta(hours=1)
+            assert state.last_activity_at == now[0]
+
+
+@pytest.mark.parametrize("known", [True, False], ids=["known", "unknown"])
+async def test_escalated_row_reclaimed_only_after_more_than_seven_idle_days(api, protection, known):
+    _, maker = api
+    now, _, _ = protection
+    username = "target" if known else "ghost"
+    if known:
+        await _make_user(maker, username=username, password="correct")
+    await _reach_twenty_failures(username, now)
+    async with maker() as session:
+        state = await session.get(LoginLockout, username_key(username))
+        assert state.failures == 20
+    now[0] += timedelta(days=7, seconds=1)
+    assert (await _attempt(username="cleanup-trigger", host="203.0.113.100")).status_code == 401
+    async with maker() as session:
+        assert await session.get(LoginLockout, username_key(username)) is None
+    result = await _attempt(username=username, host="203.0.113.100")
+    assert result.status_code == 401
+    assert result.headers.get("Retry-After") is None
+    async with maker() as session:
+        state = await session.get(LoginLockout, username_key(username))
+        assert state.failures == 1 and state.locked_until is None
+        assert state.last_activity_at == now[0]

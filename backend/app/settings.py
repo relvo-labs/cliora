@@ -62,8 +62,9 @@ class Settings(BaseSettings):
     login_ip_window_seconds: int = Field(default=10 * 60, ge=1)
     login_ip_lock_seconds: int = Field(default=10 * 60, ge=1)
     login_ip_max_entries: int = Field(default=10_000, ge=1)
-    # Retention engineering proposals (Delta 1): identical for known/unknown keys.
-    login_lockout_idle_retention_seconds: int = Field(default=24 * 60 * 60, ge=1)
+    # Owner-approved idle reset window (Delta 2); known/unknown keys are identical.
+    login_lockout_idle_retention_seconds: int = Field(default=7 * 24 * 60 * 60, ge=7 * 24 * 60 * 60)
+    # Cleanup cadence and batch size remain engineering proposals (Delta 1).
     login_lockout_cleanup_interval_seconds: int = Field(default=60, ge=1)
     login_lockout_cleanup_batch_size: int = Field(default=1000, ge=1, le=10_000)
 

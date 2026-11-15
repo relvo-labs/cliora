@@ -184,7 +184,7 @@ def test_retention_cleanup_gate_admits_at_most_one_batch_per_interval():
 
 def test_retention_settings_defaults_and_bounds():
     settings = Settings()
-    assert settings.login_lockout_idle_retention_seconds == 86400
+    assert settings.login_lockout_idle_retention_seconds == 604800
     assert settings.login_lockout_cleanup_interval_seconds == 60
     assert settings.login_lockout_cleanup_batch_size == 1000
     for field in [
@@ -194,5 +194,7 @@ def test_retention_settings_defaults_and_bounds():
     ]:
         with pytest.raises(ValueError):
             Settings(**{field: 0})
+    with pytest.raises(ValueError):
+        Settings(login_lockout_idle_retention_seconds=604799)
     with pytest.raises(ValueError):
         Settings(login_lockout_cleanup_batch_size=10_001)

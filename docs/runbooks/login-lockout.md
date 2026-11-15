@@ -29,9 +29,12 @@ IP 限制為單一 Central 行程的記憶體狀態，重新啟動即清空；�
 
 `last_activity_at`（有時區、索引）記錄每次進入帳號保護流程的登入與手動解鎖，
 包含已鎖帳號的拒絕。已被 IP 限制擋下的請求不建立帳號資料。
-已知與未知帳號使用同一個 retention 規則：未鎖定或鎖期已結束，且閒置 **超過** 24 小時，
-資料可刪除；恰好 24 小時仍保留。活躍鎖定不提前刪除，近期活動也不刪除。
-因此在閒置 retention 後，過往的連續失敗會歸零，已知與未知帳號一致。
+已知與未知帳號使用同一個 retention 規則：未鎖定或鎖期已結束，且閒置 **超過** 7 天，
+資料可刪除；恰好 7 天仍保留。活躍鎖定不提前刪除，近期活動也不刪除。
+依 Neil 於 2026-11-15 在 #59 與 #182 的決策，7 天內的失敗繼續累計升級；
+已累積 ≥20 次者，在閒置 6 天後再次失敗仍鎖 1 小時。每次失敗活動重新起算閒置時間。
+超過 7 天閒置後，清理才可讓過往計數歸零，下一次失敗由 1 開始，已知與未知帳號一致。
+成功登入或管理員解鎖仍立即歸零。
 登入路徑最多每 60 秒執行一次清理，每批最多刪除 1,000 列，由最舊開始。
 以 `FOR UPDATE SKIP LOCKED` 跳過進行中登入持有的列；刪除與登入的原子 upsert
 共用列鎖，避免 cleanup 與重新活動競爭。清理與當次登入同交易提交；若回滾，
@@ -39,9 +42,10 @@ IP 限制為單一 Central 行程的記憶體狀態，重新啟動即清空；�
 沒有登入流量時不執行清理；積壓可能需多批處理。這不是資料庫總列數的硬上限，
 需依建立速率與 backlog 調整批量／頻率並觀察資料庫容量。
 
-retention 新預設為工程提案：`login_lockout_idle_retention_seconds=86400`、
+retention 的 owner-approved 預設為 `login_lockout_idle_retention_seconds=604800`，
+Settings 拒絕低於 7 天的值，可延長保留期。清理頻率與批量仍為工程提案：
 `login_lockout_cleanup_interval_seconds=60`、`login_lockout_cleanup_batch_size=1000`。
-三者均可透過 `CLIORA_` 前綴調整，批量最高 10,000，須重新啟動 Central。
+設定可透過 `CLIORA_` 前綴調整，批量最高 10,000，須重新啟動 Central。
 
 Argon2 hash、verify、dummy verify 共用行程級 semaphore，預設最多 4 個操作，
 排隊最多 5 秒，超時統一回 HTTP 503 / `INTERNAL_ERROR`。
